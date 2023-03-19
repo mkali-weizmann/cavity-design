@@ -1,29 +1,25 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from typing import List, Tuple, Optional
-import sympy as sp
-import sympy.vector as spv
 
-S = spv.CoordSys3D('S')
 
 class Ray:
-    def __init__(self, origin: spv.Vector, direction: spv.Vector, length: Optional[sp.Symbol] = None):
+    def __init__(self, origin: np.ndarray, theta: float, length: Optional[float] = None):
         self.origin = origin
-        self.direction = direction.normalize()
+        self.theta = theta
         self.length = length
 
-    def plot(self, substitution_dict: dict):
-        origin_x_plot = self.origin.coeff(S.i).subs(substitution_dict).evalf()
-        origin_y_plot = self.origin.coeff(S.j).subs(substitution_dict).evalf()
-        direction_x_plot = self.direction.coeff(S.i).subs(substitution_dict).evalf()
-        direction_y_plot = self.direction.coeff(S.j).subs(substitution_dict).evalf()
+    @property
+    def direction_vector(self):
+        return np.array([np.cos(self.theta), np.sin(self.theta)])
+
+    def plot(self):
         if self.length is None:
             length_plot = 1
         else:
-            length_plot = self.length.subs(substitution_dict).evalf()
-        x = np.array([origin_x_plot, origin_x_plot + length_plot * direction_x_plot])
-        y = np.array([origin_y_plot, origin_y_plot + length_plot * direction_y_plot])
-        plt.plot(x, y, 'r-')
+            length_plot = self.length
+        ray_end = self.origin + length_plot * self.direction_vector
+        plt.plot([self.origin[0], ray_end[0]], [self.origin[1], ray_end[1]], 'r-')
 
 
 class Mirror:
@@ -32,42 +28,53 @@ class Mirror:
 
 
 class FlatMirror(Mirror):
-    def __init__(self, origin: spv.Vector, normal_direction: spv.Vector):
+    def __init__(self, origin: np.array, theta_normal: float):
         self.origin = origin
-        self.normal_direction = normal_direction.normalize()
+        self.theta_normal = theta_normal
+
+    @property
+    def direction_vector(self):
+        return np.array([np.cos(self.theta_normal), np.sin(self.theta_normal)])
 
     @property
     def mirror_line_direction(self):
-        return self.normal_direction.cross(S.k)
+        return np.mod(self.theta_normal + np.pi / 2, 2 * np.pi)
 
-    def find_intersection_with_ray(self, ray: Ray) -> spv.Vector:
-        t, s = sp.symbols('t s')
-        x_ray = ray.origin.coeff(S.i) + ray.direction.coeff(S.i) * t
-        y_ray = ray.origin.coeff(S.j) + ray.direction.coeff(S.j) * t
-        x_mirror = self.origin.coeff(S.i) + self.mirror_line_direction.coeff(S.i) * s
-        y_mirror = self.origin.coeff(S.j) + self.mirror_line_direction.coeff(S.j) * s
-        s_and_t = sp.solve([sp.simplify(x_ray - x_mirror), sp.simplify(y_ray - y_mirror)], [t, s])
-        return x_ray.subs(t, s_and_t[t]) * S.i + y_ray.subs(t, s_and_t[t]) * S.j
+    @property
+    def mirror_line_direction_vector(self):
+        return np.array([np.cos(self.mirror_line_direction), np.sin(self.mirror_line_direction)])
 
-    def reflect_along_normal(self, ray: Ray) -> spv.Vector:
-        normal = self.normal_direction.normalize()
-        return ray.direction - 2 * normal.dot(ray.direction) * normal
+    def find_intersection_with_ray(self, ray: Ray) -> np.ndarray:
+        ray_direction_vector = ray.direction_vector
+        ray_origin = ray.origin
+        mirror_line_direction_vector = self.mirror_line_direction_vector
+        mirror_line_origin = self.origin
+        t = np.cross(mirror_line_origin - ray_origin, mirror_line_direction_vector) / np.cross(ray_direction_vector,
+                                                                                               mirror_line_direction_vector)
+        intersection = ray_origin + t * ray_direction_vector
+        return intersection
+
+    def reflect_along_normal(self, ray: Ray) -> float:
+        ray_direction_vector = ray.direction_vector
+        mirror_line_direction_vector = self.direction_vector
+        reflected_direction_vector = ray_direction_vector - 2 * np.dot(ray_direction_vector,
+                                                                       mirror_line_direction_vector) * mirror_line_direction_vector
+        reflected_direction = np.arctan2(reflected_direction_vector[1], reflected_direction_vector[0])
+        return reflected_direction
 
     def deflect_ray(self, ray: Ray) -> Ray:
         intersection = self.find_intersection_with_ray(ray)
         reflected_direction = self.reflect_along_normal(ray)
-        ray.length = (intersection - ray.origin).magnitude()
+        ray.length = np.linalg.norm(intersection - ray.origin)
         return Ray(intersection, reflected_direction)
 
-    def plot(self, substitution_dict: dict):
-        origin_x_plot = self.origin.coeff(S.i).subs(substitution_dict).evalf()
-        origin_y_plot = self.origin.coeff(S.j).subs(substitution_dict).evalf()
-        direction_x_plot = self.mirror_line_direction.coeff(S.i).subs(substitution_dict).evalf()
-        direction_y_plot = self.mirror_line_direction.coeff(S.j).subs(substitution_dict).evalf()
-        length_plot = 1
-        x = np.array([origin_x_plot - length_plot * direction_x_plot, origin_x_plot + length_plot * direction_x_plot])
-        y = np.array([origin_y_plot - length_plot * direction_y_plot, origin_y_plot + length_plot * direction_y_plot])
-        plt.plot(x, y, 'b-')
+    def plot(self):
+        mirror_line_origin = self.origin - self.mirror_line_direction_vector
+        mirror_line_end = self.origin + self.mirror_line_direction_vector
+        plt.plot([mirror_line_origin[0], mirror_line_end[0]], [mirror_line_origin[1], mirror_line_end[1]], 'k-')
+        normal_vector_end = self.origin + self.direction_vector
+        plt.plot([self.origin[0], normal_vector_end[0]], [self.origin[1], normal_vector_end[1]], 'k--')
+        plt.plot(self.origin[0], self.origin[1], 'ko')
 
 
 class Cavity:
@@ -76,7 +83,7 @@ class Cavity:
         self.mirrors = mirrors
         self.ray_history: List[Ray] = []
 
-    def trace_ray(self, ray:Ray) -> Ray:
+    def trace_ray(self, ray: Ray) -> Ray:
         self.ray_history.append(ray)
         for mirror in self.mirrors:
             ray = mirror.deflect_ray(ray)
@@ -90,22 +97,30 @@ class Cavity:
         else:
             return self.ray_history[-1]
 
-# %%
-# import time
-# start_time = time.time()
-# x_1, y_1, direction_x_1, direction_y_1, x_2, y_2, direction_x_2, direction_y_2, x_3, y_3, direction_x_3, direction_y_3, direction_x_ray, direction_y_ray = sp.symbols('x_1, y_1, direction_x_1, direction_y_1, x_2, y_2, direction_x_2, direction_y_2, x_3, y_3, direction_x_3, direction_y_3, direction_x_ray, direction_y_ray')
-# origin_1 = x_1 * S.i + y_1 * S.j
-# origin_2 = x_2 * S.i + y_2 * S.j
-# origin_3 = x_3 * S.i + y_3 * S.j
-# direction_1 = direction_x_1 * S.i + direction_y_1 * S.j
-# direction_2 = direction_x_2 * S.i + direction_y_2 * S.j
-# direction_3 = direction_x_3 * S.i + direction_y_3 * S.j
-# direction_ray = direction_x_ray * S.i + direction_y_ray * S.j
-# initial_ray = Ray(origin_1, direction_ray)
-# mirror1 = FlatMirror(origin_1, direction_1)
-# mirror2 = FlatMirror(origin_2, direction_2)
-# mirror3 = FlatMirror(origin_3, direction_3)
-# deflected_ray2 = mirror2.deflect_ray(initial_ray)
-# deflected_ray3 = mirror3.deflect_ray(deflected_ray2)
-# time_duration = time.time() - start_time
-# print(f'Calculation took {time_duration} seconds')
+if __name__ == '__main__':
+    origin_1 = np.array([0, 0])
+    theta_1 = np.pi / 2
+    origin_2 = np.array([1.5, 1])
+    theta_2 = np.pi
+    origin_3 = np.array([-1, 3])
+    theta_3 = 6.6*np.pi / 4
+    theta_ray = np.pi / 4
+
+    initial_ray = Ray(origin_1, theta_ray)
+    mirror_1 = FlatMirror(origin_1, theta_1)
+    mirror_2 = FlatMirror(origin_2, theta_2)
+    mirror_3 = FlatMirror(origin_3, theta_3)
+    deflected_ray_2 = mirror_2.deflect_ray(initial_ray)
+    deflected_ray_3 = mirror_3.deflect_ray(deflected_ray_2)
+    deflected_ray_4 = mirror_1.deflect_ray(deflected_ray_3)
+    figure = plt.figure(figsize=(8, 8))
+    initial_ray.plot()
+    deflected_ray_2.plot()
+    deflected_ray_3.plot()
+    deflected_ray_4.plot()
+    mirror_1.plot()
+    mirror_2.plot()
+    mirror_3.plot()
+    plt.xlim(-4, 4)
+    plt.ylim(-4, 4)
+    plt.show()
