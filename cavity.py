@@ -286,7 +286,7 @@ if __name__ == '__main__':
     default_t_2 = 2.00000e+00
     dtheta_initial_plot = -1.73472e-18
     ds = 1.00000e-06
-    t_shift = 0.00000e+00
+    t_shift = 0.3
     theta_shift = 0.00000e+00
     dt_initial_plot = np.array([-1.73472e-18])
     scale = 1.00
@@ -378,13 +378,14 @@ if __name__ == '__main__':
     delta_theta = angles_distance(theta_final_reshaped, theta_initial_reshaped)
 
     # Plot the difference between the initial and final t on the left upper axis
-    im = ax2.imshow(delta_t,
-                    extent=(theta_initial[0] - theta_0, theta_initial[-1] - theta_0, t_initial[0] - t_1, t_initial[-1] - t_1))
+    im = ax2.imshow(delta_t, extent=(
+    t_initial[0] - t_1, t_initial[-1] - t_1, theta_initial[-1] - theta_0, theta_initial[0] - theta_0)
+                    )  #
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        cs_2 = ax2.contour(theta_initial - theta_0, np.flip(t_initial - t_1), delta_t, levels=[0],
-                           colors=['white'])
-        cs_2b = ax2.contour(theta_initial - theta_0, np.flip(t_initial - t_1),
+        cs_2 = ax2.contour(t_initial - t_1, theta_initial - theta_0,
+                           delta_t, levels=[0], colors=['white'])
+        cs_2b = ax2.contour(t_initial - t_1, theta_initial - theta_0,
                             delta_theta, levels=[0], colors=['black'], linestyles='--')
         cbar = fig.colorbar(im, ax=ax2)
 
@@ -393,24 +394,23 @@ if __name__ == '__main__':
     except ValueError:
         print("kaki")
 
-    ax2.set_xlabel('theta')
-    ax2.set_ylabel('t')
+    ax3.set_xlabel('dt')
+    ax3.set_ylabel('d_theta')
     # ax2.set_aspect(0.8)
     ax2.set_title('t_final -t_initial')
     ax2.set_aspect(1 / scale)
-    # ax2.plot(t_and_theta_central_line[1] - theta_0, t_and_theta_central_line[0] - t_1, 'ro')
-    print(f"dtheta_soluction={t_and_theta_central_line[1] - theta_0}, dt_solution={t_and_theta_central_line[0] - t_1}")
+    ax2.plot(t_and_theta_central_line[1] - theta_0, t_and_theta_central_line[0] - t_1, 'ro')
 
     # Plot the difference between the initial and final theta on the right upper axis
     # Plot the difference between the initial and final theta on the right upper axis
-    im = ax3.imshow(angles_distance(theta_final_reshaped, theta_initial_reshaped),
-                    extent=(theta_initial[0] - theta_0, theta_initial[-1] - theta_0, t_initial[0] - t_1, t_initial[-1] - t_1))
+    im = ax3.imshow(angles_distance(theta_final_reshaped, theta_initial_reshaped), extent=(
+    t_initial[0] - t_1, t_initial[-1] - t_1, theta_initial[-1] - theta_0, theta_initial[0] - theta_0))
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        cs_3 = ax3.contour(theta_initial - theta_0, np.flip(t_initial - t_1), delta_t, levels=[0],
-                           colors=['white'])
-        cs_3b = ax3.contour(theta_initial - theta_0, np.flip(t_initial - t_1),
+        cs_3 = ax3.contour(t_initial - t_1, theta_initial - theta_0,
+                           delta_t, levels=[0], colors=['white'])
+        cs_3b = ax3.contour(t_initial - t_1, theta_initial - theta_0,
                             delta_theta, levels=[0], colors=['black'], linestyles='--')
 
         cbar = fig.colorbar(im, ax=ax3)
@@ -419,10 +419,12 @@ if __name__ == '__main__':
     except ValueError:
         print("kaki")
 
-    ax3.set_xlabel('theta')
+    ax3.set_xlabel('dt')
+    ax3.set_ylabel('d_theta')
     ax3.set_aspect(1 / scale)
-    ax3.set_ylabel('t')
+
     ax3.set_title('theta_final - theta_initial')
+    ax3.plot(t_and_theta_central_line[1] - theta_0, t_and_theta_central_line[0] - t_1, 'ro')
     plt.show()
 
 
