@@ -271,7 +271,7 @@ class Cavity:
 
 if __name__ == '__main__':
 
-    x_1 = 2.22045e-16
+    x_1 = 1.90200e-01
     y_1 = 0.00000e+00
     r_1 = 0.00000e+00
     t_1 = 0.00000e+00
@@ -284,14 +284,14 @@ if __name__ == '__main__':
     r_3 = 0.00000e+00
     t_3 = 0.00000e+00
     default_t_2 = 2.00000e+00
-    dtheta_initial_plot = -1.73472e-18
-    ds = 1.00000e-06
-    t_shift = 0.3
+    dtheta_initial_plot = -1.77636e-15
+    ds = 9.80010e-02
+    t_shift = 0.00000e+00
     theta_shift = 0.00000e+00
-    dt_initial_plot = np.array([-1.73472e-18])
+    dt_initial_plot = np.array([0.00000e+00])
     scale = 1.00
 
-    # print(f"{x_1=:.5e}\n{y_1=:.5e}\n{r_1=:.5e}\n{t_1=:.5e}\n{x_2=:.5e}\n{y_2=:.5e}\n{r_2=:.5e}\n{t_2=:.5e}\n{x_3=:.5e}\n{y_3=:.5e}\n{r_3=:.5e}\n{t_3=:.5e}\n{default_t_2=:.5e}\n{dtheta_initial_plot=:.5e}\n{ds=:.5e}\n{t_shift=:.5e}\n{theta_shift=:.5e}\ndt_initial_plot=np.array([{dt_initial_plot:.5e}])\n{scale=:.2f}")
+
     x_1 += 1
     y_1 += 0.00
     r_1 += 2
