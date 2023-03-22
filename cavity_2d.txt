@@ -17,19 +17,34 @@ def angles_distance(theta_2: np.ndarray, theta_1: np.ndarray):
 
 
 class Ray:
-    def __init__(self, origin: np.ndarray, k_vector: np.ndarray,
+    def __init__(self, origin: np.ndarray, theta: Union[np.ndarray, float],
                  length: Optional[Union[np.ndarray, float]] = None):
         if origin.ndim == 1:
             origin = origin[np.newaxis, :]
+        if isinstance(theta, float):
+            theta = np.ones(origin.shape[0]) * theta
         self.origin = origin  # m_rays | 2
-        self.k_vector = k_vector  # m_rays
+        self.theta = theta  # m_rays
         if length is not None and isinstance(length, float):
             length = np.ones(origin.shape[0]) * length
         self.length = length  # m_rays or None
 
+    @property
+    def direction_vector(self):
+        return unit_vector_of_angle(self.theta)  # m_rays | 2
+
+    def plot(self):
+        if self.length is None:
+            length_plot = np.ones(self.origin.shape[0]) * 3
+        else:
+            length_plot = np.where(np.isnan(self.length), 3, self.length)
+        ray_end = self.origin + length_plot[:, np.newaxis] * self.direction_vector  # m_rays | 2
+        [plt.plot([self.origin[i, 0], ray_end[i, 0]], [self.origin[i, 1], ray_end[i, 1]], 'r-')
+         for i in range(self.origin.shape[0])]
+
 
 class Mirror:
-    def reflect_ray(self, ray: Ray) -> Ray:
+    def reflect_ray(self, ray):
         raise NotImplementedError
 
     def plot(self):
@@ -39,75 +54,139 @@ class Mirror:
     def center_of_mirror(self):
         raise NotImplementedError
 
+    def mirror_parameterization(self, t):
+        raise NotImplementedError
+
     def find_intersection_with_ray(self, ray: Ray) -> np.ndarray:
         raise NotImplementedError
 
 
 class CurvedMirror(Mirror):
-
-    def __init__(self, radius: float, center_normal: np.ndarray, center_of_mirror: Optional[np.ndarray] = None,
+    def __init__(self, radius: float, center_angle: float, center_of_mirror: Optional[np.ndarray] = None,
                  origin: Optional[np.ndarray] = None,):
-        self.center_normal = center_normal / np.linalg.norm(center_normal)
-        self.radius = radius
-
         if origin is None and center_of_mirror is None:
             raise ValueError('Either origin or center_of_mirror must be provided.')
         elif origin is not None and center_of_mirror is not None:
             raise ValueError('Only one of origin and center_of_mirror must be provided.')
         elif origin is None:
-            self.origin = center_of_mirror - radius * self.center_normal
+            self.origin = center_of_mirror - radius * unit_vector_of_angle(center_angle)
         else:
             self.origin = origin
+        self.radius = radius
+        self.center_angle = center_angle
 
     def find_intersection_with_ray(self, ray: Ray) -> np.ndarray:
-        # Result of the next line of mathematica to find the intersection:
-        # Solve[(x0 + kx * t - xc) ^ 2 + (y0 + ky * t - yc) ^ 2 + (z0 + kz * t - zc) ^ 2 == R ^ 2, t]
-        return (-ray.k_vector[..., 0] * ray.origin[..., 0] + ray.k_vector[..., 0] * self.origin[0] - ray.k_vector[..., 1] *
-         ray.origin[..., 1] + ray.k_vector[..., 1] * self.origin[1] - ray.k_vector[..., 2] * ray.origin[..., 2] +
-         ray.k_vector[..., 2] * self.origin[2] - np.sqrt(
-                    -4 * (ray.k_vector[..., 0] ** 2 + ray.k_vector[..., 1] ** 2 + ray.k_vector[..., 2] ** 2) * (
-                                -self.radius ** 2 + (ray.origin[..., 0] - self.origin[0]) ** 2 + (
-                                    ray.origin[..., 1] - self.origin[1]) ** 2 + (
-                                            ray.origin[..., 2] - self.origin[2]) ** 2) + 4 * (
-                                ray.k_vector[..., 0] * (ray.origin[..., 0] - self.origin[0]) + ray.k_vector[..., 1] * (
-                                    ray.origin[..., 1] - self.origin[1]) + ray.k_vector[..., 2] * (
-                                            ray.origin[..., 2] - self.origin[2])) ** 2) / 2) / (
-                    ray.k_vector[..., 0] ** 2 + ray.k_vector[..., 1] ** 2 + ray.k_vector[..., 2] ** 2)
+        half_pi_elements = np.abs(np.mod(ray.theta, np.pi) - np.pi / 2) < 1e-6
+        ray_theta_no_half_pi = np.where(half_pi_elements, 0, ray.theta)
 
-    def reflect_along_normal(self, ray: Ray, intersection_point: Optional[np.ndarray]) -> np.ndarray:
-        if intersection_point is None:
-            intersection_point = self.find_intersection_with_ray(ray)
-        mirror_normal_vector = self.origin - intersection_point  # m_rays | 3
-        dot_product = np.sum(ray.k_vector * mirror_normal_vector, axis=-1)  # m_rays
-        reflected_direction_vector = ray.k_vector - 2 * dot_product[:, np.newaxis] * mirror_normal_vector  # m_rays | 3
-        return reflected_direction_vector / np.linalg.norm(reflected_direction_vector, axis=-1)[:, np.newaxis]
+        # For elements in which ray.theta is pi/2 or 3*np.pi/2 we need to find the intersection with the mirror one way:
+        half_pi_elements_x = ray.origin[:, 0]
+        # This extra line is to avoid the warning that comes from taking the square root of a negative number.
+        y_distance_from_origin = np.sqrt(self.radius**2 - (half_pi_elements_x - self.origin[0])**2 +0j)
+        y_distance_from_origin = np.where(np.abs(np.imag(y_distance_from_origin) > 1e-9), np.nan, np.real(y_distance_from_origin))
+        half_pi_elements_y_1 = self.origin[1] + y_distance_from_origin
+        half_pi_elements_y_2 = self.origin[1] - y_distance_from_origin
+
+        # For elements in which ray.theta is not pi/2, we need to find the intersection with the mirror another way:
+        # ray is y=ax+b
+        a = np.tan(ray_theta_no_half_pi)
+        b = ray.origin[:, 1] - a * ray.origin[:, 0]
+        o_x = self.origin[0]
+        o_y = self.origin[1]
+        r = self.radius
+        # The next two lines are from Mathematica, and are used to solve the quadratic equation.
+        # Simplify[Solve[{(x - Ox)^2 + (y - Oy)^2 == r^2, y == a*x + b}, {x, y}]]
+        pre_determinanta = -a * b + o_x + a * o_y
+        determinanta = np.sqrt(-b**2 + 2*a*o_x*o_y - o_y**2 + b * (-2*a*o_x+2*o_y) + r**2 + a**2 * (r**2 - o_x**2))
+        x_1 = (pre_determinanta + determinanta) / (1 + a**2)
+        x_2 = (pre_determinanta - determinanta) / (1 + a**2)
+        y_1 = a * x_1 + b
+        y_2 = a * x_2 + b
+
+        # Choose element-wise the correct calculation:
+        x_1 = np.where(half_pi_elements, half_pi_elements_x, x_1)
+        x_2 = np.where(half_pi_elements, half_pi_elements_x, x_2)
+        y_1 = np.where(half_pi_elements, half_pi_elements_y_1, y_1)
+        y_2 = np.where(half_pi_elements, half_pi_elements_y_2, y_2)
+
+        # Choose the intersection that is further down the ray:
+        inner_product_1 = np.sum(ray.direction_vector * np.stack([x_1 - ray.origin[:, 0], y_1 - ray.origin[:, 1]], axis=1), axis=1)
+        inner_product_2 = np.sum(ray.direction_vector * np.stack([x_2 - ray.origin[:, 0], y_2 - ray.origin[:, 1]], axis=1), axis=1)
+
+        condition = inner_product_1 > inner_product_2
+        x = np.where(condition, x_1, x_2)
+        y = np.where(condition, y_1, y_2)
+
+        t = np.arctan2(y - self.origin[1], x - self.origin[0])
+        return t
+
+    def mirror_parameterization(self, t: np.ndarray) -> np.ndarray:
+        return self.origin + self.radius * unit_vector_of_angle(t)
+
+    def reflect_along_normal(self, ray: Ray, t: Optional[np.ndarray] = None) -> np.ndarray:
+        if t is None:
+            t = self.find_intersection_with_ray(ray)
+        ray_direction_vector = ray.direction_vector
+        mirror_normal_vector = -unit_vector_of_angle(t)
+        dot_product = np.sum(ray_direction_vector * mirror_normal_vector, axis=1)
+        reflected_direction_vector = ray_direction_vector - 2 * dot_product[:, np.newaxis] * mirror_normal_vector
+        reflected_direction = np.arctan2(reflected_direction_vector[:, 1], reflected_direction_vector[:, 0])
+        return reflected_direction
 
     def reflect_ray(self, ray: Ray) -> Ray:
-        intersection_point = self.find_intersection_with_ray(ray)
-        reflected_direction_vector = self.reflect_along_normal(ray, intersection_point)
+        t = self.find_intersection_with_ray(ray)
+        intersection_point = self.mirror_parameterization(t)
+        reflected_direction = self.reflect_along_normal(ray, t)
         ray.length = np.linalg.norm(intersection_point - ray.origin, axis=1)
-        return Ray(intersection_point, reflected_direction_vector)
+        return Ray(intersection_point, reflected_direction)
 
     @property
     def center_of_mirror(self):
-        return self.origin + self.radius * self.center_normal
+        return self.origin + self.radius * unit_vector_of_angle(self.center_angle)
+
+    def plot(self):
+        d_theta = 0.3
+        t = np.linspace(self.center_angle-d_theta, self.center_angle+d_theta, 50)
+        t_grey = np.linspace(self.center_angle+d_theta, self.center_angle-d_theta + 2*np.pi, 100)
+        points = self.mirror_parameterization(t)
+        grey_points = self.mirror_parameterization(t_grey)
+        plt.plot(points[:, 0], points[:, 1], 'b-')
+        plt.plot(grey_points[:, 0], grey_points[:, 1], color=(0.8, 0.8, 0.8), linestyle='-.', linewidth=0.5)
+        plt.plot(self.center_of_mirror[0], self.center_of_mirror[1], 'bo')
 
 
 class FlatMirror(Mirror):
-    def __init__(self, normal: np.narray, distance_from_origin: float):
-        self.normal = normal / np.linalg.norm(normal)
-        self.distance_from_origin = distance_from_origin
+    def __init__(self, origin: np.array, theta_normal: float):
+        self.origin = origin
+        self.theta_normal = theta_normal
+
+    @property
+    def direction_vector(self):
+        return unit_vector_of_angle(self.theta_normal)
+
+    @property
+    def mirror_line_direction(self):
+        return np.mod(self.theta_normal + np.pi / 2, 2 * np.pi)
+
+    @property
+    def mirror_line_direction_vector(self):
+        return unit_vector_of_angle(self.mirror_line_direction)
 
     def find_intersection_with_ray(self, ray: Ray) -> float:
-        A_vec = self.normal * self.distance_from_origin
-        BA_vec = ray.origin - A_vec
-        BC = BA_vec @ self.normal
-        t = BC / (ray.k_vector @ self.normal)
+        ray_direction_vector = ray.direction_vector
+        ray_origin = ray.origin
+        mirror_line_direction_vector = self.mirror_line_direction_vector
+        mirror_line_origin = self.origin
+        t = np.cross(ray_direction_vector, mirror_line_origin - ray_origin) / np.cross(mirror_line_direction_vector,
+                                                                                       ray_direction_vector)
         return t
 
     def reflect_along_normal(self, ray: Ray) -> float:
-        k_projection_on_normal = ray.k_vector @ self.normal * self.normal
-        reflected_direction = - ray.k_vector + 2 * k_projection_on_normal
+        ray_direction_vector = ray.direction_vector
+        mirror_line_direction_vector = self.direction_vector
+        reflected_direction_vector = ray_direction_vector - 2 * np.dot(ray_direction_vector,
+                                                                       mirror_line_direction_vector) * mirror_line_direction_vector
+        reflected_direction = np.arctan2(reflected_direction_vector[:, 1], reflected_direction_vector[:, 0])
         return reflected_direction
 
     def reflect_ray(self, ray: Ray) -> Ray:

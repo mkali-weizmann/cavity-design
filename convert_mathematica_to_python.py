@@ -2,8 +2,10 @@ from sympy.parsing.mathematica import parse_mathematica
 
 
 
-mathematica_expr = "(1/(2 (kx^2 + ky^2 + kz^2)))(-2 kx x0 + 2 kx xc - 2 ky y0 + 2 ky yc - 2 kz z0 + 2 kz zc - Sqrt[(2 kx x0 - 2 kx xc + 2 ky y0 - 2 ky yc + 2 kz z0 - 2 kz zc)^2 - 4 (kx^2 + ky^2 + kz^2) (-R^2 + x0^2 - 2 x0 xc + xc^2 + y0^2 - 2 y0 yc + yc^2 + z0^2 - 2 z0 zc + zc^2)])"
+mathematica_expr = "(1/(kx^2 + ky^2 + kz^2))(-kx x0 + kx xc - ky y0 + ky yc - kz z0 - 1/2 Sqrt[4 (kx (x0 - xc) + ky (y0 - yc) + kz (z0 - zc))^2 - 4 (kx^2 + ky^2 + kz^2) (-R^2 + (x0 - xc)^2 + (y0 - yc)^2 + (z0 - zc)^2)] + kz zc)"
+sympy_expr = str(parse_mathematica(mathematica_expr))
 
-sympy_expr = parse_mathematica(mathematica_expr)
+
+sympy_expr = sympy_expr.replace("kx", "ray.k_vector[..., 0]").replace("ky", "ray.k_vector[..., 1]").replace("kz", "ray.k_vector[..., 2]").replace("xc", "self.origin[0]").replace("yc", "self.origin[1]").replace("zc", "self.origin[2]").replace("x0", "ray.origin[..., 0]").replace("y0", "ray.origin[..., 1]").replace("z0", "ray.origin[..., 2]").replace("R", "self.radius").replace("sqrt", "np.sqrt")
 
 print(str(sympy_expr))
