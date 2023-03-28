@@ -3,36 +3,45 @@ import matplotlib.pyplot as plt
 from typing import List, Tuple, Optional, Union
 from scipy import optimize
 import warnings
+import time
+
+# Throughout the code, all tensors can take any number of dimensions, but the last dimension is always the coordinate
+# dimension. this allows a Ray to be either a single ray, a list of rays, or a list of lists of rays, etc.
+# For example, a Ray could be a set of rays with a starting point for every combination of x, y, z. in this case, the
+# ray.origin tensor will be of the size N_x | N_y | N_z | 3.
 
 
-rotation_matrix_aournd_z = lambda theta: np.array([[np.cos(theta), -np.sin(theta), 0],
-                                                   [np.sin(theta), np.cos(theta), 0],
-                                                   [0, 0, 1]])  # 3 | 3
+def normalize_vector(vector: Union[np.ndarray, list]) -> np.ndarray:
+    if isinstance(vector, list):
+        vector = np.array(vector)
+    return vector / np.linalg.norm(vector, axis=-1)[..., np.newaxis]
 
-rotation_matrix_aournd_x = lambda theta: np.array([[1, 0, 0],
-                                                   [0, np.cos(theta), -np.sin(theta)],
-                                                   [0, np.sin(theta), np.cos(theta)]])  # 3 | 3
-
-rotation_matrix_aournd_n = lambda theta, n: np.array([[np.cos(theta) + n[0] ** 2 * (1 - np.cos(theta)),
-                                                       n[0] * n[1] * (1 - np.cos(theta)) - n[2] * np.sin(theta),
-                                                       n[0] * n[2] * (1 - np.cos(theta)) + n[1] * np.sin(theta)],
-                                                      [n[1] * n[0] * (1 - np.cos(theta)) + n[2] * np.sin(theta),
-                                                       np.cos(theta) + n[1] ** 2 * (1 - np.cos(theta)),
-                                                       n[1] * n[2] * (1 - np.cos(theta)) - n[0] * np.sin(theta)],
-                                                      [n[2] * n[0] * (1 - np.cos(theta)) - n[1] * np.sin(theta),
-                                                       n[2] * n[1] * (1 - np.cos(theta)) + n[0] * np.sin(theta),
-                                                       np.cos(theta) + n[2] ** 2 * (1 - np.cos(theta))]])  # 3 | 3
+def rotation_matrix_around_n(n, theta):
+    # Rotates a vector around the axis n by theta radians.
+    # This funny stack synatx is to allow theta to be of any dimension
+    A = np.stack([np.stack([np.cos(theta) + n[0] ** 2 * (1 - np.cos(theta)),
+                            n[0] * n[1] * (1 - np.cos(theta)) - n[2] * np.sin(theta),
+                            n[0] * n[2] * (1 - np.cos(theta)) + n[1] * np.sin(theta)], axis=-1),
+                  np.stack([n[1] * n[0] * (1 - np.cos(theta)) + n[2] * np.sin(theta),
+                            np.cos(theta) + n[1] ** 2 * (1 - np.cos(theta)),
+                            n[1] * n[2] * (1 - np.cos(theta)) - n[0] * np.sin(theta)], axis=-1),
+                  np.stack([n[2] * n[0] * (1 - np.cos(theta)) - n[1] * np.sin(theta),
+                            n[2] * n[1] * (1 - np.cos(theta)) + n[0] * np.sin(theta),
+                            np.cos(theta) + n[2] ** 2 * (1 - np.cos(theta))], axis=-1)], axis=-1)
+    return A
 
 
 def unit_vector_of_angles(theta: Union[np.ndarray, float], phi: Union[np.ndarray, float]) -> np.ndarray:
     # theta and phi are assumed to be in radians
     return np.stack([np.sin(theta) * np.cos(phi), np.sin(theta) * np.sin(phi), np.cos(theta)], axis=-1)
 
+
 def angles_of_unit_vector(unit_vector: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
     # theta and phi are returned in radians
     theta = np.arccos(unit_vector[..., 2])
     phi = np.arctan2(unit_vector[..., 1], unit_vector[..., 0])
     return theta, phi
+
 
 def angles_distance(direction_vector_1: np.ndarray, direction_vector_2: np.ndarray):
     inner_product = np.sum(direction_vector_1 * direction_vector_2, axis=-1)
@@ -52,7 +61,7 @@ class Ray:
             origin = np.tile(origin, (*k_vector.shape[:-1], 1))
 
         self.origin = origin  # m_rays | 3
-        self.k_vector = k_vector / np.linalg.norm(k_vector, axis=-1)[..., np.newaxis]  # m_rays | 3
+        self.k_vector = normalize_vector(k_vector)  # m_rays | 3
         if length is not None and isinstance(length, float):
             length = np.ones(origin.shape[0]) * length
         self.length = length  # m_rays or None
@@ -73,11 +82,12 @@ class Ray:
         ray_origin_reshaped = self.origin.reshape(-1, 3)
         ray_k_vector_reshaped = self.k_vector.reshape(-1, 3)
         lengths_reshaped = length.reshape(-1)
-        [ax.plot([ray_origin_reshaped[i, 0], ray_origin_reshaped[i, 0] + lengths_reshaped[i] * ray_k_vector_reshaped[i, 0]],
-                    [ray_origin_reshaped[i, 1], ray_origin_reshaped[i, 1] + lengths_reshaped[i] * ray_k_vector_reshaped[i, 1]],
-                    [ray_origin_reshaped[i, 2], ray_origin_reshaped[i, 2] + lengths_reshaped[i] * ray_k_vector_reshaped[i, 2]],
-                    color='red', linewidth=0.4)
-            for i in range(ray_origin_reshaped.shape[0])]
+        [ax.plot(
+            [ray_origin_reshaped[i, 0], ray_origin_reshaped[i, 0] + lengths_reshaped[i] * ray_k_vector_reshaped[i, 0]],
+            [ray_origin_reshaped[i, 1], ray_origin_reshaped[i, 1] + lengths_reshaped[i] * ray_k_vector_reshaped[i, 1]],
+            [ray_origin_reshaped[i, 2], ray_origin_reshaped[i, 2] + lengths_reshaped[i] * ray_k_vector_reshaped[i, 2]],
+            color='red', linewidth=1)
+         for i in range(ray_origin_reshaped.shape[0])]
 
 
 class Mirror:
@@ -108,7 +118,7 @@ class CurvedMirror(Mirror):
                  # the plate.
                  origin: Optional[np.ndarray] = None  # The center of the sphere.
                  ):
-        self.outwards_normal = outwards_normal / np.linalg.norm(outwards_normal)
+        self.outwards_normal = normalize_vector(outwards_normal)
         self.radius = radius
 
         if origin is None and center_of_mirror is None:
@@ -147,12 +157,13 @@ class CurvedMirror(Mirror):
         if intersection_point is None:
             intersection_point = self.find_intersection_with_ray(ray)
         mirror_normal_vector = self.origin - intersection_point  # m_rays | 3
-        mirror_normal_vector = mirror_normal_vector / np.linalg.norm(mirror_normal_vector, axis=-1)[..., np.newaxis]
+        mirror_normal_vector = normalize_vector(mirror_normal_vector)
         dot_product = np.sum(ray.k_vector * mirror_normal_vector, axis=-1)  # m_rays  # This dot product is written
         # like so because both tensors have the same shape and the dot product is calculated along the last axis.
         # you could also perform this product by transposing the second tensor and then dot multiplying the two tensors,
         # but this it would be cumbersome to do so.
-        reflected_direction_vector = ray.k_vector - 2 * dot_product[..., np.newaxis] * mirror_normal_vector  # m_rays | 3
+        reflected_direction_vector = ray.k_vector - 2 * dot_product[
+            ..., np.newaxis] * mirror_normal_vector  # m_rays | 3
         return reflected_direction_vector
 
     def reflect_ray(self, ray: Ray) -> Ray:
@@ -173,11 +184,11 @@ class CurvedMirror(Mirror):
         # equal if the normal is in the x-y plane.
         return pseudo_y, pseudo_z
 
-    def parameterization(self, t: np.ndarray,  # the same as p but with theta, and it ranges in [-pi/2, pi/2]
-                         # instead of [0, pi]. This is because I want to treat the center of the mirror as the origin
-                         # of the parameterization.
-                         p: np.ndarray  # this is the spherical phi measured as if as the center of the mirror
-                         # was on the x-axis
+    def parameterization(self, t: Union[np.ndarray, float],  # the same as p but with theta, and it ranges in
+                         # [-pi/2, pi/2] instead of [0, pi]. This is because I want to treat the center of the mirror as
+                         #  the origin of the parameterization.
+                         p: Union[np.ndarray, float]  # this is the spherical phi measured as if as the center of the
+                         # mirror was on the x-axis
                          ) -> np.ndarray:
         # This parameterization treats the sphere as if as the center of the mirror was on the x-axis.
         # The conceptual difference between this parameterization and the classical one of [sin(theta)cos(phi),
@@ -186,13 +197,13 @@ class CurvedMirror(Mirror):
         # Notice how the order of rotations matters. First we rotate around the z axis, then around the y-axis.
         # Doing it the other way around would give parameterization that is not aligned with the conventional theta, phi
         # parameterization. This is important for the get_parameterization method.
-        rotation_matrix = rotation_matrix_aournd_n(pseudo_y, p) @ rotation_matrix_aournd_n(pseudo_z, t)
+        rotation_matrix = rotation_matrix_around_n(pseudo_y, t) @ rotation_matrix_around_n(pseudo_z, p)
         return self.origin + self.radius * rotation_matrix @ self.outwards_normal
 
     def get_parameterization(self, points: np.ndarray):
         pseudo_y, pseudo_z = self.get_spanning_vectors()
         normalized_points = (points - self.origin) / self.radius
-        p = np.arctan2(points @ pseudo_y, points @ self.outwards_normal)
+        p = np.arctan2(normalized_points @ pseudo_y, normalized_points @ self.outwards_normal)
         # Notice that t is like theta but instead of ranging in [0, pi] it ranges in [-pi/2, pi/2].
         t = np.arcsin(np.clip(normalized_points @ pseudo_z, -1, 1))
         return t, p
@@ -206,7 +217,7 @@ class CurvedMirror(Mirror):
         T, P = np.meshgrid(t, p)
         points = self.parameterization(T, P)
         x, y, z = points[..., 0], points[..., 1], points[..., 2]
-        ax.plot_surface(x, y, z, color='b')
+        ax.scatter(x, y, z, color='b', s=0.001)
         ax.plot([self.center_of_mirror[0], self.origin[0]], [self.center_of_mirror[1], self.origin[1]],
                 [self.center_of_mirror[2], self.origin[2]], 'g-')
         ax.set_xlabel('x')
@@ -216,7 +227,7 @@ class CurvedMirror(Mirror):
 
 class FlatMirror(Mirror):
     def __init__(self, normal: np.ndarray, distance_from_origin: float):
-        self.normal = normal / np.linalg.norm(normal)
+        self.normal = normalize_vector(normal)
         self.distance_from_origin = distance_from_origin
 
     def find_intersection_with_ray(self, ray: Ray) -> np.ndarray:
@@ -260,7 +271,6 @@ class FlatMirror(Mirror):
         p = (points - self.center_of_mirror) @ pseudo_z
         return t, p
 
-
     def plot(self, ax: Optional[plt.Axes] = None):
         if ax is None:
             fig = plt.figure()
@@ -302,13 +312,13 @@ class Cavity:
             final_intersection_point = self.mirrors[0].find_intersection_with_ray(self.ray_history[-2])
             t_o, p_o = self.mirrors[0].get_parameterization(final_intersection_point)
             theta_o, phi_o = angles_of_unit_vector(output_ray.k_vector)
-            return np.array([t_o - t_i, p_o-p_i, theta_o, phi_o])
+            return np.array([t_o - t_i, p_o - p_i, theta_o - theta_i, phi_o - phi_i])
 
         initial_k_vector = self.mirrors[1].center_of_mirror - self.mirrors[0].center_of_mirror
-        initial_k_vector /= np.linalg.norm(initial_k_vector)
+        initial_k_vector = normalize_vector(initial_k_vector)
         theta_initial_guess, phi_initial_guess = angles_of_unit_vector(initial_k_vector)
 
-        initial_guess = np.array([0, 0, theta_initial_guess, phi_initial_guess])
+        initial_guess = np.array([0.005, -0.004, theta_initial_guess, phi_initial_guess])
 
         final_position_and_angles: np.ndarray = optimize.fsolve(f_roots, initial_guess)
 
@@ -322,9 +332,36 @@ class Cavity:
         self.trace_ray(central_line)
         return final_position_and_angles, success
 
-    def plot(self):
-        fig = plt.figure()
-        ax = fig.add_subplot(111, projection='3d')
+    # def find_central_line_grid_search(self, dx: float = 0.02, n: int = 30) -> Tuple[np.ndarray, bool]:
+    #     # Not Done
+    #     t = np.linspace(-dx, dx, n)
+    #     p = np.linspace(-dx, dx, n)
+    #
+    #     initial_k_vector = self.mirrors[1].center_of_mirror - self.mirrors[0].center_of_mirror
+    #     initial_k_vector = normalize_vector(initial_k_vector)
+    #     theta_initial_guess, phi_initial_guess = angles_of_unit_vector(initial_k_vector)
+    #
+    #     theta = np.linspace(-dx, dx, n) + theta_initial_guess
+    #     phi = np.linspace(-dx, dx, n) + phi_initial_guess
+    #     T_i, P_i, Theta_i, Phi_i = np.meshgrid(t, p, theta, phi)
+    #     k_vector_i = unit_vector_of_angles(Theta_i, Phi_i)
+    #     origin_i = self.mirrors[0].parameterization(T_i, P_i)
+    #     input_ray = Ray(origin=origin_i, k_vector=k_vector_i)
+    #     output_ray = self.trace_ray(input_ray)
+    #     final_intersection_point = self.mirrors[0].find_intersection_with_ray(self.ray_history[-2])
+    #     T_o, P_o = self.mirrors[0].get_parameterization(final_intersection_point)
+    #     Theta_o, Phi_o = angles_of_unit_vector(output_ray.k_vector)
+    #     f_roots = np.stack([T_o - T_i, P_o - P_i, Theta_o - Theta_i, Phi_o - Phi_i], axis=-1)
+    #     f_roots_norm = np.linalg.norm(f_roots, axis=-1)
+    #     min_index = np.unravel_index(np.nanargmin(f_roots_norm), f_roots_norm.shape)
+    #     return np.array([T_i[min_index], P_i[min_index], Theta_i[min_index], Phi_i[min_index]]), True
+
+
+
+    def plot(self, ax: Optional[plt.Axes] = None):
+        if ax is None:
+            fig = plt.figure()
+            ax = fig.add_subplot(111, projection='3d')
         for ray in self.ray_history:
             ray.plot(ax)
         for mirror in self.mirrors:
@@ -339,6 +376,7 @@ class Cavity:
             return None
         else:
             return self.ray_history[-1]
+
 
 if __name__ == '__main__':
     x_1 = 1
@@ -355,22 +393,27 @@ if __name__ == '__main__':
     t_3 = 7 * np.pi / 6
 
     global_origin = np.array([0, 0, 0])
-    normal_1 = unit_vector_of_angles(np.pi/2, t_1)
+    normal_1 = unit_vector_of_angles(np.pi / 2, t_1)
     center_1 = np.array([x_1, y_1, 0])
-    normal_2 = unit_vector_of_angles(np.pi/2, t_2)
+    normal_2 = unit_vector_of_angles(np.pi / 2, t_2)
     center_2 = np.array([x_2, y_2, 0])
-    normal_3 = unit_vector_of_angles(np.pi/2, t_3)
+    normal_3 = unit_vector_of_angles(np.pi / 2, t_3)
     center_3 = np.array([x_3, y_3, 0])
 
     mirror_1 = CurvedMirror(radius=2, outwards_normal=normal_1, center_of_mirror=center_1)
     mirror_2 = CurvedMirror(radius=2, outwards_normal=normal_2, center_of_mirror=center_2)
     mirror_3 = CurvedMirror(radius=2, outwards_normal=normal_3, center_of_mirror=center_3)
 
-    mirror_1.plot()
+    cavity = Cavity([mirror_1, mirror_2, mirror_3])
+    t_and_theta_central_line, success = cavity.find_central_line()
+
+    cavity.plot()
+    ax = plt.gca()
+    origin_mirror = cavity.mirrors[0].center_of_mirror
+    dr = 1
+    ax.set_xlim(origin_mirror[0] - dr, origin_mirror[0] + dr)
+    ax.set_ylim(origin_mirror[1] - dr, origin_mirror[1] + dr)
+    ax.set_zlim(origin_mirror[2] - dr, origin_mirror[2] + dr)
+    ax.view_init(elev=38, azim=192)
+    plt.title('final')
     plt.show()
-    # cavity = Cavity([mirror_1, mirror_2, mirror_3])
-    # t_and_theta_central_line, success = cavity.find_central_line()
-
-    # cavity.plot()
-    # plt.show()
-
