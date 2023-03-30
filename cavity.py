@@ -136,6 +136,12 @@ class FlatMirror(Mirror):
         super().__init__(outwards_normal)
         self.distance_from_origin = distance_from_origin
 
+    def ABCD_matrix(self, cos_theta_incoming: float) -> np.ndarray:
+        return np.array([[1, 0, 0, 0],
+                         [0, 1, 0, 0],
+                         [0, 0, -1, 0],
+                         [0, 0, 0, -1]])
+
     def find_intersection_with_ray(self, ray: Ray) -> np.ndarray:
         A_vec = self.outwards_normal * self.distance_from_origin
         BA_vec = A_vec - ray.origin
@@ -166,8 +172,12 @@ class FlatMirror(Mirror):
         pseudo_z = np.cross(self.outwards_normal, pseudo_y)
         return pseudo_y, pseudo_z
 
-    def parameterization(self, t, p):
+    def parameterization(self, t: Union[np.ndarray, float], p: Union[np.ndarray, float]):
         pseudo_y, pseudo_z = self.get_spanning_vectors()
+        if isinstance(t, float):
+            t = np.array(t)
+        if isinstance(p, float):
+            p = np.array(p)
         points = self.center_of_mirror + t[..., np.newaxis] * pseudo_y + p[..., np.newaxis] * pseudo_z
         return points
 
@@ -181,8 +191,8 @@ class FlatMirror(Mirror):
         if ax is None:
             fig = plt.figure()
             ax = fig.add_subplot(111, projection='3d')
-        t = np.linspace(-2, 2, 100)
-        s = np.linspace(-2, 2, 100)
+        t = np.linspace(-0.3, 0.3, 100)
+        s = np.linspace(-0.3, 0.3, 100)
         T, S = np.meshgrid(t, s)
         points = self.parameterization(T, S)
         x, y, z = points[..., 0], points[..., 1], points[..., 2]
@@ -497,42 +507,76 @@ class Cavity:
 
 
 if __name__ == '__main__':
-    x_1 = 1
-    y_1 = 0.00
-    r_1 = 2
-    t_1 = -np.pi / 6
-    x_2 = 0
-    y_2 = np.sqrt(3)
-    r_2 = 2
-    t_2 = np.pi / 2
-    x_3 = -1
-    y_3 = 0
-    r_3 = 2
-    t_3 = 7 * np.pi / 6
+    # print(f"{x_1=:.2f}\n{y_1=:.2f}\n{t_1=:.2f}\n{p_1=:.2f}\n{x_2=:.2f}\n{y_2=:.2f}\n{t_2=:.2f}\n{p_2=:.2f}\n{x_3=:.2f}\n{y_3=:.2f}\n{t_3=:.2f}\n{p_3=:.2f}\n\n{t_ray=:.2f}\n{theta_ray=:.2f}\n{p_ray=:.2f}\n{phi_ray=:.2f}\n{elev=:.2f}\n{azim=:.2f}\n{zoom=:.2f}\n{center_first_mirror=}")
 
-    global_origin = np.array([0, 0, 0])
-    normal_1 = unit_vector_of_angles(np.pi / 2, t_1)
+    x_1 = 0.00
+    y_1 = 0.00
+    t_1 = 0.00
+    p_1 = 0.00
+    x_2 = 0.00
+    y_2 = 0.00
+    t_2 = 0.00
+    p_2 = 0.00
+    x_3 = 0.00
+    y_3 = 0.00
+    t_3 = 0.00
+    p_3 = 0.00
+    t_ray = 0.00
+    theta_ray = 0.00
+    p_ray = 0.00
+    phi_ray = 0.00
+    elev = 38.00
+    azim = 168.00
+    zoom = 1.00
+    center_first_mirror = True
+
+    x_1 += 1
+    y_1 += 0.00
+    t_1 += np.pi / 2
+    p_1 += -np.pi / 6
+    x_2 += 0
+    y_2 += np.sqrt(3)
+    t_2 += np.pi / 2
+    p_2 += np.pi / 2
+    x_3 += -1
+    y_3 += 0
+    t_3 += np.pi / 2
+    p_3 += 7 * np.pi / 6
+
+    normal_1 = unit_vector_of_angles(t_1, p_1)
     center_1 = np.array([x_1, y_1, 0])
-    normal_2 = unit_vector_of_angles(np.pi / 2, t_2)
+    normal_2 = unit_vector_of_angles(t_2, p_2)
     center_2 = np.array([x_2, y_2, 0])
-    normal_3 = unit_vector_of_angles(np.pi / 2, t_3)
+    normal_3 = unit_vector_of_angles(t_3, p_3)
     center_3 = np.array([x_3, y_3, 0])
 
-    mirror_1 = CurvedMirror(radius=2, outwards_normal=normal_1, center_of_mirror=center_1)
-    mirror_2 = CurvedMirror(radius=2, outwards_normal=normal_2, center_of_mirror=center_2)
-    mirror_3 = CurvedMirror(radius=2, outwards_normal=normal_3, center_of_mirror=center_3)
+    mirror_1 = FlatMirror(outwards_normal=normal_1, distance_from_origin=1)
+    mirror_2 = FlatMirror(outwards_normal=normal_2, distance_from_origin=1)
+    mirror_3 = FlatMirror(outwards_normal=normal_3, distance_from_origin=1)
+
+    default_k_vector = normalize_vector(mirror_2.center_of_mirror - mirror_1.center_of_mirror)
+    theta_0, phi_0 = angles_of_unit_vector(default_k_vector)
+    theta_ray += theta_0
+    phi_ray += phi_0
+    ray_k_vector = unit_vector_of_angles(theta_ray, phi_ray)
+    ray_origin = mirror_1.parameterization(t_ray, p_ray)
+    initial_ray = Ray(origin=ray_origin, k_vector=ray_k_vector)
 
     cavity = Cavity([mirror_1, mirror_2, mirror_3])
-    ABCD_numeric = cavity.generate_ABCD_matrix_numeric()
-    ABCD_analytic = cavity.generate_ABCD_matrix_analytic()
 
-    # cavity.plot()
-    # ax = plt.gca()
-    # origin_mirror = cavity.mirrors[0].center_of_mirror
-    # dr = 1
-    # ax.set_xlim(origin_mirror[0] - dr, origin_mirror[0] + dr)
-    # ax.set_ylim(origin_mirror[1] - dr, origin_mirror[1] + dr)
-    # ax.set_zlim(origin_mirror[2] - dr, origin_mirror[2] + dr)
-    # ax.view_init(elev=38, azim=192)
-    # plt.title('final')
-    # plt.show()
+    central_line = cavity.trace_ray(initial_ray)
+
+    output_parameters = cavity.trace_ray_parametric(np.array([t_ray, theta_ray, p_ray, phi_ray])) - np.array(
+        [0, theta_0, 0, phi_0])
+    # print(output_parameters)
+    cavity.plot()
+    ax = plt.gca()
+    if center_first_mirror:
+        origin_mirror = cavity.mirrors[0].center_of_mirror
+    else:
+        origin_mirror = cavity.mirrors[0].center_of_mirror
+    ax.set_xlim(origin_mirror[0] - zoom, origin_mirror[0] + zoom)
+    ax.set_ylim(origin_mirror[1] - zoom, origin_mirror[1] + zoom)
+    ax.set_zlim(origin_mirror[2] - zoom, origin_mirror[2] + zoom)
+    ax.view_init(elev=elev, azim=azim)
+    plt.show()
