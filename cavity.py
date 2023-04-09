@@ -41,13 +41,13 @@ def rotation_matrix_around_n(n, theta):
 
 def unit_vector_of_angles(theta: Union[np.ndarray, float], phi: Union[np.ndarray, float]) -> np.ndarray:
     # theta and phi are assumed to be in radians
-    return np.stack([np.sin(theta) * np.cos(phi), np.sin(theta) * np.sin(phi), np.cos(theta)], axis=-1)
+    return np.stack([np.cos(theta) * np.cos(phi), np.cos(theta) * np.sin(phi), np.sin(theta)], axis=-1)
 
 
 def angles_of_unit_vector(unit_vector: Union[np.ndarray, float]) -> Union[Tuple[np.ndarray, np.ndarray],
                                                                           Tuple[float, float]]:
     # theta and phi are returned in radians
-    theta = np.arccos(unit_vector[..., 2])
+    theta = np.arcsin(unit_vector[..., 2])
     phi = np.arctan2(unit_vector[..., 1], unit_vector[..., 0])
     return theta, phi
 
@@ -299,7 +299,7 @@ class CurvedMirror(Mirror):
     def find_intersection_with_ray(self, ray: Ray) -> np.ndarray:
         # Result of the next line of mathematica to find the intersection:
         # Solve[(x0 + kx * t - xc) ^ 2 + (y0 + ky * t - yc) ^ 2 + (z0 + kz * t - zc) ^ 2 == R ^ 2, t]
-        t = (-ray.k_vector[..., 0] * ray.origin[..., 0] + ray.k_vector[..., 0] * self.origin[0] - ray.k_vector[
+        l = (-ray.k_vector[..., 0] * ray.origin[..., 0] + ray.k_vector[..., 0] * self.origin[0] - ray.k_vector[
             ..., 1] *
              ray.origin[..., 1] + ray.k_vector[..., 1] * self.origin[1] - ray.k_vector[..., 2] * ray.origin[..., 2] +
              ray.k_vector[..., 2] * self.origin[2] + np.sqrt(
@@ -311,8 +311,8 @@ class CurvedMirror(Mirror):
                             ray.origin[..., 1] - self.origin[1]) + ray.k_vector[..., 2] * (
                                     ray.origin[..., 2] - self.origin[2])) ** 2) / 2) / (
                     ray.k_vector[..., 0] ** 2 + ray.k_vector[..., 1] ** 2 + ray.k_vector[..., 2] ** 2)
-        ray.length = t
-        return ray.parameterization(t)
+        ray.length = l
+        return ray.parameterization(l)
 
     def reflect_direction(self, ray: Ray, intersection_point: Optional[np.ndarray] = None) -> np.ndarray:
         # Notice that this function does not reflect along the normal of the mirror but along the normal projection
@@ -395,7 +395,7 @@ class CurvedMirror(Mirror):
         # order of rows/columns elements is [t, theta, p, phi]
 
         return np.array([[1, 0, 0, 0],
-                         [- 2 * cos_theta_incoming / self.radius, 1, 0, 0],
+                         [-2 * cos_theta_incoming / self.radius, 1, 0, 0],
                          [0, 0, 1, 0],
                          [0, 0, -2 / (self.radius * cos_theta_incoming), 1]])
 
@@ -565,7 +565,7 @@ class Cavity:
             if not success:
                 raise ValueError("Could not find central line")
         cos_thetas = [self.central_line[i].k_vector @ self.surfaces[i].outwards_normal
-                      for i in range(len(self.surfaces) - 1)]
+                      for i in range(len(self.surfaces))]
         for i, surface in enumerate(self.surfaces):
             self.ABCD_matrices.append(ABCD_free_space(self.central_line[i].length))
             if isinstance(surface, Mirror):
@@ -600,15 +600,15 @@ class Cavity:
             return initial_ray
 
     def ray_of_initial_parameters(self, initial_parameters: np.ndarray):
-        k_vector_i = unit_vector_of_angles(initial_parameters[1], initial_parameters[3])
-        origin_i = self.surfaces[-1].parameterization(initial_parameters[0], initial_parameters[2])
+        k_vector_i = unit_vector_of_angles(theta=initial_parameters[1], phi=initial_parameters[3])
+        origin_i = self.surfaces[-1].parameterization(t=initial_parameters[0], p=initial_parameters[2])
         input_ray = Ray(origin=origin_i, k_vector=k_vector_i)
         return input_ray
 
     def plot(self,
              ax: Optional[plt.Axes] = None,
              axis_span: float = 3,
-             center_on_ray_beginning: bool = True,
+             camera_center: int = -1,
              ray_list: Optional[List[Ray]] = None):
         if ax is None:
             fig = plt.figure()
@@ -621,10 +621,11 @@ class Cavity:
         for i, surface in enumerate(self.surfaces):
             surface.plot(ax, name=str(i))
 
-        if center_on_ray_beginning and ray_list is not None:
-            origin_camera = ray_list[0].origin
-        else:
+        if camera_center == -1 or ray_list is None:
             origin_camera = np.mean(np.stack([m.center for m in self.mirrors]), axis=0)
+        else:
+            origin_camera = self.surfaces[camera_center].center
+
         ax.set_xlim(origin_camera[0] - axis_span, origin_camera[0] + axis_span)
         ax.set_ylim(origin_camera[1] - axis_span, origin_camera[1] + axis_span)
         ax.set_zlim(origin_camera[2] - axis_span, origin_camera[2] + axis_span)
@@ -650,25 +651,28 @@ if __name__ == '__main__':
     p_3 = 0.00
     t_ray = 0.00
     theta_ray = 0.00
-    p_ray = 0.00
+    p_ray = 1e-4
     phi_ray = 0.00
     elev = 38.00
     azim = 168.00
     axis_span = 1.00
-    center_on_ray_beginning = True
-    set_initial_surface = False
+    focus_point = -1
+    set_initial_surface = True
 
     x_1 += 1
     y_1 += 0.00
-    t_1 += np.pi / 2
+    r_1 += 2
+    t_1 += 0
     p_1 += -np.pi / 6
     x_2 += 0
     y_2 += np.sqrt(3)
-    t_2 += np.pi / 2
+    r_2 += 2
+    t_2 += 0
     p_2 += np.pi / 2
     x_3 += -1
     y_3 += 0
-    t_3 += np.pi / 2
+    r_3 += 2
+    t_3 += 0
     p_3 += 7 * np.pi / 6
 
     normal_1 = unit_vector_of_angles(t_1, p_1)
@@ -678,23 +682,32 @@ if __name__ == '__main__':
     normal_3 = unit_vector_of_angles(t_3, p_3)
     center_3 = np.array([x_3, y_3, 0])
 
-    mirror_1 = FlatMirror(outwards_normal=normal_1, distance_from_origin=1)
-    mirror_2 = FlatMirror(outwards_normal=normal_2, distance_from_origin=1)
-    mirror_3 = FlatMirror(outwards_normal=normal_3, distance_from_origin=1)
+    mirror_1 = CurvedMirror(radius=2, outwards_normal=normal_1, center=center_1)
+    mirror_2 = CurvedMirror(radius=2, outwards_normal=normal_2, center=center_2)
+    mirror_3 = CurvedMirror(radius=2, outwards_normal=normal_3, center=center_3)
 
     cavity = Cavity([mirror_1, mirror_2, mirror_3], set_initial_surface=set_initial_surface)
 
     central_line_parameters, success = cavity.find_central_line()
 
-    initial_ray = cavity.ray_of_initial_parameters(
-        central_line_parameters + np.array([t_ray, theta_ray, p_ray, phi_ray]))
+    initial_ray_parameters = central_line_parameters + np.array([t_ray, theta_ray, p_ray, phi_ray])
+    initial_ray = cavity.ray_of_initial_parameters(initial_ray_parameters)
 
     ray_history = cavity.trace_ray(initial_ray)
 
-    # output_parameters = cavity.surfaces[-1].get_parameterization(ray_history[-1].origin)
-
-    ax = cavity.plot(center_on_ray_beginning=center_on_ray_beginning, axis_span=axis_span, ray_list=ray_history)
+    ax = cavity.plot(camera_center=focus_point, axis_span=axis_span, ray_list=ray_history)
     ax.view_init(elev=elev, azim=azim)
     plt.show()
+    output_location = cavity.surfaces[-1].get_parameterization(ray_history[-1].origin)
+    output_direction = angles_of_unit_vector(ray_history[-1].k_vector)
+    output_parameters = np.array([output_location[0], output_direction[0], output_location[1], output_direction[1]])
+    parameters_increment = output_parameters - initial_ray_parameters
+    print(f"{initial_ray_parameters}")
+    print(f"{output_parameters}")
+    print(f"{parameters_increment}")
+
+    ABCD_matrix_analytic = cavity.generate_ABCD_matrix_analytic()
+    ABCD_matrix_numeric = cavity.generate_ABCD_matrix_numeric()
+
 
 
