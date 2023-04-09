@@ -3,7 +3,6 @@ import matplotlib.pyplot as plt
 from typing import List, Tuple, Optional, Union
 from scipy import optimize
 import warnings
-import time
 
 
 # Throughout the code, all tensors can take any number of dimensions, but the last dimension is always the coordinate
@@ -15,7 +14,7 @@ import time
 def ABCD_free_space(length: float) -> np.ndarray:
     return np.array([[1, length, 0, 0],
                      [0, 1, 0, 0],
-                     [0, 0, 1, length],  #  / cos_theta_between_planes
+                     [0, 0, 1, length],  # / cos_theta_between_planes
                      [0, 0, 0, 1]])
 
 
@@ -45,8 +44,8 @@ def unit_vector_of_angles(theta: Union[np.ndarray, float], phi: Union[np.ndarray
     return np.stack([np.sin(theta) * np.cos(phi), np.sin(theta) * np.sin(phi), np.cos(theta)], axis=-1)
 
 
-def angles_of_unit_vector(unit_vector: Union[np.ndarray, float]) -> Union[
-    Tuple[np.ndarray, np.ndarray], Tuple[float, float]]:
+def angles_of_unit_vector(unit_vector: Union[np.ndarray, float]) -> Union[Tuple[np.ndarray, np.ndarray],
+                                                                          Tuple[float, float]]:
     # theta and phi are returned in radians
     theta = np.arccos(unit_vector[..., 2])
     phi = np.arctan2(unit_vector[..., 1], unit_vector[..., 0])
@@ -100,59 +99,82 @@ class Ray:
             for i in range(ray_origin_reshaped.shape[0])]
 
 
-class Mirror:
-    def __init__(self, outwards_normal: np.ndarray):
+class Surface:
+    def __init__(self, outwards_normal: np.ndarray, **kwargs):
         self.outwards_normal = normalize_vector(outwards_normal)
 
-    def reflect_ray(self, ray: Ray) -> Ray:
+    @property
+    def center(self):
+        raise NotImplementedError
+
+    @property
+    def inwards_normal(self):
+        return -self.outwards_normal
+
+    def find_intersection_with_ray(self, ray: Ray) -> np.ndarray:
+        raise NotImplementedError
+
+    def parameterization(self, t: Union[np.ndarray, float], p: Union[np.ndarray, float]) -> np.ndarray:
+        # Take parameters and return points on the surface
+        raise NotImplementedError
+
+    def get_parameterization(self, points: np.ndarray):
+        # takes a point on the surface and returns the parameters
         raise NotImplementedError
 
     def plot(self, ax: Optional[plt.Axes] = None, name: Optional[str] = None):
         raise NotImplementedError
 
+    def generate_ray_from_parameters(self, t: float, p: float, theta: float, phi: float) -> Ray:
+        k_vector = unit_vector_of_angles(theta, phi)
+        origin = self.parameterization(t, p)
+        return Ray(origin=origin, k_vector=k_vector)
+
+
+class Mirror(Surface):
+    def __init__(self, outwards_normal: np.ndarray, **kwargs):
+        super().__init__(outwards_normal=outwards_normal, **kwargs)
+
+    @property
+    def center(self):
+        raise NotImplementedError
+
     def parameterization(self, t: Union[np.ndarray, float], p: Union[np.ndarray, float]) -> np.ndarray:
         raise NotImplementedError
 
-    @property
-    def center_of_mirror(self):
+    def get_parameterization(self, points: np.ndarray):
         raise NotImplementedError
-
-    @property
-    def inwards_normal(self):
-        raise -self.outwards_normal
 
     def find_intersection_with_ray(self, ray: Ray) -> np.ndarray:
         raise NotImplementedError
 
-    def get_parameterization(self, points: np.ndarray):
+    def plot(self, ax: Optional[plt.Axes] = None, name: Optional[str] = None):
+        raise NotImplementedError
+
+    def reflect_ray(self, ray: Ray) -> Ray:
         raise NotImplementedError
 
     def ABCD_matrix(self, cos_theta_incoming: float) -> np.ndarray:
         raise NotImplementedError
 
 
-class FlatMirror(Mirror):
+class FlatSurface(Surface):
     def __init__(self,
                  outwards_normal: np.ndarray,
                  distance_from_origin: Optional[float] = None,
-                 center_of_mirror: Optional[np.ndarray] = None):
-        super().__init__(outwards_normal)
+                 center_of_mirror: Optional[np.ndarray] = None,
+                 **kwargs):
+        super().__init__(outwards_normal=outwards_normal, **kwargs)
         if distance_from_origin is None and center_of_mirror is None:
-            raise ValueError('Either distance_from_origin or center_of_mirror must be specified')
+            raise ValueError('Either distance_from_origin or center must be specified')
         if distance_from_origin is not None and center_of_mirror is not None:
-            raise ValueError('Only one of distance_from_origin or center_of_mirror must be specified')
+            raise ValueError('Only one of distance_from_origin or center must be specified')
         if distance_from_origin is not None:
             self.distance_from_origin = distance_from_origin
             self.center_of_mirror_private = self.outwards_normal * distance_from_origin
         if center_of_mirror is not None:
             self.center_of_mirror_private = center_of_mirror
             self.distance_from_origin = center_of_mirror @ self.outwards_normal
-
-    def ABCD_matrix(self, cos_theta_incoming: float) -> np.ndarray:
-        return np.array([[1, 0, 0, 0],
-                         [0, 1, 0, 0],
-                         [0, 0, -1, 0],
-                         [0, 0, 0, -1]])
 
     def find_intersection_with_ray(self, ray: Ray) -> np.ndarray:
         A_vec = self.outwards_normal * self.distance_from_origin
@@ -164,19 +186,8 @@ class FlatMirror(Mirror):
         ray.length = np.linalg.norm(intersection_point - ray.origin, axis=-1)
         return intersection_point
 
-    def reflect_direction(self, ray: Ray) -> np.ndarray:
-        dot_product = ray.k_vector @ self.outwards_normal  # m_rays
-        k_projection_on_normal = dot_product[..., np.newaxis] * self.outwards_normal
-        reflected_direction = ray.k_vector - 2 * k_projection_on_normal
-        return reflected_direction
-
-    def reflect_ray(self, ray: Ray) -> Ray:
-        intersection_point = self.find_intersection_with_ray(ray)
-        reflected_direction_vector = self.reflect_direction(ray)
-        return Ray(intersection_point, reflected_direction_vector)
-
     @property
-    def center_of_mirror(self):
+    def center(self):
         # The reason for this property is that in other Mirror classes it is a property.
         return self.center_of_mirror_private
 
@@ -191,13 +202,13 @@ class FlatMirror(Mirror):
             t = np.array(t)
         if isinstance(p, (float, int)):
             p = np.array(p)
-        points = self.center_of_mirror + t[..., np.newaxis] * pseudo_z + p[..., np.newaxis] * pseudo_y
+        points = self.center + t[..., np.newaxis] * pseudo_z + p[..., np.newaxis] * pseudo_y
         return points
 
     def get_parameterization(self, points: np.ndarray):
         pseudo_y, pseudo_z = self.get_spanning_vectors()
-        t = (points - self.center_of_mirror) @ pseudo_y
-        p = (points - self.center_of_mirror) @ pseudo_z
+        t = (points - self.center) @ pseudo_z
+        p = (points - self.center) @ pseudo_y
         return t, p
 
     def plot(self, ax: Optional[plt.Axes] = None, name: Optional[str] = None):
@@ -209,10 +220,11 @@ class FlatMirror(Mirror):
         T, S = np.meshgrid(t, s)
         points = self.parameterization(T, S)
         x, y, z = points[..., 0], points[..., 1], points[..., 2]
-        ax.plot_surface(x, y, z, color='b')
-        ax.plot([0, self.center_of_mirror[0]],
-                [0, self.center_of_mirror[1]],
-                [0, self.center_of_mirror[2]], 'g-')
+        ax.plot_surface(x, y, z, color='b', alpha=0.25)
+        center_plus_normal = self.center + self.inwards_normal
+        ax.plot([self.center[0], center_plus_normal[0]],
+                [self.center[1], center_plus_normal[1]],
+                [self.center[2], center_plus_normal[2]], 'g-')
         if name is not None:
             name_position = self.parameterization(0.4, 0)
             ax.text(name_position[0], name_position[1], name_position[2], s=name)
@@ -221,28 +233,68 @@ class FlatMirror(Mirror):
         ax.set_zlabel('z')
 
 
+class FlatMirror(FlatSurface, Mirror):
+    def plot(self, ax: Optional[plt.Axes] = None, name: Optional[str] = None):
+        return super().plot(ax, name)
+
+    def find_intersection_with_ray(self, ray: Ray) -> np.ndarray:
+        return super().find_intersection_with_ray(ray)
+
+    def get_parameterization(self, points: np.ndarray):
+        return super().get_parameterization(points)
+
+    def parameterization(self, t: Union[np.ndarray, float], p: Union[np.ndarray, float]) -> np.ndarray:
+        return super().parameterization(t, p)
+
+    @property
+    def center(self):
+        return super().center
+
+    def __init__(self,
+                 outwards_normal: np.ndarray,
+                 distance_from_origin: Optional[float] = None,
+                 center_of_mirror: Optional[np.ndarray] = None):
+        super().__init__(outwards_normal=outwards_normal,
+                         distance_from_origin=distance_from_origin,
+                         center_of_mirror=center_of_mirror)
+
+    def reflect_direction(self, ray: Ray) -> np.ndarray:
+        dot_product = ray.k_vector @ self.outwards_normal  # m_rays
+        k_projection_on_normal = dot_product[..., np.newaxis] * self.outwards_normal
+        reflected_direction = ray.k_vector - 2 * k_projection_on_normal
+        return reflected_direction
+
+    def ABCD_matrix(self, cos_theta_incoming: float) -> np.ndarray:
+        # Assumes the ray is in the x-y plane, and the mirror is in the z-x plane
+        return np.array([[1, 0, 0, 0],
+                         [0, 1, 0, 0],
+                         [0, 0, -1, 0],
+                         [0, 0, 0, -1]])
+
+    def reflect_ray(self, ray: Ray) -> Ray:
+        intersection_point = self.find_intersection_with_ray(ray)
+        reflected_direction_vector = self.reflect_direction(ray)
+        return Ray(intersection_point, reflected_direction_vector)
+
+
 class CurvedMirror(Mirror):
     def __init__(self, radius: float,
                  outwards_normal: np.ndarray,  # Pointing from the origin of the sphere to the mirror's center.
-                 center_of_mirror: Optional[np.ndarray] = None,  # Not the center of the sphere but the center of
+                 center: Optional[np.ndarray] = None,  # Not the center of the sphere but the center of
                  # the plate.
                  origin: Optional[np.ndarray] = None  # The center of the sphere.
                  ):
         super().__init__(outwards_normal)
         self.radius = radius
 
-        if origin is None and center_of_mirror is None:
-            raise ValueError('Either origin or center_of_mirror must be provided.')
-        elif origin is not None and center_of_mirror is not None:
-            raise ValueError('Only one of origin and center_of_mirror must be provided.')
+        if origin is None and center is None:
+            raise ValueError('Either origin or center must be provided.')
+        elif origin is not None and center is not None:
+            raise ValueError('Only one of origin and center must be provided.')
         elif origin is None:
-            self.origin = center_of_mirror + radius * self.outwards_normal
+            self.origin = center + radius * self.outwards_normal
         else:
             self.origin = origin
-
-    @property
-    def inwards_normal(self):
-        return - self.outwards_normal  # Pointing from the center of the mirror to the origin of the sphere.
 
     def find_intersection_with_ray(self, ray: Ray) -> np.ndarray:
         # Result of the next line of mathematica to find the intersection:
@@ -283,7 +335,7 @@ class CurvedMirror(Mirror):
         return Ray(intersection_point, reflected_direction_vector)
 
     @property
-    def center_of_mirror(self):
+    def center(self):
         return self.origin - self.radius * self.inwards_normal
 
     def get_spanning_vectors(self):
@@ -330,8 +382,8 @@ class CurvedMirror(Mirror):
         points = self.parameterization(T, P)
         x, y, z = points[..., 0], points[..., 1], points[..., 2]
         ax.scatter(x, y, z, color='b', s=0.001)
-        ax.plot([self.center_of_mirror[0], self.origin[0]], [self.center_of_mirror[1], self.origin[1]],
-                [self.center_of_mirror[2], self.origin[2]], 'g-')
+        ax.plot([self.center[0], self.origin[0]], [self.center[1], self.origin[1]],
+                [self.center[2], self.origin[2]], 'g-')
         if name is not None:
             name_position = self.parameterization(0.4, 0)
             ax.text(name_position[0], name_position[1], name_position[2], s=name)
@@ -349,82 +401,75 @@ class CurvedMirror(Mirror):
 
 
 class Cavity:
-    def __init__(self, mirrors: List[Mirror]):
+    def __init__(self, mirrors: List[Mirror], set_initial_surface: bool = False):
         self.mirrors = mirrors
-        self.ray_history: List[Ray] = []
-        self.ABCD_matrices: List[np.ndarray] = [np.eye(4) for _ in range((len(mirrors) - 1) * 2)]
+        self.central_line: List[Ray] = []
+        self.central_line_successfully_traced: Optional[bool] = None
+        self.ABCD_matrices: List[np.ndarray] = []
+        self.surfaces: List[Surface] = mirrors
+        # Find central line and add the initial surface at the beginning of the surfaces list
+        if set_initial_surface:
+            self.set_initial_surface()
 
-    def trace_ray(self, ray: Ray, final_surface=None) -> Ray:
-        self.ray_history = [ray]
+    def trace_ray(self, ray: Ray) -> List[Ray]:
+        ray_history = [ray]
 
-        for mirror in self.mirrors[1:] + [self.mirrors[0]]:
-            ray = mirror.reflect_ray(ray)
-            self.ray_history.append(ray)
+        for surface in self.surfaces:
+            if isinstance(surface, Mirror):
+                ray = surface.reflect_ray(ray)
+            else:
+                new_position = surface.find_intersection_with_ray(ray)
+                ray = Ray(new_position, ray.k_vector)
 
-        if final_surface is not None:
-            final_position = final_surface.find_intersection_with_ray(ray)
-            ray = Ray(final_position, ray.k_vector)
-            self.ray_history.append(ray)
-        return ray
+            ray_history.append(ray)
+        return ray_history
 
     def trace_ray_parametric(self,
-                             starting_position_and_angles: np.ndarray,
-                             initial_and_final_surface: Optional[Mirror] = None) -> np.ndarray:
+                             starting_position_and_angles: np.ndarray) -> Tuple[np.ndarray, List[Ray]]:
         # Like trace ray, but works as a function of the starting position and angles as parameters on the starting
         # surface, instead of the starting position and angles as a vector in 3D space.
-        if initial_and_final_surface is None:
-            initial_surface = self.mirrors[0]
-            final_surface = None
-        else:
-            initial_surface = initial_and_final_surface
-            final_surface = initial_and_final_surface
 
         t_i, theta_i, p_i, phi_i = starting_position_and_angles  # Those correspond to x, theta_x, y, theta_y in the
         # ABCD matrix notation.
-        k_vector_i = unit_vector_of_angles(theta_i, phi_i)
-        origin_i = initial_surface.parameterization(t_i, p_i)
-        input_ray = Ray(origin=origin_i, k_vector=k_vector_i)
-        output_ray = self.trace_ray(input_ray, final_surface=final_surface)
-        final_intersection_point = output_ray.origin
-        t_o, p_o = initial_surface.get_parameterization(final_intersection_point)  # Here it is the initial surface
+        initial_ray = self.ray_of_initial_parameters(starting_position_and_angles)
+        ray_history = self.trace_ray(initial_ray)
+        final_intersection_point = ray_history[-1].origin
+        t_o, p_o = self.surfaces[-1].get_parameterization(final_intersection_point)  # Here it is the initial surface
         # on purpose.
-        theta_o, phi_o = angles_of_unit_vector(output_ray.k_vector)
+        theta_o, phi_o = angles_of_unit_vector(ray_history[-1].k_vector)
         final_position_and_angles = np.array([t_o, theta_o, p_o, phi_o])
-        return final_position_and_angles
+        return final_position_and_angles, ray_history
 
     def f_roots(self,
-                starting_position_and_angles: np.ndarray,
-                initial_and_final_surface: Optional[Mirror] = None) -> np.ndarray:
-        final_position_and_angles = self.trace_ray_parametric(starting_position_and_angles, initial_and_final_surface)
-        return final_position_and_angles - starting_position_and_angles
+                starting_position_and_angles: np.ndarray) -> np.ndarray:
+        # The roots of this function are the initial parameters for the central line.
+        final_position_and_angles, _ = self.trace_ray_parametric(starting_position_and_angles)
+        diff = final_position_and_angles - starting_position_and_angles
+        return diff
 
-    def find_central_line(self, initial_and_final_surface: Optional[Mirror] = None) -> Tuple[np.ndarray, bool]:
-
-        if initial_and_final_surface is None:
-            initial_and_final_surface = self.mirrors[0]
-
-        theta_initial_guess, phi_initial_guess = self.default_initial_angles(initial_and_final_surface)
+    def find_central_line(self) -> Tuple[np.ndarray, bool]:
+        theta_initial_guess, phi_initial_guess = self.default_initial_angles
 
         initial_guess = np.array([0, theta_initial_guess, 0, phi_initial_guess])
 
         # In the documentation it says optimize.fsolve returns a solution, together with some flags, and also this is
         # how pycharm suggests to use it. But in practice it returns only the solution, not sure why.
-        final_position_and_angles: np.ndarray = optimize.fsolve(self.f_roots, initial_guess,
-                                                                args=(initial_and_final_surface))
+        central_line_initial_parameters: np.ndarray = optimize.fsolve(self.f_roots, initial_guess)
 
-        if np.linalg.norm(self.f_roots(final_position_and_angles)) > 1e-6:
-            success = False
+        if np.linalg.norm(self.f_roots(central_line_initial_parameters)) > 1e-6:
+            central_line_successfully_traced = False
         else:
-            success = True
+            central_line_successfully_traced = True
 
-        origin_solution = self.mirrors[0].parameterization(final_position_and_angles[0],
-                                                           final_position_and_angles[2])  # t, p
-        k_vector_solution = unit_vector_of_angles(final_position_and_angles[1],
-                                                  final_position_and_angles[3])  # theta, phi
+        origin_solution = self.surfaces[-1].parameterization(central_line_initial_parameters[0],
+                                                             central_line_initial_parameters[2])  # t, p
+        k_vector_solution = unit_vector_of_angles(central_line_initial_parameters[1],
+                                                  central_line_initial_parameters[3])  # theta, phi
         central_line = Ray(origin_solution, k_vector_solution)
         # This line is to save the central line in the ray history, so that it can be plotted later.
-        self.trace_ray(central_line, initial_and_final_surface)
-        return final_position_and_angles, success
+        self.central_line = self.trace_ray(central_line)
+        self.central_line_successfully_traced = central_line_successfully_traced
+        return central_line_initial_parameters, central_line_successfully_traced
 
     # def find_central_line_grid_search(self,
     #                                   dx: float = 0.02,
@@ -438,7 +483,7 @@ class Cavity:
     #     p = dummy_linspace + center_guess[1]
     #
     #     if angles_initial_guess is None:
-    #         initial_k_vector = self.mirrors[1].center_of_mirror - self.mirrors[0].center_of_mirror
+    #         initial_k_vector = self.mirrors[1].center - self.mirrors[0].center
     #         initial_k_vector = normalize_vector(initial_k_vector)
     #         theta_initial_guess, phi_initial_guess = angles_of_unit_vector(initial_k_vector)
     #     else:
@@ -451,7 +496,7 @@ class Cavity:
     #     origin_i = self.mirrors[0].parameterization(T_i, P_i)
     #     input_ray = Ray(origin=origin_i, k_vector=k_vector_i)
     #     output_ray = self.trace_ray(input_ray)
-    #     final_intersection_point = self.mirrors[0].find_intersection_with_ray(self.ray_history[-2])
+    #     final_intersection_point = self.mirrors[0].find_intersection_with_ray(self.central_line[-2])
     #     T_o, P_o = self.mirrors[0].get_parameterization(final_intersection_point)
     #     Theta_o, Phi_o = angles_of_unit_vector(output_ray.k_vector)
     #     f_roots = np.stack([T_o - T_i, P_o - P_i, Theta_o - Theta_i, Phi_o - Phi_i], axis=-1)
@@ -479,111 +524,128 @@ class Cavity:
     #                                                   center_guess=best_solution, n_iterations=n_iterations - 1,
     #                                                   angles_initial_guess=(theta_initial_guess, phi_initial_guess))
 
-    def get_initial_surface(self):
+    def set_initial_surface(self):
         # gets a surface that sits between the first two mirrors, centered and perpendicular to the central line.
-        if len(self.ray_history) == 0:
-            self.find_central_line()
-        middle_point = (self.ray_history[0].origin + self.ray_history[1].origin) / 2
-        return FlatMirror(outwards_normal=self.ray_history[0].k_vector, center_of_mirror=middle_point)
+        if len(self.central_line) == 0:
+            final_position_and_angles, success = self.find_central_line()
+            if not success:
+                warnings.warn("Could not find central line, so no initial surface could be set.")
+                return None
+        middle_point = (self.central_line[0].origin + self.central_line[1].origin) / 2
+        initial_surface = FlatSurface(outwards_normal=-self.central_line[0].k_vector, center_of_mirror=middle_point)
+        self.surfaces.append(initial_surface)
+        # Now, after you found the initial_surface, we can retrace the central line, but now let it out from the
+        # initial surface, instead of the first mirror.
+        self.find_central_line()
+        return initial_surface
 
     def generate_ABCD_matrix_numeric(self,
-                                     central_line_parameters: Optional[np.ndarray] = None,
-                                     initial_and_final_surface: Optional[Mirror] = None) -> np.ndarray:
-        if central_line_parameters is None:
-            central_line_parameters, success = self.find_central_line(initial_and_final_surface)
+                                     central_line_initial_parameters: Optional[np.ndarray] = None) -> np.ndarray:
+        if central_line_initial_parameters is None:
+            central_line_initial_parameters, success = self.find_central_line()
             if not success:
                 raise ValueError("Could not find central line")
         dr = 1e-9
+
         # The i'th, j'th element of optimize.approx_fprime is the derivative of the i'th component of the output with
         # respect to the j'th component of the input, which is exactly the definition of the i'th j'th element of the
         # ABCD matrix.
-        ABCD_matrix = optimize.approx_fprime(central_line_parameters, self.trace_ray_parametric, dr,
-                                             initial_and_final_surface)
+
+        def trace_ray_parametric_parameters_only(parameters_initial):
+            parameters_final, _ = self.trace_ray_parametric(parameters_initial)
+            return parameters_final
+
+        ABCD_matrix = optimize.approx_fprime(central_line_initial_parameters, trace_ray_parametric_parameters_only, dr)
         return ABCD_matrix
 
-    def generate_ABCD_matrix_analytic(self, central_line_parameters: Optional[np.ndarray] = None,
-                                      initial_and_final_surface: Optional[Mirror] = None) -> np.ndarray:
-        if initial_and_final_surface is None:
-            initial_and_final_surface = self.get_initial_surface()
-        if central_line_parameters is None:
-            central_line_parameters, success = self.find_central_line(initial_and_final_surface)
+    def generate_ABCD_matrix_analytic(self) -> np.ndarray:
+        # Based on page 611 in the PDF of Siegman's "Lasers"
+        if len(self.central_line) == 0:
+            final_position_and_angles, success = self.find_central_line()
             if not success:
                 raise ValueError("Could not find central line")
-
-        cos_thetas_incidents = [self.ray_history[i].k_vector @ self.mirrors[i + 1].outwards_normal
-                                for i in range(len(self.mirrors) - 1)]
-        for i in range(len(self.mirrors) - 1):
-            self.ABCD_matrices[2 * i] = ABCD_free_space(self.ray_history[i].length)
-            self.ABCD_matrices[2 * i + 1] = self.mirrors[i].ABCD_matrix(cos_thetas_incidents[i])
+        cos_thetas = [self.central_line[i].k_vector @ self.surfaces[i].outwards_normal
+                      for i in range(len(self.surfaces) - 1)]
+        for i, surface in enumerate(self.surfaces):
+            self.ABCD_matrices.append(ABCD_free_space(self.central_line[i].length))
+            if isinstance(surface, Mirror):
+                self.ABCD_matrices.append(surface.ABCD_matrix(cos_thetas[i]))
+            else:
+                self.ABCD_matrices.append(np.eye(4))
 
         return np.linalg.multi_dot(self.ABCD_matrices[::-1])
 
-    def generate_ray_from_parameters(self, t: float, p: float, theta: float, phi: float,
-                                     initial_surface: Optional[Mirror] = None) -> Ray:
-        if initial_surface is None:
-            initial_surface = self.mirrors[0]
-        k_vector = unit_vector_of_angles(theta, phi)
-        origin = initial_surface.parameterization(t, p)
-        return Ray(origin=origin, k_vector=k_vector)
-
-    def default_initial_k_vector(self, initial_surface: Optional[Mirror] = None) -> np.ndarray:
-        if initial_surface is None:
-            initial_surface = self.mirrors[0]
-        initial_k_vector = self.mirrors[1].center_of_mirror - initial_surface.center_of_mirror
-        initial_k_vector = normalize_vector(initial_k_vector)
+    @property
+    def default_initial_k_vector(self) -> np.ndarray:
+        if self.central_line_successfully_traced:
+            initial_k_vector = self.central_line[0].k_vector
+        else:
+            initial_k_vector = self.surfaces[0].center - self.surfaces[-1].center
+            initial_k_vector = normalize_vector(initial_k_vector)
         return initial_k_vector
 
-    def default_initial_angles(self,
-                               initial_surface: Optional[Mirror] = None) -> Tuple[float, float]:
-        initial_k_vector = self.default_initial_k_vector(initial_surface)
+    @property
+    def default_initial_angles(self) -> Tuple[float, float]:
+        initial_k_vector = self.default_initial_k_vector
         theta, phi = angles_of_unit_vector(initial_k_vector)
         return theta, phi
+
+    @property
+    def default_initial_ray(self) -> Ray:
+        if self.central_line_successfully_traced:
+            return self.central_line[0]
+        else:
+            initial_k_vector = self.default_initial_k_vector
+            initial_ray = Ray(origin=self.surfaces[0].center, k_vector=initial_k_vector)
+            return initial_ray
+
+    def ray_of_initial_parameters(self, initial_parameters: np.ndarray):
+        k_vector_i = unit_vector_of_angles(initial_parameters[1], initial_parameters[3])
+        origin_i = self.surfaces[-1].parameterization(initial_parameters[0], initial_parameters[2])
+        input_ray = Ray(origin=origin_i, k_vector=k_vector_i)
+        return input_ray
 
     def plot(self,
              ax: Optional[plt.Axes] = None,
              axis_span: float = 3,
-             center_on_ray_beginning: bool = True):
+             center_on_ray_beginning: bool = True,
+             ray_list: Optional[List[Ray]] = None):
         if ax is None:
             fig = plt.figure()
             ax = fig.add_subplot(111, projection='3d')
-        for ray in self.ray_history:
-            ray.plot(ax)
-        for i, mirror in enumerate(self.mirrors):
-            mirror.plot(ax, name=str(i))
+        if ray_list is None and len(self.central_line) > 0:
+            ray_list = self.central_line
+        if ray_list is not None:
+            for ray in ray_list:
+                ray.plot(ax)
+        for i, surface in enumerate(self.surfaces):
+            surface.plot(ax, name=str(i))
 
-        self.get_initial_surface().plot(ax, name="initial surface")
-
-        if center_on_ray_beginning:
-            origin_camera = self.ray_history[0].origin
+        if center_on_ray_beginning and ray_list is not None:
+            origin_camera = ray_list[0].origin
         else:
-            origin_camera = np.mean(np.stack([m.center_of_mirror for m in self.mirrors]), axis=0)
+            origin_camera = np.mean(np.stack([m.center for m in self.mirrors]), axis=0)
         ax.set_xlim(origin_camera[0] - axis_span, origin_camera[0] + axis_span)
         ax.set_ylim(origin_camera[1] - axis_span, origin_camera[1] + axis_span)
         ax.set_zlim(origin_camera[2] - axis_span, origin_camera[2] + axis_span)
 
         return ax
 
-    @property
-    def final_ray(self):
-        if len(self.ray_history) == 0:
-            return None
-        else:
-            return self.ray_history[-1]
-
 
 if __name__ == '__main__':
-    # print(f"{x_1=:.2f}\n{y_1=:.2f}\n{t_1=:.2f}\n{p_1=:.2f}\n{x_2=:.2f}\n{y_2=:.2f}\n{t_2=:.2f}\n{p_2=:.2f}\n{x_3=:.2f}\n{y_3=:.2f}\n{t_3=:.2f}\n{p_3=:.2f}\n\n{t_ray=:.2f}\n{theta_ray=:.2f}\n{p_ray=:.2f}\n{phi_ray=:.2f}\n{elev=:.2f}\n{azim=:.2f}\n{zoom=:.2f}\n{center_first_mirror=}")
-
     x_1 = 0.00
     y_1 = 0.00
+    r_1 = 0.00
     t_1 = 0.00
     p_1 = 0.00
     x_2 = 0.00
     y_2 = 0.00
+    r_2 = 0.00
     t_2 = 0.00
     p_2 = 0.00
     x_3 = 0.00
     y_3 = 0.00
+    r_3 = 0.00
     t_3 = 0.00
     p_3 = 0.00
     t_ray = 0.00
@@ -594,6 +656,7 @@ if __name__ == '__main__':
     azim = 168.00
     axis_span = 1.00
     center_on_ray_beginning = True
+    set_initial_surface = False
 
     x_1 += 1
     y_1 += 0.00
@@ -619,7 +682,19 @@ if __name__ == '__main__':
     mirror_2 = FlatMirror(outwards_normal=normal_2, distance_from_origin=1)
     mirror_3 = FlatMirror(outwards_normal=normal_3, distance_from_origin=1)
 
-    cavity = Cavity(mirrors=[mirror_1, mirror_2, mirror_3])
-    initial_surface = cavity.get_initial_surface()
-    central_line = cavity.find_central_line(initial_surface)
+    cavity = Cavity([mirror_1, mirror_2, mirror_3], set_initial_surface=set_initial_surface)
+
+    central_line_parameters, success = cavity.find_central_line()
+
+    initial_ray = cavity.ray_of_initial_parameters(
+        central_line_parameters + np.array([t_ray, theta_ray, p_ray, phi_ray]))
+
+    ray_history = cavity.trace_ray(initial_ray)
+
+    # output_parameters = cavity.surfaces[-1].get_parameterization(ray_history[-1].origin)
+
+    ax = cavity.plot(center_on_ray_beginning=center_on_ray_beginning, axis_span=axis_span, ray_list=ray_history)
+    ax.view_init(elev=elev, azim=azim)
+    plt.show()
+
 
