@@ -80,7 +80,7 @@ class Ray:
         # t needs to be either a float or a numpy array with dimensions m_rays
         return self.origin + t[..., np.newaxis] * self.k_vector
 
-    def plot(self, ax: Optional[plt.Axes] = None, dim=3, color='r', linewidth=1):
+    def plot(self, ax: Optional[plt.Axes] = None, dim=3, color='r', linewidth: float=1):
         if ax is None:
             fig = plt.figure()
             if dim == 3:
@@ -372,8 +372,8 @@ class CurvedMirror(Mirror):
     def get_spanning_vectors(self):
         # For the case of the sphere with normal on the x-axis, those will be the y and z axis.
         # For the case of the sphere with normal on the y-axis, those will be the x and z axis.
-        pseudo_y = np.cross(np.array([0, 0, 1]), self.outwards_normal)
-        pseudo_z = np.cross(self.outwards_normal, pseudo_y)  # Should be approximately equal to \hat{z}, and exactly
+        pseudo_y = np.cross(np.array([0, 0, 1]), self.inwards_normal)
+        pseudo_z = np.cross(self.inwards_normal, pseudo_y)  # Should be approximately equal to \hat{z}, and exactly
         # equal if the outwards_normal is in the x-y plane.
         return pseudo_y, pseudo_z
 
@@ -391,9 +391,12 @@ class CurvedMirror(Mirror):
         # Notice how the order of rotations matters. First we rotate around the z axis, then around the y-axis.
         # Doing it the other way around would give parameterization that is not aligned with the conventional theta, phi
         # parameterization. This is important for the get_parameterization method.
-        rotation_matrix = rotation_matrix_around_n(pseudo_y, t / self.radius) @ \
-                          rotation_matrix_around_n(pseudo_z, p / self.radius)
-        return self.origin + self.radius * rotation_matrix @ self.outwards_normal
+        rotation_matrix = rotation_matrix_around_n(pseudo_y, -t / self.radius) @ \
+                          rotation_matrix_around_n(pseudo_z, p / self.radius)  # The minus sign is because of the
+        # orientation of the pseudo_y axis.
+
+        points = self.origin + self.radius * rotation_matrix @ self.outwards_normal
+        return points
 
     def get_parameterization(self, points: np.ndarray):
         pseudo_y, pseudo_z = self.get_spanning_vectors()
@@ -605,6 +608,10 @@ class Cavity:
         for i, surface in enumerate(self.surfaces):
             surface.plot(ax=ax, name=str(i), dim=dim)
 
+        ax.plot(ray_history[-1].origin[0], ray_history[-1].origin[1], ray_history[-1].origin[2], 'ro', label='end')
+        ax.plot(ray_history[0].origin[0], ray_history[0].origin[1], ray_history[0].origin[2], 'go', label='beginning')
+        plt.legend()
+
         return ax
 
 
@@ -633,7 +640,7 @@ if __name__ == '__main__':
     axis_span = 1.00
     focus_point = -1
     set_initial_surface = True
-    dim=2
+    dim = 2
 
     R = 100
 
@@ -660,42 +667,37 @@ if __name__ == '__main__':
     normal_3 = unit_vector_of_angles(t_3, p_3)
     center_3 = np.array([x_3, y_3, 0])
 
-    mirror_curved_1 = CurvedMirror(radius=r_1, outwards_normal=normal_1, center=center_1)
-    mirror_curved_2 = CurvedMirror(radius=r_2, outwards_normal=normal_2, center=center_2)
-    mirror_curved_3 = CurvedMirror(radius=r_3, outwards_normal=normal_3, center=center_3)
+    mirror_1 = CurvedMirror(radius=r_1, outwards_normal=normal_1, center=center_1)
+    mirror_2 = CurvedMirror(radius=r_2, outwards_normal=normal_2, center=center_2)
+    mirror_3 = CurvedMirror(radius=r_3, outwards_normal=normal_3, center=center_3)
 
-    mirror_flat_1 = FlatMirror(outwards_normal=normal_1, distance_from_origin=1)
-    mirror_flat_2 = FlatMirror(outwards_normal=normal_2, distance_from_origin=1)
-    mirror_flat_3 = FlatMirror(outwards_normal=normal_3, distance_from_origin=1)
+    cavity = Cavity([mirror_1, mirror_2, mirror_3], set_initial_surface=set_initial_surface)
 
-    cavity_curved = Cavity([mirror_curved_1, mirror_curved_2, mirror_curved_3], set_initial_surface=set_initial_surface)
-    cavity_flat = Cavity([mirror_flat_1, mirror_flat_2, mirror_flat_3], set_initial_surface=set_initial_surface)
+    central_line_parameters, success = cavity.find_central_line()
 
-    central_line_parameters_curved, success_curved = cavity_curved.find_central_line()
+    initial_ray_parameters = central_line_parameters + np.array([t_ray, theta_ray, p_ray, phi_ray])
+    initial_ray = cavity.ray_of_initial_parameters(initial_ray_parameters)
+    ray_history = cavity.trace_ray(initial_ray)
 
-    initial_ray_parameters_curved = central_line_parameters_curved + np.array([t_ray, theta_ray, p_ray, phi_ray])
-    initial_ray_curved = cavity_curved.ray_of_initial_parameters(initial_ray_parameters_curved)
-    ray_history_curved = cavity_curved.trace_ray(initial_ray_curved)
-
-    ax_curved = cavity_curved.plot(camera_center=focus_point, axis_span=axis_span, ray_list=ray_history_curved, dim=dim)
+    ax = cavity.plot(camera_center=focus_point, axis_span=axis_span, ray_list=ray_history, dim=dim)
     if dim == 3:
-        ax_curved.view_init(elev=elev, azim=azim)
+        ax.view_init(elev=elev, azim=azim)
     # else:
     #     ax.set_aspect(1)
-    for ray in cavity_curved.central_line:
-        ray.plot(ax=ax_curved, dim=dim, color='b')
+    for ray in cavity.central_line:
+        ray.plot(ax=ax, dim=dim, color='b', linewidth=0.5)
     plt.show()
 
-    output_location_curved = cavity_curved.surfaces[-1].get_parameterization(ray_history_curved[-1].origin)
-    output_direction_curved = angles_of_unit_vector(ray_history_curved[-1].k_vector)
-    output_parameters_curved = np.array([output_location_curved[0], output_direction_curved[0], output_location_curved[1], output_direction_curved[1]])
-    parameters_increment = output_parameters_curved - initial_ray_parameters_curved
-    print(f"{initial_ray_parameters_curved}")
-    print(f"{output_parameters_curved}")
+    output_location = cavity.surfaces[-1].get_parameterization(ray_history[-1].origin)
+    output_direction = angles_of_unit_vector(ray_history[-1].k_vector)
+    output_parameters = np.array([output_location[0], output_direction[0], output_location[1], output_direction[1]])
+    parameters_increment = output_parameters - initial_ray_parameters
+    print(f"{initial_ray_parameters}")
+    print(f"{output_parameters}")
     print(f"{parameters_increment}")
 
-    ABCD_matrix_analytic = cavity_curved.generate_ABCD_matrix_analytic()
-    ABCD_matrix_numeric = cavity_curved.generate_ABCD_matrix_numeric()
+    ABCD_matrix_analytic = cavity.generate_ABCD_matrix_analytic()
+    ABCD_matrix_numeric = cavity.generate_ABCD_matrix_numeric()
 
 
 
