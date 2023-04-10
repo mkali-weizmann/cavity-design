@@ -60,7 +60,7 @@ def angles_distance(direction_vector_1: np.ndarray, direction_vector_2: np.ndarr
 
 class Ray:
     def __init__(self, origin: np.ndarray, k_vector: np.ndarray,
-                 length: Optional[Union[np.ndarray, float]] = None):
+                 length: Optional[Union[np.ndarray, float]] = None, dim: int = 3):
         # if origin.ndim == 1:
         #     origin = origin[np.newaxis, :]
 
@@ -80,10 +80,13 @@ class Ray:
         # t needs to be either a float or a numpy array with dimensions m_rays
         return self.origin + t[..., np.newaxis] * self.k_vector
 
-    def plot(self, ax: Optional[plt.Axes] = None):
+    def plot(self, ax: Optional[plt.Axes] = None, dim=3, color='r', linewidth=1):
         if ax is None:
             fig = plt.figure()
-            ax = fig.add_subplot(111, projection='3d')
+            if dim == 3:
+                ax = fig.add_subplot(111, projection='3d')
+            else:
+                ax = fig.add_subplot(111)
         if self.length is None:
             length = np.ones_like(self.origin[..., 0])
         else:
@@ -91,12 +94,26 @@ class Ray:
         ray_origin_reshaped = self.origin.reshape(-1, 3)
         ray_k_vector_reshaped = self.k_vector.reshape(-1, 3)
         lengths_reshaped = length.reshape(-1)
-        [ax.plot(
-            [ray_origin_reshaped[i, 0], ray_origin_reshaped[i, 0] + lengths_reshaped[i] * ray_k_vector_reshaped[i, 0]],
-            [ray_origin_reshaped[i, 1], ray_origin_reshaped[i, 1] + lengths_reshaped[i] * ray_k_vector_reshaped[i, 1]],
-            [ray_origin_reshaped[i, 2], ray_origin_reshaped[i, 2] + lengths_reshaped[i] * ray_k_vector_reshaped[i, 2]],
-            color='red', linewidth=1)
-            for i in range(ray_origin_reshaped.shape[0])]
+        if dim == 3:
+            [ax.plot(
+                [ray_origin_reshaped[i, 0],
+                 ray_origin_reshaped[i, 0] + lengths_reshaped[i] * ray_k_vector_reshaped[i, 0]],
+                [ray_origin_reshaped[i, 1],
+                 ray_origin_reshaped[i, 1] + lengths_reshaped[i] * ray_k_vector_reshaped[i, 1]],
+                [ray_origin_reshaped[i, 2],
+                 ray_origin_reshaped[i, 2] + lengths_reshaped[i] * ray_k_vector_reshaped[i, 2]],
+                color=color, linewidth=linewidth)
+                for i in range(ray_origin_reshaped.shape[0])]
+        else:
+            [ax.plot(
+                [ray_origin_reshaped[i, 0],
+                 ray_origin_reshaped[i, 0] + lengths_reshaped[i] * ray_k_vector_reshaped[i, 0]],
+                [ray_origin_reshaped[i, 1],
+                 ray_origin_reshaped[i, 1] + lengths_reshaped[i] * ray_k_vector_reshaped[i, 1]],
+                color=color, linewidth=linewidth)
+                for i in range(ray_origin_reshaped.shape[0])]
+
+        return ax
 
 
 class Surface:
@@ -122,8 +139,46 @@ class Surface:
         # takes a point on the surface and returns the parameters
         raise NotImplementedError
 
-    def plot(self, ax: Optional[plt.Axes] = None, name: Optional[str] = None):
-        raise NotImplementedError
+    def plot(self, ax: Optional[plt.Axes] = None, name: Optional[str] = None, dim: int = 3, length=0.6):
+        if ax is None:
+            fig = plt.figure()
+            if dim == 3:
+                ax = fig.add_subplot(111, projection='3d')
+            else:
+                ax = fig.add_subplot(111, projection='3d')
+        if dim == 3:
+            t = np.linspace(-length/2, length/2, 100)
+        else:
+            t = 0
+        s = np.linspace(-length/2, length/2, 100)
+        T, S = np.meshgrid(t, s)
+        points = self.parameterization(T, S)
+        x, y, z = points[..., 0], points[..., 1], points[..., 2]
+        if dim == 3:
+            ax.plot_surface(x, y, z, color='b', alpha=0.25)
+        else:
+            ax.plot(x, y, color='b')
+        if name is not None:
+            name_position = self.parameterization(0.4, 0)
+            if dim == 3:
+                ax.text(name_position[0], name_position[1], name_position[2], s=name)
+            else:
+                if ax.get_xlim()[0] < name_position[0] < ax.get_xlim()[1] and ax.get_ylim()[0] < name_position[1] < ax.get_ylim()[1]:
+                    ax.text(name_position[0], name_position[1], s=name)
+        ax.set_xlabel('x')
+        ax.set_ylabel('y')
+        if dim == 3:
+            ax.set_zlabel('z')
+
+        center_plus_normal = self.center + self.inwards_normal
+        if dim == 3:
+            ax.plot([self.center[0], center_plus_normal[0]],
+                    [self.center[1], center_plus_normal[1]],
+                    [self.center[2], center_plus_normal[2]], 'g-')
+        else:
+            ax.plot([self.center[0], center_plus_normal[0]],
+                    [self.center[1], center_plus_normal[1]], 'g-')
+        return ax
 
     def generate_ray_from_parameters(self, t: float, p: float, theta: float, phi: float) -> Ray:
         k_vector = unit_vector_of_angles(theta, phi)
@@ -146,9 +201,6 @@ class Mirror(Surface):
         raise NotImplementedError
 
     def find_intersection_with_ray(self, ray: Ray) -> np.ndarray:
-        raise NotImplementedError
-
-    def plot(self, ax: Optional[plt.Axes] = None, name: Optional[str] = None):
         raise NotImplementedError
 
     def reflect_ray(self, ray: Ray) -> Ray:
@@ -192,8 +244,8 @@ class FlatSurface(Surface):
         return self.center_of_mirror_private
 
     def get_spanning_vectors(self):
-        pseudo_y = np.cross(np.array([0, 0, 1]), self.outwards_normal)
-        pseudo_z = np.cross(self.outwards_normal, pseudo_y)
+        pseudo_y = np.cross(np.array([0, 0, 1]), self.inwards_normal)
+        pseudo_z = np.cross(self.inwards_normal, pseudo_y)
         return pseudo_y, pseudo_z
 
     def parameterization(self, t: Union[np.ndarray, float], p: Union[np.ndarray, float]):
@@ -211,31 +263,10 @@ class FlatSurface(Surface):
         p = (points - self.center) @ pseudo_y
         return t, p
 
-    def plot(self, ax: Optional[plt.Axes] = None, name: Optional[str] = None):
-        if ax is None:
-            fig = plt.figure()
-            ax = fig.add_subplot(111, projection='3d')
-        t = np.linspace(-0.3, 0.3, 100)
-        s = np.linspace(-0.3, 0.3, 100)
-        T, S = np.meshgrid(t, s)
-        points = self.parameterization(T, S)
-        x, y, z = points[..., 0], points[..., 1], points[..., 2]
-        ax.plot_surface(x, y, z, color='b', alpha=0.25)
-        center_plus_normal = self.center + self.inwards_normal
-        ax.plot([self.center[0], center_plus_normal[0]],
-                [self.center[1], center_plus_normal[1]],
-                [self.center[2], center_plus_normal[2]], 'g-')
-        if name is not None:
-            name_position = self.parameterization(0.4, 0)
-            ax.text(name_position[0], name_position[1], name_position[2], s=name)
-        ax.set_xlabel('x')
-        ax.set_ylabel('y')
-        ax.set_zlabel('z')
-
 
 class FlatMirror(FlatSurface, Mirror):
-    def plot(self, ax: Optional[plt.Axes] = None, name: Optional[str] = None):
-        return super().plot(ax, name)
+    def plot(self, ax: Optional[plt.Axes] = None, name: Optional[str] = None, dim: int = 3, length=0.6):
+        return super().plot(ax, name, dim, length)
 
     def find_intersection_with_ray(self, ray: Ray) -> np.ndarray:
         return super().find_intersection_with_ray(ray)
@@ -292,7 +323,7 @@ class CurvedMirror(Mirror):
         elif origin is not None and center is not None:
             raise ValueError('Only one of origin and center must be provided.')
         elif origin is None:
-            self.origin = center + radius * self.outwards_normal
+            self.origin = center + radius * self.inwards_normal
         else:
             self.origin = origin
 
@@ -372,32 +403,25 @@ class CurvedMirror(Mirror):
         t = np.arcsin(np.clip(normalized_points @ pseudo_z, -1, 1)) * self.radius
         return t, p
 
-    def plot(self, ax: Optional[plt.Axes] = None, name: Optional[str] = None):
-        if ax is None:
-            fig = plt.figure()
-            ax = fig.add_subplot(111, projection='3d')
-        t = np.linspace(-0.3, 0.3, 100) * self.radius
-        p = np.linspace(-0.3, 0.3, 100) * self.radius
-        T, P = np.meshgrid(t, p)
-        points = self.parameterization(T, P)
-        x, y, z = points[..., 0], points[..., 1], points[..., 2]
-        ax.scatter(x, y, z, color='b', s=0.001)
-        ax.plot([self.center[0], self.origin[0]], [self.center[1], self.origin[1]],
-                [self.center[2], self.origin[2]], 'g-')
-        if name is not None:
-            name_position = self.parameterization(0.4, 0)
-            ax.text(name_position[0], name_position[1], name_position[2], s=name)
-        ax.set_xlabel('x')
-        ax.set_ylabel('y')
-        ax.set_zlabel('z')
-
     def ABCD_matrix(self, cos_theta_incoming: float):
         # order of rows/columns elements is [t, theta, p, phi]
 
         return np.array([[1, 0, 0, 0],
                          [-2 * cos_theta_incoming / self.radius, 1, 0, 0],
-                         [0, 0, 1, 0],
-                         [0, 0, -2 / (self.radius * cos_theta_incoming), 1]])
+                         [0, 0, -1, 0],
+                         [0, 0, 2 / (self.radius * cos_theta_incoming), -1]])
+
+    def plot_2d(self, ax: Optional[plt.Axes] = None, name: Optional[str] = None):
+        if ax is None:
+            fig, ax = plt.subplots()
+        d_theta = 0.3
+        p = np.linspace(-d_theta, d_theta, 50)
+        p_grey = np.linspace(d_theta, -d_theta + 2 * np.pi, 100)
+        points = self.parameterization(0, p)
+        grey_points = self.parameterization(0, p_grey)
+        ax.plot(points[:, 0], points[:, 1], 'b-')
+        ax.plot(grey_points[:, 0], grey_points[:, 1], color=(0.81, 0.81, 0.81), linestyle='-.', linewidth=0.5)
+        ax.plot(self.origin[0], self.origin[1], 'bo')
 
 
 class Cavity:
@@ -429,8 +453,6 @@ class Cavity:
         # Like trace ray, but works as a function of the starting position and angles as parameters on the starting
         # surface, instead of the starting position and angles as a vector in 3D space.
 
-        t_i, theta_i, p_i, phi_i = starting_position_and_angles  # Those correspond to x, theta_x, y, theta_y in the
-        # ABCD matrix notation.
         initial_ray = self.ray_of_initial_parameters(starting_position_and_angles)
         ray_history = self.trace_ray(initial_ray)
         final_intersection_point = ray_history[-1].origin
@@ -470,59 +492,6 @@ class Cavity:
         self.central_line = self.trace_ray(central_line)
         self.central_line_successfully_traced = central_line_successfully_traced
         return central_line_initial_parameters, central_line_successfully_traced
-
-    # def find_central_line_grid_search(self,
-    #                                   dx: float = 0.02,
-    #                                   n_resolution: int = 30,
-    #                                   center_guess: np.ndarray = np.array([0, 0, 0, 0]),
-    #                                   n_iterations: int = 3,
-    #                                   angles_initial_guess: Optional[Tuple[float, float]] = None) -> np.ndarray:
-    #     # Not working
-    #     dummy_linspace = np.linspace(-dx, dx, n_resolution)
-    #     t = dummy_linspace + center_guess[0]
-    #     p = dummy_linspace + center_guess[1]
-    #
-    #     if angles_initial_guess is None:
-    #         initial_k_vector = self.mirrors[1].center - self.mirrors[0].center
-    #         initial_k_vector = normalize_vector(initial_k_vector)
-    #         theta_initial_guess, phi_initial_guess = angles_of_unit_vector(initial_k_vector)
-    #     else:
-    #         theta_initial_guess, phi_initial_guess = angles_initial_guess
-    #
-    #     theta = dummy_linspace + theta_initial_guess + center_guess[2]
-    #     phi = dummy_linspace + phi_initial_guess + center_guess[3]
-    #     T_i, P_i, Theta_i, Phi_i = np.meshgrid(t, p, theta, phi)
-    #     k_vector_i = unit_vector_of_angles(Theta_i, Phi_i)
-    #     origin_i = self.mirrors[0].parameterization(T_i, P_i)
-    #     input_ray = Ray(origin=origin_i, k_vector=k_vector_i)
-    #     output_ray = self.trace_ray(input_ray)
-    #     final_intersection_point = self.mirrors[0].find_intersection_with_ray(self.central_line[-2])
-    #     T_o, P_o = self.mirrors[0].get_parameterization(final_intersection_point)
-    #     Theta_o, Phi_o = angles_of_unit_vector(output_ray.k_vector)
-    #     f_roots = np.stack([T_o - T_i, P_o - P_i, Theta_o - Theta_i, Phi_o - Phi_i], axis=-1)
-    #     f_roots_reshaped = f_roots.reshape((-1, 4))
-    #     f_roots_no_nans = f_roots_reshaped[~np.isnan(f_roots_reshaped).any(axis=1), :]
-    #     f_roots_var = np.std(f_roots_no_nans, axis=0)
-    #     f_roots_normalized = f_roots / f_roots_var[None, None, None, None, :]
-    #     f_roots_norm = np.linalg.norm(f_roots_normalized, axis=-1)
-    #     f_roots_norm[np.isnan(f_roots_norm)] = np.inf
-    #     min_index = np.unravel_index(np.nanargmin(f_roots_norm), f_roots_norm.shape)
-    #     best_solution = np.array([T_i[min_index], P_i[min_index], Theta_i[min_index] - theta_initial_guess, Phi_i[min_index] - phi_initial_guess])
-    #     print(f"Best solution:\n"
-    #           f"t=     {best_solution[0]:.2e} in [{t[0]:.2e}, {t[-1]:.2e}]\n"
-    #           f"p=     {best_solution[1]:.2e} in [{p[0]:.2e}, {p[-1]:.2e}]\n"
-    #           f"theta= {best_solution[2]:.2e} in [{theta[0] - theta_initial_guess:.2e}, {theta[-1] - theta_initial_guess:.2e}]\n"
-    #           f"phi=   {best_solution[3]:.2e} in [{phi[0] - phi_initial_guess:.2e}, {phi[-1] - phi_initial_guess:.2e}]\n\n"
-    #           f"error_t=     {f_roots[min_index][0]:.2e}\n"
-    #           f"error_p=     {f_roots[min_index][1]:.2e}\n"
-    #           f"error_theta= {f_roots[min_index][2]:.2e}\n"
-    #           f"error_phi=   {f_roots[min_index][3]:.2e}")
-    #     if n_iterations == 0:
-    #         return best_solution
-    #     else:
-    #         return self.find_central_line_grid_search(dx=2*dx / n_resolution, n_resolution=n_resolution,
-    #                                                   center_guess=best_solution, n_iterations=n_iterations - 1,
-    #                                                   angles_initial_guess=(theta_initial_guess, phi_initial_guess))
 
     def set_initial_surface(self):
         # gets a surface that sits between the first two mirrors, centered and perpendicular to the central line.
@@ -609,17 +578,14 @@ class Cavity:
              ax: Optional[plt.Axes] = None,
              axis_span: float = 3,
              camera_center: int = -1,
-             ray_list: Optional[List[Ray]] = None):
+             ray_list: Optional[List[Ray]] = None,
+             dim: int = 3):
         if ax is None:
             fig = plt.figure()
-            ax = fig.add_subplot(111, projection='3d')
-        if ray_list is None and len(self.central_line) > 0:
-            ray_list = self.central_line
-        if ray_list is not None:
-            for ray in ray_list:
-                ray.plot(ax)
-        for i, surface in enumerate(self.surfaces):
-            surface.plot(ax, name=str(i))
+            if dim == 3:
+                ax = fig.add_subplot(111, projection='3d')
+            else:
+                ax = fig.add_subplot(111)
 
         if camera_center == -1 or ray_list is None:
             origin_camera = np.mean(np.stack([m.center for m in self.mirrors]), axis=0)
@@ -628,7 +594,16 @@ class Cavity:
 
         ax.set_xlim(origin_camera[0] - axis_span, origin_camera[0] + axis_span)
         ax.set_ylim(origin_camera[1] - axis_span, origin_camera[1] + axis_span)
-        ax.set_zlim(origin_camera[2] - axis_span, origin_camera[2] + axis_span)
+        if dim == 3:
+            ax.set_zlim(origin_camera[2] - axis_span, origin_camera[2] + axis_span)
+
+        if ray_list is None and len(self.central_line) > 0:
+            ray_list = self.central_line
+        if ray_list is not None:
+            for ray in ray_list:
+                ray.plot(ax=ax, dim=dim)
+        for i, surface in enumerate(self.surfaces):
+            surface.plot(ax=ax, name=str(i), dim=dim)
 
         return ax
 
@@ -651,27 +626,30 @@ if __name__ == '__main__':
     p_3 = 0.00
     t_ray = 0.00
     theta_ray = 0.00
-    p_ray = 1e-4
+    p_ray = 0.00
     phi_ray = 0.00
     elev = 38.00
     azim = 168.00
     axis_span = 1.00
     focus_point = -1
     set_initial_surface = True
+    dim=2
+
+    R = 100
 
     x_1 += 1
     y_1 += 0.00
-    r_1 += 2
+    r_1 += R
     t_1 += 0
     p_1 += -np.pi / 6
     x_2 += 0
     y_2 += np.sqrt(3)
-    r_2 += 2
+    r_2 += R
     t_2 += 0
     p_2 += np.pi / 2
     x_3 += -1
     y_3 += 0
-    r_3 += 2
+    r_3 += R
     t_3 += 0
     p_3 += 7 * np.pi / 6
 
@@ -682,32 +660,42 @@ if __name__ == '__main__':
     normal_3 = unit_vector_of_angles(t_3, p_3)
     center_3 = np.array([x_3, y_3, 0])
 
-    mirror_1 = CurvedMirror(radius=2, outwards_normal=normal_1, center=center_1)
-    mirror_2 = CurvedMirror(radius=2, outwards_normal=normal_2, center=center_2)
-    mirror_3 = CurvedMirror(radius=2, outwards_normal=normal_3, center=center_3)
+    mirror_curved_1 = CurvedMirror(radius=r_1, outwards_normal=normal_1, center=center_1)
+    mirror_curved_2 = CurvedMirror(radius=r_2, outwards_normal=normal_2, center=center_2)
+    mirror_curved_3 = CurvedMirror(radius=r_3, outwards_normal=normal_3, center=center_3)
 
-    cavity = Cavity([mirror_1, mirror_2, mirror_3], set_initial_surface=set_initial_surface)
+    mirror_flat_1 = FlatMirror(outwards_normal=normal_1, distance_from_origin=1)
+    mirror_flat_2 = FlatMirror(outwards_normal=normal_2, distance_from_origin=1)
+    mirror_flat_3 = FlatMirror(outwards_normal=normal_3, distance_from_origin=1)
 
-    central_line_parameters, success = cavity.find_central_line()
+    cavity_curved = Cavity([mirror_curved_1, mirror_curved_2, mirror_curved_3], set_initial_surface=set_initial_surface)
+    cavity_flat = Cavity([mirror_flat_1, mirror_flat_2, mirror_flat_3], set_initial_surface=set_initial_surface)
 
-    initial_ray_parameters = central_line_parameters + np.array([t_ray, theta_ray, p_ray, phi_ray])
-    initial_ray = cavity.ray_of_initial_parameters(initial_ray_parameters)
+    central_line_parameters_curved, success_curved = cavity_curved.find_central_line()
 
-    ray_history = cavity.trace_ray(initial_ray)
+    initial_ray_parameters_curved = central_line_parameters_curved + np.array([t_ray, theta_ray, p_ray, phi_ray])
+    initial_ray_curved = cavity_curved.ray_of_initial_parameters(initial_ray_parameters_curved)
+    ray_history_curved = cavity_curved.trace_ray(initial_ray_curved)
 
-    ax = cavity.plot(camera_center=focus_point, axis_span=axis_span, ray_list=ray_history)
-    ax.view_init(elev=elev, azim=azim)
+    ax_curved = cavity_curved.plot(camera_center=focus_point, axis_span=axis_span, ray_list=ray_history_curved, dim=dim)
+    if dim == 3:
+        ax_curved.view_init(elev=elev, azim=azim)
+    # else:
+    #     ax.set_aspect(1)
+    for ray in cavity_curved.central_line:
+        ray.plot(ax=ax_curved, dim=dim, color='b')
     plt.show()
-    output_location = cavity.surfaces[-1].get_parameterization(ray_history[-1].origin)
-    output_direction = angles_of_unit_vector(ray_history[-1].k_vector)
-    output_parameters = np.array([output_location[0], output_direction[0], output_location[1], output_direction[1]])
-    parameters_increment = output_parameters - initial_ray_parameters
-    print(f"{initial_ray_parameters}")
-    print(f"{output_parameters}")
+
+    output_location_curved = cavity_curved.surfaces[-1].get_parameterization(ray_history_curved[-1].origin)
+    output_direction_curved = angles_of_unit_vector(ray_history_curved[-1].k_vector)
+    output_parameters_curved = np.array([output_location_curved[0], output_direction_curved[0], output_location_curved[1], output_direction_curved[1]])
+    parameters_increment = output_parameters_curved - initial_ray_parameters_curved
+    print(f"{initial_ray_parameters_curved}")
+    print(f"{output_parameters_curved}")
     print(f"{parameters_increment}")
 
-    ABCD_matrix_analytic = cavity.generate_ABCD_matrix_analytic()
-    ABCD_matrix_numeric = cavity.generate_ABCD_matrix_numeric()
+    ABCD_matrix_analytic = cavity_curved.generate_ABCD_matrix_analytic()
+    ABCD_matrix_numeric = cavity_curved.generate_ABCD_matrix_numeric()
 
 
 

@@ -399,7 +399,7 @@ if __name__ == '__main__':
     # ax2.set_aspect(0.8)
     ax2.set_title('t_final -t_initial')
     ax2.set_aspect(1 / scale)
-    ax2.plot(t_and_theta_central_line[1] - theta_0, t_and_theta_central_line[0] - t_1, 'ro')
+    ax2.plot(t_and_theta_central_line[1] - theta_0, t_and_theta_central_line[0] - t_1)
 
     # Plot the difference between the initial and final theta on the right upper axis
     # Plot the difference between the initial and final theta on the right upper axis
@@ -424,7 +424,7 @@ if __name__ == '__main__':
     ax3.set_aspect(1 / scale)
 
     ax3.set_title('theta_final - theta_initial')
-    ax3.plot(t_and_theta_central_line[1] - theta_0, t_and_theta_central_line[0] - t_1, 'ro')
+    ax3.plot(t_and_theta_central_line[1] - theta_0, t_and_theta_central_line[0] - t_1)
     plt.show()
 
 
