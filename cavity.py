@@ -58,12 +58,55 @@ def angles_distance(direction_vector_1: np.ndarray, direction_vector_2: np.ndarr
     return np.arccos(inner_product)
 
 
+def q_parameters_of_mode_parameters(mode_parameters):
+    z_0 = mode_parameters[..., 0]
+    z_R = mode_parameters[..., 1]
+    q = z_0 + 1j * z_R
+    return q
+
+
+def mode_parameters_of_q_parameters(q_parameters):
+    z_minus_z_0 = np.real(q_parameters)
+    z_R = np.imag(q_parameters)
+    return np.stack([z_minus_z_0, z_R], axis=-1)
+
+
+def decompose_ABCD_matrix(ABCD: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    if ABCD.shape == (4, 4):
+        A, B, C, D = ABCD[(0, 2), (0, 2)], ABCD[(0, 2), (1, 3)], \
+                     ABCD[(1, 3), (0, 2)], ABCD[(1, 3), (1, 3)]
+    else:
+        A, B, C, D = ABCD[0, 0], ABCD[0, 1], \
+                     ABCD[1, 0], ABCD[1, 1]
+    return A, B, C, D
+
+
+def propagate_q_parameter_through_ABCD(q: np.ndarray, ABCD: np.ndarray) -> np.ndarray:
+    A, B, C, D = decompose_ABCD_matrix(ABCD)
+    return (A * q + B) / (C * q + D)
+
+
+def propagate_mode_parameters_through_ABCD(mode_parameters: np.ndarray, ABCD: np.ndarray) -> np.ndarray:
+    q = q_parameters_of_mode_parameters(mode_parameters)
+    q_propagated = propagate_q_parameter_through_ABCD(q, ABCD)
+    return mode_parameters_of_q_parameters(q_propagated)
+
+
+def get_gaussian_beam_parameters(ABCD_round_trip: np.ndarray) -> np.ndarray:
+    A, B, C, D = decompose_ABCD_matrix(ABCD_round_trip)
+
+    q_z = (A - D - np.sqrt(A**2 + 2*C*B + D**2 - 2 + 0j)) / (2 * C)
+
+    z_minus_z_0 = np.real(q_z)
+    z_R = np.imag(q_z)
+
+    return np.stack([z_minus_z_0, z_R], axis=-1)  # First dimension is theta or phi,second dimension is z_minus_z_0 or
+    # z_R.
+
+
 class Ray:
     def __init__(self, origin: np.ndarray, k_vector: np.ndarray,
-                 length: Optional[Union[np.ndarray, float]] = None, dim: int = 3):
-        # if origin.ndim == 1:
-        #     origin = origin[np.newaxis, :]
-
+                 length: Optional[Union[np.ndarray, float]] = None):
         if k_vector.ndim == 1 and origin.shape[0] > 1:
             k_vector = np.tile(k_vector, (*origin.shape[:-1], 1))
         elif origin.ndim == 1 and k_vector.shape[0] > 1:
@@ -434,6 +477,7 @@ class Cavity:
         self.central_line_successfully_traced: Optional[bool] = None
         self.ABCD_matrices: List[np.ndarray] = []
         self.surfaces: List[Surface] = mirrors
+        self.mode_parameters: List[np.array] = []
         # Find central line and add the initial surface at the beginning of the surfaces list
         if set_initial_surface:
             self.set_initial_surface()
@@ -547,6 +591,23 @@ class Cavity:
 
         return np.linalg.multi_dot(self.ABCD_matrices[::-1])
 
+    def get_mode_parameters(self):
+        if self.central_line_successfully_traced is None:
+            self.find_central_line()
+        if self.ABCD_matrices is None:
+            ABCD_round_trip = self.generate_ABCD_matrix_analytic()
+        else:
+            ABCD_round_trip = np.linalg.multi_dot(self.ABCD_matrices[::-1])
+        mode_parameters = get_gaussian_beam_parameters(ABCD_round_trip)
+        self.mode_parameters = [mode_parameters]
+        for i in range(len(self.ABCD_matrices)):
+            if i % 2 == 0:
+                mode_parameters = propagate_mode_parameters_through_ABCD(mode_parameters, self.ABCD_matrices[i])
+            else:
+                mode_parameters = propagate_mode_parameters_through_ABCD(mode_parameters, self.ABCD_matrices[i])
+                self.mode_parameters.append(mode_parameters)
+
+
     @property
     def default_initial_k_vector(self) -> np.ndarray:
         if self.central_line_successfully_traced:
@@ -600,6 +661,10 @@ class Cavity:
         if dim == 3:
             ax.set_zlim(origin_camera[2] - axis_span, origin_camera[2] + axis_span)
 
+        ax.plot(ray_history[-1].origin[0], ray_history[-1].origin[1], ray_history[-1].origin[2], 'ro', label='end')
+        ax.plot(ray_history[0].origin[0], ray_history[0].origin[1], ray_history[0].origin[2], 'go', label='beginning')
+        plt.legend()
+
         if ray_list is None and len(self.central_line) > 0:
             ray_list = self.central_line
         if ray_list is not None:
@@ -607,10 +672,6 @@ class Cavity:
                 ray.plot(ax=ax, dim=dim)
         for i, surface in enumerate(self.surfaces):
             surface.plot(ax=ax, name=str(i), dim=dim)
-
-        ax.plot(ray_history[-1].origin[0], ray_history[-1].origin[1], ray_history[-1].origin[2], 'ro', label='end')
-        ax.plot(ray_history[0].origin[0], ray_history[0].origin[1], ray_history[0].origin[2], 'go', label='beginning')
-        plt.legend()
 
         return ax
 
@@ -698,6 +759,9 @@ if __name__ == '__main__':
 
     ABCD_matrix_analytic = cavity.generate_ABCD_matrix_analytic()
     ABCD_matrix_numeric = cavity.generate_ABCD_matrix_numeric()
+
+    cavity.get_mode_parameters()
+
 
 
 
