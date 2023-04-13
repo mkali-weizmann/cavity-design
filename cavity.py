@@ -122,6 +122,16 @@ def local_mode_parameters_of_round_trip_ABCD(round_trip_ABCD: np.ndarray) -> Loc
     # z_R.
 
 
+def w_0_of_z_R(z_R: np.ndarray, lambda_laser: float) -> np.ndarray:
+    return np.sqrt(z_R * lambda_laser / np.pi)
+
+
+def spot_size(z: np.ndarray, z_R: np.ndarray, lambda_laser) -> np.ndarray:
+    w_0 = w_0_of_z_R(z_R, lambda_laser)
+    w_z = w_0 * np.sqrt(1 + (z / z_R) ** 2)
+    return w_z
+
+
 class Ray:
     def __init__(self, origin: np.ndarray, k_vector: np.ndarray,
                  length: Optional[Union[np.ndarray, float]] = None):
