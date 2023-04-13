@@ -3,12 +3,50 @@ import matplotlib.pyplot as plt
 from typing import List, Tuple, Optional, Union
 from scipy import optimize
 import warnings
-
+from dataclasses import dataclass
 
 # Throughout the code, all tensors can take any number of dimensions, but the last dimension is always the coordinate
 # dimension. this allows a Ray to be either a single ray, a list of rays, or a list of lists of rays, etc.
 # For example, a Ray could be a set of rays with a starting point for every combination of x, y, z. in this case, the
 # ray.origin tensor will be of the size N_x | N_y | N_z | 3.
+
+# The ray is always traced starting from the last surface of the cavity, such that the first mirror is the first mirror
+# the ray hits. in the initial state of the cavity it means that the ray starts from cavity.mirrors[-1].center and hits
+# first the cavity.mirrors[0] mirror. After the plane that is perpendicular to the central line and between the two
+# mirrors is calculated, then the ray starts at cavity.surfaces[-1].center (which is that plane) and hits first the
+# cavity.surfaces[0] which is the first mirror.
+
+# As a convention, the locations (parameterized usually by t and p) always appear before the angles (parameterized by
+# theta and phi). also, t and theta appear before p and phi.
+# If for example there is a parameter q both for t axis and p axis, then the first element of q will be the q of t,
+# and the second element of q will be the q of p.
+
+
+class LocalModeParameters:
+    def __init__(self, z_minus_z_0: Optional[np.ndarray] = None, z_R: Optional[np.ndarray] = None,
+                 q: Optional[np.ndarray] = None):
+        if q is not None:
+            self.q = q
+        elif z_minus_z_0 is not None and z_R is not None:
+            self.q = z_minus_z_0 + 1j * z_R
+        else:
+            raise ValueError('Either q or z_minus_z_0 and z_R must be provided')
+
+    @property
+    def z_minus_z_0(self):
+        return self.q.real
+
+    @property
+    def z_R(self):
+        return self.q.imag
+
+
+@dataclass
+class ModeParameters:
+    center: np.ndarray  # First dimension is t or p, second dimension is x, y, z
+    k_vector: np.ndarray
+    z_R: np.ndarray
+    wavelength: Optional[float]
 
 
 def ABCD_free_space(length: float) -> np.ndarray:
@@ -58,19 +96,6 @@ def angles_distance(direction_vector_1: np.ndarray, direction_vector_2: np.ndarr
     return np.arccos(inner_product)
 
 
-def q_parameters_of_mode_parameters(mode_parameters):
-    z_0 = mode_parameters[..., 0]
-    z_R = mode_parameters[..., 1]
-    q = z_0 + 1j * z_R
-    return q
-
-
-def mode_parameters_of_q_parameters(q_parameters):
-    z_minus_z_0 = np.real(q_parameters)
-    z_R = np.imag(q_parameters)
-    return np.stack([z_minus_z_0, z_R], axis=-1)
-
-
 def decompose_ABCD_matrix(ABCD: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     if ABCD.shape == (4, 4):
         A, B, C, D = ABCD[(0, 2), (0, 2)], ABCD[(0, 2), (1, 3)], \
@@ -81,26 +106,19 @@ def decompose_ABCD_matrix(ABCD: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.
     return A, B, C, D
 
 
-def propagate_q_parameter_through_ABCD(q: np.ndarray, ABCD: np.ndarray) -> np.ndarray:
+def propagate_local_mode_parameter_through_ABCD(local_mode_parameters: LocalModeParameters,
+                                                ABCD: np.ndarray) -> LocalModeParameters:
     A, B, C, D = decompose_ABCD_matrix(ABCD)
-    return (A * q + B) / (C * q + D)
+    q_new = (A * local_mode_parameters.q + B) / (C * local_mode_parameters.q + D)
+    return LocalModeParameters(q=q_new)
 
 
-def propagate_mode_parameters_through_ABCD(mode_parameters: np.ndarray, ABCD: np.ndarray) -> np.ndarray:
-    q = q_parameters_of_mode_parameters(mode_parameters)
-    q_propagated = propagate_q_parameter_through_ABCD(q, ABCD)
-    return mode_parameters_of_q_parameters(q_propagated)
-
-
-def get_gaussian_beam_parameters(ABCD_round_trip: np.ndarray) -> np.ndarray:
-    A, B, C, D = decompose_ABCD_matrix(ABCD_round_trip)
+def local_mode_parameters_of_round_trip_ABCD(round_trip_ABCD: np.ndarray) -> LocalModeParameters:
+    A, B, C, D = decompose_ABCD_matrix(round_trip_ABCD)
 
     q_z = (A - D - np.sqrt(A**2 + 2*C*B + D**2 - 2 + 0j)) / (2 * C)
 
-    z_minus_z_0 = np.real(q_z)
-    z_R = np.imag(q_z)
-
-    return np.stack([z_minus_z_0, z_R], axis=-1)  # First dimension is theta or phi,second dimension is z_minus_z_0 or
+    return LocalModeParameters(q=q_z)  # First dimension is theta or phi,second dimension is z_minus_z_0 or
     # z_R.
 
 
@@ -466,7 +484,8 @@ class CurvedMirror(Mirror):
         points = self.parameterization(0, p)
         grey_points = self.parameterization(0, p_grey)
         ax.plot(points[:, 0], points[:, 1], 'b-')
-        ax.plot(grey_points[:, 0], grey_points[:, 1], color=(0.81, 0.81, 0.81), linestyle='-.', linewidth=0.5)
+        ax.plot(grey_points[:, 0], grey_points[:, 1], color=(0.81, 0.81, 0.81), linestyle='-.', linewidth=0.5,
+                label=None)
         ax.plot(self.origin[0], self.origin[1], 'bo')
 
 
@@ -476,7 +495,7 @@ class Cavity:
         self.central_line: List[Ray] = []
         self.central_line_successfully_traced: Optional[bool] = None
         self.ABCD_matrices: List[np.ndarray] = []
-        self.surfaces: List[Surface] = mirrors
+        self.surfaces: List[Surface] = mirrors.copy()
         self.mode_parameters: List[np.array] = []
         # Find central line and add the initial surface at the beginning of the surfaces list
         if set_initial_surface:
@@ -591,22 +610,37 @@ class Cavity:
 
         return np.linalg.multi_dot(self.ABCD_matrices[::-1])
 
-    def get_mode_parameters(self):
+    def get_mode_parameters_on_mirrors(self):
         if self.central_line_successfully_traced is None:
             self.find_central_line()
         if self.ABCD_matrices is None:
             ABCD_round_trip = self.generate_ABCD_matrix_analytic()
         else:
             ABCD_round_trip = np.linalg.multi_dot(self.ABCD_matrices[::-1])
-        mode_parameters = get_gaussian_beam_parameters(ABCD_round_trip)
-        self.mode_parameters = [mode_parameters]
-        for i in range(len(self.ABCD_matrices)):
-            if i % 2 == 0:
-                mode_parameters = propagate_mode_parameters_through_ABCD(mode_parameters, self.ABCD_matrices[i])
-            else:
-                mode_parameters = propagate_mode_parameters_through_ABCD(mode_parameters, self.ABCD_matrices[i])
-                self.mode_parameters.append(mode_parameters)
+        mode_parameters_current = local_mode_parameters_of_round_trip_ABCD(ABCD_round_trip)
+        mode_parameters_on_mirrors = [mode_parameters_current]
+        for i in range(len(self.ABCD_matrices)-1):
+            mode_parameters_current = propagate_local_mode_parameter_through_ABCD(mode_parameters_current,
+                                                                                  self.ABCD_matrices[i])
+            if i % 2 == 1:
+                mode_parameters_on_mirrors.append(mode_parameters_current)
+        # The first element is for the imaginary calculated surface, but we want one mode parameter for each mirror.
+        mode_parameters_on_mirrors.pop(0)
+        return mode_parameters_on_mirrors
 
+    def get_mode_parameters(self,
+                            mode_parameters_on_mirrors: Optional[List[LocalModeParameters]] = None) -> List[ModeParameters]:
+        if mode_parameters_on_mirrors is None:
+            mode_parameters_on_mirrors = self.get_mode_parameters_on_mirrors()
+        self.mode_parameters = []
+        for i, mirror in enumerate(self.mirrors):
+            # The central line index is shifted by one, because the first element is the initial surface.
+            mode_parameters = ModeParameters(mirror.center - mode_parameters_on_mirrors[i].z_minus_z_0[..., np.newaxis] * self.central_line[i+1].k_vector,
+                                             self.central_line[i+1].k_vector,
+                                             mode_parameters_on_mirrors[i].z_R,
+                                             None)
+            self.mode_parameters.append(mode_parameters)
+        return self.mode_parameters
 
     @property
     def default_initial_k_vector(self) -> np.ndarray:
@@ -660,9 +694,14 @@ class Cavity:
         ax.set_ylim(origin_camera[1] - axis_span, origin_camera[1] + axis_span)
         if dim == 3:
             ax.set_zlim(origin_camera[2] - axis_span, origin_camera[2] + axis_span)
+            ax.plot(ray_history[0].origin[0], ray_history[0].origin[1], ray_history[0].origin[2], 'go',
+                       label='beginning')
+            ax.plot(ray_history[-1].origin[0], ray_history[-1].origin[1], ray_history[-1].origin[2], 'ro',
+                       label='end')
+        else:
+            ax.plot(ray_history[0].origin[0], ray_history[0].origin[1], 'go', label='beginning')
+            ax.plot(ray_history[-1].origin[0], ray_history[-1].origin[1], 'ro', label='end')
 
-        ax.plot(ray_history[-1].origin[0], ray_history[-1].origin[1], ray_history[-1].origin[2], 'ro', label='end')
-        ax.plot(ray_history[0].origin[0], ray_history[0].origin[1], ray_history[0].origin[2], 'go', label='beginning')
         plt.legend()
 
         if ray_list is None and len(self.central_line) > 0:
@@ -674,6 +713,8 @@ class Cavity:
             surface.plot(ax=ax, name=str(i), dim=dim)
 
         return ax
+
+    # def mode_parameters_of_local_mode_parameters
 
 
 if __name__ == '__main__':
@@ -752,15 +793,13 @@ if __name__ == '__main__':
     output_location = cavity.surfaces[-1].get_parameterization(ray_history[-1].origin)
     output_direction = angles_of_unit_vector(ray_history[-1].k_vector)
     output_parameters = np.array([output_location[0], output_direction[0], output_location[1], output_direction[1]])
-    parameters_increment = output_parameters - initial_ray_parameters
-    print(f"{initial_ray_parameters}")
-    print(f"{output_parameters}")
-    print(f"{parameters_increment}")
 
     ABCD_matrix_analytic = cavity.generate_ABCD_matrix_analytic()
     ABCD_matrix_numeric = cavity.generate_ABCD_matrix_numeric()
 
-    cavity.get_mode_parameters()
+    local_mode_parameters = cavity.get_mode_parameters_on_mirrors()
+
+    mode_parameters = cavity.get_mode_parameters(local_mode_parameters)
 
 
 
