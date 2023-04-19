@@ -4,6 +4,8 @@ from typing import List, Tuple, Optional, Union
 from scipy import optimize
 import warnings
 from dataclasses import dataclass
+import copy
+import pandas as pd
 
 # Throughout the code, all tensors can take any number of dimensions, but the last dimension is always the coordinate
 # dimension. this allows a Ray to be either a single ray, a list of rays, or a list of lists of rays, etc.
@@ -46,7 +48,12 @@ class ModeParameters:
     center: np.ndarray  # First dimension is t or p, second dimension is x, y, z
     k_vector: np.ndarray
     z_R: np.ndarray
-    wavelength: Optional[float]
+    principle_axes: np.ndarray  # First dimension is t or p, second dimension is x, y, z, third dimension is x, y, z
+    lambda_laser: Optional[float]
+
+    @property
+    def ray(self):
+        return Ray(self.center, self.k_vector)
 
 
 def ABCD_free_space(length: float) -> np.ndarray:
@@ -117,6 +124,7 @@ def local_mode_parameters_of_round_trip_ABCD(round_trip_ABCD: np.ndarray) -> Loc
     A, B, C, D = decompose_ABCD_matrix(round_trip_ABCD)
 
     q_z = (A - D - np.sqrt(A**2 + 2*C*B + D**2 - 2 + 0j)) / (2 * C)
+    q_z = np.real(q_z) + 1j * np.abs(np.imag(q_z))  # ATTENTION - make sure this line is justified.
 
     return LocalModeParameters(q=q_z)  # First dimension is theta or phi,second dimension is z_minus_z_0 or
     # z_R.
@@ -502,11 +510,11 @@ class CurvedMirror(Mirror):
 class Cavity:
     def __init__(self, mirrors: List[Mirror], set_initial_surface: bool = False):
         self.mirrors = mirrors
-        self.central_line: List[Ray] = []
+        self.central_line: Optional[List[Ray]] = None
         self.central_line_successfully_traced: Optional[bool] = None
-        self.ABCD_matrices: List[np.ndarray] = []
+        self.ABCD_matrices: Optional[List[np.ndarray]] = None
         self.surfaces: List[Surface] = mirrors.copy()
-        self.mode_parameters: List[np.array] = []
+        self.mode_parameters: Optional[List[ModeParameters]] = None
         # Find central line and add the initial surface at the beginning of the surfaces list
         if set_initial_surface:
             self.set_initial_surface()
@@ -571,7 +579,7 @@ class Cavity:
 
     def set_initial_surface(self):
         # gets a surface that sits between the first two mirrors, centered and perpendicular to the central line.
-        if len(self.central_line) == 0:
+        if self.central_line is None:
             final_position_and_angles, success = self.find_central_line()
             if not success:
                 warnings.warn("Could not find central line, so no initial surface could be set.")
@@ -611,6 +619,7 @@ class Cavity:
                 raise ValueError("Could not find central line")
         cos_thetas = [self.central_line[i].k_vector @ self.surfaces[i].outwards_normal
                       for i in range(len(self.surfaces))]
+        self.ABCD_matrices = []
         for i, surface in enumerate(self.surfaces):
             self.ABCD_matrices.append(ABCD_free_space(self.central_line[i].length))
             if isinstance(surface, Mirror):
@@ -643,12 +652,20 @@ class Cavity:
         if mode_parameters_on_mirrors is None:
             mode_parameters_on_mirrors = self.get_mode_parameters_on_mirrors()
         self.mode_parameters = []
-        for i, mirror in enumerate(self.mirrors):
+        n_mirrors = len(self.mirrors)
+        for i in range(n_mirrors):
             # The central line index is shifted by one, because the first element is the initial surface.
-            mode_parameters = ModeParameters(mirror.center - mode_parameters_on_mirrors[i].z_minus_z_0[..., np.newaxis] * self.central_line[i+1].k_vector,
-                                             self.central_line[i+1].k_vector,
-                                             mode_parameters_on_mirrors[i].z_R,
-                                             None)
+            shifted_index = np.mod(i - 1, n_mirrors)
+            # For i = 0 we get the -1 mirror, the mode_parameters of the -1 mirror, and the first central line.
+            # For i = 1 we get the 0 mirror, the mode_parameters of the 0 mirror, and the second central line.
+            center = self.mirrors[shifted_index].center -\
+                     mode_parameters_on_mirrors[shifted_index].z_minus_z_0[..., np.newaxis] *\
+                     self.central_line[np.mod(i, n_mirrors)].k_vector
+            mode_parameters = ModeParameters(center=center,
+                                             k_vector=self.central_line[i].k_vector,
+                                             z_R=mode_parameters_on_mirrors[i].z_R,
+                                             principle_axes=self.principle_axes(self.central_line[i].k_vector),
+                                             lambda_laser=None)
             self.mode_parameters.append(mode_parameters)
         return self.mode_parameters
 
@@ -676,18 +693,61 @@ class Cavity:
             initial_ray = Ray(origin=self.surfaces[0].center, k_vector=initial_k_vector)
             return initial_ray
 
+    def principle_axes(self, k_vector: np.ndarray):
+        # Returns two vectors that are orthogonal to k_vector and each other, one lives in the central line plane,
+        # the other is perpendicular to the central line plane.
+        if self.central_line_successfully_traced is None:
+            self.find_central_line()
+        # ATTENTION! THIS ASSUMES THAT ALL THE CENTRAL LINE LEGS ARE IN THE SAME PLANE.
+        pseudo_z = np.cross(self.central_line[0].k_vector, self.central_line[1].k_vector)  # Points to the positive
+        # z-axis when the central line goes counter-clockwise in the xy-plane.
+        pseudo_z = normalize_vector(pseudo_z)
+        pseudo_x = np.cross(pseudo_z, k_vector)
+        principle_axes = np.stack([pseudo_z, pseudo_x], axis=-1).T  # [z_x, z_y, z_z], [x_x, x_y, x_z]
+        return principle_axes
+
     def ray_of_initial_parameters(self, initial_parameters: np.ndarray):
         k_vector_i = unit_vector_of_angles(theta=initial_parameters[1], phi=initial_parameters[3])
         origin_i = self.surfaces[-1].parameterization(t=initial_parameters[0], p=initial_parameters[2])
         input_ray = Ray(origin=origin_i, k_vector=k_vector_i)
         return input_ray
 
+    def generate_spot_size_lines(self, lambda_laser, dim=2):
+        if self.mode_parameters is None:
+            self.mode_parameters = self.get_mode_parameters()
+        list_of_spot_size_lines = []
+        for i, ray in enumerate(self.central_line[:-1]):
+            cycled_index = np.mod(i, len(self.mode_parameters))
+            t = np.linspace(-0.1*ray.length, 1.1*ray.length, 100)
+            ray_points = ray.parameterization(t=t)
+            z_minus_z_0 = np.linalg.norm(ray_points[:, np.newaxis, :] - self.mode_parameters[cycled_index].center, axis=2)  # Before the norm the size is 100 | 2 | 3 and after it is 100 | 2 (100 points for in_plane and out_of_plane dimensions)
+            principle_axes = self.mode_parameters[cycled_index].principle_axes
+            sign = np.array([1, -1])
+            spot_size_value = spot_size(z_minus_z_0, self.mode_parameters[cycled_index].z_R, lambda_laser)
+            spot_size_lines = ray_points[:, np.newaxis, np.newaxis, :] +\
+                              spot_size_value[:, :, np.newaxis, np.newaxis] *\
+                              principle_axes[np.newaxis, :, np.newaxis, :] *\
+                              sign[np.newaxis, np.newaxis, :, np.newaxis]  # The size is 100 (n_points) | 2 (axis) | 2 (sign) | 3 (coordinate)
+            if dim == 2:
+                spot_size_lines = spot_size_lines[:, 1, :, 0:2]  # Drop the z axis, and drop the lines of the
+                # transverse axis
+                list_of_spot_size_lines.extend([spot_size_lines[:, 0, :], spot_size_lines[:, 1, :]]) # Each element is a
+                # 100 | 3 array
+
+            else:
+                list_of_spot_size_lines.extend([spot_size_lines[:, 0, 0, :], spot_size_lines[:, 0, 1, :],
+                                                spot_size_lines[:, 1, 0, :], spot_size_lines[:, 1, 1, :]])  # Each
+                # element is a  100 | 3 array.
+
+        return list_of_spot_size_lines
+
     def plot(self,
              ax: Optional[plt.Axes] = None,
              axis_span: float = 3,
              camera_center: int = -1,
              ray_list: Optional[List[Ray]] = None,
-             dim: int = 3):
+             dim: int = 3,
+             lambda_laser: Optional[float] = None):
         if ax is None:
             fig = plt.figure()
             if dim == 3:
@@ -704,13 +764,13 @@ class Cavity:
         ax.set_ylim(origin_camera[1] - axis_span, origin_camera[1] + axis_span)
         if dim == 3:
             ax.set_zlim(origin_camera[2] - axis_span, origin_camera[2] + axis_span)
-            ax.plot(ray_history[0].origin[0], ray_history[0].origin[1], ray_history[0].origin[2], 'go',
+            ax.plot(ray_list[0].origin[0], ray_list[0].origin[1], ray_list[0].origin[2], 'go',
                        label='beginning')
-            ax.plot(ray_history[-1].origin[0], ray_history[-1].origin[1], ray_history[-1].origin[2], 'ro',
+            ax.plot(ray_list[-1].origin[0], ray_list[-1].origin[1], ray_list[-1].origin[2], 'ro',
                        label='end')
         else:
-            ax.plot(ray_history[0].origin[0], ray_history[0].origin[1], 'go', label='beginning')
-            ax.plot(ray_history[-1].origin[0], ray_history[-1].origin[1], 'ro', label='end')
+            ax.plot(ray_list[0].origin[0], ray_list[0].origin[1], 'go', label='beginning')
+            ax.plot(ray_list[-1].origin[0], ray_list[-1].origin[1], 'ro', label='end')
 
         plt.legend()
 
@@ -722,9 +782,111 @@ class Cavity:
         for i, surface in enumerate(self.surfaces):
             surface.plot(ax=ax, name=str(i), dim=dim)
 
+        if lambda_laser is not None:
+            spot_size_lines = self.generate_spot_size_lines(lambda_laser=lambda_laser, dim=dim)
+            for line in spot_size_lines:
+                if dim == 2:
+                    ax.plot(line[:, 0], line[:, 1], 'r--', alpha=0.8, linewidth=0.5)
+                else:
+                    ax.plot(line[:, 0], line[:, 1], line[:, 2], 'r--', alpha=0.8, linewidth=0.5)
+
         return ax
 
-    # def mode_parameters_of_local_mode_parameters
+    def calculate_overlap_integral(self, lambda_laser: float):
+        df = pd.DataFrame(columns=['mirror', 'parameter', 'value', 'overlap_integral'])
+        for i, mirror in enumerate(self.mirrors):
+            for parameter in mirror.__dict__.keys():
+                new_parameter_value = getattr(mirror, parameter) + 0.01
+                new_mirror = copy.deepcopy(mirror)
+                setattr(new_mirror, parameter, new_parameter_value)
+                new_cavity = copy.deepcopy(self)
+                new_cavity.mirrors[i] = new_mirror
+                overlap_intgral = calculate_overlap_integral(self, new_cavity, lambda_laser)
+                df = df.append({'mirror': i, 'parameter': parameter, 'value': new_parameter_value,
+                                'overlap_integral': overlap_intgral}, ignore_index=True)
+
+
+
+def calculate_overlap_integral(cavity_1: Cavity, cavity_2: Cavity, lambda_laser: float):
+    # Initialize all required parameters:
+    cavity_1.find_central_line()
+    cavity_2.find_central_line()
+
+    cavity_1.set_initial_surface()
+    cavity_2.set_initial_surface()
+
+    cavity_1.get_mode_parameters()
+    cavity_2.get_mode_parameters()
+
+    # The two modes of laser in the first leg of the cavity:
+    mode_parameter_1 = cavity_1.mode_parameters[0]
+    mode_parameter_2 = cavity_2.mode_parameters[0]
+
+    # The plane that is perpendicular to the laser in cavity 1 and centered at its waist:  # ATTENTION - CURRENTLY IT'S
+    # ONLY AT THE CENTER OF THE LEG AND NOT REALLY AT THE WAIST.
+
+    P1 = cavity_1.surfaces[-1]
+
+    # The widths of the laser at the waist in cavity 1 and 2, in t and p:
+    s_t_1, s_p_1 = w_0_of_z_R(mode_parameter_1.z_R, lambda_laser=lambda_laser)
+    s_t_2, s_p_2 = w_0_of_z_R(mode_parameter_2.z_R, lambda_laser=lambda_laser)
+
+    # The intersection of the laser with the plane P1:
+    # t_1, p_1 = 0, 0
+    t_2, p_2 = P1.get_parameterization(P1.find_intersection_with_ray(mode_parameter_2.ray))
+
+    # The vectors that are perpendicular to the lasers, the first is perpendicular to the central line plane,
+    # and the other is inside it. (in the first cavity they are orthonormal basis to P1)
+    t_1_vec_and_p_1_vec = cavity_1.principle_axes(mode_parameter_1.k_vector)
+    t_2_vec_and_p_2_vec = cavity_2.principle_axes(mode_parameter_2.k_vector)
+
+    t_1_vec = t_1_vec_and_p_1_vec[0, :]
+    p_1_vec = t_1_vec_and_p_1_vec[1, :]
+
+    t_2_vec = t_2_vec_and_p_2_vec[0, :]
+    p_2_vec = t_2_vec_and_p_2_vec[1, :]
+
+    # The projection of t_2 on P1:
+    t_2_vec_projected_on_P1 = t_2_vec - np.dot(t_2_vec, mode_parameter_1.k_vector) * mode_parameter_1.k_vector
+    p_2_vec_projected_on_P1 = p_2_vec - np.dot(p_2_vec, mode_parameter_1.k_vector) * mode_parameter_1.k_vector
+
+    # the angle between t_1 and t_2:
+    cos_theta_rotation = normalize_vector(t_2_vec_projected_on_P1) @ t_1_vec
+    theta_rotation = np.arccos(cos_theta_rotation)
+
+    # The projection of k_2 the principal axes of P1:
+    k_p = mode_parameter_2.k_vector @ p_1_vec
+    k_t = mode_parameter_2.k_vector @ t_1_vec
+
+    # The effective widths of the second lase in the plane P1: (since this plane is not necessarily perpendicular to the
+    # laser, the widths appear shrinked in that plane
+    s_t_2_eff = s_t_2 * np.linalg.norm(t_2_vec_projected_on_P1)
+    s_p_2_eff = s_p_2 * np.linalg.norm(p_2_vec_projected_on_P1)
+
+    return gaussians_overlap_integral(s_t_1, s_p_1, t_2, p_2, s_t_2_eff, s_p_2_eff, k_t, k_p, theta_rotation)
+
+
+def gaussians_overlap_integral(w_x_1, w_y_1, w_x_2, w_y_2, x_2, y_2, k_x, k_y, theta):
+
+    a_x = 1 / (w_x_1 ** 2) + (np.cos(theta) ** 2) / (w_x_2 ** 2) + (np.sin(theta) ** 2) / (w_y_2 ** 2)
+    b_x = 2 * x_2 / (w_x_1 ** 2)
+    a_y = 1 / (w_y_1 ** 2) + (np.sin(theta) ** 2) / (w_x_2 ** 2) + (np.cos(theta) ** 2) / (w_y_2 ** 2)
+    b_y = 2 * y_2 / (w_y_1 ** 2)
+    a = (1 / (w_y_2 ** 2) - 1 / (w_x_2 ** 2)) * np.sin(2 * theta)
+    c = -(x_2 ** 2) / (w_x_1 ** 2) - (y_2 ** 2) / (w_y_1 ** 2)
+
+    root = np.pi*np.sqrt(1 / ((a_x - (a**2 / (4*a_y))) * a_y))
+    exponent = np.exp((b_x ** 2 - k_x ** 2 + (a / a_y) * b_x * b_y - (a / a_y) * k_x * k_y + (a ** 2 / (4 * a_y ** 2)) * (b_y ** 2 - k_y ** 2)) /
+                  (4 * (a_x - a**2 / (4*a_y)))
+                  + (b_y ** 2 - k_y ** 2) / (4 * a_y) + c)
+    cosine = np.cos((2 * b_x * k_x + (a / a_y) * b_x * k_y + (a / a_y) * b_y * k_x + (a ** 2 / (2 * a_y ** 2)) * b_y * k_y) /
+                    (4 * (a_x - a**2 / (4*a_y)))
+                    + (b_y * k_y) / (2 * a_y))
+    normalization_factor = np.pi/2 * np.sqrt(w_x_1 * w_y_1 * w_x_2 * w_y_2)
+
+    return root * exponent * cosine / normalization_factor
+
+
 
 
 if __name__ == '__main__':
@@ -749,12 +911,13 @@ if __name__ == '__main__':
     phi_ray = 0.00
     elev = 38.00
     azim = 168.00
-    axis_span = 1.00
+    axis_span = 1.30
     focus_point = -1
     set_initial_surface = True
-    dim = 2
+    dim = 3
+    lambda_laser=0.001
 
-    R = 100
+    R = 1.2
 
     x_1 += 1
     y_1 += 0.00
@@ -791,14 +954,14 @@ if __name__ == '__main__':
     initial_ray = cavity.ray_of_initial_parameters(initial_ray_parameters)
     ray_history = cavity.trace_ray(initial_ray)
 
-    ax = cavity.plot(camera_center=focus_point, axis_span=axis_span, ray_list=ray_history, dim=dim)
+    ax = cavity.plot(camera_center=focus_point, axis_span=axis_span, ray_list=ray_history, dim=dim, lambda_laser=lambda_laser)
     if dim == 3:
         ax.view_init(elev=elev, azim=azim)
     # else:
     #     ax.set_aspect(1)
     for ray in cavity.central_line:
         ray.plot(ax=ax, dim=dim, color='b', linewidth=0.5)
-    plt.show()
+
 
     output_location = cavity.surfaces[-1].get_parameterization(ray_history[-1].origin)
     output_direction = angles_of_unit_vector(ray_history[-1].k_vector)
@@ -810,6 +973,10 @@ if __name__ == '__main__':
     local_mode_parameters = cavity.get_mode_parameters_on_mirrors()
 
     mode_parameters = cavity.get_mode_parameters(local_mode_parameters)
+    list_of_spot_size_lines = cavity.generate_spot_size_lines(lambda_laser=0.001, dim=dim)
+
+    plt.show()
+
 
 
 
