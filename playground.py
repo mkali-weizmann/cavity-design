@@ -38,9 +38,9 @@ w_x_1 = 1
 w_y_1 = 1
 x_2 = 0
 y_2 = 0
-w_x_2 = 1
+w_x_2 = 0.1
 w_y_2 = 1
-theta = 0
+theta = 1
 k_x = 1
 k_y = 0
 
@@ -119,3 +119,5 @@ a = 2 * np.sin(2 * theta) * (1 / w_x_2 ** 2 - 1 / w_y_2 ** 2)
 print(gaussian_integral_2d(a_x, 0, 2*k_x, a_y, 0, 2*k_y, a, 0))
 print(gaussian_norm(w_x_2, w_y_2, k_x, k_y, theta)**2)
 print(np.sum(functions_exponent_2**2) * (x[1] - x[0]) * (y[1] - y[0]))
+# print(mathematica_gaussian_norm(w_x_2, w_y_2, k_x, k_y, theta))
+
