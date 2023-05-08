@@ -869,9 +869,9 @@ def calculate_overlap_integral(cavity_1: Cavity, cavity_2: Cavity, lambda_laser:
 def gaussians_overlap_integral(w_x_1, w_y_1, w_x_2, w_y_2, x_2, y_2, k_x, k_y, theta):
 
     a_x = 1 / (w_x_1 ** 2) + (np.cos(theta) ** 2) / (w_x_2 ** 2) + (np.sin(theta) ** 2) / (w_y_2 ** 2)
-    b_x = 2 * x_2 / (w_x_1 ** 2)
+    b_x = -2 * x_2 / (w_x_1 ** 2)
     a_y = 1 / (w_y_1 ** 2) + (np.sin(theta) ** 2) / (w_x_2 ** 2) + (np.cos(theta) ** 2) / (w_y_2 ** 2)
-    b_y = 2 * y_2 / (w_y_1 ** 2)
+    b_y = -2 * y_2 / (w_y_1 ** 2)
     a = (1 / (w_y_2 ** 2) - 1 / (w_x_2 ** 2)) * np.sin(2 * theta)
     c = -(x_2 ** 2) / (w_x_1 ** 2) - (y_2 ** 2) / (w_y_1 ** 2)
 
@@ -882,11 +882,55 @@ def gaussians_overlap_integral(w_x_1, w_y_1, w_x_2, w_y_2, x_2, y_2, k_x, k_y, t
     cosine = np.cos((2 * b_x * k_x + (a / a_y) * b_x * k_y + (a / a_y) * b_y * k_x + (a ** 2 / (2 * a_y ** 2)) * b_y * k_y) /
                     (4 * (a_x - a**2 / (4*a_y)))
                     + (b_y * k_y) / (2 * a_y))
-    normalization_factor = np.pi/2 * np.sqrt(w_x_1 * w_y_1 * w_x_2 * w_y_2)
-
+    # mathematica_expression = 2 * np.exp(-( (b_y+1j*k_y)**2 * a_x + a * (b_x+1j*k_x) * (b_y+1j*k_y) + a_y * (b_x+1j*k_x)**2 ))
+    normalization_factor = np.pi/2 * np.sqrt((1/2) * w_x_1 * w_y_1 * w_x_2 * w_y_2 * (1+np.exp( (-1/2)*(k_x**2*w_x_2**2+k_y**2*w_y_2**2) )))
     return root * exponent * cosine / normalization_factor
 
 
+def gaussian_integral_2d(a_x, b_x, k_x, a_y, b_y, k_y, a, c):
+    repetitive_denomenator = 4 * a_x * a_y - a ** 2
+
+    root = 2 * np.pi * repetitive_denomenator ** (-1 / 2)
+    exponent = np.exp((a_y * (b_x ** 2 - k_x ** 2) - a * (b_x * b_y - k_x * k_y) + a_x * (
+                b_y ** 2 - k_y ** 2)) / repetitive_denomenator + c)
+    cosine = np.cos(
+        (2 * a_y * b_x * k_x - a * b_x * k_y - a * b_y * k_x + 2 * a_x * b_y * k_y) / repetitive_denomenator)
+
+    return root * exponent * cosine
+
+
+def gaussians_overlap_integral_v2(w_x_1, w_y_1, w_x_2, w_y_2, x_2, y_2, k_x, k_y, theta):
+    a_x = 1 / (w_x_1 ** 2) + (np.cos(theta) ** 2) / (w_x_2 ** 2) + (np.sin(theta) ** 2) / (w_y_2 ** 2)
+    b_x = -2 * x_2 / (w_x_1 ** 2)
+    a_y = 1 / (w_y_1 ** 2) + (np.sin(theta) ** 2) / (w_x_2 ** 2) + (np.cos(theta) ** 2) / (w_y_2 ** 2)
+    b_y = -2 * y_2 / (w_y_1 ** 2)
+    a = (1 / (w_x_2 ** 2) - 1 / (w_y_2 ** 2)) * np.sin(2 * theta)
+    c = -(x_2 ** 2) / (w_x_1 ** 2) - (y_2 ** 2) / (w_y_1 ** 2)
+
+    normalization_factor = gaussian_norm(w_x_1, w_y_1, 0, 0, 0) * gaussian_norm(w_x_2, w_y_2, k_x, k_y, theta)
+
+    return gaussian_integral_2d(a_x, b_x, k_x, a_y, b_y, k_y, a, c) / normalization_factor
+
+def gaussian_norm(w_x, w_y, k_x, k_y, theta):
+    a_x = 2 * (np.cos(theta) ** 2 / w_x ** 2 + np.sin(theta) ** 2 / w_y ** 2)
+    a_y = 2 * (np.sin(theta) ** 2 / w_x ** 2 + np.cos(theta) ** 2 / w_y ** 2)
+    a = 2 * np.sin(2 * theta) * (1 / w_x ** 2 - 1 / w_y ** 2)
+    # return (1/2) * (gaussian_integral_2d(a_x, 0, 0, a_y, 0, 0, a, 0) +
+    #                 gaussian_integral_2d(a_x, 0, 2*k_x, a_y, 0, 2*k_y, a, theta))
+    return np.sqrt(
+                    np.pi *
+                    (4*a_x * a_y - a**2)**(-1/2) *
+                    (1+np.exp((-a_y * k_x**2 + a*k_x*k_y - a_x * k_y**2) / (4*a_x*a_y-a**2)))
+    )
+
+def mathematica_gaussian_norm(kx, ky, wx2, wy2, theta):
+    arg1 = -1 / 4 * (
+            (kx ** 2 + ky ** 2) * (wx2 ** 2 + wy2 ** 2) + (kx ** 2 - ky ** 2) * (wx2 ** 2 - wy2 ** 2) * np.cos(
+            2 * theta) + 2 * kx * ky * (wx2 ** 2 - wy2 ** 2) * np.sin(2 * theta))
+    arg2 = -(1 / 4) * (kx ** 2 + ky ** 2) * (wx2 ** 2 + wy2 ** 2) - 1 / 4 * (wx2 - wy2) * (wx2 + wy2) * (
+                (kx - ky) * (kx + ky) * np.cos(2 * theta) - 2 * kx * ky * np.sin(2 * theta))
+    result = 1 / 8 * (2 + np.exp(arg1) + np.exp(arg2)) * np.pi * wx2 * wy2
+    return result
 
 
 if __name__ == '__main__':
