@@ -288,6 +288,9 @@ class Mirror(Surface):
     def ABCD_matrix(self, cos_theta_incoming: float) -> np.ndarray:
         raise NotImplementedError
 
+    def to_params(self):
+        raise NotImplementedError
+
 
 class FlatSurface(Surface):
     def __init__(self,
@@ -344,6 +347,15 @@ class FlatSurface(Surface):
 
 
 class FlatMirror(FlatSurface, Mirror):
+
+    def __init__(self,
+                 outwards_normal: np.ndarray,
+                 distance_from_origin: Optional[float] = None,
+                 center_of_mirror: Optional[np.ndarray] = None):
+        super().__init__(outwards_normal=outwards_normal,
+                         distance_from_origin=distance_from_origin,
+                         center_of_mirror=center_of_mirror)
+
     def plot(self, ax: Optional[plt.Axes] = None, name: Optional[str] = None, dim: int = 3, length=0.6):
         return super().plot(ax, name, dim, length)
 
@@ -360,13 +372,8 @@ class FlatMirror(FlatSurface, Mirror):
     def center(self):
         return super().center
 
-    def __init__(self,
-                 outwards_normal: np.ndarray,
-                 distance_from_origin: Optional[float] = None,
-                 center_of_mirror: Optional[np.ndarray] = None):
-        super().__init__(outwards_normal=outwards_normal,
-                         distance_from_origin=distance_from_origin,
-                         center_of_mirror=center_of_mirror)
+    def to_params(self):
+        raise NotImplementedError
 
     def reflect_direction(self, ray: Ray) -> np.ndarray:
         dot_product = ray.k_vector @ self.outwards_normal  # m_rays
@@ -405,6 +412,20 @@ class CurvedMirror(Mirror):
             self.origin = center + radius * self.inwards_normal
         else:
             self.origin = origin
+
+    @staticmethod
+    def from_params(params: np.ndarray):
+        x, y, z, t, p, r = params
+        center = np.array([x, y, z])
+        outwards_normal = unit_vector_of_angles(t, p)
+        mirror = CurvedMirror(radius=r, outwards_normal=outwards_normal, center=center)
+        return mirror
+
+    def to_params(self):
+        x, y, z = self.center
+        r = self.radius
+        t, p = angles_of_unit_vector(self.outwards_normal)
+        return x, y, z, t, p, r
 
     def find_intersection_with_ray(self, ray: Ray) -> np.ndarray:
         # Result of the next line of mathematica to find the intersection:
@@ -519,6 +540,14 @@ class Cavity:
         if set_initial_surface:
             self.set_initial_surface()
 
+    @staticmethod
+    def from_params(params: np.ndarray, set_initial_surface: bool = False):
+        mirrors = [CurvedMirror.from_params(params[i, :]) for i in range(len(params))]
+        return Cavity(mirrors, set_initial_surface)
+
+    def to_params(self):
+        return np.array([mirror.to_params() for mirror in self.mirrors])
+
     def trace_ray(self, ray: Ray) -> List[Ray]:
         ray_history = [ray]
 
@@ -553,7 +582,13 @@ class Cavity:
         diff = final_position_and_angles - starting_position_and_angles
         return diff
 
-    def find_central_line(self) -> Tuple[np.ndarray, bool]:
+    def find_central_line(self, override_existing=False) -> Tuple[np.ndarray, bool]:
+        if self.central_line_successfully_traced is not None and not override_existing:
+            # I never debugged those two lines:
+            initial_theta, initial_phi = angles_of_unit_vector(self.central_line[0].k_vector)
+            initial_t, initial_p = self.mirrors[-1].get_parameterization(self.central_line[-2].origin)
+            return np.array([initial_t, initial_theta, initial_p, initial_phi]), self.central_line_successfully_traced
+
         theta_initial_guess, phi_initial_guess = self.default_initial_angles
 
         initial_guess = np.array([0, theta_initial_guess, 0, phi_initial_guess])
@@ -578,6 +613,8 @@ class Cavity:
         return central_line_initial_parameters, central_line_successfully_traced
 
     def set_initial_surface(self):
+        if isinstance(self.surfaces[-1], FlatSurface):
+            return self.surfaces[-1]
         # gets a surface that sits between the first two mirrors, centered and perpendicular to the central line.
         if self.central_line is None:
             final_position_and_angles, success = self.find_central_line()
@@ -589,7 +626,7 @@ class Cavity:
         self.surfaces.append(initial_surface)
         # Now, after you found the initial_surface, we can retrace the central line, but now let it out from the
         # initial surface, instead of the first mirror.
-        self.find_central_line()
+        self.find_central_line(override_existing=True)
         return initial_surface
 
     def generate_ABCD_matrix_numeric(self,
@@ -762,21 +799,23 @@ class Cavity:
 
         ax.set_xlim(origin_camera[0] - axis_span, origin_camera[0] + axis_span)
         ax.set_ylim(origin_camera[1] - axis_span, origin_camera[1] + axis_span)
-        if dim == 3:
-            ax.set_zlim(origin_camera[2] - axis_span, origin_camera[2] + axis_span)
-            ax.plot(ray_list[0].origin[0], ray_list[0].origin[1], ray_list[0].origin[2], 'go',
-                       label='beginning')
-            ax.plot(ray_list[-1].origin[0], ray_list[-1].origin[1], ray_list[-1].origin[2], 'ro',
-                       label='end')
-        else:
-            ax.plot(ray_list[0].origin[0], ray_list[0].origin[1], 'go', label='beginning')
-            ax.plot(ray_list[-1].origin[0], ray_list[-1].origin[1], 'ro', label='end')
-
-        plt.legend()
 
         if ray_list is None and len(self.central_line) > 0:
             ray_list = self.central_line
+
         if ray_list is not None:
+            if dim == 3:
+                ax.set_zlim(origin_camera[2] - axis_span, origin_camera[2] + axis_span)
+                ax.plot(ray_list[0].origin[0], ray_list[0].origin[1], ray_list[0].origin[2], 'go',
+                        label='beginning')
+                ax.plot(ray_list[-1].origin[0], ray_list[-1].origin[1], ray_list[-1].origin[2], 'ro',
+                        label='end')
+            else:
+                ax.plot(ray_list[0].origin[0], ray_list[0].origin[1], 'go', label='beginning')
+                ax.plot(ray_list[-1].origin[0], ray_list[-1].origin[1], 'ro', label='end')
+
+            plt.legend()
+
             for ray in ray_list:
                 ray.plot(ax=ax, dim=dim)
         for i, surface in enumerate(self.surfaces):
@@ -792,22 +831,30 @@ class Cavity:
 
         return ax
 
-    def calculate_overlap_integral(self, lambda_laser: float):
-        df = pd.DataFrame(columns=['mirror', 'parameter', 'value', 'overlap_integral'])
-        for i, mirror in enumerate(self.mirrors):
-            for parameter in mirror.__dict__.keys():
-                new_parameter_value = getattr(mirror, parameter) + 0.01
-                new_mirror = copy.deepcopy(mirror)
-                setattr(new_mirror, parameter, new_parameter_value)
-                new_cavity = copy.deepcopy(self)
-                new_cavity.mirrors[i] = new_mirror
-                overlap_intgral = calculate_overlap_integral(self, new_cavity, lambda_laser)
-                df = df.append({'mirror': i, 'parameter': parameter, 'value': new_parameter_value,
-                                'overlap_integral': overlap_intgral}, ignore_index=True)
+    def calculated_shifted_cavity_overlap_integral(self, parameter_index: Tuple[int, int],
+                                                   shift: Union[float, np.ndarray], lambda_laser: float):
+        params = self.to_params()
+        shift_input_is_float = isinstance(shift, float)
+        if shift_input_is_float:
+            shift = np.array([shift])
+        overlaps = np.zeros_like(shift)
+        for i, shift_value in enumerate(shift):
+            new_params = copy.deepcopy(params)
+            new_params[parameter_index] = params[parameter_index] + shift_value
+            new_cavity = Cavity.from_params(params=new_params)
+            overlap = calculate_cavities_overlap(cavity_1=self, cavity_2=new_cavity, lambda_laser=lambda_laser)
+            overlaps[i] =overlap
+        if shift_input_is_float:
+            overlaps = overlaps[0]
+        return overlaps
+
+    def calculate_shift_threshold(self, parameter_index: Tuple[int, int], lambda_laser: float, threshold: float):
+        def overlap_of_shift(shift: float):
+            return threshold - self.calculated_shifted_cavity_overlap_integral(parameter_index=parameter_index, shift=shift, lambda_laser=lambda_laser)
+        return optimize.root_scalar(overlap_of_shift, x0=0, x1=0.001)
 
 
-
-def calculate_overlap_integral(cavity_1: Cavity, cavity_2: Cavity, lambda_laser: float):
+def calculate_cavities_overlap(cavity_1: Cavity, cavity_2: Cavity, lambda_laser: float):
     # Initialize all required parameters:
     cavity_1.find_central_line()
     cavity_2.find_central_line()
@@ -834,6 +881,10 @@ def calculate_overlap_integral(cavity_1: Cavity, cavity_2: Cavity, lambda_laser:
     # The intersection of the laser with the plane P1:
     # t_1, p_1 = 0, 0
     t_2, p_2 = P1.get_parameterization(P1.find_intersection_with_ray(mode_parameter_2.ray))
+    # Each one of those returns as an array of two identical values (because there are different origins for the two
+    # axes, thus there are two rays) but they coincide and so the values are identical):
+    t_2 = t_2[0]
+    p_2 = p_2[0]
 
     # The vectors that are perpendicular to the lasers, the first is perpendicular to the central line plane,
     # and the other is inside it. (in the first cavity they are orthonormal basis to P1)
@@ -863,7 +914,7 @@ def calculate_overlap_integral(cavity_1: Cavity, cavity_2: Cavity, lambda_laser:
     s_t_2_eff = s_t_2 * np.linalg.norm(t_2_vec_projected_on_P1)
     s_p_2_eff = s_p_2 * np.linalg.norm(p_2_vec_projected_on_P1)
 
-    return gaussians_overlap_integral(s_t_1, s_p_1, t_2, p_2, s_t_2_eff, s_p_2_eff, k_t, k_p, theta_rotation)
+    return gaussians_overlap_integral(s_t_1, s_p_1, s_t_2_eff, s_p_2_eff, t_2, p_2, k_t, k_p, theta_rotation)
 
 
 def gaussians_overlap_integral(w_x_1, w_y_1, w_x_2, w_y_2, x_2, y_2, k_x, k_y, theta):
@@ -917,17 +968,6 @@ def gaussian_norm(w_x, w_y, k_x, k_y, theta):
     a = 2 * np.sin(2 * theta) * (1 / w_x ** 2 - 1 / w_y ** 2)
     return np.sqrt((1/2) * (gaussian_integral_2d(a_x, 0, 0, a_y, 0, 0, a, 0) +
                     gaussian_integral_2d(a_x, 0, 2*k_x, a_y, 0, 2*k_y, a, 0)))
-    # return np.sqrt(
-    #                 np.pi *
-    #                 (4*a_x * a_y - a**2)**(-1/2) *
-    #                 (1+np.exp((-a_y * k_x**2 + a*k_x*k_y - a_x * k_y**2) / (4*a_x*a_y-a**2)))
-    # )
-
-# def gaussian_norm(w_x, w_y, k_x, k_y, theta):
-#     arg_1 = (k_x**2+k_y**2) * (w_x**2+w_y**2)
-#     arg_2 = (w_x**2-w_y**2) * ((k_x**2-k_y**2) * np.cos(2*theta) - 2*k_x*k_y*np.sin(2*theta))
-#     return np.sqrt((1/4) * (1+np.exp(-(1/4) * (arg_1+arg_2))) * np.pi * w_x * w_y)
-
 
 if __name__ == '__main__':
     x_1 = 0.00
@@ -955,7 +995,7 @@ if __name__ == '__main__':
     focus_point = -1
     set_initial_surface = True
     dim = 3
-    lambda_laser=0.001
+    lambda_laser=0.01
 
     R = 1.2
 
@@ -975,44 +1015,17 @@ if __name__ == '__main__':
     t_3 += 0
     p_3 += 7 * np.pi / 6
 
-    normal_1 = unit_vector_of_angles(t_1, p_1)
-    center_1 = np.array([x_1, y_1, 0])
-    normal_2 = unit_vector_of_angles(t_2, p_2)
-    center_2 = np.array([x_2, y_2, 0])
-    normal_3 = unit_vector_of_angles(t_3, p_3)
-    center_3 = np.array([x_3, y_3, 0])
-
-    mirror_1 = CurvedMirror(radius=r_1, outwards_normal=normal_1, center=center_1)
-    mirror_2 = CurvedMirror(radius=r_2, outwards_normal=normal_2, center=center_2)
-    mirror_3 = CurvedMirror(radius=r_3, outwards_normal=normal_3, center=center_3)
-
-    cavity = Cavity([mirror_1, mirror_2, mirror_3], set_initial_surface=set_initial_surface)
-
-    central_line_parameters, success = cavity.find_central_line()
-
-    initial_ray_parameters = central_line_parameters + np.array([t_ray, theta_ray, p_ray, phi_ray])
-    initial_ray = cavity.ray_of_initial_parameters(initial_ray_parameters)
-    ray_history = cavity.trace_ray(initial_ray)
-
-    ax = cavity.plot(camera_center=focus_point, axis_span=axis_span, ray_list=ray_history, dim=dim, lambda_laser=lambda_laser)
-    if dim == 3:
-        ax.view_init(elev=elev, azim=azim)
-    # else:
-    #     ax.set_aspect(1)
-    for ray in cavity.central_line:
-        ray.plot(ax=ax, dim=dim, color='b', linewidth=0.5)
+    params = np.array([[x_1, y_1, 0, t_1, p_1, r_1],
+                       [x_2, y_2, 0, t_2, p_2, r_2],
+                       [x_3, y_3, 0, t_3, p_3, r_3]])
 
 
-    output_location = cavity.surfaces[-1].get_parameterization(ray_history[-1].origin)
-    output_direction = angles_of_unit_vector(ray_history[-1].k_vector)
-    output_parameters = np.array([output_location[0], output_direction[0], output_location[1], output_direction[1]])
+    cavity = Cavity.from_params(params, set_initial_surface=set_initial_surface)
 
-    ABCD_matrix_analytic = cavity.generate_ABCD_matrix_analytic()
-    ABCD_matrix_numeric = cavity.generate_ABCD_matrix_numeric()
+    cavity.find_central_line()
 
-    local_mode_parameters = cavity.get_mode_parameters_on_mirrors()
+    cavity.get_mode_parameters()
 
-    mode_parameters = cavity.get_mode_parameters(local_mode_parameters)
-    list_of_spot_size_lines = cavity.generate_spot_size_lines(lambda_laser=0.001, dim=dim)
-
-    plt.show()
+    cavity.calculated_shifted_cavity_overlap_integral((0, 0), 0.001, lambda_laser=lambda_laser)
+    a = cavity.calculate_shift_threshold((0, 0), lambda_laser=lambda_laser, threshold=0.99)
+    print("kaki")
