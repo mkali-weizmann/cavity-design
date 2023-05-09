@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from cavity import gaussians_overlap_integral, gaussians_overlap_integral_v2, gaussian_integral_2d, gaussian_norm
-D = 5
+D = 10
 N = 1000
 def evaluate_gaussian(x, y, x_0, y_0, w_x, w_y, theta, k_x, k_y):
     x_rot = np.cos(theta) * (x - x_0) + np.sin(theta) * (y - y_0)
@@ -20,13 +20,13 @@ def calculate_gaussian_overlap_numeric(w_x_1, w_y_1, w_x_2, w_y_2, x_2, y_2, k_x
 
 
 def evaluate_integrand(x, y, w_x_1, w_y_1, w_x_2, w_y_2, x_2, y_2, k_x, k_y, theta):
-    a_x = 1 / w_x_1**2 + (np.cos(theta))**2 / w_x_2**2 + (np.sin(theta))**2 / w_y_2**2
-    b_x = -2 * x_2 / w_x_1**2 + 1j * k_x
-    a_y = 1 / w_y_1**2 + (np.sin(theta))**2 / w_x_2**2 + (np.cos(theta))**2 / w_y_2**2
-    b_y = -2 * y_2 / w_y_1**2 + 1j * k_y
-    a = (1 / w_y_2**2 - 1 / w_x_2**2) * np.sin(2 * theta)
-    c = -x_2**2 / w_x_1**2 - y_2**2 / w_y_1**2
-    exponent_term = -a_x * x**2 + b_x * x - a_y * y**2 + b_y * y + a * x * y + c
+    a_x = 1 / w_x_1 ** 2 + (np.cos(theta)) ** 2 / w_x_2 ** 2 + (np.sin(theta)) ** 2 / w_y_2 ** 2
+    b_x = -2 * x_2 / w_x_1 ** 2
+    a_y = 1 / w_y_1 ** 2 + (np.sin(theta)) ** 2 / w_x_2 ** 2 + (np.cos(theta)) ** 2 / w_y_2 ** 2
+    b_y = -2 * y_2 / w_y_1 ** 2
+    a = (1 / w_x_2 ** 2 - 1 / w_y_2 ** 2) * np.sin(2 * theta)
+    c = -x_2 ** 2 / w_x_1 ** 2 - y_2 ** 2 / w_y_1 ** 2
+    exponent_term = -a_x * x ** 2 + (b_x + 1j * k_x) * x - a_y * y ** 2 + (b_y + 1j * k_y) * y - a * x * y + c
     expression = np.exp(exponent_term)
     return 1/2 * np.real((expression + np.conj(expression)))
 
@@ -38,10 +38,10 @@ w_x_1 = 1
 w_y_1 = 1
 x_2 = 3
 y_2 = -2
-w_x_2 = 0.1
+w_x_2 = 0.2
 w_y_2 = 4
-theta = 1
-k_x = -2
+theta = 1.3
+k_x = -4
 k_y = 5
 
 

@@ -1016,8 +1016,3 @@ if __name__ == '__main__':
     list_of_spot_size_lines = cavity.generate_spot_size_lines(lambda_laser=0.001, dim=dim)
 
     plt.show()
-
-
-
-
-
