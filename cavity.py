@@ -911,22 +911,22 @@ def gaussians_overlap_integral_v2(w_x_1, w_y_1, w_x_2, w_y_2, x_2, y_2, k_x, k_y
 
     return gaussian_integral_2d(a_x, b_x, k_x, a_y, b_y, k_y, a, c) / normalization_factor
 
-# def gaussian_norm(w_x, w_y, k_x, k_y, theta):
-#     a_x = 2 * (np.cos(theta) ** 2 / w_x ** 2 + np.sin(theta) ** 2 / w_y ** 2)
-#     a_y = 2 * (np.sin(theta) ** 2 / w_x ** 2 + np.cos(theta) ** 2 / w_y ** 2)
-#     a = 2 * np.sin(2 * theta) * (1 / w_x ** 2 - 1 / w_y ** 2)
-#     # return (1/2) * (gaussian_integral_2d(a_x, 0, 0, a_y, 0, 0, a, 0) +
-#     #                 gaussian_integral_2d(a_x, 0, 2*k_x, a_y, 0, 2*k_y, a, theta))
-#     return np.sqrt(
-#                     np.pi *
-#                     (4*a_x * a_y - a**2)**(-1/2) *
-#                     (1+np.exp((-a_y * k_x**2 + a*k_x*k_y - a_x * k_y**2) / (4*a_x*a_y-a**2)))
-#     )
-
 def gaussian_norm(w_x, w_y, k_x, k_y, theta):
-    arg_1 = (k_x**2+k_y**2) * (w_x**2+w_y**2)
-    arg_2 = (w_x**2-w_y**2) * ((k_x**2-k_y**2) * np.cos(2*theta) - 2*k_x*k_y*np.sin(2*theta))
-    return np.sqrt((1/4) * (1+np.exp(-(1/4) * (arg_1+arg_2))) * np.pi * w_x * w_y)
+    a_x = 2 * (np.cos(theta) ** 2 / w_x ** 2 + np.sin(theta) ** 2 / w_y ** 2)
+    a_y = 2 * (np.sin(theta) ** 2 / w_x ** 2 + np.cos(theta) ** 2 / w_y ** 2)
+    a = 2 * np.sin(2 * theta) * (1 / w_x ** 2 - 1 / w_y ** 2)
+    return np.sqrt((1/2) * (gaussian_integral_2d(a_x, 0, 0, a_y, 0, 0, a, 0) +
+                    gaussian_integral_2d(a_x, 0, 2*k_x, a_y, 0, 2*k_y, a, 0)))
+    # return np.sqrt(
+    #                 np.pi *
+    #                 (4*a_x * a_y - a**2)**(-1/2) *
+    #                 (1+np.exp((-a_y * k_x**2 + a*k_x*k_y - a_x * k_y**2) / (4*a_x*a_y-a**2)))
+    # )
+
+# def gaussian_norm(w_x, w_y, k_x, k_y, theta):
+#     arg_1 = (k_x**2+k_y**2) * (w_x**2+w_y**2)
+#     arg_2 = (w_x**2-w_y**2) * ((k_x**2-k_y**2) * np.cos(2*theta) - 2*k_x*k_y*np.sin(2*theta))
+#     return np.sqrt((1/4) * (1+np.exp(-(1/4) * (arg_1+arg_2))) * np.pi * w_x * w_y)
 
 
 if __name__ == '__main__':

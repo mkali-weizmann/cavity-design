@@ -1,3 +1,5 @@
+# Requires to remove the normalization also from the function in cavity.py
+
 import numpy as np
 import matplotlib.pyplot as plt
 from cavity import gaussians_overlap_integral, gaussians_overlap_integral_v2, gaussian_integral_2d, gaussian_norm
@@ -16,7 +18,7 @@ def calculate_gaussian_overlap_numeric(w_x_1, w_y_1, w_x_2, w_y_2, x_2, y_2, k_x
     Z_1 = evaluate_gaussian(X, Y, x_2, y_2, w_x_1, w_y_1, 0, 0, 0)
     Z_2 = evaluate_gaussian(X, Y, 0, 0, w_x_2, w_y_2, theta, k_x, k_y)
 
-    return np.sum(Z_1 * Z_2) / np.sqrt(np.sum(Z_1 ** 2) * np.sum(Z_2 ** 2))
+    return np.sum(Z_1 * Z_2) * (x[1] - x[0]) * (y[1] - y[0])# / np.sqrt(np.sum(Z_1 ** 2) * np.sum(Z_2 ** 2))
 
 
 def evaluate_integrand(x, y, w_x_1, w_y_1, w_x_2, w_y_2, x_2, y_2, k_x, k_y, theta):
@@ -36,13 +38,13 @@ def evaluate_integrand(x, y, w_x_1, w_y_1, w_x_2, w_y_2, x_2, y_2, k_x, k_y, the
 # for i, theta in enumerate(thetas):
 w_x_1 = 1
 w_y_1 = 1
-x_2 = 3
-y_2 = -2
+x_2 = 0
+y_2 = 0
 w_x_2 = 0.1
-w_y_2 = 4
-theta = 1
-k_x = -2
-k_y = 5
+w_y_2 = 5
+theta = -1
+k_x = 1
+k_y = -2
 
 
 x = np.linspace(-D, D, N)
@@ -89,9 +91,9 @@ functions_integrand = evaluate_integrand(X, Y, w_x_1, w_y_1, w_x_2, w_y_2, x_2, 
 # print([manual_integrand[i, j], functions_integrand[i, j]])
 # Z = np.exp(-R_normed_with_sigma_2_inv)
 
-I_manual = np.sum(manual_integrand) / np.sqrt(np.sum(manual_exponent_1**2) * np.sum(manual_exponent_2**2))
+I_manual = np.sum(manual_integrand) * (x[1] - x[0]) * (y[1] - y[0])# / np.sqrt(np.sum(manual_exponent_1**2) * np.sum(manual_exponent_2**2))
 I_numeric = calculate_gaussian_overlap_numeric(w_x_1, w_y_1, w_x_2, w_y_2, x_2, y_2, k_x, k_y, theta)
-I_functions_integrand = np.sum(functions_integrand) / np.sqrt(np.sum(functions_exponent_1**2) * np.sum(functions_exponent_2**2))
+I_functions_integrand = np.sum(functions_integrand) * (x[1] - x[0]) * (y[1] - y[0])# / np.sqrt(np.sum(functions_exponent_1**2) * np.sum(functions_exponent_2**2))
 I_analytic = gaussians_overlap_integral(w_x_1, w_y_1, w_x_2, w_y_2, x_2, y_2, k_x, k_y, theta)
 I_analytic_v2 = gaussians_overlap_integral_v2(w_x_1, w_y_1, w_x_2, w_y_2, x_2, y_2, k_x, k_y, theta)
 
