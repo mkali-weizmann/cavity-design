@@ -5,6 +5,7 @@ from scipy import optimize
 import warnings
 from dataclasses import dataclass
 import copy
+from itertools import compress
 import pandas as pd
 
 # Throughout the code, all tensors can take any number of dimensions, but the last dimension is always the coordinate
@@ -296,19 +297,19 @@ class FlatSurface(Surface):
     def __init__(self,
                  outwards_normal: np.ndarray,
                  distance_from_origin: Optional[float] = None,
-                 center_of_mirror: Optional[np.ndarray] = None,
+                 center: Optional[np.ndarray] = None,
                  **kwargs):
         super().__init__(outwards_normal=outwards_normal, **kwargs)
-        if distance_from_origin is None and center_of_mirror is None:
+        if distance_from_origin is None and center is None:
             raise ValueError('Either distance_from_origin or center must be specified')
-        if distance_from_origin is not None and center_of_mirror is not None:
+        if distance_from_origin is not None and center is not None:
             raise ValueError('Only one of distance_from_origin or center must be specified')
         if distance_from_origin is not None:
             self.distance_from_origin = distance_from_origin
             self.center_of_mirror_private = self.outwards_normal * distance_from_origin
-        if center_of_mirror is not None:
-            self.center_of_mirror_private = center_of_mirror
-            self.distance_from_origin = center_of_mirror @ self.outwards_normal
+        if center is not None:
+            self.center_of_mirror_private = center
+            self.distance_from_origin = center @ self.outwards_normal
 
     def find_intersection_with_ray(self, ray: Ray) -> np.ndarray:
         A_vec = self.outwards_normal * self.distance_from_origin
@@ -351,10 +352,8 @@ class FlatMirror(FlatSurface, Mirror):
     def __init__(self,
                  outwards_normal: np.ndarray,
                  distance_from_origin: Optional[float] = None,
-                 center_of_mirror: Optional[np.ndarray] = None):
-        super().__init__(outwards_normal=outwards_normal,
-                         distance_from_origin=distance_from_origin,
-                         center_of_mirror=center_of_mirror)
+                 center: Optional[np.ndarray] = None):
+        super().__init__(outwards_normal=outwards_normal, distance_from_origin=distance_from_origin, center=center)
 
     def plot(self, ax: Optional[plt.Axes] = None, name: Optional[str] = None, dim: int = 3, length=0.6):
         return super().plot(ax, name, dim, length)
@@ -394,14 +393,14 @@ class FlatMirror(FlatSurface, Mirror):
         return Ray(intersection_point, reflected_direction_vector)
 
 
-class CurvedMirror(Mirror):
+class CurvedSurface(Surface):
     def __init__(self, radius: float,
                  outwards_normal: np.ndarray,  # Pointing from the origin of the sphere to the mirror's center.
                  center: Optional[np.ndarray] = None,  # Not the center of the sphere but the center of
                  # the plate.
                  origin: Optional[np.ndarray] = None  # The center of the sphere.
                  ):
-        super().__init__(outwards_normal)
+        super().__init__(outwards_normal=outwards_normal)
         self.radius = radius
 
         if origin is None and center is None:
@@ -445,38 +444,6 @@ class CurvedMirror(Mirror):
         ray.length = l
         return ray.parameterization(l)
 
-    def reflect_direction(self, ray: Ray, intersection_point: Optional[np.ndarray] = None) -> np.ndarray:
-        # Notice that this function does not reflect along the normal of the mirror but along the normal projection
-        # of the ray on the mirror.
-        if intersection_point is None:
-            intersection_point = self.find_intersection_with_ray(ray)
-        mirror_normal_vector = self.origin - intersection_point  # m_rays | 3
-        mirror_normal_vector = normalize_vector(mirror_normal_vector)
-        dot_product = np.sum(ray.k_vector * mirror_normal_vector, axis=-1)  # m_rays  # This dot product is written
-        # like so because both tensors have the same shape and the dot product is calculated along the last axis.
-        # you could also perform this product by transposing the second tensor and then dot multiplying the two tensors,
-        # but this it would be cumbersome to do so.
-        reflected_direction_vector = ray.k_vector - 2 * dot_product[
-            ..., np.newaxis] * mirror_normal_vector  # m_rays | 3
-        return reflected_direction_vector
-
-    def reflect_ray(self, ray: Ray) -> Ray:
-        intersection_point = self.find_intersection_with_ray(ray)
-        reflected_direction_vector = self.reflect_direction(ray, intersection_point)
-        return Ray(intersection_point, reflected_direction_vector)
-
-    @property
-    def center(self):
-        return self.origin - self.radius * self.inwards_normal
-
-    def get_spanning_vectors(self):
-        # For the case of the sphere with normal on the x-axis, those will be the y and z axis.
-        # For the case of the sphere with normal on the y-axis, those will be the x and z axis.
-        pseudo_y = np.cross(np.array([0, 0, 1]), self.inwards_normal)
-        pseudo_z = np.cross(self.inwards_normal, pseudo_y)  # Should be approximately equal to \hat{z}, and exactly
-        # equal if the outwards_normal is in the x-y plane.
-        return pseudo_y, pseudo_z
-
     def parameterization(self, t: Union[np.ndarray, float],  # the length of arc to travel on the sphere from the center
                          # of the mirror to the point of interest, in the direction "pseudo_z". pseudo_z is
                          # described in the get_spanning_vectors method. it is analogous to theta / R in the
@@ -506,6 +473,51 @@ class CurvedMirror(Mirror):
         t = np.arcsin(np.clip(normalized_points @ pseudo_z, -1, 1)) * self.radius
         return t, p
 
+    @property
+    def center(self):
+        return self.origin - self.radius * self.inwards_normal
+
+    def get_spanning_vectors(self):
+        # For the case of the sphere with normal on the x-axis, those will be the y and z axis.
+        # For the case of the sphere with normal on the y-axis, those will be the x and z axis.
+        pseudo_y = np.cross(np.array([0, 0, 1]), self.inwards_normal)
+        pseudo_z = np.cross(self.inwards_normal, pseudo_y)  # Should be approximately equal to \hat{z}, and exactly
+        # equal if the outwards_normal is in the x-y plane.
+        return pseudo_y, pseudo_z
+
+    def reflect_ray(self, ray: Ray) -> Ray:
+        intersection_point = self.find_intersection_with_ray(ray)
+        reflected_direction_vector = self.reflect_direction(ray, intersection_point)
+        return Ray(intersection_point, reflected_direction_vector)
+
+    def reflect_direction(self, ray: Ray, intersection_point: Optional[np.ndarray] = None) -> np.ndarray:
+        raise NotImplementedError
+
+
+class CurvedMirror(CurvedSurface, Mirror):
+    def __init__(self, radius: float,
+                    outwards_normal: np.ndarray,  # Pointing from the origin of the sphere to the mirror's center.
+                    center: Optional[np.ndarray] = None,  # Not the center of the sphere but the center of
+                    # the plate.
+                    origin: Optional[np.ndarray] = None  # The center of the sphere.
+                    ):
+            super().__init__(radius, outwards_normal, center, origin)
+
+    def reflect_direction(self, ray: Ray, intersection_point: Optional[np.ndarray] = None) -> np.ndarray:
+        # Notice that this function does not reflect along the normal of the mirror but along the normal projection
+        # of the ray on the mirror.
+        if intersection_point is None:
+            intersection_point = self.find_intersection_with_ray(ray)
+        mirror_normal_vector = self.origin - intersection_point  # m_rays | 3
+        mirror_normal_vector = normalize_vector(mirror_normal_vector)
+        dot_product = np.sum(ray.k_vector * mirror_normal_vector, axis=-1)  # m_rays  # This dot product is written
+        # like so because both tensors have the same shape and the dot product is calculated along the last axis.
+        # you could also perform this product by transposing the second tensor and then dot multiplying the two tensors,
+        # but this it would be cumbersome to do so.
+        reflected_direction_vector = ray.k_vector - 2 * dot_product[
+            ..., np.newaxis] * mirror_normal_vector  # m_rays | 3
+        return reflected_direction_vector
+
     def ABCD_matrix(self, cos_theta_incoming: float):
         # order of rows/columns elements is [t, theta, p, phi]
 
@@ -529,7 +541,9 @@ class CurvedMirror(Mirror):
 
 
 class Cavity:
-    def __init__(self, mirrors: List[Mirror], set_initial_surface: bool = False):
+    def __init__(self, mirrors: List[Mirror], set_initial_surface: bool = False,
+                 standing_wave: bool = False):
+        self.standing_wave = standing_wave
         self.mirrors = mirrors
         self.central_line: Optional[List[Ray]] = None
         self.central_line_successfully_traced: Optional[bool] = None
@@ -541,17 +555,32 @@ class Cavity:
             self.set_initial_surface()
 
     @staticmethod
-    def from_params(params: np.ndarray, set_initial_surface: bool = False):
+    def from_params(params: np.ndarray, set_initial_surface: bool = False, standing_wave: bool = False):
         mirrors = [CurvedMirror.from_params(params[i, :]) for i in range(len(params))]
-        return Cavity(mirrors, set_initial_surface)
+        return Cavity(mirrors, set_initial_surface, standing_wave)
 
     def to_params(self):
         return np.array([mirror.to_params() for mirror in self.mirrors])
 
+    @property
+    def mirrors_ordered(self):
+        if self.standing_wave:
+            return self.mirrors + self.mirrors[-2:0:-1]
+        else:
+            return self.mirrors
+
+    @property
+    def surfaces_ordered(self):
+        if self.standing_wave:
+            return self.surfaces + self.surfaces[-2:0:-1]
+        else:
+            return self.surfaces
+
+
     def trace_ray(self, ray: Ray) -> List[Ray]:
         ray_history = [ray]
 
-        for surface in self.surfaces:
+        for surface in self.surfaces_ordered:
             if isinstance(surface, Mirror):
                 ray = surface.reflect_ray(ray)
             else:
@@ -569,7 +598,7 @@ class Cavity:
         initial_ray = self.ray_of_initial_parameters(starting_position_and_angles)
         ray_history = self.trace_ray(initial_ray)
         final_intersection_point = ray_history[-1].origin
-        t_o, p_o = self.surfaces[-1].get_parameterization(final_intersection_point)  # Here it is the initial surface
+        t_o, p_o = self.surfaces_ordered[-1].get_parameterization(final_intersection_point)  # Here it is the initial surface
         # on purpose.
         theta_o, phi_o = angles_of_unit_vector(ray_history[-1].k_vector)
         final_position_and_angles = np.array([t_o, theta_o, p_o, phi_o])
@@ -586,7 +615,7 @@ class Cavity:
         if self.central_line_successfully_traced is not None and not override_existing:
             # I never debugged those two lines:
             initial_theta, initial_phi = angles_of_unit_vector(self.central_line[0].k_vector)
-            initial_t, initial_p = self.mirrors[-1].get_parameterization(self.central_line[-2].origin)
+            initial_t, initial_p = self.mirrors_ordered[-1].get_parameterization(self.central_line[-2].origin)
             return np.array([initial_t, initial_theta, initial_p, initial_phi]), self.central_line_successfully_traced
 
         theta_initial_guess, phi_initial_guess = self.default_initial_angles
@@ -602,7 +631,7 @@ class Cavity:
         else:
             central_line_successfully_traced = True
 
-        origin_solution = self.surfaces[-1].parameterization(central_line_initial_parameters[0],
+        origin_solution = self.surfaces_ordered[-1].parameterization(central_line_initial_parameters[0],
                                                              central_line_initial_parameters[2])  # t, p
         k_vector_solution = unit_vector_of_angles(central_line_initial_parameters[1],
                                                   central_line_initial_parameters[3])  # theta, phi
@@ -613,8 +642,8 @@ class Cavity:
         return central_line_initial_parameters, central_line_successfully_traced
 
     def set_initial_surface(self):
-        if isinstance(self.surfaces[-1], FlatSurface):
-            return self.surfaces[-1]
+        if not isinstance(self.surfaces_ordered[-1], Mirror):
+            return self.surfaces_ordered[-1]
         # gets a surface that sits between the first two mirrors, centered and perpendicular to the central line.
         if self.central_line is None:
             final_position_and_angles, success = self.find_central_line()
@@ -622,8 +651,11 @@ class Cavity:
                 warnings.warn("Could not find central line, so no initial surface could be set.")
                 return None
         middle_point = (self.central_line[0].origin + self.central_line[1].origin) / 2
-        initial_surface = FlatSurface(outwards_normal=-self.central_line[0].k_vector, center_of_mirror=middle_point)
-        self.surfaces.append(initial_surface)
+        initial_surface = FlatSurface(outwards_normal=-self.central_line[0].k_vector, center=middle_point)
+        if self.standing_wave:
+            self.surfaces.insert(1, initial_surface)
+        else:
+            self.surfaces.append(initial_surface)
         # Now, after you found the initial_surface, we can retrace the central line, but now let it out from the
         # initial surface, instead of the first mirror.
         self.find_central_line(override_existing=True)
@@ -650,21 +682,23 @@ class Cavity:
 
     def generate_ABCD_matrix_analytic(self) -> np.ndarray:
         # Based on page 611 in the PDF of Siegman's "Lasers"
-        if len(self.central_line) == 0:
+        if self.central_line is None:
             final_position_and_angles, success = self.find_central_line()
             if not success:
                 raise ValueError("Could not find central line")
-        cos_thetas = [self.central_line[i].k_vector @ self.surfaces[i].outwards_normal
-                      for i in range(len(self.surfaces))]
+        cos_thetas = [self.central_line[i].k_vector @ self.surfaces_ordered[i].outwards_normal
+                      for i in range(len(self.surfaces_ordered))]
         self.ABCD_matrices = []
-        for i, surface in enumerate(self.surfaces):
+        for i, surface in enumerate(self.surfaces_ordered):
             self.ABCD_matrices.append(ABCD_free_space(self.central_line[i].length))
             if isinstance(surface, Mirror):
                 self.ABCD_matrices.append(surface.ABCD_matrix(cos_thetas[i]))
             else:
                 self.ABCD_matrices.append(np.eye(4))
 
-        return np.linalg.multi_dot(self.ABCD_matrices[::-1])
+        ABCD_round_trip = np.linalg.multi_dot(self.ABCD_matrices[::-1])
+
+        return ABCD_round_trip
 
     def get_mode_parameters_on_mirrors(self):
         if self.central_line_successfully_traced is None:
@@ -674,14 +708,14 @@ class Cavity:
         else:
             ABCD_round_trip = np.linalg.multi_dot(self.ABCD_matrices[::-1])
         mode_parameters_current = local_mode_parameters_of_round_trip_ABCD(ABCD_round_trip)
-        mode_parameters_on_mirrors = [mode_parameters_current]
+        mode_parameters_on_mirrors = []
         for i in range(len(self.ABCD_matrices)-1):
             mode_parameters_current = propagate_local_mode_parameter_through_ABCD(mode_parameters_current,
                                                                                   self.ABCD_matrices[i])
-            if i % 2 == 1:
+            # We don't want to consider the abstract surfaces that are not mirrors in the list:
+            if i % 2 == 1 and isinstance(self.surfaces_ordered[i // 2], Mirror):
                 mode_parameters_on_mirrors.append(mode_parameters_current)
         # The first element is for the imaginary calculated surface, but we want one mode parameter for each mirror.
-        mode_parameters_on_mirrors.pop(0)
         return mode_parameters_on_mirrors
 
     def get_mode_parameters(self,
@@ -689,15 +723,19 @@ class Cavity:
         if mode_parameters_on_mirrors is None:
             mode_parameters_on_mirrors = self.get_mode_parameters_on_mirrors()
         self.mode_parameters = []
-        n_mirrors = len(self.mirrors)
-        for i in range(n_mirrors):
+        mirrors_mask = [isinstance(surface, Mirror) for surface in self.surfaces_ordered]
+        filtered_central_line = list(compress(self.central_line, mirrors_mask))
+        if self.standing_wave:
+            indices_interval = np.arange(1, len(self.surfaces))
+        else:
+            indices_interval = np.arange(0, len(self.surfaces))
+        for i in indices_interval:
             # The central line index is shifted by one, because the first element is the initial surface.
-            shifted_index = np.mod(i - 1, n_mirrors)
             # For i = 0 we get the -1 mirror, the mode_parameters of the -1 mirror, and the first central line.
             # For i = 1 we get the 0 mirror, the mode_parameters of the 0 mirror, and the second central line.
-            center = self.mirrors[shifted_index].center -\
-                     mode_parameters_on_mirrors[shifted_index].z_minus_z_0[..., np.newaxis] *\
-                     self.central_line[np.mod(i, n_mirrors)].k_vector
+            center = self.mirrors_ordered[i - 1].center -\
+                     mode_parameters_on_mirrors[i - 1].z_minus_z_0[..., np.newaxis] *\
+                     self.central_line[i].k_vector
             mode_parameters = ModeParameters(center=center,
                                              k_vector=self.central_line[i].k_vector,
                                              z_R=mode_parameters_on_mirrors[i].z_R,
@@ -711,7 +749,7 @@ class Cavity:
         if self.central_line_successfully_traced:
             initial_k_vector = self.central_line[0].k_vector
         else:
-            initial_k_vector = self.surfaces[0].center - self.surfaces[-1].center
+            initial_k_vector = self.surfaces_ordered[0].center - self.surfaces_ordered[-1].center
             initial_k_vector = normalize_vector(initial_k_vector)
         return initial_k_vector
 
@@ -727,7 +765,7 @@ class Cavity:
             return self.central_line[0]
         else:
             initial_k_vector = self.default_initial_k_vector
-            initial_ray = Ray(origin=self.surfaces[0].center, k_vector=initial_k_vector)
+            initial_ray = Ray(origin=self.surfaces_ordered[0].center, k_vector=initial_k_vector)
             return initial_ray
 
     def principle_axes(self, k_vector: np.ndarray):
@@ -736,16 +774,19 @@ class Cavity:
         if self.central_line_successfully_traced is None:
             self.find_central_line()
         # ATTENTION! THIS ASSUMES THAT ALL THE CENTRAL LINE LEGS ARE IN THE SAME PLANE.
-        pseudo_z = np.cross(self.central_line[0].k_vector, self.central_line[1].k_vector)  # Points to the positive
-        # z-axis when the central line goes counter-clockwise in the xy-plane.
-        pseudo_z = normalize_vector(pseudo_z)
+        # I find the biggest psuedo z because if the first two k_vector are parallel, the cross product is zero and the
+        # result of the cross product will be determined by arbitrary numerical errors.
+        possible_pseudo_zs = [np.cross(self.central_line[0].k_vector, self.central_line[i].k_vector) for i in range(1, len(self.central_line))]  # Points to the positive
+        biggest_psuedo_z = possible_pseudo_zs[np.argmax([np.linalg.norm(pseudo_z) for pseudo_z in possible_pseudo_zs])]
+        # biggest_psuedo_z = np.cross(self.central_line[0].k_vector, self.central_line[1].k_vector)
+        pseudo_z = normalize_vector(biggest_psuedo_z)
         pseudo_x = np.cross(pseudo_z, k_vector)
         principle_axes = np.stack([pseudo_z, pseudo_x], axis=-1).T  # [z_x, z_y, z_z], [x_x, x_y, x_z]
         return principle_axes
 
     def ray_of_initial_parameters(self, initial_parameters: np.ndarray):
         k_vector_i = unit_vector_of_angles(theta=initial_parameters[1], phi=initial_parameters[3])
-        origin_i = self.surfaces[-1].parameterization(t=initial_parameters[0], p=initial_parameters[2])
+        origin_i = self.surfaces_ordered[-1].parameterization(t=initial_parameters[0], p=initial_parameters[2])
         input_ray = Ray(origin=origin_i, k_vector=k_vector_i)
         return input_ray
 
@@ -755,7 +796,7 @@ class Cavity:
         list_of_spot_size_lines = []
         for i, ray in enumerate(self.central_line[:-1]):
             cycled_index = np.mod(i, len(self.mode_parameters))
-            t = np.linspace(-0.1*ray.length, 1.1*ray.length, 100)
+            t = np.linspace(-0.2*ray.length, 1.2*ray.length, 100)
             ray_points = ray.parameterization(t=t)
             z_minus_z_0 = np.linalg.norm(ray_points[:, np.newaxis, :] - self.mode_parameters[cycled_index].center, axis=2)  # Before the norm the size is 100 | 2 | 3 and after it is 100 | 2 (100 points for in_plane and out_of_plane dimensions)
             principle_axes = self.mode_parameters[cycled_index].principle_axes
@@ -780,13 +821,19 @@ class Cavity:
 
     def plot(self,
              ax: Optional[plt.Axes] = None,
-             axis_span: float = 3,
+             axis_span: Optional[float] = None,
              camera_center: int = -1,
              ray_list: Optional[List[Ray]] = None,
              dim: int = 3,
              lambda_laser: Optional[float] = None):
+
+        if axis_span is None:
+            axis_span = 1.1 * max([m.center[0] for m in self.mirrors] +
+                                  [m.center[1] for m in self.mirrors] +
+                                  [m.center[2] for m in self.mirrors])
+
         if ax is None:
-            fig = plt.figure()
+            fig = plt.figure(figsize=(10, 10))
             if dim == 3:
                 ax = fig.add_subplot(111, projection='3d')
             else:
@@ -800,7 +847,7 @@ class Cavity:
         ax.set_xlim(origin_camera[0] - axis_span, origin_camera[0] + axis_span)
         ax.set_ylim(origin_camera[1] - axis_span, origin_camera[1] + axis_span)
 
-        if ray_list is None and len(self.central_line) > 0:
+        if ray_list is None and self.central_line is not None:
             ray_list = self.central_line
 
         if ray_list is not None:
@@ -969,63 +1016,84 @@ def gaussian_norm(w_x, w_y, k_x, k_y, theta):
     return np.sqrt((1/2) * (gaussian_integral_2d(a_x, 0, 0, a_y, 0, 0, a, 0) +
                     gaussian_integral_2d(a_x, 0, 2*k_x, a_y, 0, 2*k_y, a, 0)))
 
+
 if __name__ == '__main__':
     x_1 = 0.00
     y_1 = 0.00
-    r_1 = 0.00
+    r_1 = 2
     t_1 = 0.00
     p_1 = 0.00
     x_2 = 0.00
     y_2 = 0.00
-    r_2 = 0.00
+    r_2 = 2
     t_2 = 0.00
     p_2 = 0.00
     x_3 = 0.00
     y_3 = 0.00
-    r_3 = 0.00
+    r_3 = 2
     t_3 = 0.00
     p_3 = 0.00
     t_ray = 0.00
     theta_ray = 0.00
     p_ray = 0.00
     phi_ray = 0.00
+    lambda_laser = 0.1
     elev = 38.00
     azim = 168.00
-    axis_span = 1.30
-    focus_point = -1
-    set_initial_surface = True
-    dim = 3
-    lambda_laser=0.01
+    axis_span = 0.13
+    focus_point = 0
+    set_initial_surface = False
+    dim = 2
 
-    R = 1.2
-
-    x_1 += 1
-    y_1 += 0.00
-    r_1 += R
+    x_1 += 0.5
+    y_1 += 0
     t_1 += 0
-    p_1 += -np.pi / 6
+    p_1 += 0
     x_2 += 0
-    y_2 += np.sqrt(3)
-    r_2 += R
+    y_2 += 0
     t_2 += 0
-    p_2 += np.pi / 2
-    x_3 += -1
-    y_3 += 0
-    r_3 += R
+    p_2 += 5 * np.pi / 4
+    x_3 += 0
+    y_3 += 0.5
     t_3 += 0
-    p_3 += 7 * np.pi / 6
+    p_3 += np.pi / 2
+
+
+    mirror_1 = CurvedMirror.from_params(np.array([x_1, y_1, 0, t_1, p_1, r_1]))
+    # mirror_2 = CurvedMirror(radius=10000, outwards_normal=unit_vector_of_angles(t_2, p_2), center=np.array([x_2, y_2, 0]))
+    mirror_2 = FlatMirror(outwards_normal=unit_vector_of_angles(t_2, p_2), center=np.array([x_2, y_2, 0]))
+    mirror_3 = CurvedMirror.from_params(np.array([x_3, y_3, 0, t_3, p_3, r_3]))
 
     params = np.array([[x_1, y_1, 0, t_1, p_1, r_1],
                        [x_2, y_2, 0, t_2, p_2, r_2],
                        [x_3, y_3, 0, t_3, p_3, r_3]])
 
+    cavity = Cavity([mirror_1, mirror_2, mirror_3], set_initial_surface, standing_wave=True)
 
-    cavity = Cavity.from_params(params, set_initial_surface=set_initial_surface)
+    cavity.set_initial_surface()
 
-    cavity.find_central_line()
-
-    cavity.get_mode_parameters()
-
-    cavity.calculated_shifted_cavity_overlap_integral((0, 0), 0.001, lambda_laser=lambda_laser)
-    a = cavity.calculate_shift_threshold((0, 0), lambda_laser=lambda_laser, threshold=0.99)
+    cavity.plot(dim=2, lambda_laser=0.01)
+    plt.show()
     print("kaki")
+    # central_line_parameters, success = cavity.find_central_line()
+    #
+    # initial_ray_parameters = central_line_parameters + np.array([t_ray, theta_ray, p_ray, phi_ray])
+    # initial_ray = cavity.ray_of_initial_parameters(initial_ray_parameters)
+    # ray_history = cavity.trace_ray(initial_ray)
+    #
+    # ax = cavity.plot(camera_center=focus_point, axis_span=axis_span, ray_list=ray_history, dim=dim,
+    #                  lambda_laser=lambda_laser)
+    # if dim == 3:
+    #     ax.view_init(elev=elev, azim=azim)
+    # # else:
+    # #     ax.set_aspect(1)
+    # for ray in cavity.central_line:
+    #     ray.plot(ax=ax, dim=dim, color='b', linewidth=0.5)
+    # ABCD_matrix_analytic = cavity.generate_ABCD_matrix_analytic()
+    # ABCD_matrix_numeric = cavity.generate_ABCD_matrix_numeric()
+    #
+    # local_mode_parameters = cavity.get_mode_parameters_on_mirrors()
+    #
+    # mode_parameters = cavity.get_mode_parameters(local_mode_parameters)
+    # list_of_spot_size_lines = cavity.generate_spot_size_lines(lambda_laser=lambda_laser, dim=dim)
+
