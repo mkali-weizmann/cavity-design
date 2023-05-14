@@ -5,7 +5,6 @@ from scipy import optimize
 import warnings
 from dataclasses import dataclass
 import copy
-from itertools import compress
 
 
 # Throughout the code, all tensors can take any number of dimensions, but the last dimension is always the coordinate
@@ -257,7 +256,7 @@ class Surface:
         if dim == 3:
             ax.set_zlabel('z')
 
-        center_plus_normal = self.center + self.inwards_normal
+        center_plus_normal = self.center + self.inwards_normal * length
         if dim == 3:
             ax.plot([self.center[0], center_plus_normal[0]],
                     [self.center[1], center_plus_normal[1]],
@@ -499,6 +498,9 @@ class CurvedSurface(Surface):
 
     def reflect_direction(self, ray: Ray, intersection_point: Optional[np.ndarray] = None) -> np.ndarray:
         raise NotImplementedError
+
+    def plot(self, ax: Optional[plt.Axes] = None, name: Optional[str] = None, dim: int = 3, length=0.6):
+        super().plot(ax, name, dim, length=0.6 * self.radius)
 
 
 class CurvedMirror(CurvedSurface, Mirror):
@@ -922,7 +924,7 @@ class Cavity:
             else:
                 ax = fig.add_subplot(111)
 
-        if camera_center == -1 or ray_list is None:
+        if camera_center == -1:
             origin_camera = np.mean(np.stack([m.center for m in self.mirrors]), axis=0)
         else:
             origin_camera = self.legs[camera_center].surface_1.center
@@ -1105,7 +1107,7 @@ def gaussian_norm(w_x, w_y, k_x, k_y, theta):
 if __name__ == '__main__':
     x_1 = 0.00
     y_1 = 0.00
-    r_1 = 0.6
+    r_1 = 2
     t_1 = 0.00
     p_1 = 0.00
     x_2 = 0.00
@@ -1115,7 +1117,7 @@ if __name__ == '__main__':
     p_2 = 0.00
     x_3 = 0.00
     y_3 = 0.00
-    r_3 = 0.6
+    r_3 = 2
     t_3 = 0.00
     p_3 = 0.00
     t_ray = 0.00
@@ -1130,7 +1132,7 @@ if __name__ == '__main__':
     set_initial_surface = False
     dim = 2
 
-    x_1 += 0.5
+    x_1 += 1
     y_1 += 0
     t_1 += 0
     p_1 += 0
@@ -1139,26 +1141,21 @@ if __name__ == '__main__':
     t_2 += 0
     p_2 += 5 * np.pi / 4
     x_3 += 0
-    y_3 += 0.5
+    y_3 += 1
     t_3 += 0
     p_3 += np.pi / 2
-
-    mirror_1 = CurvedMirror.from_params(np.array([x_1, y_1, 0, t_1, p_1, r_1]))
-    # mirror_2 = CurvedMirror(radius=10000, outwards_normal=unit_vector_of_angles(t_2, p_2), center=np.array([x_2, y_2, 0]))
-    mirror_2 = FlatMirror(outwards_normal=unit_vector_of_angles(t_2, p_2), center=np.array([x_2, y_2, 0]))
-    mirror_3 = CurvedMirror.from_params(np.array([x_3, y_3, 0, t_3, p_3, r_3]))
 
     params = np.array([[x_1, y_1, 0, t_1, p_1, r_1],
                        [x_2, y_2, 0, t_2, p_2, r_2],
                        [x_3, y_3, 0, t_3, p_3, r_3]])
 
-    cavity = Cavity([mirror_1, mirror_2, mirror_3], set_initial_surface, standing_wave=True)
+    cavity = Cavity.from_params(params=params, set_initial_surface=False, standing_wave=True)
     cavity.find_central_line()
     # cavity.set_initial_surface()
     cavity.set_mode_parameters()
 
-    cavity.plot(dim=2, lambda_laser=0.01)
+    cavity.plot(dim=2, axis_span=1, camera_center=-1, lambda_laser=0.01)
     plt.show()
 
-    cavity.calculated_shifted_cavity_overlap_integral((0, 0), 0.001, lambda_laser=0.01)
+    # cavity.calculated_shifted_cavity_overlap_integral((0, 0), 0.001, lambda_laser=0.01)
 
