@@ -6,6 +6,8 @@ import warnings
 from dataclasses import dataclass
 import copy
 
+# set numpy to raise an error on warnings:
+# np.seterr(all='raise')
 
 # Throughout the code, all tensors can take any number of dimensions, but the last dimension is always the coordinate
 # dimension. this allows a Ray to be either a single ray, a list of rays, or a list of lists of rays, etc.
@@ -55,6 +57,20 @@ class ModeParameters:
     @property
     def ray(self):
         return Ray(self.center, self.k_vector)
+
+    @property
+    def w_0(self):
+        if self.lambda_laser is None:
+            return None
+        else:
+            return np.sqrt(self.lambda_laser * self.z_R / np.pi)
+
+    @property
+    def NA(self):
+        if self.lambda_laser is None:
+            return None
+        else:
+            return np.sqrt(self.lambda_laser / (np.pi * self.z_R))
 
 
 def ABCD_free_space(length: float) -> np.ndarray:
@@ -123,8 +139,12 @@ def propagate_local_mode_parameter_through_ABCD(local_mode_parameters: LocalMode
 
 def local_mode_parameters_of_round_trip_ABCD(round_trip_ABCD: np.ndarray) -> LocalModeParameters:
     A, B, C, D = decompose_ABCD_matrix(round_trip_ABCD)
-
-    q_z = (A - D - np.sqrt(A ** 2 + 2 * C * B + D ** 2 - 2 + 0j)) / (2 * C)
+    discriminanta = A ** 2 + 2 * C * B + D ** 2 - 2
+    if discriminanta < 0:
+        discriminant_prefactor = 1j
+    else:
+        discriminant_prefactor = 1
+    q_z = (A - D + discriminant_prefactor * np.abs(np.sqrt(A ** 2 + 2 * C * B + D ** 2 - 2 + 0j))) / (2 * C)
     q_z = np.real(q_z) + 1j * np.abs(np.imag(q_z))  # ATTENTION - make sure this line is justified.
 
     return LocalModeParameters(q=q_z)  # First dimension is theta or phi,second dimension is z_minus_z_0 or
@@ -133,6 +153,7 @@ def local_mode_parameters_of_round_trip_ABCD(round_trip_ABCD: np.ndarray) -> Loc
 
 def w_0_of_z_R(z_R: np.ndarray, lambda_laser: float) -> np.ndarray:
     return np.sqrt(z_R * lambda_laser / np.pi)
+
 
 def w_of_z_R(z: np.ndarray, z_R: np.ndarray, lambda_laser) -> np.ndarray:
     w_0 = w_0_of_z_R(z_R, lambda_laser)
@@ -555,12 +576,16 @@ class Leg:
                  surface_2: Surface,
                  central_line: Optional[Ray] = None,
                  mode_parameters_on_surface_1: Optional[LocalModeParameters] = None,
-                 mode_parameters_on_surface_2: Optional[LocalModeParameters] = None):
+                 mode_parameters_on_surface_2: Optional[LocalModeParameters] = None,
+                 mode_principle_axes: Optional[np.ndarray] = None,
+                 lambda_laser: Optional[float] = None):
         self.surface_1 = surface_1
         self.surface_2 = surface_2
         self.mode_parameters_on_surface_1 = mode_parameters_on_surface_1
         self.mode_parameters_on_surface_2 = mode_parameters_on_surface_2
         self.central_line = central_line
+        self.mode_principle_axes = mode_principle_axes
+        self.lambda_laser = lambda_laser
 
     def propagate(self, ray: Ray):
         if isinstance(self.surface_2, Mirror):
@@ -603,16 +628,17 @@ class Leg:
                                                                            self.ABCD_matrix_reflection)
         return next_mode_parameters
 
-    @property
-    def mode_principle_axes(self):
-        if self.central_line is None:
-            raise ValueError('Central line not set')
-        z_hat = np.array([0, 0, 1])
-        pseudo_x = np.cross(z_hat, self.central_line.k_vector)
-        principle_axes = np.stack([z_hat, pseudo_x], axis=-1).T  # [z_x, z_y, z_z], [x_x, x_y, x_z]
-        return principle_axes
+    # @property
+    # def mode_principle_axes(self):
+    #     if self.central_line is None:
+    #         raise ValueError('Central line not set')
+    #     z_hat = np.array([0, 0, 1])
+    #     pseudo_x = np.cross(z_hat, self.central_line.k_vector)
+    #     mode_principle_axes = np.stack([z_hat, pseudo_x], axis=-1).T  # [z_x, z_y, z_z], [x_x, x_y, x_z]
+    #     return mode_principle_axes
 
-    def mode_parameters(self, lambda_laser: Optional[float] = None):
+    @property
+    def mode_parameters(self):
         if self.mode_parameters_on_surface_1 is None:
             return None
         center = self.surface_1.center - \
@@ -622,7 +648,7 @@ class Leg:
                                          k_vector=self.central_line.k_vector,
                                          z_R=self.mode_parameters_on_surface_1.z_R,
                                          principle_axes=self.mode_principle_axes,
-                                         lambda_laser=lambda_laser)
+                                         lambda_laser=self.lambda_laser)
         return mode_parameters
 
     def local_mode_parameters_on_a_point(self, point: np.ndarray):
@@ -639,23 +665,31 @@ class Leg:
 
 
 class Cavity:
-    def __init__(self, mirrors: List[Mirror], set_initial_surface: bool = False,
-                 standing_wave: bool = False):
+    def __init__(self,
+                 mirrors: List[Mirror],
+                 set_initial_surface: bool = False,
+                 standing_wave: bool = False,
+                 lambda_laser: Optional[float] = None):
         self.standing_wave = standing_wave
         self.mirrors = mirrors
-        self.legs: List[Leg] = [Leg(self.mirrors_ordered[i], self.mirrors_ordered[np.mod(i + 1, len(self.mirrors_ordered))]) for i in
-                                range(len(self.mirrors_ordered))]
+        self.legs: List[Leg] = [
+            Leg(self.mirrors_ordered[i],
+                self.mirrors_ordered[np.mod(i + 1, len(self.mirrors_ordered))],
+                lambda_laser=lambda_laser) for i in range(len(self.mirrors_ordered))]
         self.central_line_successfully_traced: Optional[bool] = None
-
+        self.lambda_laser: Optional[float] = lambda_laser
 
         # Find central line and add the initial surface at the beginning of the surfaces list
         if set_initial_surface:
             self.set_initial_surface()
 
     @staticmethod
-    def from_params(params: np.ndarray, set_initial_surface: bool = False, standing_wave: bool = False):
+    def from_params(params: np.ndarray,
+                    set_initial_surface: bool = False,
+                    standing_wave: bool = False,
+                    lambda_laser: Optional[float] = None):
         mirrors = [CurvedMirror.from_params(params[i, :]) for i in range(len(params))]
-        return Cavity(mirrors, set_initial_surface, standing_wave)
+        return Cavity(mirrors, set_initial_surface, standing_wave, lambda_laser)
 
     @property
     def to_params(self):
@@ -792,24 +826,25 @@ class Cavity:
         for leg in self.legs:
             leg.mode_parameters_on_surface_1 = mode_parameters_current
             mode_parameters_current = leg.propagate_local_mode_parameters()
+            leg.mode_principle_axes = self.principle_axes(leg.central_line.k_vector)
 
-    # def principle_axes(self, k_vector: np.ndarray):
-    #     # Returns two vectors that are orthogonal to k_vector and each other, one lives in the central line plane,
-    #     # the other is perpendicular to the central line plane.
-    #     if self.central_line_successfully_traced is None:
-    #         self.find_central_line()
-    #     # ATTENTION! THIS ASSUMES THAT ALL THE CENTRAL LINE LEGS ARE IN THE SAME PLANE.
-    #     # I find the biggest psuedo z because if the first two k_vector are parallel, the cross product is zero and the
-    #     # result of the cross product will be determined by arbitrary numerical errors.
-    #     possible_pseudo_zs = [np.cross(self.central_line[0].k_vector, self.central_line[i].k_vector) for i in
-    #                           range(1, len(self.central_line))]  # Points to the positive
-    #     biggest_psuedo_z = possible_pseudo_zs[np.argmax([np.linalg.norm(pseudo_z) for pseudo_z in possible_pseudo_zs])]
-    #     # biggest_psuedo_z = np.cross(self.central_line[0].k_vector, self.central_line[1].k_vector)
-    #     pseudo_z = normalize_vector(biggest_psuedo_z)
-    #     pseudo_x = np.cross(pseudo_z, k_vector)
-    #     principle_axes = np.stack([pseudo_z, pseudo_x], axis=-1).T  # [z_x, z_y, z_z], [x_x, x_y, x_z]
-    #     return principle_axes
-    #
+    def principle_axes(self, k_vector: np.ndarray):
+        # Returns two vectors that are orthogonal to k_vector and each other, one lives in the central line plane,
+        # the other is perpendicular to the central line plane.
+        if self.central_line_successfully_traced is None:
+            self.find_central_line()
+        # ATTENTION! THIS ASSUMES THAT ALL THE CENTRAL LINE LEGS ARE IN THE SAME PLANE.
+        # I find the biggest psuedo z because if the first two k_vector are parallel, the cross product is zero and the
+        # result of the cross product will be determined by arbitrary numerical errors.
+        possible_pseudo_zs = [np.cross(self.central_line[0].k_vector, self.central_line[i].k_vector) for i in
+                              range(1, len(self.central_line))]  # Points to the positive
+        biggest_psuedo_z = possible_pseudo_zs[np.argmax([np.linalg.norm(pseudo_z) for pseudo_z in possible_pseudo_zs])]
+        # biggest_psuedo_z = np.cross(self.central_line[0].k_vector, self.central_line[1].k_vector)
+        pseudo_z = normalize_vector(biggest_psuedo_z)
+        pseudo_x = np.cross(pseudo_z, k_vector)
+        principle_axes = np.stack([pseudo_z, pseudo_x], axis=-1).T  # [z_x, z_y, z_z], [x_x, x_y, x_z]
+        return principle_axes
+
     def ray_of_initial_parameters(self, initial_parameters: np.ndarray):
         k_vector_i = unit_vector_of_angles(theta=initial_parameters[1], phi=initial_parameters[3])
         origin_i = self.legs[0].surface_1.parameterization(t=initial_parameters[0], p=initial_parameters[2])
@@ -817,18 +852,18 @@ class Cavity:
         return input_ray
 
     def generate_spot_size_lines(self, lambda_laser, dim=2):
-        if self.legs[0].mode_parameters() is None:
+        if self.legs[0].mode_parameters is None:
             self.set_mode_parameters()
         list_of_spot_size_lines = []
         for leg in self.legs:
             t = np.linspace(-0.2 * leg.central_line.length, 1.2 * leg.central_line.length, 100)
             ray_points = leg.central_line.parameterization(t=t)
-            z_minus_z_0 = np.linalg.norm(ray_points[:, np.newaxis, :] - leg.mode_parameters().center, axis=2)  # Before
+            z_minus_z_0 = np.linalg.norm(ray_points[:, np.newaxis, :] - leg.mode_parameters.center, axis=2)  # Before
             # the norm the size is 100 | 2 | 3 and after it is 100 | 2 (100 points for in_plane and out_of_plane
             # dimensions)
             principle_axes = leg.mode_principle_axes
             sign = np.array([1, -1])
-            spot_size_value = spot_size(z_minus_z_0, leg.mode_parameters().z_R, lambda_laser)
+            spot_size_value = spot_size(z_minus_z_0, leg.mode_parameters.z_R, lambda_laser)
             spot_size_lines = ray_points[:, np.newaxis, np.newaxis, :] + \
                               spot_size_value[:, :, np.newaxis, np.newaxis] * \
                               principle_axes[np.newaxis, :, np.newaxis, :] * \
@@ -881,8 +916,8 @@ class Cavity:
         return initial_surface
 
     def ABCD_round_trip_matrix_numeric(self,
-                                                central_line_initial_parameters: Optional[
-                                                    np.ndarray] = None) -> np.ndarray:
+                                       central_line_initial_parameters: Optional[
+                                           np.ndarray] = None) -> np.ndarray:
         if central_line_initial_parameters is None:
             central_line_initial_parameters, success = self.find_central_line()
             if not success:
@@ -909,8 +944,7 @@ class Cavity:
              axis_span: Optional[float] = None,
              camera_center: int = -1,
              ray_list: Optional[List[Ray]] = None,
-             dim: int = 3,
-             lambda_laser: Optional[float] = None):
+             dim: int = 3):
 
         if axis_span is None:
             axis_span = 1.1 * max([m.center[0] for m in self.mirrors] +
@@ -953,8 +987,8 @@ class Cavity:
         for i, surface in enumerate(self.surfaces):
             surface.plot(ax=ax, name=str(i), dim=dim)
 
-        if lambda_laser is not None:
-            spot_size_lines = self.generate_spot_size_lines(lambda_laser=lambda_laser, dim=dim)
+        if self.lambda_laser is not None:
+            spot_size_lines = self.generate_spot_size_lines(lambda_laser=self.lambda_laser, dim=dim)
             for line in spot_size_lines:
                 if dim == 2:
                     ax.plot(line[:, 0], line[:, 1], 'r--', alpha=0.8, linewidth=0.5)
@@ -973,7 +1007,7 @@ class Cavity:
         for i, shift_value in enumerate(shift):
             new_params = copy.copy(params)
             new_params[parameter_index] = params[parameter_index] + shift_value
-            new_cavity = Cavity.from_params(params=new_params)
+            new_cavity = Cavity.from_params(params=new_params, standing_wave=self.standing_wave)
             overlap = calculate_cavities_overlap(cavity_1=self, cavity_2=new_cavity, lambda_laser=lambda_laser)
             overlaps[i] = overlap
         if shift_input_is_float:
@@ -992,35 +1026,39 @@ def calculate_cavities_overlap(cavity_1: Cavity, cavity_2: Cavity, lambda_laser:
     # Initialize all required parameters:
     cavity_1.find_central_line()
     cavity_2.find_central_line()
-
     cavity_1.set_mode_parameters()
     cavity_2.set_mode_parameters()
 
-    # The two modes of laser in the first leg of the cavity:
+    # The two modes of the laser in the first leg of the cavity:
     mode_parameter_1 = cavity_1.legs[0].mode_parameters
     mode_parameter_2 = cavity_2.legs[0].mode_parameters
 
+    cavity_1_waist_pos = mode_parameter_1.center
 
-    local_mode_parameters_1 = cavity_1.legs[0].local_mode_parameters_on_a_point(mode_parameter_1().center)
-    local_mode_parameters_2 = cavity_2.legs[0].local_mode_parameters_on_a_point(mode_parameter_1().center)
+    # The local mode parameters of the laser in the first leg of the cavity at the waist the cavity_1:
+    local_mode_parameters_1 = cavity_1.legs[0].local_mode_parameters_on_a_point(cavity_1_waist_pos)
+    local_mode_parameters_2 = cavity_2.legs[0].local_mode_parameters_on_a_point(cavity_1_waist_pos)
 
     # The plane that is perpendicular to the laser in cavity 1 and centered at its waist:
-    P1 = FlatSurface(center=mode_parameter_1().center, outwards_normal=mode_parameter_1().k_vector)
+    P1 = FlatSurface(center=cavity_1_waist_pos, outwards_normal=mode_parameter_1.k_vector)
 
-    # The widths of the laser at the waist in cavity 1 and 2, in t and p:
+    # The widths in both dimensions of the lasers at the waist of cavity_1:
     width_t_1, width_p_1 = w_0_of_z_R(local_mode_parameters_1.z_R, lambda_laser=lambda_laser)
-    width_t_2, width_p_2 = w_0_of_z_R(local_mode_parameters_2.z_R, lambda_laser=lambda_laser)  # CHANGE IT
+    width_t_2, width_p_2 = w_of_z_R(z=(cavity_1_waist_pos - cavity_2.legs[0].central_line.origin) @
+                                      mode_parameter_2.k_vector,
+                                    z_R=local_mode_parameters_2.z_R,
+                                    lambda_laser=lambda_laser)
 
     # The intersection of the laser with the plane P1:
     # t_1, p_1 = 0, 0
-    t_2, p_2 = P1.get_parameterization(P1.find_intersection_with_ray(mode_parameter_2().ray))
+    t_2, p_2 = P1.get_parameterization(P1.find_intersection_with_ray(mode_parameter_2.ray))
     # Each one of those returns as an array of two identical values (because there are different origins for the two
-    # axes, thus there are two rays) but they coincide and so the values are identical):
+    # axes, thus there are two rays) but they coincide and so the values are identical and we can drop one of them:):
     t_2 = t_2[0]
     p_2 = p_2[0]
 
     # The vectors that are perpendicular to the lasers, the first is perpendicular to the central line plane,
-    # and the other is inside it. (in the first cavity they are orthonormal basis to P1)
+    # and the other is inside it: (in the first cavity they are orthonormal basis to P1)
     t_1_vec_and_p_1_vec = cavity_1.legs[0].mode_principle_axes
     t_2_vec_and_p_2_vec = cavity_2.legs[0].mode_principle_axes
     t_1_vec = t_1_vec_and_p_1_vec[0, :]
@@ -1029,23 +1067,24 @@ def calculate_cavities_overlap(cavity_1: Cavity, cavity_2: Cavity, lambda_laser:
     p_2_vec = t_2_vec_and_p_2_vec[1, :]
 
     # The projection of t_2 on P1:
-    t_2_vec_projected_on_P1 = t_2_vec - np.dot(t_2_vec, mode_parameter_1().k_vector) * mode_parameter_1().k_vector
-    p_2_vec_projected_on_P1 = p_2_vec - np.dot(p_2_vec, mode_parameter_1().k_vector) * mode_parameter_1().k_vector
+    t_2_vec_projected_on_P1 = t_2_vec - np.dot(t_2_vec, mode_parameter_1.k_vector) * mode_parameter_1.k_vector
+    p_2_vec_projected_on_P1 = p_2_vec - np.dot(p_2_vec, mode_parameter_1.k_vector) * mode_parameter_1.k_vector
 
     # the angle between t_1 and t_2:
     cos_theta_rotation = normalize_vector(t_2_vec_projected_on_P1) @ t_1_vec
     theta_rotation = np.arccos(cos_theta_rotation)
 
     # The projection of k_2 the principal axes of P1:  # CHANGE IT - REQUIRES K_VECTOR TO BE NOT NORMALIZED
-    k_p = mode_parameter_2().k_vector @ p_1_vec
-    k_t = mode_parameter_2().k_vector @ t_1_vec
+    k_p = mode_parameter_2.k_vector @ p_1_vec * 2 * np.pi / lambda_laser
+    k_t = mode_parameter_2.k_vector @ t_1_vec * 2 * np.pi / lambda_laser
 
     # The effective widths of the second lase in the plane P1: (since this plane is not necessarily perpendicular to the
     # laser, the widths appear shrank in that plane
-    s_t_2_eff = width_t_2 * np.linalg.norm(t_2_vec_projected_on_P1)
-    s_p_2_eff = width_p_2 * np.linalg.norm(p_2_vec_projected_on_P1)
+    width_t_2_eff = width_t_2 * np.linalg.norm(t_2_vec_projected_on_P1)
+    width_p_2_eff = width_p_2 * np.linalg.norm(p_2_vec_projected_on_P1)
 
-    return gaussians_overlap_integral(width_t_1, width_p_1, s_t_2_eff, s_p_2_eff, t_2, p_2, k_t, k_p, theta_rotation)
+    return gaussians_overlap_integral(width_t_1, width_p_1, width_t_2_eff, width_p_2_eff, t_2, p_2, k_t, k_p,
+                                      theta_rotation)
 
 
 def gaussians_overlap_integral(w_x_1, w_y_1, w_x_2, w_y_2, x_2, y_2, k_x, k_y, theta):
@@ -1105,34 +1144,29 @@ def gaussian_norm(w_x, w_y, k_x, k_y, theta):
 
 
 if __name__ == '__main__':
-    x_1 = 0.00
-    y_1 = 0.00
-    r_1 = 2
-    t_1 = 0.00
-    p_1 = 0.00
-    x_2 = 0.00
-    y_2 = 0.00
-    r_2 = 2
-    t_2 = 0.00
-    p_2 = 0.00
-    x_3 = 0.00
-    y_3 = 0.00
-    r_3 = 2
-    t_3 = 0.00
-    p_3 = 0.00
-    t_ray = 0.00
-    theta_ray = 0.00
-    p_ray = 0.00
-    phi_ray = 0.00
-    lambda_laser = 0.1
+    x_1 = 6.000e-01
+    y_1 = 0.000e+00
+    t_1 = 0.000e+00
+    p_1 = 0.000e+00
+    r_1 = 0.40
+    x_2 = 0.000e+00
+    y_2 = 0.000e+00
+    t_2 = 0.000e+00
+    p_2 = 0.000e+00
+    r_2 = 4.070e-01
+    x_3 = 0.000e+00
+    y_3 = 6.000e-01
+    t_3 = 0.000e+00
+    p_3 = 0.000e+00
+    r_3 = 4.000e-01
+    lambda_laser = 5.32e-07
     elev = 38.00
     azim = 168.00
-    axis_span = 0.13
-    focus_point = 0
+    axis_span = 0.87
+    focus_point = -1
     set_initial_surface = False
     dim = 2
 
-    x_1 += 1
     y_1 += 0
     t_1 += 0
     p_1 += 0
@@ -1141,7 +1175,7 @@ if __name__ == '__main__':
     t_2 += 0
     p_2 += 5 * np.pi / 4
     x_3 += 0
-    y_3 += 1
+    y_3 += 0
     t_3 += 0
     p_3 += np.pi / 2
 
@@ -1149,13 +1183,20 @@ if __name__ == '__main__':
                        [x_2, y_2, 0, t_2, p_2, r_2],
                        [x_3, y_3, 0, t_3, p_3, r_3]])
 
-    cavity = Cavity.from_params(params=params, set_initial_surface=False, standing_wave=True)
-    cavity.find_central_line()
+    cavity = Cavity.from_params(params=params, set_initial_surface=False, standing_wave=True, lambda_laser=lambda_laser)
+    # cavity.find_central_line()
     # cavity.set_initial_surface()
+    central_line = cavity.trace_ray(cavity.default_initial_ray)
+    for i, leg in enumerate(cavity.legs):
+        leg.central_line = central_line[i]
+    cavity.central_line_successfully_traced = True
     cavity.set_mode_parameters()
 
-    cavity.plot(dim=2, axis_span=1, camera_center=-1, lambda_laser=0.01)
+    ax = cavity.plot(dim=dim, axis_span=axis_span, camera_center=focus_point)
+
+    print(f"{cavity.legs[0].mode_parameters.NA}")
+
     plt.show()
 
-    # cavity.calculated_shifted_cavity_overlap_integral((0, 0), 0.001, lambda_laser=0.01)
 
+    # cavity.calculated_shifted_cavity_overlap_integral((0, 0), 0.0001, lambda_laser=0.01)
