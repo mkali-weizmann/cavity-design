@@ -1092,7 +1092,7 @@ def gaussians_overlap_integral(w_x_1, w_y_1, w_x_2, w_y_2, x_2, y_2, k_x, k_y, t
     b_x = -2 * x_2 / (w_x_1 ** 2)
     a_y = 1 / (w_y_1 ** 2) + (np.sin(theta) ** 2) / (w_x_2 ** 2) + (np.cos(theta) ** 2) / (w_y_2 ** 2)
     b_y = -2 * y_2 / (w_y_1 ** 2)
-    a = (1 / (w_y_2 ** 2) - 1 / (w_x_2 ** 2)) * np.sin(2 * theta)
+    a = (1 / (w_x_2 ** 2) - 1 / (w_y_2 ** 2)) * np.sin(2 * theta)
     c = -(x_2 ** 2) / (w_x_1 ** 2) - (y_2 ** 2) / (w_y_1 ** 2)
 
     root = np.pi * np.sqrt(1 / ((a_x - (a ** 2 / (4 * a_y))) * a_y))

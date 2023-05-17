@@ -5,7 +5,7 @@ D = 10
 N = 1000
 def evaluate_gaussian(x, y, x_0, y_0, w_x, w_y, theta, k_x, k_y):
     x_rot = np.cos(theta) * (x - x_0) + np.sin(theta) * (y - y_0)
-    y_rot = -np.sin(theta) * (x - x_0) + np.cos(theta) * (y - y_0)
+    y_rot = - np.sin(theta) * (x - x_0) + np.cos(theta) * (y - y_0)
     return np.exp(- (x_rot ** 2 / w_x ** 2 + y_rot ** 2 / w_y ** 2)) * np.cos(k_x * (x - x_0) + k_y * (y - y_0))
 
 # w_x_1, w_y_1, w_x_2, w_y_2, x_2, y_2, k_x, k_y, theta
@@ -36,22 +36,21 @@ def evaluate_integrand(x, y, w_x_1, w_y_1, w_x_2, w_y_2, x_2, y_2, k_x, k_y, the
 # for i, theta in enumerate(thetas):
 w_x_1 = 1
 w_y_1 = 1
-x_2 = 3
-y_2 = -2
-w_x_2 = 0.2
-w_y_2 = 4
-theta = 1.3
-k_x = -4
-k_y = 5
+x_2 = 0
+y_2 = 0
+w_x_2 = 3
+w_y_2 = 1
+theta = 0.2
+k_x = 0
+k_y = 0
 
 
 x = np.linspace(-D, D, N)
 y = np.linspace(-D, D, N)
 X, Y = np.meshgrid(x, y)
 #
-rotation_matrix = np.array([[np.cos(theta), np.sin(theta)], [-np.sin(theta), np.cos(theta)]])
-rotation_matrix_inv = np.linalg.inv(rotation_matrix)
-sigma_2 = rotation_matrix_inv @ np.diag([w_x_2**2, w_y_2**2]) @ rotation_matrix_inv.T
+rotation_matrix = np.array([[np.cos(theta), -np.sin(theta)], [np.sin(theta), np.cos(theta)]])
+sigma_2 = rotation_matrix @ np.diag([w_x_2**2, w_y_2**2]) @ rotation_matrix.T
 sigma_2_inverse = np.linalg.inv(sigma_2)
 R_2 = np.stack([X, Y], axis=2)
 R_2_normed_squared = np.einsum('ijk,kl,ijl->ij', R_2, sigma_2_inverse, R_2)
@@ -73,9 +72,9 @@ manual_integrand = manual_exponent_1 * manual_exponent_2
 functions_manual_integrand = functions_exponent_1 * functions_exponent_2
 functions_integrand = evaluate_integrand(X, Y, w_x_1, w_y_1, w_x_2, w_y_2, x_2, y_2, k_x, k_y, theta)
 
-# plt.imshow(manual_integrand)
-# plt.colorbar()
-# plt.show()
+plt.imshow(manual_exponent_2)
+plt.colorbar()
+plt.show()
 #
 # plt.imshow(functions_manual_integrand)
 # plt.colorbar()
@@ -91,7 +90,7 @@ functions_integrand = evaluate_integrand(X, Y, w_x_1, w_y_1, w_x_2, w_y_2, x_2, 
 
 I_manual = np.sum(manual_integrand) / np.sqrt(np.sum(manual_exponent_1**2) * np.sum(manual_exponent_2**2))
 I_numeric = calculate_gaussian_overlap_numeric(w_x_1, w_y_1, w_x_2, w_y_2, x_2, y_2, k_x, k_y, theta)
-I_functions_integrand = np.sum(functions_integrand) / np.sqrt(np.sum(functions_exponent_1**2) * np.sum(functions_exponent_2**2))
+I_functions_integrand = np.sum(functions_manual_integrand) / np.sqrt(np.sum(functions_exponent_1**2) * np.sum(functions_exponent_2**2))
 I_analytic = gaussians_overlap_integral(w_x_1, w_y_1, w_x_2, w_y_2, x_2, y_2, k_x, k_y, theta)
 I_analytic_v2 = gaussians_overlap_integral_v2(w_x_1, w_y_1, w_x_2, w_y_2, x_2, y_2, k_x, k_y, theta)
 
@@ -116,7 +115,10 @@ print(" ")
 a_x = 2 * (np.cos(theta) ** 2 / w_x_2 ** 2 + np.sin(theta) ** 2 / w_y_2 ** 2)
 a_y = 2 * (np.sin(theta) ** 2 / w_x_2 ** 2 + np.cos(theta) ** 2 / w_y_2 ** 2)
 a = 2 * np.sin(2 * theta) * (1 / w_x_2 ** 2 - 1 / w_y_2 ** 2)
-print(1/2*gaussian_integral_2d(a_x, 0, 2*k_x, a_y, 0, 2*k_y, a, 0) + 1/2*gaussian_integral_2d(a_x, 0, 0, a_y, 0, 0, a, 0))
-print(gaussian_norm(w_x_2, w_y_2, k_x, k_y, theta)**2)
-print(np.sum(functions_exponent_2**2) * (x[1] - x[0]) * (y[1] - y[0]))
+# %%
+kaki = evaluate_integrand(X, Y, 50, 50, w_x_2, w_y_2, 0, 0, 0, 0, 0.2)
+plt.imshow(kaki)
+plt.colorbar()
+plt.show()
+
 
