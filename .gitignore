@@ -129,4 +129,4 @@ dmypy.json
 .pyre/
 
 .idea/
-/delete_me.py
+/gaussian_integral_validation_matrices.py

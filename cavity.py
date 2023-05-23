@@ -5,9 +5,11 @@ from scipy import optimize
 import warnings
 from dataclasses import dataclass
 import copy
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+
 
 # set numpy to raise an error on warnings:
-# np.seterr(all='raise')
+np.seterr(all='raise')
 
 # Throughout the code, all tensors can take any number of dimensions, but the last dimension is always the coordinate
 # dimension. this allows a Ray to be either a single ray, a list of rays, or a list of lists of rays, etc.
@@ -15,16 +17,15 @@ import copy
 # ray.origin tensor will be of the size N_x | N_y | N_z | 3.
 
 # The ray is always traced starting from the last surface of the cavity, such that the first mirror is the first mirror
-# the ray hits. in the initial state of the cavity it means that the ray starts from cavity.mirrors[-1].center and hits
-# first the cavity.mirrors[0] mirror. After the plane that is perpendicular to the central line and between the two
-# mirrors is calculated, then the ray starts at cavity.surfaces[-1].center (which is that plane) and hits first the
+# the ray hits. in the initial state of the cavity it means that the ray starts from cavity.physical_surfaces[-1].center and hits
+# first the cavity.physical_surfaces[0] mirror. After the plane that is perpendicular to the central line and between the two
+# physical_surfaces is calculated, then the ray starts at cavity.surfaces[-1].center (which is that plane) and hits first the
 # cavity.surfaces[0] which is the first mirror.
 
 # As a convention, the locations (parameterized usually by t and p) always appear before the angles (parameterized by
 # theta and phi). also, t and theta appear before p and phi.
 # If for example there is a parameter q both for t axis and p axis, then the first element of q will be the q of t,
 # and the second element of q will be the q of p.
-
 
 class LocalModeParameters:
     def __init__(self, z_minus_z_0: Optional[np.ndarray] = None,
@@ -101,6 +102,12 @@ def rotation_matrix_around_n(n, theta):
     return A
 
 
+def focal_length_of_lens(R_1, R_2, n, width):
+    # for R_1 = R_2 = 0.05, d=0.01, n=1.5, this function returns 1.5 [m]
+    one_over_f = (n - 1) * ((1/R_1) + (1/R_2) + ((n - 1) * width) / (n * R_1 * R_2))
+    return 1 / one_over_f
+
+
 def unit_vector_of_angles(theta: Union[np.ndarray, float], phi: Union[np.ndarray, float]) -> np.ndarray:
     # theta and phi are assumed to be in radians
     return np.stack([np.cos(theta) * np.cos(phi), np.cos(theta) * np.sin(phi), np.sin(theta)], axis=-1)
@@ -118,6 +125,12 @@ def angles_distance(direction_vector_1: np.ndarray, direction_vector_2: np.ndarr
     inner_product = np.sum(direction_vector_1 * direction_vector_2, axis=-1)
     inner_product = np.clip(inner_product, -1, 1)
     return np.arccos(inner_product)
+
+
+def angles_difference(angle_1: Union[np.ndarray, float], angle_2: Union[np.ndarray, float]) -> np.ndarray:
+    diff = angle_2 - angle_1
+    result = np.mod(diff + np.pi, 2*np.pi) - np.pi
+    return result
 
 
 def decompose_ABCD_matrix(ABCD: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
@@ -139,12 +152,7 @@ def propagate_local_mode_parameter_through_ABCD(local_mode_parameters: LocalMode
 
 def local_mode_parameters_of_round_trip_ABCD(round_trip_ABCD: np.ndarray) -> LocalModeParameters:
     A, B, C, D = decompose_ABCD_matrix(round_trip_ABCD)
-    discriminanta = A ** 2 + 2 * C * B + D ** 2 - 2
-    if discriminanta < 0:
-        discriminant_prefactor = 1j
-    else:
-        discriminant_prefactor = 1
-    q_z = (A - D + discriminant_prefactor * np.abs(np.sqrt(A ** 2 + 2 * C * B + D ** 2 - 2 + 0j))) / (2 * C)
+    q_z = (A - D + np.sqrt(A ** 2 + 2 * C * B + D ** 2 - 2 + 0j)) / (2 * C)
     q_z = np.real(q_z) + 1j * np.abs(np.imag(q_z))  # ATTENTION - make sure this line is justified.
 
     return LocalModeParameters(q=q_z)  # First dimension is theta or phi,second dimension is z_minus_z_0 or
@@ -260,10 +268,18 @@ class Surface:
         T, S = np.meshgrid(t, s)
         points = self.parameterization(T, S)
         x, y, z = points[..., 0], points[..., 1], points[..., 2]
-        if dim == 3:
-            ax.plot_surface(x, y, z, color='b', alpha=0.25)
+        if isinstance(self, PhysicalSurface):
+            color = 'b'
+        elif isinstance(self, CurvedRefractiveSurface):
+            color = 'grey'
         else:
-            ax.plot(x, y, color='b')
+            color = 'black'
+
+
+        if dim == 3:
+            ax.plot_surface(x, y, z, color=color, alpha=0.25)
+        else:
+            ax.plot(x, y, color=color)
         if name is not None:
             name_position = self.parameterization(0.4, 0)
             if dim == 3:
@@ -277,14 +293,14 @@ class Surface:
         if dim == 3:
             ax.set_zlabel('z')
 
-        center_plus_normal = self.center + self.inwards_normal * length
-        if dim == 3:
-            ax.plot([self.center[0], center_plus_normal[0]],
-                    [self.center[1], center_plus_normal[1]],
-                    [self.center[2], center_plus_normal[2]], 'g-')
-        else:
-            ax.plot([self.center[0], center_plus_normal[0]],
-                    [self.center[1], center_plus_normal[1]], 'g-')
+        # center_plus_normal = self.center + self.inwards_normal * length
+        # if dim == 3:
+        #     ax.plot([self.center[0], center_plus_normal[0]],
+        #             [self.center[1], center_plus_normal[1]],
+        #             [self.center[2], center_plus_normal[2]], 'g-')
+        # else:
+        #     ax.plot([self.center[0], center_plus_normal[0]],
+        #             [self.center[1], center_plus_normal[1]], 'g-')
         return ax
 
     def generate_ray_from_parameters(self, t: float, p: float, theta: float, phi: float) -> Ray:
@@ -293,7 +309,7 @@ class Surface:
         return Ray(origin=origin, k_vector=k_vector)
 
 
-class Mirror(Surface):
+class PhysicalSurface(Surface):
     def __init__(self, outwards_normal: np.ndarray, **kwargs):
         super().__init__(outwards_normal=outwards_normal, **kwargs)
 
@@ -350,7 +366,7 @@ class FlatSurface(Surface):
 
     @property
     def center(self):
-        # The reason for this property is that in other Mirror classes it is a property.
+        # The reason for this property is that in other PhysicalSurface classes it is a property.
         return self.center_of_mirror_private
 
     def get_spanning_vectors(self):
@@ -374,7 +390,7 @@ class FlatSurface(Surface):
         return t, p
 
 
-class FlatMirror(FlatSurface, Mirror):
+class FlatMirror(FlatSurface, PhysicalSurface):
 
     def __init__(self,
                  outwards_normal: np.ndarray,
@@ -425,10 +441,14 @@ class CurvedSurface(Surface):
                  outwards_normal: np.ndarray,  # Pointing from the origin of the sphere to the mirror's center.
                  center: Optional[np.ndarray] = None,  # Not the center of the sphere but the center of
                  # the plate.
-                 origin: Optional[np.ndarray] = None  # The center of the sphere.
+                 origin: Optional[np.ndarray] = None,  # The center of the sphere.
+                 curvature_sign: int = 1  # 1 for concave (where the ray is hitting the sphere from the inside) and -1 for convex
+                 # (where the ray is hitting the sphere from the outside). this is used to find the correct intersection
+                 # point of a ray with the surface
                  ):
         super().__init__(outwards_normal=outwards_normal)
         self.radius = radius
+        self.curvature_sign = curvature_sign
 
         if origin is None and center is None:
             raise ValueError('Either origin or center must be provided.')
@@ -441,17 +461,40 @@ class CurvedSurface(Surface):
 
     @staticmethod
     def from_params(params: np.ndarray):
-        x, y, z, t, p, r = params
+        x, y, z, t, p, r, curvature_sign, surface_type, n_1, n_2 = params
         center = np.array([x, y, z])
         outwards_normal = unit_vector_of_angles(t, p)
-        mirror = CurvedMirror(radius=r, outwards_normal=outwards_normal, center=center)
-        return mirror
+        if surface_type == 0:
+            surface = CurvedMirror(radius=r,
+                                  outwards_normal=outwards_normal,
+                                  center=center,
+                                  curvature_sign=curvature_sign)
+        elif surface_type == 1:
+            surface = CurvedRefractiveSurface(radius=r,
+                                             outwards_normal=outwards_normal,
+                                             center=center,
+                                             curvature_sign=curvature_sign,
+                                             n_1=n_1,
+                                             n_2=n_2)
+        else:
+            raise ValueError(f'Unknown surface type {surface_type}')
+        return surface
 
     def to_params(self):
         x, y, z = self.center
         r = self.radius
         t, p = angles_of_unit_vector(self.outwards_normal)
-        return x, y, z, t, p, r
+        if isinstance(self, CurvedMirror):
+            surface_type = 0
+            n_1 = 0
+            n_2 = 0
+        elif isinstance(self, CurvedRefractiveSurface):
+            surface_type = 1
+            n_1 = self.n_1
+            n_2 = self.n_2
+        else:
+            raise ValueError(f'Unknown surface type {type(self)}')
+        return x, y, z, t, p, r, self.curvature_sign, surface_type, n_1, n_2
 
     def find_intersection_with_ray(self, ray: Ray) -> np.ndarray:
         # Result of the next line of mathematica to find the intersection:
@@ -459,7 +502,7 @@ class CurvedSurface(Surface):
         l = (-ray.k_vector[..., 0] * ray.origin[..., 0] + ray.k_vector[..., 0] * self.origin[0] - ray.k_vector[
             ..., 1] *
              ray.origin[..., 1] + ray.k_vector[..., 1] * self.origin[1] - ray.k_vector[..., 2] * ray.origin[..., 2] +
-             ray.k_vector[..., 2] * self.origin[2] + np.sqrt(
+             ray.k_vector[..., 2] * self.origin[2] + self.curvature_sign * np.sqrt(
                     -4 * (ray.k_vector[..., 0] ** 2 + ray.k_vector[..., 1] ** 2 + ray.k_vector[..., 2] ** 2) * (
                             -self.radius ** 2 + (ray.origin[..., 0] - self.origin[0]) ** 2 + (
                             ray.origin[..., 1] - self.origin[1]) ** 2 + (
@@ -524,21 +567,21 @@ class CurvedSurface(Surface):
         super().plot(ax, name, dim, length=0.6 * self.radius)
 
 
-class CurvedMirror(CurvedSurface, Mirror):
+class CurvedMirror(CurvedSurface, PhysicalSurface):
     def __init__(self, radius: float,
                  outwards_normal: np.ndarray,  # Pointing from the origin of the sphere to the mirror's center.
                  center: Optional[np.ndarray] = None,  # Not the center of the sphere but the center of
                  # the plate.
-                 origin: Optional[np.ndarray] = None  # The center of the sphere.
-                 ):
-        super().__init__(radius, outwards_normal, center, origin)
+                 origin: Optional[np.ndarray] = None,  # The center of the sphere.
+                 curvature_sign: int = 1):
+        super().__init__(radius, outwards_normal, center, origin, curvature_sign)
 
     def reflect_direction(self, ray: Ray, intersection_point: Optional[np.ndarray] = None) -> np.ndarray:
         # Notice that this function does not reflect along the normal of the mirror but along the normal projection
         # of the ray on the mirror.
         if intersection_point is None:
             intersection_point = self.find_intersection_with_ray(ray)
-        mirror_normal_vector = self.origin - intersection_point  # m_rays | 3
+        mirror_normal_vector = (self.origin - intersection_point) * self.curvature_sign  # m_rays | 3
         mirror_normal_vector = normalize_vector(mirror_normal_vector)
         dot_product = np.sum(ray.k_vector * mirror_normal_vector, axis=-1)  # m_rays  # This dot product is written
         # like so because both tensors have the same shape and the dot product is calculated along the last axis.
@@ -550,11 +593,18 @@ class CurvedMirror(CurvedSurface, Mirror):
 
     def ABCD_matrix(self, cos_theta_incoming: float):
         # order of rows/columns elements is [t, theta, p, phi]
-
-        return np.array([[1, 0, 0, 0],
+        # An approximation is done here (beyond the small angles' approximation) by assuming that the central line
+        # lives in the x,y plane, such that the plane of incidence is the x,y plane (parameterized by p and phi)
+        # and the sagittal plane is its transverse (parameterized by t and theta).
+        # This is justified for small perturbations of a cavity whose central line actually lives in the x,y plane.
+        # It is not really justified for bigger perturbations and should be corrected.
+        # It should be corrected by first finding the real axes, # And then apply a rotation matrix to this matrix on
+        # both sides.
+        ABCD = np.array([[1, 0, 0, 0],
                          [-2 * cos_theta_incoming / self.radius, 1, 0, 0],
                          [0, 0, -1, 0],
                          [0, 0, 2 / (self.radius * cos_theta_incoming), -1]])
+        return ABCD
 
     def plot_2d(self, ax: Optional[plt.Axes] = None, name: Optional[str] = None):
         if ax is None:
@@ -568,6 +618,66 @@ class CurvedMirror(CurvedSurface, Mirror):
         ax.plot(grey_points[:, 0], grey_points[:, 1], color=(0.81, 0.81, 0.81), linestyle='-.', linewidth=0.5,
                 label=None)
         ax.plot(self.origin[0], self.origin[1], 'bo')
+
+
+class CurvedRefractiveSurface(CurvedSurface, PhysicalSurface):
+    def __init__(self,
+                 radius: float,
+                 outwards_normal: np.ndarray,  # Pointing from the origin of the sphere to the mirror's center.
+                 center: Optional[np.ndarray] = None,  # Not the center of the sphere but the center of
+                 # the plate.
+                 origin: Optional[np.ndarray] = None,  # The center of the sphere.
+                 n_1: float = 1,
+                 n_2: float = 1.5,
+                 curvature_sign: int = 1):
+        super().__init__(radius, outwards_normal, center, origin, curvature_sign)
+        self.n_1 = n_1
+        self.n_2 = n_2
+
+    def reflect_direction(self, ray: Ray, intersection_point: Optional[np.ndarray] = None) -> np.ndarray:
+        if intersection_point is None:
+            intersection_point = self.find_intersection_with_ray(ray)
+        n_backwards = (self.origin - intersection_point) * self.curvature_sign  # m_rays | 3
+        n_backwards = normalize_vector(n_backwards)
+        n_forwards = -n_backwards
+        cos_theta_incoming = np.sum(ray.k_vector * n_forwards, axis=-1)   # m_rays
+        n_orthogonal = ray.k_vector - cos_theta_incoming[..., np.newaxis] * n_forwards  # m_rays | 3
+        if np.linalg.norm(n_orthogonal) < 1e-14:
+            reflected_direction_vector = n_forwards
+        else:
+            n_orthogonal = normalize_vector(n_orthogonal)
+            sin_theta_outgoing = np.sqrt((self.n_1 / self.n_2) ** 2 * (1 - cos_theta_incoming ** 2))  # m_rays
+            reflected_direction_vector = n_forwards * np.sqrt(1 - sin_theta_outgoing ** 2) + n_orthogonal * sin_theta_outgoing
+        return reflected_direction_vector
+
+    def ABCD_matrix(self, cos_theta_incoming: float) -> np.ndarray:
+        cos_theta_outgoing = np.sqrt(1 - (self.n_1 / self.n_2) ** 2 * (1 - cos_theta_incoming ** 2))
+        R_signed = self.radius * self.curvature_sign
+        delta_n_e_out_of_plane = self.n_2 * cos_theta_outgoing - self.n_1 * cos_theta_incoming
+        delta_n_e_in_plane = delta_n_e_out_of_plane / (cos_theta_incoming * cos_theta_outgoing)
+
+        # See the comment in the ABCD_matrix method of the CurvedSurface class for an explanation of the approximation.
+        ABCD = np.array([[1, 0, 0, 0],  # t
+                         [delta_n_e_out_of_plane / R_signed, 1, 0, 0],  # theta
+                         [0, 0, cos_theta_outgoing / cos_theta_incoming, 0],  # p
+                         [0, 0, delta_n_e_in_plane / R_signed, cos_theta_incoming / cos_theta_outgoing]])  # phi
+        return ABCD
+
+
+def generate_lens(radius: float, thickness: float, n_out: float, n_in: float, center: Optional, direction: np.ndarray):
+    surface_1 = CurvedRefractiveSurface(radius=radius,
+                                        outwards_normal=-direction,
+                                        center=center - (1/2) * direction * thickness,
+                                        n_1=n_out,
+                                        n_2=n_in,
+                                        curvature_sign=-1)
+    surface_2 = CurvedRefractiveSurface(radius=radius,
+                                        outwards_normal=direction,
+                                        center=center + (1/2) * direction * thickness,
+                                        n_1=n_in,
+                                        n_2=n_out,
+                                        curvature_sign=1)
+    return surface_1, surface_2
 
 
 class Leg:
@@ -588,7 +698,7 @@ class Leg:
         self.lambda_laser = lambda_laser
 
     def propagate(self, ray: Ray):
-        if isinstance(self.surface_2, Mirror):
+        if isinstance(self.surface_2, PhysicalSurface):
             ray = self.surface_2.reflect_ray(ray)
         else:
             new_position = self.surface_2.find_intersection_with_ray(ray)
@@ -607,7 +717,7 @@ class Leg:
         if self.central_line is None:
             raise ValueError('Central line not set')
         cos_theta = self.central_line.k_vector @ self.surface_2.outwards_normal
-        if isinstance(self.surface_2, Mirror):
+        if isinstance(self.surface_2, PhysicalSurface):
             matrix = self.surface_2.ABCD_matrix(cos_theta)
         else:
             matrix = np.eye(4)
@@ -666,16 +776,16 @@ class Leg:
 
 class Cavity:
     def __init__(self,
-                 mirrors: List[Mirror],
+                 physical_surfaces: List[PhysicalSurface],
                  set_initial_surface: bool = False,
                  standing_wave: bool = False,
                  lambda_laser: Optional[float] = None):
         self.standing_wave = standing_wave
-        self.mirrors = mirrors
+        self.physical_surfaces = physical_surfaces
         self.legs: List[Leg] = [
-            Leg(self.mirrors_ordered[i],
-                self.mirrors_ordered[np.mod(i + 1, len(self.mirrors_ordered))],
-                lambda_laser=lambda_laser) for i in range(len(self.mirrors_ordered))]
+            Leg(self.physical_surfaces_ordered[i],
+                self.physical_surfaces_ordered[np.mod(i + 1, len(self.physical_surfaces_ordered))],
+                lambda_laser=lambda_laser) for i in range(len(self.physical_surfaces_ordered))]
         self.central_line_successfully_traced: Optional[bool] = None
         self.lambda_laser: Optional[float] = lambda_laser
 
@@ -693,14 +803,21 @@ class Cavity:
 
     @property
     def to_params(self):
-        return np.array([mirror.to_params() for mirror in self.mirrors])
+        return np.array([surface.to_params() for surface in self.physical_surfaces])
 
     @property
-    def mirrors_ordered(self):
+    def physical_surfaces_ordered(self):
         if self.standing_wave:
-            return self.mirrors + self.mirrors[-2:0:-1]
+            backwards_list = copy.deepcopy(self.physical_surfaces[-2:0:-1])
+            for surface in backwards_list:
+                if isinstance(surface, CurvedRefractiveSurface):
+                    surface.curvature_sign = -surface.curvature_sign
+                    n_1, n_2 = surface.n_1, surface.n_2
+                    surface.n_1 = n_2
+                    surface.n_2 = n_1
+            return self.physical_surfaces + backwards_list
         else:
-            return self.mirrors
+            return self.physical_surfaces
 
     @property
     def central_line(self):
@@ -783,7 +900,9 @@ class Cavity:
                 starting_position_and_angles: np.ndarray) -> np.ndarray:
         # The roots of this function are the initial parameters for the central line.
         final_position_and_angles, _ = self.trace_ray_parametric(starting_position_and_angles)
-        diff = final_position_and_angles - starting_position_and_angles
+        diff = np.zeros_like(starting_position_and_angles)
+        diff[[0, 2]] = final_position_and_angles[[0, 2]] - starting_position_and_angles[[0, 2]]
+        diff[[1, 3]] = angles_difference(final_position_and_angles[[1, 3]], starting_position_and_angles[[1, 3]])
         return diff
 
     def find_central_line(self, override_existing=False) -> Tuple[np.ndarray, bool]:
@@ -799,9 +918,9 @@ class Cavity:
 
         # In the documentation it says optimize.fsolve returns a solution, together with some flags, and also this is
         # how pycharm suggests to use it. But in practice it returns only the solution, not sure why.
-        central_line_initial_parameters: np.ndarray = optimize.fsolve(self.f_roots, initial_guess)
+        central_line_initial_parameters: np.ndarray = optimize.fsolve(self.f_roots, initial_guess, epsfcn=1e-10)
 
-        if np.linalg.norm(self.f_roots(central_line_initial_parameters)) > 1e-6:
+        if np.linalg.norm(self.f_roots(central_line_initial_parameters)) > 1e-10:
             central_line_successfully_traced = False
         else:
             central_line_successfully_traced = True
@@ -885,10 +1004,10 @@ class Cavity:
 
     def set_initial_surface(self):
         # adds a virtual surface on the first leg that is perpendicular to the beam and centered between the first two
-        # mirrors.
-        if not isinstance(self.legs[0].surface_1, Mirror):
+        # physical_surfaces.
+        if not isinstance(self.legs[0].surface_1, PhysicalSurface):
             return self.legs[0].surface_1
-        # gets a surface that sits between the first two mirrors, centered and perpendicular to the central line.
+        # gets a surface that sits between the first two physical_surfaces, centered and perpendicular to the central line.
         if self.central_line is None:
             final_position_and_angles, success = self.find_central_line()
             if not success:
@@ -923,7 +1042,7 @@ class Cavity:
             if not success:
                 raise ValueError("Could not find central line")
 
-        if isinstance(self.legs[0].surface_1, Mirror):
+        if isinstance(self.legs[0].surface_1, PhysicalSurface):
             self.set_initial_surface()
 
         dr = 1e-9
@@ -947,9 +1066,9 @@ class Cavity:
              dim: int = 3):
 
         if axis_span is None:
-            axis_span = 1.1 * max([m.center[0] for m in self.mirrors] +
-                                  [m.center[1] for m in self.mirrors] +
-                                  [m.center[2] for m in self.mirrors])
+            axis_span = 1.1 * max([m.center[0] for m in self.physical_surfaces] +
+                                  [m.center[1] for m in self.physical_surfaces] +
+                                  [m.center[2] for m in self.physical_surfaces])
 
         if ax is None:
             fig = plt.figure(figsize=(10, 10))
@@ -959,7 +1078,7 @@ class Cavity:
                 ax = fig.add_subplot(111)
 
         if camera_center == -1:
-            origin_camera = np.mean(np.stack([m.center for m in self.mirrors]), axis=0)
+            origin_camera = np.mean(np.stack([m.center for m in self.physical_surfaces]), axis=0)
         else:
             origin_camera = self.legs[camera_center].surface_1.center
 
@@ -998,7 +1117,7 @@ class Cavity:
         return ax
 
     def calculated_shifted_cavity_overlap_integral(self, parameter_index: Tuple[int, int],
-                                                   shift: Union[float, np.ndarray], lambda_laser: float):
+                                                   shift: Union[float, np.ndarray]):
         params = self.to_params
         shift_input_is_float = isinstance(shift, float)
         if shift_input_is_float:
@@ -1007,9 +1126,13 @@ class Cavity:
         for i, shift_value in enumerate(shift):
             new_params = copy.copy(params)
             new_params[parameter_index] = params[parameter_index] + shift_value
-            new_cavity = Cavity.from_params(params=new_params, standing_wave=self.standing_wave)
-            overlap = calculate_cavities_overlap(cavity_1=self, cavity_2=new_cavity, lambda_laser=lambda_laser)
-            overlaps[i] = overlap
+            new_cavity = Cavity.from_params(params=new_params, standing_wave=self.standing_wave,
+                                            lambda_laser=self.lambda_laser)
+            try:
+                overlap = calculate_cavities_overlap_matrices(cavity_1=self, cavity_2=new_cavity)
+            except np.linalg.LinAlgError:
+                continue
+            overlaps[i] = np.abs(overlap)
         if shift_input_is_float:
             overlaps = overlaps[0]
         return overlaps
@@ -1017,9 +1140,61 @@ class Cavity:
     def calculate_shift_threshold(self, parameter_index: Tuple[int, int], lambda_laser: float, threshold: float):
         def overlap_of_shift(shift: float):
             return threshold - self.calculated_shifted_cavity_overlap_integral(parameter_index=parameter_index,
-                                                                               shift=shift, lambda_laser=lambda_laser)
+                                                                               shift=shift)
 
         return optimize.root_scalar(overlap_of_shift, x0=0, x1=0.001)
+
+
+def calculate_gaussian_parameters_on_surface(surface: FlatSurface, mode_parameters: ModeParameters):
+    intersection_point = surface.find_intersection_with_ray(mode_parameters.ray)
+    intersection_point = intersection_point[0, :]
+    z_minus_z_0 = np.linalg.norm(intersection_point - mode_parameters.center, axis=1)
+    q_u, q_v = z_minus_z_0 + 1j * mode_parameters.z_R
+    k = 2 * np.pi / mode_parameters.lambda_laser
+
+    # Those are the vectors that define the mode and the surface: r_0 is the surface's center with respect to the mode's
+    # center, t_hat and p_hat are the unit vectors that span the surface, k_hat is the mode's k vector,
+    # u_hat and v_hat are the principle axes of the mode.
+    r_0 = surface.center - mode_parameters.center[0, :]  # Techinically there are two centers, but their difference is
+    # only in the k_hat direction, which doesn't make a difference on the projection on the two principle axes of the
+    # mode, and for the projection of the k_hat vector we anyway need to set an arbitrary 0, so we can just take the
+    # first center.
+    t_hat, p_hat = normalize_vector(surface.parameterization(1, 0) - surface.parameterization(0, 0)), \
+                   normalize_vector(surface.parameterization(0, 1) - surface.parameterization(0, 0))
+    k_hat = mode_parameters.k_vector
+    u_hat_v_hat = mode_parameters.principle_axes
+    u_hat = u_hat_v_hat[0, :]
+    v_hat = u_hat_v_hat[1, :]
+
+    # The mode as a function of the surface's parameterization:
+    # exp([t,p] @ A_2 @ [t,p] + b @ [t,p] + c
+
+    A = 1j * k * np.array([[(t_hat @ u_hat) ** 2 / q_u + (t_hat @ v_hat) ** 2 / q_v,
+                            (t_hat @ u_hat) * (p_hat @ u_hat) / q_u + (t_hat @ v_hat) * (p_hat @ v_hat) / q_v],
+                           [(t_hat @ u_hat) * (p_hat @ u_hat) / q_u + (t_hat @ v_hat) * (p_hat @ v_hat) / q_v,
+                            (p_hat @ u_hat) ** 2 / q_u + (p_hat @ v_hat) ** 2 / q_v]])
+    b = 1j * k * np.array(
+        [(k_hat @ t_hat) + 2 * (r_0 @ u_hat) * (t_hat @ u_hat) / q_u + 2 * (r_0 @ v_hat) * (t_hat @ v_hat) / q_v,
+         (k_hat @ p_hat) + 2 * (r_0 @ u_hat) * (p_hat @ u_hat) / q_u + 2 * (r_0 @ v_hat) * (p_hat @ v_hat) / q_v])
+    c = 1j * k * (k_hat @ r_0) + (r_0 @ u_hat) ** 2 / q_u + (r_0 @ v_hat) ** 2 / q_v
+
+    return A, b, c
+
+
+def calculate_cavities_overlap_matrices(cavity_1: Cavity, cavity_2: Cavity):
+    for cavity in [cavity_1, cavity_2]:
+        if cavity.legs[0].mode_parameters is None:
+            cavity.set_mode_parameters()
+    mode_parameters_1 = cavity_1.legs[0].mode_parameters
+    mode_parameters_2 = cavity_2.legs[0].mode_parameters
+
+    cavity_1_waist_pos = mode_parameters_1.center[0, :]
+    P1 = FlatSurface(center=cavity_1_waist_pos, outwards_normal=mode_parameters_1.k_vector)
+
+    A_1, b_1, c_1 = calculate_gaussian_parameters_on_surface(P1, mode_parameters_1)
+    A_2, b_2, c_2 = calculate_gaussian_parameters_on_surface(P1, mode_parameters_2)
+
+    return gaussians_overlap_integral_matrices(A_1, A_2, b_1, b_2, c_1, c_2)
 
 
 def calculate_cavities_overlap(cavity_1: Cavity, cavity_2: Cavity, lambda_laser: float):
@@ -1033,7 +1208,7 @@ def calculate_cavities_overlap(cavity_1: Cavity, cavity_2: Cavity, lambda_laser:
     mode_parameter_1 = cavity_1.legs[0].mode_parameters
     mode_parameter_2 = cavity_2.legs[0].mode_parameters
 
-    cavity_1_waist_pos = mode_parameter_1.center
+    cavity_1_waist_pos = mode_parameter_1.center[0, :]
 
     # The local mode parameters of the laser in the first leg of the cavity at the waist the cavity_1:
     local_mode_parameters_1 = cavity_1.legs[0].local_mode_parameters_on_a_point(cavity_1_waist_pos)
@@ -1083,31 +1258,8 @@ def calculate_cavities_overlap(cavity_1: Cavity, cavity_2: Cavity, lambda_laser:
     width_t_2_eff = width_t_2 * np.linalg.norm(t_2_vec_projected_on_P1)
     width_p_2_eff = width_p_2 * np.linalg.norm(p_2_vec_projected_on_P1)
 
-    return gaussians_overlap_integral(width_t_1, width_p_1, width_t_2_eff, width_p_2_eff, t_2, p_2, k_t, k_p,
+    return gaussians_overlap_integral_v2(width_t_1, width_p_1, width_t_2_eff, width_p_2_eff, t_2, p_2, k_t, k_p,
                                       theta_rotation)
-
-
-def gaussians_overlap_integral(w_x_1, w_y_1, w_x_2, w_y_2, x_2, y_2, k_x, k_y, theta):
-    a_x = 1 / (w_x_1 ** 2) + (np.cos(theta) ** 2) / (w_x_2 ** 2) + (np.sin(theta) ** 2) / (w_y_2 ** 2)
-    b_x = -2 * x_2 / (w_x_1 ** 2)
-    a_y = 1 / (w_y_1 ** 2) + (np.sin(theta) ** 2) / (w_x_2 ** 2) + (np.cos(theta) ** 2) / (w_y_2 ** 2)
-    b_y = -2 * y_2 / (w_y_1 ** 2)
-    a = (1 / (w_x_2 ** 2) - 1 / (w_y_2 ** 2)) * np.sin(2 * theta)
-    c = -(x_2 ** 2) / (w_x_1 ** 2) - (y_2 ** 2) / (w_y_1 ** 2)
-
-    root = np.pi * np.sqrt(1 / ((a_x - (a ** 2 / (4 * a_y))) * a_y))
-    exponent = np.exp((b_x ** 2 - k_x ** 2 + (a / a_y) * b_x * b_y - (a / a_y) * k_x * k_y + (
-            a ** 2 / (4 * a_y ** 2)) * (b_y ** 2 - k_y ** 2)) /
-                      (4 * (a_x - a ** 2 / (4 * a_y)))
-                      + (b_y ** 2 - k_y ** 2) / (4 * a_y) + c)
-    cosine = np.cos(
-        (2 * b_x * k_x + (a / a_y) * b_x * k_y + (a / a_y) * b_y * k_x + (a ** 2 / (2 * a_y ** 2)) * b_y * k_y) /
-        (4 * (a_x - a ** 2 / (4 * a_y)))
-        + (b_y * k_y) / (2 * a_y))
-    # mathematica_expression = 2 * np.exp(-( (b_y+1j*k_y)**2 * a_x + a * (b_x+1j*k_x) * (b_y+1j*k_y) + a_y * (b_x+1j*k_x)**2 ))
-    normalization_factor = np.pi / 2 * np.sqrt((1 / 2) * w_x_1 * w_y_1 * w_x_2 * w_y_2 * (
-            1 + np.exp((-1 / 2) * (k_x ** 2 * w_x_2 ** 2 + k_y ** 2 * w_y_2 ** 2))))
-    return root * exponent * cosine / normalization_factor
 
 
 def gaussian_integral_2d(a_x, b_x, k_x, a_y, b_y, k_y, a, c):
@@ -1143,26 +1295,113 @@ def gaussian_norm(w_x, w_y, k_x, k_y, theta):
                               gaussian_integral_2d(a_x, 0, 2 * k_x, a_y, 0, 2 * k_y, a, 0)))
 
 
+def gaussian_norm_matrices_log(A: np.ndarray, b: np.ndarray, c: float):
+    return 1/2 * gaussian_integral_2d_matrices_log(A + np.conjugate(A), b + np.conjugate(b), c + np.conjugate(c))
+
+
+def gaussian_integral_2d_matrices_log(A: np.ndarray, b: np.ndarray, c):
+    # The integral over exp( x.T A_2 x + b.T x + c):
+    eigen_values = np.linalg.eigvals(A)
+    A_inv = np.linalg.inv(A)
+    dim = A.shape[0]
+    log_integral = np.log(np.sqrt((2 * np.pi) ** dim / (np.prod(eigen_values)))) + 0.5 * b.T @ A_inv @ b + c
+    return log_integral
+
+
+def gaussians_overlap_integral_matrices(A_1: np.ndarray, A_2: np.ndarray,
+                                        # mu_1: np.ndarray, mu_2: np.ndarray, # Seems like I don't need the mus.
+                                        b_1: np.ndarray, b_2: np.ndarray,
+                                        c_1: float, c_2: float):
+    A_1_conjugate = np.conjugate(A_1)
+    b_1_conjugate = np.conjugate(b_1)
+    c_1_conjugate = np.conjugate(c_1)
+
+    A = A_1_conjugate + A_2
+    b = b_1_conjugate + b_2
+    c = c_1_conjugate + c_2
+    # b = mu_1.T @ A_1_conjugate + mu_2.T @ A_2 + b_1_conjugate + b_2
+    # c = (-1/2) * (mu_1.T @ A_1_conjugate @ mu_1 + mu_2.T @ A_2 @ mu_2) + c_1_conjugate + c_2
+    normalization_factor_log = gaussian_norm_matrices_log(A_1, b_1, c_1) + gaussian_norm_matrices_log(A_2, b_2, c_2)
+    integral_normalized_log = gaussian_integral_2d_matrices_log(A, b, c) - normalization_factor_log
+    return np.exp(integral_normalized_log)
+
+
+def evaluate_gaussian(A: np.ndarray, b: np.ndarray, c: float, axis_span: float):
+    N = 100
+    x = np.linspace(-axis_span, axis_span, N)
+    y = np.linspace(-axis_span, axis_span, N)
+    X, Y = np.meshgrid(x, y)
+    R = np.stack([X, Y], axis=2)
+    mu = np.array([x_2, y_2])
+    R_shifted = R - mu[None, None, :]
+    R_normed_squared = np.einsum('ijk,kl,ijl->ij', R_shifted, A, R_shifted)
+    functions_values = np.exp(-(1 / 2) * R_normed_squared + np.einsum('k,ijk->ij', b, R) + c)
+    return functions_values
+
+def plot_gaussian_subplot(A: np.ndarray, b: np.ndarray, c: float, axis_span: float = 0.0005,
+                  fig: Optional[plt.Figure] = None, ax: Optional[plt.Axes] = None):
+    if ax is None:
+        fig, ax = plt.subplots()
+    functions_values = evaluate_gaussian(A, b, c, axis_span)
+    im = ax.imshow(np.real(functions_values))
+
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes('right', size='5%', pad=0.05)
+    fig.colorbar(im, cax=cax, orientation='vertical')
+
+    return fig, ax
+
+
+def plot_2_gaussians_subplots(A_1: np.ndarray, A_2: np.ndarray,
+                     # mu_1: np.ndarray, mu_2: np.ndarray, # Seems like I don't need the mus.
+                     b_1: np.ndarray, b_2: np.ndarray,
+                     c_1: float, c_2: float, axis_span: float = 0.0005, title: Optional[str] = ''):
+    fig, ax = plt.subplots(2, 1, figsize=(10, 5))
+    plot_gaussian_subplot(A_1, b_1, c_1, axis_span, fig, ax[0])
+    plot_gaussian_subplot(A_2, b_2, c_2, axis_span, fig, ax[1])
+    if title is not None:
+        fig.suptitle(title)
+
+
+def plot_2_gaussians_colors(A_1: np.ndarray, A_2: np.ndarray,
+                     # mu_1: np.ndarray, mu_2: np.ndarray, # Seems like I don't need the mus.
+                     b_1: np.ndarray, b_2: np.ndarray,
+                     c_1: float, c_2: float, axis_span: float = 0.0005, title: Optional[str] = '', real_or_abs: str = 'real'):
+    first_gaussian_values = evaluate_gaussian(A_1, b_1, c_1, axis_span)
+    second_gaussian_values = evaluate_gaussian(A_2, b_2, c_2, axis_span)
+    third_color_channel = np.zeros_like(first_gaussian_values)
+    rgb_image = np.stack([first_gaussian_values, second_gaussian_values, third_color_channel], axis=2)
+    if real_or_abs == 'abs':
+        rgb_image = np.abs(rgb_image)
+    else:
+        rgb_image = np.real(rgb_image)
+    plt.imshow(rgb_image)
+    plt.title(title)
+
+
 if __name__ == '__main__':
-    x_1 = 6.000e-01
+    x_1 = 0.12  # 0.124167242
     y_1 = 0.000e+00
     t_1 = 0.000e+00
     p_1 = 0.000e+00
-    r_1 = 0.40
+    r_1 = 0.05
     x_2 = 0.000e+00
     y_2 = 0.000e+00
     t_2 = 0.000e+00
     p_2 = 0.000e+00
-    r_2 = 4.070e-01
-    x_3 = 0.000e+00
-    y_3 = 6.000e-01
+    r_2 = 1.1e-1
+    w_2 = 3e-3
+    n_out = 1e+00
+    n_in = 1.500e+00
+    x_3 = -0.12
+    y_3 = 0.000e+00
     t_3 = 0.000e+00
     p_3 = 0.000e+00
-    r_3 = 4.000e-01
+    r_3 = 0.05
     lambda_laser = 5.32e-07
     elev = 38.00
     azim = 168.00
-    axis_span = 0.87
+    axis_span = 1.1*x_1
     focus_point = -1
     set_initial_surface = False
     dim = 2
@@ -1173,19 +1412,24 @@ if __name__ == '__main__':
     x_2 += 0
     y_2 += 0
     t_2 += 0
-    p_2 += 5 * np.pi / 4
+    p_2 += np.pi
     x_3 += 0
     y_3 += 0
     t_3 += 0
-    p_3 += np.pi / 2
+    p_3 += np.pi
 
-    params = np.array([[x_1, y_1, 0, t_1, p_1, r_1],
-                       [x_2, y_2, 0, t_2, p_2, r_2],
-                       [x_3, y_3, 0, t_3, p_3, r_3]])
+    mirror_1 = CurvedMirror.from_params(np.array([x_1, y_1, 0, t_1, p_1, r_1, 1, 0, 0, 0]))
+    mirror_3 = CurvedMirror.from_params(np.array([x_3, y_3, 0, t_3, p_3, r_3, 1, 0, 0, 0]))
+    lens_2_right, lens_2_left = generate_lens(radius=r_2,
+                                              thickness=w_2,
+                                              n_out=n_out,
+                                              n_in=n_in,
+                                              center=np.array([x_2, y_2, 0]),
+                                              direction=unit_vector_of_angles(t_2, p_2))
 
-    cavity = Cavity.from_params(params=params, set_initial_surface=False, standing_wave=True, lambda_laser=lambda_laser)
+    cavity = Cavity([mirror_1, lens_2_right, lens_2_left, mirror_3], set_initial_surface=False, standing_wave=True,
+                    lambda_laser=lambda_laser)
     # cavity.find_central_line()
-    # cavity.set_initial_surface()
     central_line = cavity.trace_ray(cavity.default_initial_ray)
     for i, leg in enumerate(cavity.legs):
         leg.central_line = central_line[i]
@@ -1193,10 +1437,28 @@ if __name__ == '__main__':
     cavity.set_mode_parameters()
 
     ax = cavity.plot(dim=dim, axis_span=axis_span, camera_center=focus_point)
+    # ax.set_xlim(- axis_span, axis_span)
+    # ax.set_ylim(-0.0025, 0.0025)
 
-    print(f"{cavity.legs[0].mode_parameters.NA}")
+    if dim == 3:
+        ax.view_init(elev=elev, azim=azim)
+    ax.set_title(
+        f"NA_out of plane = {cavity.legs[0].mode_parameters.NA[0]:.2e} , NA_in plane = {cavity.legs[0].mode_parameters.NA[1]:.2e}")
+
+    # for mirror in cavity.physical_surfaces:
+    #     ax.plot(mirror.origin[0], mirror.origin[1], 'ro')
 
     plt.show()
+    fig_2, ax_2 = plt.subplots(2, 1)
+    shifts_r_1 = np.linspace(-0.01, 0.02, 100)
+    overlaps_r_1 = cavity.calculated_shifted_cavity_overlap_integral((0, 5), shifts_r_1)
 
+    shifts_p_1 = np.linspace(-0.02, 0.02, 100)
+    overlaps_p_1 = cavity.calculated_shifted_cavity_overlap_integral((0, 4), shifts_p_1)
 
-    # cavity.calculated_shifted_cavity_overlap_integral((0, 0), 0.0001, lambda_laser=0.01)
+    ax_2[0].plot(shifts_r_1, overlaps_r_1, label="r_1 stability")
+    ax_2[1].plot(shifts_p_1, overlaps_p_1, label="p_1 stability")
+    ax_2[0].legend()
+    ax_2[1].legend()
+    plt.show()
+
