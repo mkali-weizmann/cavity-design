@@ -73,6 +73,10 @@ class ModeParameters:
         else:
             return np.sqrt(self.lambda_laser / (np.pi * self.z_R))
 
+def safe_exponent(a: Union[float, np.ndarray]) -> Union[float, np.ndarray]:
+    a_safe = np.clip(a=np.real(a), a_min=-200, a_max=None) + 1j * np.imag(a)  # ARBITRARY
+    return np.exp(a_safe)
+
 
 def ABCD_free_space(length: float) -> np.ndarray:
     return np.array([[1, length, 0, 0],
@@ -1063,7 +1067,8 @@ class Cavity:
              axis_span: Optional[float] = None,
              camera_center: int = -1,
              ray_list: Optional[List[Ray]] = None,
-             dim: int = 3):
+             dim: int = 2,
+             laser_color: str = 'r'):
 
         if axis_span is None:
             axis_span = 1.1 * max([m.center[0] for m in self.physical_surfaces] +
@@ -1088,21 +1093,21 @@ class Cavity:
         if ray_list is None and self.central_line is not None:
             ray_list = self.central_line
 
-        if ray_list is not None:
-            if dim == 3:
-                ax.set_zlim(origin_camera[2] - axis_span, origin_camera[2] + axis_span)
-                ax.plot(ray_list[0].origin[0], ray_list[0].origin[1], ray_list[0].origin[2], 'go',
-                        label='beginning')
-                ax.plot(ray_list[-1].origin[0], ray_list[-1].origin[1], ray_list[-1].origin[2], 'ro',
-                        label='end')
-            else:
-                ax.plot(ray_list[0].origin[0], ray_list[0].origin[1], 'go', label='beginning')
-                ax.plot(ray_list[-1].origin[0], ray_list[-1].origin[1], 'ro', label='end')
+        # if ray_list is not None:
+        #     if dim == 3:
+        #         ax.set_zlim(origin_camera[2] - axis_span, origin_camera[2] + axis_span)
+        #         ax.plot(ray_list[0].origin[0], ray_list[0].origin[1], ray_list[0].origin[2], 'go',
+        #                 label='beginning')
+        #         ax.plot(ray_list[-1].origin[0], ray_list[-1].origin[1], ray_list[-1].origin[2], 'ro',
+        #                 label='end')
+        #     else:
+        #         ax.plot(ray_list[0].origin[0], ray_list[0].origin[1], 'go', label='beginning')
+        #         ax.plot(ray_list[-1].origin[0], ray_list[-1].origin[1], 'ro', label='end')
 
             plt.legend()
 
             for ray in ray_list:
-                ray.plot(ax=ax, dim=dim)
+                ray.plot(ax=ax, dim=dim, color=laser_color)
         for i, surface in enumerate(self.surfaces):
             surface.plot(ax=ax, name=str(i), dim=dim)
 
@@ -1110,9 +1115,9 @@ class Cavity:
             spot_size_lines = self.generate_spot_size_lines(lambda_laser=self.lambda_laser, dim=dim)
             for line in spot_size_lines:
                 if dim == 2:
-                    ax.plot(line[:, 0], line[:, 1], 'r--', alpha=0.8, linewidth=0.5)
+                    ax.plot(line[:, 0], line[:, 1], color=laser_color, linestyle='--', alpha=0.8, linewidth=0.5)
                 else:
-                    ax.plot(line[:, 0], line[:, 1], line[:, 2], 'r--', alpha=0.8, linewidth=0.5)
+                    ax.plot(line[:, 0], line[:, 1], line[:, 2], color=laser_color, linestyle='--', alpha=0.8, linewidth=0.5)
 
         return ax
 
@@ -1123,6 +1128,7 @@ class Cavity:
         if shift_input_is_float:
             shift = np.array([shift])
         overlaps = np.zeros_like(shift)
+        NAs = np.zeros_like(shift)
         for i, shift_value in enumerate(shift):
             new_params = copy.copy(params)
             new_params[parameter_index] = params[parameter_index] + shift_value
@@ -1133,16 +1139,17 @@ class Cavity:
             except np.linalg.LinAlgError:
                 continue
             overlaps[i] = np.abs(overlap)
+            NAs[i] = new_cavity.legs[0].mode_parameters.NA[0]
         if shift_input_is_float:
             overlaps = overlaps[0]
-        return overlaps
+        return overlaps, NAs
 
-    def calculate_shift_threshold(self, parameter_index: Tuple[int, int], lambda_laser: float, threshold: float):
-        def overlap_of_shift(shift: float):
-            return threshold - self.calculated_shifted_cavity_overlap_integral(parameter_index=parameter_index,
-                                                                               shift=shift)
-
-        return optimize.root_scalar(overlap_of_shift, x0=0, x1=0.001)
+    # def calculate_shift_threshold(self, parameter_index: Tuple[int, int], lambda_laser: float, threshold: float):
+    #     def overlap_of_shift(shift: float):
+    #         return threshold - self.calculated_shifted_cavity_overlap_integral(parameter_index=parameter_index,
+    #                                                                            shift=shift)
+    #
+    #     return optimize.root_scalar(overlap_of_shift, x0=0, x1=0.001)
 
 
 def calculate_gaussian_parameters_on_surface(surface: FlatSurface, mode_parameters: ModeParameters):
@@ -1173,10 +1180,10 @@ def calculate_gaussian_parameters_on_surface(surface: FlatSurface, mode_paramete
                             (t_hat @ u_hat) * (p_hat @ u_hat) / q_u + (t_hat @ v_hat) * (p_hat @ v_hat) / q_v],
                            [(t_hat @ u_hat) * (p_hat @ u_hat) / q_u + (t_hat @ v_hat) * (p_hat @ v_hat) / q_v,
                             (p_hat @ u_hat) ** 2 / q_u + (p_hat @ v_hat) ** 2 / q_v]])
-    b = 1j * k * np.array(
+    b = - (1/2) * 1j * k * np.array(
         [(k_hat @ t_hat) + 2 * (r_0 @ u_hat) * (t_hat @ u_hat) / q_u + 2 * (r_0 @ v_hat) * (t_hat @ v_hat) / q_v,
          (k_hat @ p_hat) + 2 * (r_0 @ u_hat) * (p_hat @ u_hat) / q_u + 2 * (r_0 @ v_hat) * (p_hat @ v_hat) / q_v])
-    c = 1j * k * (k_hat @ r_0) + (r_0 @ u_hat) ** 2 / q_u + (r_0 @ v_hat) ** 2 / q_v
+    c = - (1/2) * 1j * k * ((k_hat @ r_0) + (r_0 @ u_hat) ** 2 / q_u + (r_0 @ v_hat) ** 2 / q_v)
 
     return A, b, c
 
@@ -1193,7 +1200,6 @@ def calculate_cavities_overlap_matrices(cavity_1: Cavity, cavity_2: Cavity):
 
     A_1, b_1, c_1 = calculate_gaussian_parameters_on_surface(P1, mode_parameters_1)
     A_2, b_2, c_2 = calculate_gaussian_parameters_on_surface(P1, mode_parameters_2)
-
     return gaussians_overlap_integral(A_1, A_2, b_1, b_2, c_1, c_2)
 
 
@@ -1228,17 +1234,18 @@ def gaussians_overlap_integral(A_1: np.ndarray, A_2: np.ndarray,
     return np.exp(integral_normalized_log)
 
 
-def evaluate_gaussian(A: np.ndarray, b: np.ndarray, c: float, axis_span: float):
+def evaluate_gaussian(A: np.ndarray, b: np.ndarray, c: complex, axis_span: float):
     N = 100
     x = np.linspace(-axis_span, axis_span, N)
     y = np.linspace(-axis_span, axis_span, N)
     X, Y = np.meshgrid(x, y)
     R = np.stack([X, Y], axis=2)
-    mu = np.array([x_2, y_2])
-    R_shifted = R - mu[None, None, :]
-    R_normed_squared = np.einsum('ijk,kl,ijl->ij', R_shifted, A, R_shifted)
-    functions_values = np.exp(-(1 / 2) * R_normed_squared + np.einsum('k,ijk->ij', b, R) + c)
+    # mu = np.array([x_2, y_2])
+    # R_shifted = R - mu[None, None, :]
+    R_normed_squared = np.einsum('ijk,kl,ijl->ij', R, A, R)
+    functions_values = safe_exponent(-(1 / 2) * R_normed_squared + np.einsum('k,ijk->ij', b, R) + c)
     return functions_values
+
 
 def plot_gaussian_subplot(A: np.ndarray, b: np.ndarray, c: float, axis_span: float = 0.0005,
                   fig: Optional[plt.Figure] = None, ax: Optional[plt.Axes] = None):
@@ -1257,8 +1264,11 @@ def plot_gaussian_subplot(A: np.ndarray, b: np.ndarray, c: float, axis_span: flo
 def plot_2_gaussians_subplots(A_1: np.ndarray, A_2: np.ndarray,
                      # mu_1: np.ndarray, mu_2: np.ndarray, # Seems like I don't need the mus.
                      b_1: np.ndarray, b_2: np.ndarray,
-                     c_1: float, c_2: float, axis_span: float = 0.0005, title: Optional[str] = ''):
-    fig, ax = plt.subplots(2, 1, figsize=(10, 5))
+                     c_1: float, c_2: float, fig: Optional[plt.Figure] = None, ax: Optional[plt.Axes] = None,
+                              axis_span: float = 0.0005,
+                              title: Optional[str] = ''):
+    if ax is None:
+        fig, ax = plt.subplots(2, 1, figsize=(10, 5))
     plot_gaussian_subplot(A_1, b_1, c_1, axis_span, fig, ax[0])
     plot_gaussian_subplot(A_2, b_2, c_2, axis_span, fig, ax[1])
     if title is not None:
@@ -1266,23 +1276,46 @@ def plot_2_gaussians_subplots(A_1: np.ndarray, A_2: np.ndarray,
 
 
 def plot_2_gaussians_colors(A_1: np.ndarray, A_2: np.ndarray,
-                     # mu_1: np.ndarray, mu_2: np.ndarray, # Seems like I don't need the mus.
                      b_1: np.ndarray, b_2: np.ndarray,
-                     c_1: float, c_2: float, axis_span: float = 0.0005, title: Optional[str] = '', real_or_abs: str = 'real'):
+                     c_1: float, c_2: float, ax: Optional[plt.Axes] = None, axis_span: float = 0.0005,
+                            title: Optional[str] = '',
+                            real_or_abs: str = 'abs'):
+    if ax is None:
+        fig, ax = plt.subplots(1, 1, figsize=(10, 5))
     first_gaussian_values = evaluate_gaussian(A_1, b_1, c_1, axis_span)
     second_gaussian_values = evaluate_gaussian(A_2, b_2, c_2, axis_span)
+    first_gaussian_values = first_gaussian_values / np.max(np.abs(first_gaussian_values))
+    second_gaussian_values = second_gaussian_values / np.max(np.abs(second_gaussian_values))
     third_color_channel = np.zeros_like(first_gaussian_values)
     rgb_image = np.stack([first_gaussian_values, second_gaussian_values, third_color_channel], axis=2)
     if real_or_abs == 'abs':
         rgb_image = np.abs(rgb_image)
     else:
         rgb_image = np.real(rgb_image)
-    plt.imshow(rgb_image)
-    plt.title(title)
+    ax.imshow(rgb_image)
+    ax.set_title(title)
+
+
+def evaluate_gaussian_3d(points: np.ndarray, mode_parameters: ModeParameters):
+    center = mode_parameters.center[0, :]
+    points_relative = points - center
+    u_vec = mode_parameters.principle_axes[0, :]
+    v_vec = mode_parameters.principle_axes[1, :]
+    k_vec = mode_parameters.k_vector
+    k_projection = points_relative @ k_vec
+    u_projection = points_relative @ u_vec
+    v_projection = points_relative @ v_vec
+    q = k_projection[:, :, None] + 1j * mode_parameters.z_R[None, None, :]
+    q_u = q[:, :, 0]
+    q_v = q[:, :, 1]
+    k = 2 * np.pi / mode_parameters.lambda_laser
+    integrand = -1j * k / 2 * (u_projection**2 / q_u + v_projection**2 / q_v + k_projection)
+    gaussian = safe_exponent(integrand)
+    return gaussian
 
 
 if __name__ == '__main__':
-    x_1 = 0.12  # 0.124167242
+    x_1 = 0.01  # 0.124167242
     y_1 = 0.000e+00
     t_1 = 0.000e+00
     p_1 = 0.000e+00
@@ -1295,7 +1328,7 @@ if __name__ == '__main__':
     w_2 = 3e-3
     n_out = 1e+00
     n_in = 1.500e+00
-    x_3 = -0.12
+    x_3 = -0.01
     y_3 = 0.000e+00
     t_3 = 0.000e+00
     p_3 = 0.000e+00
@@ -1307,6 +1340,9 @@ if __name__ == '__main__':
     focus_point = -1
     set_initial_surface = False
     dim = 2
+
+    print(
+        f"default_x_1 = {x_1:.3e}\ndefault_y_1 = {y_1:.3e}\ndefault_t_1 = {t_1:.3e}\ndefault_p_1 = {p_1:.3e}\ndefault_r_1 = {r_1:.3e}\ndefault_x_2 = {x_2:.3e}\ndefault_y_2 = {y_2:.3e}\ndefault_t_2 = {t_2:.3e}\ndefault_p_2 = {p_2:.3e}\ndefault_r_2 = {r_2:.3e}\ndefault_w_2 = {w_2:.3e}\ndefault_x_3 = {x_3:.3e}\ndefault_y_3 = {y_3:.3e}\ndefault_t_3 = {t_3:.3e}\ndefault_p_3 = {p_3:.3e}\ndefault_r_3 = {r_3:.3e}\ndefault_lambda_laser = {lambda_laser:.2e}\ndefault_elev = {elev:.2f}\ndefault_azim = {azim:.2f}\ndefault_axis_span = {axis_span:.2f}\ndefault_dim = {dim}\ndefault_set_initial_surface = {set_initial_surface}\ndefault_focus_point = {focus_point}")
 
     y_1 += 0
     t_1 += 0
@@ -1351,16 +1387,21 @@ if __name__ == '__main__':
     #     ax.plot(mirror.origin[0], mirror.origin[1], 'ro')
 
     plt.show()
-    fig_2, ax_2 = plt.subplots(2, 1)
+    fig_2, ax_2 = plt.subplots(3, 1)
     shifts_r_1 = np.linspace(-0.01, 0.02, 100)
-    overlaps_r_1 = cavity.calculated_shifted_cavity_overlap_integral((0, 5), shifts_r_1)
+    overlaps_r_1, NAs_r1 = cavity.calculated_shifted_cavity_overlap_integral((0, 5), shifts_r_1)
 
     shifts_p_1 = np.linspace(-0.02, 0.02, 100)
-    overlaps_p_1 = cavity.calculated_shifted_cavity_overlap_integral((0, 4), shifts_p_1)
+    overlaps_p_1, NAs_p_1 = cavity.calculated_shifted_cavity_overlap_integral((0, 4), shifts_p_1)
 
     ax_2[0].plot(shifts_r_1, overlaps_r_1, label="r_1 stability")
     ax_2[1].plot(shifts_p_1, overlaps_p_1, label="p_1 stability")
     ax_2[0].legend()
     ax_2[1].legend()
+    ax_2[2].plot(shifts_r_1, NAs_r1, label="r_1 NAs")
+    ax_2[2].legend()
+
+
     plt.show()
+    print(f"default_x_1 = {x_1:.3e}\ndefault_y_1 = {y_1:.3e}\ndefault_t_1 = {t_1:.3e}\ndefault_p_1 = {p_1:.3e}\ndefault_r_1 = {r_1:.3e}\ndefault_x_2 = {x_2:.3e}\ndefault_y_2 = {y_2:.3e}\ndefault_t_2 = {t_2:.3e}\ndefault_p_2 = {p_2:.3e}\ndefault_r_2 = {r_2:.3e}\ndefault_w_2 = {w_2:.3e}\ndefault_x_3 = {x_3:.3e}\ndefault_y_3 = {y_3:.3e}\ndefault_t_3 = {t_3:.3e}\ndefault_p_3 = {p_3:.3e}\ndefault_r_3 = {r_3:.3e}\ndefault_lambda_laser = {lambda_laser:.2e}\ndefault_elev = {elev:.2f}\ndefault_azim = {azim:.2f}\ndefault_axis_span = {axis_span:.2f}\ndefault_dim = {dim}\ndefault_set_initial_surface = {set_initial_surface}\ndefault_focus_point = {focus_point}")
 
