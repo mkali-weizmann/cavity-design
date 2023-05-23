@@ -1194,112 +1194,14 @@ def calculate_cavities_overlap_matrices(cavity_1: Cavity, cavity_2: Cavity):
     A_1, b_1, c_1 = calculate_gaussian_parameters_on_surface(P1, mode_parameters_1)
     A_2, b_2, c_2 = calculate_gaussian_parameters_on_surface(P1, mode_parameters_2)
 
-    return gaussians_overlap_integral_matrices(A_1, A_2, b_1, b_2, c_1, c_2)
+    return gaussians_overlap_integral(A_1, A_2, b_1, b_2, c_1, c_2)
 
 
-def calculate_cavities_overlap(cavity_1: Cavity, cavity_2: Cavity, lambda_laser: float):
-    # Initialize all required parameters:
-    cavity_1.find_central_line()
-    cavity_2.find_central_line()
-    cavity_1.set_mode_parameters()
-    cavity_2.set_mode_parameters()
-
-    # The two modes of the laser in the first leg of the cavity:
-    mode_parameter_1 = cavity_1.legs[0].mode_parameters
-    mode_parameter_2 = cavity_2.legs[0].mode_parameters
-
-    cavity_1_waist_pos = mode_parameter_1.center[0, :]
-
-    # The local mode parameters of the laser in the first leg of the cavity at the waist the cavity_1:
-    local_mode_parameters_1 = cavity_1.legs[0].local_mode_parameters_on_a_point(cavity_1_waist_pos)
-    local_mode_parameters_2 = cavity_2.legs[0].local_mode_parameters_on_a_point(cavity_1_waist_pos)
-
-    # The plane that is perpendicular to the laser in cavity 1 and centered at its waist:
-    P1 = FlatSurface(center=cavity_1_waist_pos, outwards_normal=mode_parameter_1.k_vector)
-
-    # The widths in both dimensions of the lasers at the waist of cavity_1:
-    width_t_1, width_p_1 = w_0_of_z_R(local_mode_parameters_1.z_R, lambda_laser=lambda_laser)
-    width_t_2, width_p_2 = w_of_z_R(z=(cavity_1_waist_pos - cavity_2.legs[0].central_line.origin) @
-                                      mode_parameter_2.k_vector,
-                                    z_R=local_mode_parameters_2.z_R,
-                                    lambda_laser=lambda_laser)
-
-    # The intersection of the laser with the plane P1:
-    # t_1, p_1 = 0, 0
-    t_2, p_2 = P1.get_parameterization(P1.find_intersection_with_ray(mode_parameter_2.ray))
-    # Each one of those returns as an array of two identical values (because there are different origins for the two
-    # axes, thus there are two rays) but they coincide and so the values are identical and we can drop one of them:):
-    t_2 = t_2[0]
-    p_2 = p_2[0]
-
-    # The vectors that are perpendicular to the lasers, the first is perpendicular to the central line plane,
-    # and the other is inside it: (in the first cavity they are orthonormal basis to P1)
-    t_1_vec_and_p_1_vec = cavity_1.legs[0].mode_principle_axes
-    t_2_vec_and_p_2_vec = cavity_2.legs[0].mode_principle_axes
-    t_1_vec = t_1_vec_and_p_1_vec[0, :]
-    p_1_vec = t_1_vec_and_p_1_vec[1, :]
-    t_2_vec = t_2_vec_and_p_2_vec[0, :]
-    p_2_vec = t_2_vec_and_p_2_vec[1, :]
-
-    # The projection of t_2 on P1:
-    t_2_vec_projected_on_P1 = t_2_vec - np.dot(t_2_vec, mode_parameter_1.k_vector) * mode_parameter_1.k_vector
-    p_2_vec_projected_on_P1 = p_2_vec - np.dot(p_2_vec, mode_parameter_1.k_vector) * mode_parameter_1.k_vector
-
-    # the angle between t_1 and t_2:
-    cos_theta_rotation = normalize_vector(t_2_vec_projected_on_P1) @ t_1_vec
-    theta_rotation = np.arccos(cos_theta_rotation)
-
-    # The projection of k_2 the principal axes of P1:  # CHANGE IT - REQUIRES K_VECTOR TO BE NOT NORMALIZED
-    k_p = mode_parameter_2.k_vector @ p_1_vec * 2 * np.pi / lambda_laser
-    k_t = mode_parameter_2.k_vector @ t_1_vec * 2 * np.pi / lambda_laser
-
-    # The effective widths of the second lase in the plane P1: (since this plane is not necessarily perpendicular to the
-    # laser, the widths appear shrank in that plane
-    width_t_2_eff = width_t_2 * np.linalg.norm(t_2_vec_projected_on_P1)
-    width_p_2_eff = width_p_2 * np.linalg.norm(p_2_vec_projected_on_P1)
-
-    return gaussians_overlap_integral_v2(width_t_1, width_p_1, width_t_2_eff, width_p_2_eff, t_2, p_2, k_t, k_p,
-                                      theta_rotation)
+def gaussian_norm_log(A: np.ndarray, b: np.ndarray, c: float):
+    return 1 / 2 * gaussian_integral_2d_log(A + np.conjugate(A), b + np.conjugate(b), c + np.conjugate(c))
 
 
-def gaussian_integral_2d(a_x, b_x, k_x, a_y, b_y, k_y, a, c):
-    repetitive_denomenator = 4 * a_x * a_y - a ** 2
-
-    root = 2 * np.pi * repetitive_denomenator ** (-1 / 2)
-    exponent = np.exp((a_y * (b_x ** 2 - k_x ** 2) - a * (b_x * b_y - k_x * k_y) + a_x * (
-            b_y ** 2 - k_y ** 2)) / repetitive_denomenator + c)
-    cosine = np.cos(
-        (2 * a_y * b_x * k_x - a * b_x * k_y - a * b_y * k_x + 2 * a_x * b_y * k_y) / repetitive_denomenator)
-
-    return root * exponent * cosine
-
-
-def gaussians_overlap_integral_v2(w_x_1, w_y_1, w_x_2, w_y_2, x_2, y_2, k_x, k_y, theta):
-    a_x = 1 / (w_x_1 ** 2) + (np.cos(theta) ** 2) / (w_x_2 ** 2) + (np.sin(theta) ** 2) / (w_y_2 ** 2)
-    b_x = -2 * x_2 / (w_x_1 ** 2)
-    a_y = 1 / (w_y_1 ** 2) + (np.sin(theta) ** 2) / (w_x_2 ** 2) + (np.cos(theta) ** 2) / (w_y_2 ** 2)
-    b_y = -2 * y_2 / (w_y_1 ** 2)
-    a = (1 / (w_x_2 ** 2) - 1 / (w_y_2 ** 2)) * np.sin(2 * theta)
-    c = -(x_2 ** 2) / (w_x_1 ** 2) - (y_2 ** 2) / (w_y_1 ** 2)
-
-    normalization_factor = gaussian_norm(w_x_1, w_y_1, 0, 0, 0) * gaussian_norm(w_x_2, w_y_2, k_x, k_y, theta)
-
-    return gaussian_integral_2d(a_x, b_x, k_x, a_y, b_y, k_y, a, c) / normalization_factor
-
-
-def gaussian_norm(w_x, w_y, k_x, k_y, theta):
-    a_x = 2 * (np.cos(theta) ** 2 / w_x ** 2 + np.sin(theta) ** 2 / w_y ** 2)
-    a_y = 2 * (np.sin(theta) ** 2 / w_x ** 2 + np.cos(theta) ** 2 / w_y ** 2)
-    a = 2 * np.sin(2 * theta) * (1 / w_x ** 2 - 1 / w_y ** 2)
-    return np.sqrt((1 / 2) * (gaussian_integral_2d(a_x, 0, 0, a_y, 0, 0, a, 0) +
-                              gaussian_integral_2d(a_x, 0, 2 * k_x, a_y, 0, 2 * k_y, a, 0)))
-
-
-def gaussian_norm_matrices_log(A: np.ndarray, b: np.ndarray, c: float):
-    return 1/2 * gaussian_integral_2d_matrices_log(A + np.conjugate(A), b + np.conjugate(b), c + np.conjugate(c))
-
-
-def gaussian_integral_2d_matrices_log(A: np.ndarray, b: np.ndarray, c):
+def gaussian_integral_2d_log(A: np.ndarray, b: np.ndarray, c):
     # The integral over exp( x.T A_2 x + b.T x + c):
     eigen_values = np.linalg.eigvals(A)
     A_inv = np.linalg.inv(A)
@@ -1308,7 +1210,7 @@ def gaussian_integral_2d_matrices_log(A: np.ndarray, b: np.ndarray, c):
     return log_integral
 
 
-def gaussians_overlap_integral_matrices(A_1: np.ndarray, A_2: np.ndarray,
+def gaussians_overlap_integral(A_1: np.ndarray, A_2: np.ndarray,
                                         # mu_1: np.ndarray, mu_2: np.ndarray, # Seems like I don't need the mus.
                                         b_1: np.ndarray, b_2: np.ndarray,
                                         c_1: float, c_2: float):
@@ -1321,8 +1223,8 @@ def gaussians_overlap_integral_matrices(A_1: np.ndarray, A_2: np.ndarray,
     c = c_1_conjugate + c_2
     # b = mu_1.T @ A_1_conjugate + mu_2.T @ A_2 + b_1_conjugate + b_2
     # c = (-1/2) * (mu_1.T @ A_1_conjugate @ mu_1 + mu_2.T @ A_2 @ mu_2) + c_1_conjugate + c_2
-    normalization_factor_log = gaussian_norm_matrices_log(A_1, b_1, c_1) + gaussian_norm_matrices_log(A_2, b_2, c_2)
-    integral_normalized_log = gaussian_integral_2d_matrices_log(A, b, c) - normalization_factor_log
+    normalization_factor_log = gaussian_norm_log(A_1, b_1, c_1) + gaussian_norm_log(A_2, b_2, c_2)
+    integral_normalized_log = gaussian_integral_2d_log(A, b, c) - normalization_factor_log
     return np.exp(integral_normalized_log)
 
 
