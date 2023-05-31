@@ -1,19 +1,18 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from typing import List, Tuple, Optional, Union
+from typing import List, Tuple, Optional, Union, Callable
 from scipy import optimize
 import warnings
 from dataclasses import dataclass
 import copy
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-
 INDICES_DICT = {'x': 0, 'y': 1, 't': 2, 'p': 3, 'r': 4, 'w': 5, 'n_1': 6, 'n_2': 7, 'z': 8, 'curvature_sign': 9,
                 'surface_type': 10}
-
-
+INDICES_DICT_INVERSE = {v: k for k, v in INDICES_DICT.items()}
 # set numpy to raise an error on warnings:
 np.seterr(all='raise')
+
 
 # Throughout the code, all tensors can take any number of dimensions, but the last dimension is always the coordinate
 # dimension. this allows a Ray to be either a single ray, a list of rays, or a list of lists of rays, etc.
@@ -80,6 +79,7 @@ class ModeParameters:
             else:
                 return np.sqrt(self.lambda_laser / (np.pi * self.z_R))
 
+
 def safe_exponent(a: Union[float, np.ndarray]) -> Union[float, np.ndarray]:
     a_safe = np.clip(a=np.real(a), a_min=-200, a_max=None) + 1j * np.imag(a)  # ARBITRARY
     return np.exp(a_safe)
@@ -115,7 +115,7 @@ def rotation_matrix_around_n(n, theta):
 
 def focal_length_of_lens(R_1, R_2, n, width):
     # for R_1 = R_2 = 0.05, d=0.01, n=1.5, this function returns 1.5 [m]
-    one_over_f = (n - 1) * ((1/R_1) + (1/R_2) + ((n - 1) * width) / (n * R_1 * R_2))
+    one_over_f = (n - 1) * ((1 / R_1) + (1 / R_2) + ((n - 1) * width) / (n * R_1 * R_2))
     return 1 / one_over_f
 
 
@@ -140,7 +140,7 @@ def angles_distance(direction_vector_1: np.ndarray, direction_vector_2: np.ndarr
 
 def angles_difference(angle_1: Union[np.ndarray, float], angle_2: Union[np.ndarray, float]) -> np.ndarray:
     diff = angle_2 - angle_1
-    result = np.mod(diff + np.pi, 2*np.pi) - np.pi
+    result = np.mod(diff + np.pi, 2 * np.pi) - np.pi
     return result
 
 
@@ -172,6 +172,7 @@ def local_mode_parameters_of_round_trip_ABCD(round_trip_ABCD: np.ndarray) -> Loc
 
 def radius_of_f_and_n(f: float, n: float) -> float:
     return 2 * f * (n - 1)
+
 
 def w_0_of_z_R(z_R: np.ndarray, lambda_laser: float) -> np.ndarray:
     return np.sqrt(z_R * lambda_laser / np.pi)
@@ -245,8 +246,9 @@ class Ray:
 
 
 class Surface:
-    def __init__(self, outwards_normal: np.ndarray, **kwargs):
+    def __init__(self, outwards_normal: np.ndarray, name: Optional['str'] = None, **kwargs):
         self.outwards_normal = normalize_vector(outwards_normal)
+        self.name = name
 
     @property
     def center(self):
@@ -289,7 +291,6 @@ class Surface:
         else:
             color = 'black'
 
-
         if dim == 3:
             ax.plot_surface(x, y, z, color=color, alpha=0.25)
         else:
@@ -329,8 +330,8 @@ class Surface:
 
 
 class PhysicalSurface(Surface):
-    def __init__(self, outwards_normal: np.ndarray, **kwargs):
-        super().__init__(outwards_normal=outwards_normal, **kwargs)
+    def __init__(self, outwards_normal: np.ndarray, name: Optional['str'] = None, **kwargs):
+        super().__init__(outwards_normal=outwards_normal, name=name, **kwargs)
 
     @property
     def center(self):
@@ -360,8 +361,9 @@ class FlatSurface(Surface):
                  outwards_normal: np.ndarray,
                  distance_from_origin: Optional[float] = None,
                  center: Optional[np.ndarray] = None,
+                 name: Optional['str'] = None,
                  **kwargs):
-        super().__init__(outwards_normal=outwards_normal, **kwargs)
+        super().__init__(outwards_normal=outwards_normal, name=name, **kwargs)
         if distance_from_origin is None and center is None:
             raise ValueError('Either distance_from_origin or center must be specified')
         if distance_from_origin is not None and center is not None:
@@ -409,8 +411,10 @@ class FlatMirror(FlatSurface, PhysicalSurface):
     def __init__(self,
                  outwards_normal: np.ndarray,
                  distance_from_origin: Optional[float] = None,
-                 center: Optional[np.ndarray] = None):
-        super().__init__(outwards_normal=outwards_normal, distance_from_origin=distance_from_origin, center=center)
+                 center: Optional[np.ndarray] = None,
+                 name: Optional['str'] = None):
+        super().__init__(outwards_normal=outwards_normal, distance_from_origin=distance_from_origin, center=center,
+                         name=name)
 
     def plot(self, ax: Optional[plt.Axes] = None, name: Optional[str] = None, dim: int = 3, length=0.6):
         return super().plot(ax, name, dim, length)
@@ -456,8 +460,10 @@ class IdealLens(FlatSurface, PhysicalSurface):
                  outwards_normal: np.ndarray,
                  distance_from_origin: Optional[float] = None,
                  center: Optional[np.ndarray] = None,
-                 focal_length: Optional[float] = None):
-        super().__init__(outwards_normal=outwards_normal, distance_from_origin=distance_from_origin, center=center)
+                 focal_length: Optional[float] = None,
+                 name: Optional['str'] = None, ):
+        super().__init__(outwards_normal=outwards_normal, distance_from_origin=distance_from_origin, center=center,
+                         name=name)
         self.focal_length = focal_length
 
     def plot(self, ax: Optional[plt.Axes] = None, name: Optional[str] = None, dim: int = 3, length=0.6):
@@ -491,7 +497,8 @@ class IdealLens(FlatSurface, PhysicalSurface):
         output_vector = self.ABCD_matrix(cos_theta_incoming=0) @ input_vector
         if len(input_vector.shape) > 1:
             output_vector = np.swapaxes(output_vector, 0, 1)
-        t_projection_out, p_projection_out = np.cos(np.pi / 2 - output_vector[1, ...]), np.cos(np.pi / 2 - output_vector[3, ...])
+        t_projection_out, p_projection_out = np.cos(np.pi / 2 - output_vector[1, ...]), np.cos(
+            np.pi / 2 - output_vector[3, ...])
         # ABCD_MATRIX METHOD
         # Here I assume all rays come from the same direction to the lens
         if ray.k_vector.reshape(-1)[0:3] @ self.outwards_normal > 0:
@@ -508,9 +515,9 @@ class IdealLens(FlatSurface, PhysicalSurface):
     def ABCD_matrix(self, cos_theta_incoming: float = None) -> np.ndarray:
         # THIS CURRENTLY DOES NOT HOLD FOR THE CASE WHERE THE RAY IS NOT PERPENDICULAR TO THE LENS!
         return np.array([[1, 0, 0, 0],
-                         [-1/self.focal_length, 1, 0, 0],
+                         [-1 / self.focal_length, 1, 0, 0],
                          [0, 0, 1, 0],
-                         [0, 0, -1/self.focal_length, 1]])
+                         [0, 0, -1 / self.focal_length, 1]])
 
     def reflect_ray(self, ray: Ray) -> Ray:
         intersection_point = self.find_intersection_with_ray(ray)
@@ -524,11 +531,12 @@ class CurvedSurface(Surface):
                  center: Optional[np.ndarray] = None,  # Not the center of the sphere but the center of
                  # the plate.
                  origin: Optional[np.ndarray] = None,  # The center of the sphere.
-                 curvature_sign: int = 1  # 1 for concave (where the ray is hitting the sphere from the inside) and -1 for convex
+                 curvature_sign: int = 1,
+                 # 1 for concave (where the ray is hitting the sphere from the inside) and -1 for convex
                  # (where the ray is hitting the sphere from the outside). this is used to find the correct intersection
                  # point of a ray with the surface
-                 ):
-        super().__init__(outwards_normal=outwards_normal)
+                 name: Optional['str'] = None, ):
+        super().__init__(outwards_normal=outwards_normal, name=name)
         self.radius = radius
         self.curvature_sign = curvature_sign
 
@@ -542,7 +550,7 @@ class CurvedSurface(Surface):
             self.origin = origin
 
     @staticmethod
-    def from_params(params: np.ndarray):
+    def from_params(params: np.ndarray, name: Optional[str] = None):
         x, y, t, p, r, w, n_1, n_2, z, curvature_sign, surface_type = params
         center = np.array([x, y, z])
         outwards_normal = unit_vector_of_angles(t, p)
@@ -550,16 +558,22 @@ class CurvedSurface(Surface):
             surface = CurvedMirror(radius=r,
                                    outwards_normal=outwards_normal,
                                    center=center,
-                                   curvature_sign=curvature_sign)
+                                   curvature_sign=curvature_sign,
+                                   name=name)
         elif surface_type == 1:
             surface = CurvedRefractiveSurface(radius=r,
-                                             outwards_normal=outwards_normal,
-                                             center=center,
-                                             curvature_sign=curvature_sign,
-                                             n_1=n_1,
-                                             n_2=n_2)
+                                              outwards_normal=outwards_normal,
+                                              center=center,
+                                              curvature_sign=curvature_sign,
+                                              n_1=n_1,
+                                              n_2=n_2,
+                                              name=name)
         elif surface_type == 2:
-            surface_1, surface_2 = generate_lens_from_params(params)
+            if name is None:
+                names = None
+            else:
+                names = [name + '_1', name + '_2']
+            surface_1, surface_2 = generate_lens_from_params(params, names=names)
             return surface_1, surface_2
         else:
             raise ValueError(f'Unknown surface type {surface_type}')
@@ -658,8 +672,10 @@ class CurvedMirror(CurvedSurface, PhysicalSurface):
                  center: Optional[np.ndarray] = None,  # Not the center of the sphere but the center of
                  # the plate.
                  origin: Optional[np.ndarray] = None,  # The center of the sphere.
-                 curvature_sign: int = 1):
-        super().__init__(radius, outwards_normal, center, origin, curvature_sign)
+                 curvature_sign: int = 1,
+                 name: Optional['str'] = None, ):
+        super().__init__(radius=radius, outwards_normal=outwards_normal, center=center, origin=origin,
+                         curvature_sign=curvature_sign, name=name)
 
     def reflect_direction(self, ray: Ray, intersection_point: Optional[np.ndarray] = None) -> np.ndarray:
         # Notice that this function does not reflect along the normal of the mirror but along the normal projection
@@ -714,8 +730,10 @@ class CurvedRefractiveSurface(CurvedSurface, PhysicalSurface):
                  origin: Optional[np.ndarray] = None,  # The center of the sphere.
                  n_1: float = 1,
                  n_2: float = 1.5,
-                 curvature_sign: int = 1):
-        super().__init__(radius, outwards_normal, center, origin, curvature_sign)
+                 curvature_sign: int = 1,
+                 name: Optional['str'] = None, ):
+        super().__init__(radius=radius, outwards_normal=outwards_normal, center=center, origin=origin,
+                         curvature_sign=curvature_sign, name=name)
         self.n_1 = n_1
         self.n_2 = n_2
 
@@ -725,14 +743,15 @@ class CurvedRefractiveSurface(CurvedSurface, PhysicalSurface):
         n_backwards = (self.origin - intersection_point) * self.curvature_sign  # m_rays | 3
         n_backwards = normalize_vector(n_backwards)
         n_forwards = -n_backwards
-        cos_theta_incoming = np.sum(ray.k_vector * n_forwards, axis=-1)   # m_rays
+        cos_theta_incoming = np.sum(ray.k_vector * n_forwards, axis=-1)  # m_rays
         n_orthogonal = ray.k_vector - cos_theta_incoming[..., np.newaxis] * n_forwards  # m_rays | 3
         if np.linalg.norm(n_orthogonal) < 1e-14:
             reflected_direction_vector = n_forwards
         else:
             n_orthogonal = normalize_vector(n_orthogonal)
             sin_theta_outgoing = np.sqrt((self.n_1 / self.n_2) ** 2 * (1 - cos_theta_incoming ** 2))  # m_rays
-            reflected_direction_vector = n_forwards * np.sqrt(1 - sin_theta_outgoing ** 2) + n_orthogonal * sin_theta_outgoing
+            reflected_direction_vector = n_forwards * np.sqrt(
+                1 - sin_theta_outgoing ** 2) + n_orthogonal * sin_theta_outgoing
         return reflected_direction_vector
 
     def ABCD_matrix(self, cos_theta_incoming: float = None) -> np.ndarray:
@@ -749,41 +768,45 @@ class CurvedRefractiveSurface(CurvedSurface, PhysicalSurface):
         return ABCD
 
 
-def generate_lens_from_params(params: np.ndarray):
+def generate_lens_from_params(params: np.ndarray, names: Optional[List[str]] = None):
     x, y, t, p, r, w, n_in, n_out, z, curvature_sign, surface_type = params
+    if names is None:
+        names = [None, None]
     center = np.array([x, y, z])
     direction = unit_vector_of_angles(t, p)
-    center_1 = center - (1/2) * w * direction
-    center_2 = center + (1/2) * w * direction
+    center_1 = center - (1 / 2) * w * direction
+    center_2 = center + (1 / 2) * w * direction
     surface_1 = CurvedRefractiveSurface(radius=r,
                                         outwards_normal=-direction,
                                         center=center_1,
                                         n_1=n_out,
                                         n_2=n_in,
-                                        curvature_sign=-1)
+                                        curvature_sign=-1,
+                                        name=names[0])
     surface_2 = CurvedRefractiveSurface(radius=r,
                                         outwards_normal=direction,
                                         center=center_2,
                                         n_1=n_in,
                                         n_2=n_out,
-                                        curvature_sign=1)
+                                        curvature_sign=1,
+                                        name=names[1])
     return surface_1, surface_2
 
 
-def generate_lens(radius: float, thickness: float, n_out: float, n_in: float, center: Optional, direction: np.ndarray):
-    surface_1 = CurvedRefractiveSurface(radius=radius,
-                                        outwards_normal=-direction,
-                                        center=center - (1/2) * direction * thickness,
-                                        n_1=n_out,
-                                        n_2=n_in,
-                                        curvature_sign=-1)
-    surface_2 = CurvedRefractiveSurface(radius=radius,
-                                        outwards_normal=direction,
-                                        center=center + (1/2) * direction * thickness,
-                                        n_1=n_in,
-                                        n_2=n_out,
-                                        curvature_sign=1)
-    return surface_1, surface_2
+# def generate_lens(radius: float, thickness: float, n_out: float, n_in: float, center: Optional, direction: np.ndarray):
+#     surface_1 = CurvedRefractiveSurface(radius=radius,
+#                                         outwards_normal=-direction,
+#                                         center=center - (1/2) * direction * thickness,
+#                                         n_1=n_out,
+#                                         n_2=n_in,
+#                                         curvature_sign=-1)
+#     surface_2 = CurvedRefractiveSurface(radius=radius,
+#                                         outwards_normal=direction,
+#                                         center=center + (1/2) * direction * thickness,
+#                                         n_1=n_in,
+#                                         n_2=n_out,
+#                                         curvature_sign=1)
+#     return surface_1, surface_2
 
 
 class Arm:
@@ -880,6 +903,10 @@ class Arm:
                                                                             propagation_ABCD)
         return local_mode_parameters
 
+    @property
+    def names(self):
+        return [self.surface_1.name, self.surface_2.name]
+
 
 class Cavity:
     def __init__(self,
@@ -887,7 +914,8 @@ class Cavity:
                  set_initial_surface: bool = False,
                  standing_wave: bool = False,
                  lambda_laser: Optional[float] = None,
-                 params: Optional[np.ndarray] = None):
+                 params: Optional[np.ndarray] = None,
+                 names: Optional[List[str]] = None):
         self.standing_wave = standing_wave
         self.physical_surfaces = physical_surfaces
         self.arms: List[Arm] = [
@@ -897,6 +925,8 @@ class Cavity:
         self.central_line_successfully_traced: Optional[bool] = None
         self.lambda_laser: Optional[float] = lambda_laser
         self.params = params
+        self.names_list = names
+
 
         # Find central line and add the initial surface at the beginning of the surfaces list
         if set_initial_surface:
@@ -906,15 +936,18 @@ class Cavity:
     def from_params(params: np.ndarray,
                     set_initial_surface: bool = False,
                     standing_wave: bool = False,
-                    lambda_laser: Optional[float] = None):
+                    lambda_laser: Optional[float] = None,
+                    names: Optional[List[str]] = None):
         mirrors = []
+        if names is None:
+            names = [None for i in range(len(params))]
         for i in range(len(params)):
-            surface_temp = CurvedSurface.from_params(params[i, :])
+            surface_temp = CurvedSurface.from_params(params[i, :], name=names[i])
             if isinstance(surface_temp, tuple):
                 mirrors.extend(surface_temp)
             else:
                 mirrors.append(surface_temp)
-        return Cavity(mirrors, set_initial_surface, standing_wave, lambda_laser, params=params)
+        return Cavity(mirrors, set_initial_surface, standing_wave, lambda_laser, params=params, names=names)
 
     @property
     def to_params(self):
@@ -994,6 +1027,13 @@ class Cavity:
             initial_ray = Ray(origin=self.arms[0].surface_1.center, k_vector=initial_k_vector)
             return initial_ray
 
+    @property
+    def names(self):
+        if self.names_list is None:
+            return [surface.name for surface in self.physical_surfaces]
+        else:
+            return self.names_list
+
     def trace_ray(self, ray: Ray) -> List[Ray]:
         ray_history = [ray]
         for arm in self.arms:
@@ -1020,11 +1060,11 @@ class Cavity:
         # The roots of this function are the initial parameters for the central line.
         try:
             final_position_and_angles, _ = self.trace_ray_parametric(starting_position_and_angles)
+            diff = np.zeros_like(starting_position_and_angles)
+            diff[[0, 2]] = final_position_and_angles[[0, 2]] - starting_position_and_angles[[0, 2]]
+            diff[[1, 3]] = angles_difference(final_position_and_angles[[1, 3]], starting_position_and_angles[[1, 3]])
         except FloatingPointError:
-            return np.array([np.nan, np.nan, np.nan, np.nan])
-        diff = np.zeros_like(starting_position_and_angles)
-        diff[[0, 2]] = final_position_and_angles[[0, 2]] - starting_position_and_angles[[0, 2]]
-        diff[[1, 3]] = angles_difference(final_position_and_angles[[1, 3]], starting_position_and_angles[[1, 3]])
+            diff = np.array([np.nan, np.nan, np.nan, np.nan])
         return diff
 
     def find_central_line(self, override_existing=False) -> Tuple[np.ndarray, bool]:
@@ -1042,7 +1082,7 @@ class Cavity:
         # how pycharm suggests to use it. But in practice it returns only the solution, not sure why.
         central_line_initial_parameters: np.ndarray = optimize.fsolve(self.f_roots, initial_guess, epsfcn=1e-10)
 
-        if np.linalg.norm(self.f_roots(central_line_initial_parameters)) > 1e-10:
+        if np.linalg.norm(self.f_roots(central_line_initial_parameters)) > 1e-9:
             central_line_successfully_traced = False
         else:
             central_line_successfully_traced = True
@@ -1062,7 +1102,6 @@ class Cavity:
     def set_mode_parameters(self):
         if self.central_line_successfully_traced is None:
             self.find_central_line()
-
 
         mode_parameters_current = local_mode_parameters_of_round_trip_ABCD(self.ABCD_round_trip)
         for arm in self.arms:
@@ -1224,14 +1263,15 @@ class Cavity:
                     if dim == 2:
                         ax.plot(line[:, 0], line[:, 1], color=laser_color, linestyle='--', alpha=0.8, linewidth=0.5)
                     else:
-                        ax.plot(line[:, 0], line[:, 1], line[:, 2], color=laser_color, linestyle='--', alpha=0.8, linewidth=0.5)
+                        ax.plot(line[:, 0], line[:, 1], line[:, 2], color=laser_color, linestyle='--', alpha=0.8,
+                                linewidth=0.5)
             except FloatingPointError:
                 print("kaki")
         return ax
 
     def calculated_shifted_cavity_overlap_integral(self, parameter_index: Tuple[int, int],
-                                                   shift: Union[float, np.ndarray]):
-        shift_input_is_float = isinstance(shift, float)
+                                                   shift: Union[float, np.ndarray] = np.linspace(-1e-6, 1e-6, 50)):
+        shift_input_is_float = isinstance(shift, (float, int))
         if shift_input_is_float:
             shift = np.array([shift])
         overlaps = np.zeros_like(shift)
@@ -1248,6 +1288,48 @@ class Cavity:
         if shift_input_is_float:
             overlaps = overlaps[0]
         return overlaps, NAs
+
+    def calculate_parameter_critical_tolerance(self,
+                                               parameter_index: Tuple[int, int],
+                                               initial_step: float = 1e-6,
+                                               overlap_threshold: float = 0.9,
+                                               accuracy: float = 1e-3):
+        def f(shift):
+            return self.calculated_shifted_cavity_overlap_integral(parameter_index, shift)[0]
+
+        return functions_first_crossing_both_directions(f=f, initial_step=initial_step,
+                                                        crossing_value=overlap_threshold, accuracy=accuracy)
+
+    def generate_tolerance_graphs(self,
+                                  initial_step: float = 1e-6,
+                                  overlap_threshold: float = 0.9,
+                                  accuracy: float = 1e-3):
+        fig, ax = plt.subplots(self.params.shape[0], 7, figsize=(self.params.shape[0]*2, 7*2))
+        for i in range(self.params.shape[0]):
+            print(i)
+            for j in range(7):
+                print("  ", j)
+                tolerance = np.abs(self.calculate_parameter_critical_tolerance(parameter_index=(i, j),
+                                                                        initial_step=initial_step,
+                                                                        overlap_threshold=overlap_threshold,
+                                                                        accuracy=accuracy))
+                shifts = np.linspace(-2.1 * tolerance, 2 * tolerance, 30)
+                overlaps, _ = self.calculated_shifted_cavity_overlap_integral(parameter_index=(i, j),
+                                                                              shift=shifts)
+
+                ax[i, j].plot(shifts, overlaps)
+                title = f"{self.names[i]}, {INDICES_DICT_INVERSE[j]}, tolerance: {tolerance:.2e}"
+                ax[i, j].set_title(title)
+                if i == self.params.shape[0] - 1:
+                    ax[i, j].set_xlabel("Shift")
+                if j == 0:
+                    ax[i, j].set_ylabel("Overlap")
+                ax[i, j].axvline(tolerance, color='r', linestyle='--')
+        fig.tight_layout()
+        return fig, ax
+
+
+
 
 
 def calculate_gaussian_parameters_on_surface(surface: FlatSurface, mode_parameters: ModeParameters):
@@ -1278,10 +1360,10 @@ def calculate_gaussian_parameters_on_surface(surface: FlatSurface, mode_paramete
                             (t_hat @ u_hat) * (p_hat @ u_hat) / q_u + (t_hat @ v_hat) * (p_hat @ v_hat) / q_v],
                            [(t_hat @ u_hat) * (p_hat @ u_hat) / q_u + (t_hat @ v_hat) * (p_hat @ v_hat) / q_v,
                             (p_hat @ u_hat) ** 2 / q_u + (p_hat @ v_hat) ** 2 / q_v]])
-    b = - (1/2) * 1j * k * np.array(
+    b = - (1 / 2) * 1j * k * np.array(
         [(k_hat @ t_hat) + 2 * (r_0 @ u_hat) * (t_hat @ u_hat) / q_u + 2 * (r_0 @ v_hat) * (t_hat @ v_hat) / q_v,
          (k_hat @ p_hat) + 2 * (r_0 @ u_hat) * (p_hat @ u_hat) / q_u + 2 * (r_0 @ v_hat) * (p_hat @ v_hat) / q_v])
-    c = - (1/2) * 1j * k * ((k_hat @ r_0) + (r_0 @ u_hat) ** 2 / q_u + (r_0 @ v_hat) ** 2 / q_v)
+    c = - (1 / 2) * 1j * k * ((k_hat @ r_0) + (r_0 @ u_hat) ** 2 / q_u + (r_0 @ v_hat) ** 2 / q_v)
 
     return A, b, c
 
@@ -1296,17 +1378,21 @@ def evaluate_cavities_modes_on_surface(cavity_1: Cavity, cavity_2: Cavity):
                 correct_modes = False
                 break
     if cavity_1.central_line_successfully_traced is False or cavity_2.central_line_successfully_traced is False:
-        correct_modes = False
+        A_1, A_2, b_1, b_2, c_1, c_2, P1, correct_modes = 0, 0, 0, 0, 0, 0, 0, False
+        return A_1, A_2, b_1, b_2, c_1, c_2, P1, correct_modes
 
     mode_parameters_1 = cavity_1.arms[0].mode_parameters
     mode_parameters_2 = cavity_2.arms[0].mode_parameters
 
     cavity_1_waist_pos = mode_parameters_1.center[0, :]
     P1 = FlatSurface(center=cavity_1_waist_pos, outwards_normal=mode_parameters_1.k_vector)
-
-    A_1, b_1, c_1 = calculate_gaussian_parameters_on_surface(P1, mode_parameters_1)
-    A_2, b_2, c_2 = calculate_gaussian_parameters_on_surface(P1, mode_parameters_2)
+    try:
+        A_1, b_1, c_1 = calculate_gaussian_parameters_on_surface(P1, mode_parameters_1)
+        A_2, b_2, c_2 = calculate_gaussian_parameters_on_surface(P1, mode_parameters_2)
+    except FloatingPointError:
+        A_1, A_2, b_1, b_2, c_1, c_2, P1, correct_modes = 0, 0, 0, 0, 0, 0, 0, False
     return A_1, A_2, b_1, b_2, c_1, c_2, P1, correct_modes
+
 
 def calculate_cavities_overlap_matrices(cavity_1: Cavity, cavity_2: Cavity):
     A_1, A_2, b_1, b_2, c_1, c_2, P1, correct_modes = evaluate_cavities_modes_on_surface(cavity_1, cavity_2)
@@ -1330,9 +1416,9 @@ def gaussian_integral_2d_log(A: np.ndarray, b: np.ndarray, c):
 
 
 def gaussians_overlap_integral(A_1: np.ndarray, A_2: np.ndarray,
-                                        # mu_1: np.ndarray, mu_2: np.ndarray, # Seems like I don't need the mus.
-                                        b_1: np.ndarray, b_2: np.ndarray,
-                                        c_1: float, c_2: float):
+                               # mu_1: np.ndarray, mu_2: np.ndarray, # Seems like I don't need the mus.
+                               b_1: np.ndarray, b_2: np.ndarray,
+                               c_1: float, c_2: float):
     A_1_conjugate = np.conjugate(A_1)
     b_1_conjugate = np.conjugate(b_1)
     c_1_conjugate = np.conjugate(c_1)
@@ -1361,7 +1447,7 @@ def evaluate_gaussian(A: np.ndarray, b: np.ndarray, c: complex, axis_span: float
 
 
 def plot_gaussian_subplot(A: np.ndarray, b: np.ndarray, c: float, axis_span: float = 0.0005,
-                  fig: Optional[plt.Figure] = None, ax: Optional[plt.Axes] = None):
+                          fig: Optional[plt.Figure] = None, ax: Optional[plt.Axes] = None):
     if ax is None:
         fig, ax = plt.subplots()
     functions_values = evaluate_gaussian(A, b, c, axis_span)
@@ -1375,9 +1461,9 @@ def plot_gaussian_subplot(A: np.ndarray, b: np.ndarray, c: float, axis_span: flo
 
 
 def plot_2_gaussians_subplots(A_1: np.ndarray, A_2: np.ndarray,
-                     # mu_1: np.ndarray, mu_2: np.ndarray, # Seems like I don't need the mus.
-                     b_1: np.ndarray, b_2: np.ndarray,
-                     c_1: float, c_2: float, fig: Optional[plt.Figure] = None, ax: Optional[plt.Axes] = None,
+                              # mu_1: np.ndarray, mu_2: np.ndarray, # Seems like I don't need the mus.
+                              b_1: np.ndarray, b_2: np.ndarray,
+                              c_1: float, c_2: float, fig: Optional[plt.Figure] = None, ax: Optional[plt.Axes] = None,
                               axis_span: float = 0.0005,
                               title: Optional[str] = ''):
     if ax is None:
@@ -1389,8 +1475,8 @@ def plot_2_gaussians_subplots(A_1: np.ndarray, A_2: np.ndarray,
 
 
 def plot_2_gaussians_colors(A_1: np.ndarray, A_2: np.ndarray,
-                     b_1: np.ndarray, b_2: np.ndarray,
-                     c_1: float, c_2: float, ax: Optional[plt.Axes] = None, axis_span: float = 0.0005,
+                            b_1: np.ndarray, b_2: np.ndarray,
+                            c_1: float, c_2: float, ax: Optional[plt.Axes] = None, axis_span: float = 0.0005,
                             title: Optional[str] = '',
                             real_or_abs: str = 'abs'):
     if ax is None:
@@ -1417,13 +1503,17 @@ def perturb_cavity(cavity: Cavity, parameter_index: Tuple[int, int], shift_value
                                     lambda_laser=cavity.lambda_laser)
     return new_cavity
 
-def plot_2_cavity_perturbation_overlap(cavity: Cavity, parameter_index: Tuple[int, int], shift_value: float, ax: Optional[plt.Axes] = None, axis_span: float = 0.0005):
+
+def plot_2_cavity_perturbation_overlap(cavity: Cavity, parameter_index: Tuple[int, int], shift_value: float,
+                                       ax: Optional[plt.Axes] = None, axis_span: float = 0.0005):
     new_cavity = perturb_cavity(cavity, parameter_index, shift_value)
 
     A_1, A_2, b_1, b_2, c_1, c_2, P1, correct_mode = evaluate_cavities_modes_on_surface(cavity, new_cavity)
     if correct_mode:
-        plot_2_gaussians_colors(A_1, A_2, b_1, b_2, c_1, c_2, ax=ax, axis_span=axis_span, title='Cavity perturbation overlap',
+        plot_2_gaussians_colors(A_1, A_2, b_1, b_2, c_1, c_2, ax=ax, axis_span=axis_span,
+                                title='Cavity perturbation overlap',
                                 real_or_abs='abs')
+
 
 def evaluate_gaussian_3d(points: np.ndarray, mode_parameters: ModeParameters):
     center = mode_parameters.center[0, :]
@@ -1438,9 +1528,68 @@ def evaluate_gaussian_3d(points: np.ndarray, mode_parameters: ModeParameters):
     q_u = q[:, :, 0]
     q_v = q[:, :, 1]
     k = 2 * np.pi / mode_parameters.lambda_laser
-    integrand = -1j * k / 2 * (u_projection**2 / q_u + v_projection**2 / q_v + k_projection)
+    integrand = -1j * k / 2 * (u_projection ** 2 / q_u + v_projection ** 2 / q_v + k_projection)
     gaussian = safe_exponent(integrand)
     return gaussian
+
+
+def find_distance_to_first_crossing(shifts: np.ndarray, overlaps: np.ndarray, crossing_value: float = 0.9):
+    # Assumes shifts is ascending and that overlaps[i] is the overlap of shift[i]
+    positive_shifts = shifts[shifts > 0]
+    negative_shifts = shifts[shifts < 0]
+    positive_shifts_overlaps = overlaps[shifts > 0]
+    negative_shifts_overlaps = overlaps[shifts < 0]
+    negative_shifts_overlaps = negative_shifts_overlaps[::-1]
+    negative_shifts = negative_shifts[::-1]
+    first_positive_overlap_crossing = np.argmax(positive_shifts_overlaps < crossing_value)
+    first_negative_overlap_crossing = np.argmax(negative_shifts_overlaps < crossing_value)
+    crossing_positive_shift = positive_shifts[first_positive_overlap_crossing]
+    crossing_negative_shift = negative_shifts[first_negative_overlap_crossing]
+    minimal_distance = np.min(np.abs(np.array([crossing_positive_shift, crossing_negative_shift])))
+    return minimal_distance
+
+
+def interval_parameterization(a: float, b: float, t: float) -> float:
+    return a + t * (b - a)
+
+
+def functions_first_crossing(f: Callable, initial_step: float, crossing_value: float = 0.9,
+                             accuracy: float = 0.001) -> float:
+    stopping_flag = False
+    # assumes f(0) == 1 and a decreasing function.
+    x = initial_step
+    borders_min = 0
+    borders_max = x
+    loop_counter = 0
+    f_0 = f(0)
+    while not stopping_flag:
+        loop_counter += 1
+        f_x = f(x)
+        if loop_counter > 100 and f_0 - f_x < f_0 * 1e-5:
+            return np.nan
+        if crossing_value - accuracy < f_x < crossing_value + accuracy:
+            stopping_flag = True
+        elif f_x > crossing_value + accuracy:
+            borders_min = x
+            if x == borders_max:
+                x *= 1.1
+                borders_max = x
+            else:
+                x = interval_parameterization(x, borders_max, 0.5)
+        else:
+            borders_max = x
+            x = interval_parameterization(borders_min, x, 0.5)
+    return x
+
+
+def functions_first_crossing_both_directions(f: Callable, initial_step: float, crossing_value: float = 0.9,
+                                             accuracy: float = 0.001) -> float:
+    positive_step = functions_first_crossing(f, initial_step, crossing_value, accuracy)
+    negative_step = functions_first_crossing(lambda x: f(-x), initial_step, crossing_value, accuracy)
+    if positive_step < negative_step:
+        return positive_step
+    else:
+        return -negative_step
 
 
 if __name__ == '__main__':
@@ -1454,12 +1603,12 @@ if __name__ == '__main__':
     y_2 = 0.000e+00
     t_2 = 0.000e+00
     p_2 = 0.000e+00
-    r_2 = 3.868e-02
+    f_2 = 3.868e-02
     w_2 = 1.000e-03
     n_in = 1.500e+00
     n_out = 1.000e+00
-    x_3 = -9.831e-02
-    x_3_small_perturbation = -8.109e-05
+    x_3 = -1.005e-01
+    x_3_small_perturbation = -4.857e-04
     y_3 = 0.000e+00
     t_3 = 0.000e+00
     p_3 = 0.000e+00
@@ -1467,15 +1616,24 @@ if __name__ == '__main__':
     lambda_laser = 5.32e-07
     elev = 38.00
     azim = 168.00
-    axis_span = 0.09
-    focus_point = 2
+    axis_span = 0.1
+    focus_point = 3
     set_initial_surface = False
     dim = 2
 
     x_1 += x_1_small_perturbation
+    y_1 += 0
+    t_1 += 0
+    p_1 += 0
+    x_2 += 0
+    y_2 += 0
+    t_2 += 0
     p_2 += np.pi
-    x_3 += x_3_small_perturbation
+    x_3 += 0
+    y_3 += 0
+    t_3 += 0
     p_3 += np.pi
+    r_2 = 2 * (n_in - n_out) * f_2
 
     params = np.array([[x_1, y_1, t_1, p_1, r_1, 0, 0, 0, 0, 1, 0],
                        [x_2, y_2, t_2, p_2, r_2, w_2, n_in, n_out, 0, 0, 2],
@@ -1483,27 +1641,13 @@ if __name__ == '__main__':
 
     cavity = Cavity.from_params(params=params, set_initial_surface=False, standing_wave=True,
                                 lambda_laser=lambda_laser)
-
     parameter_index = 3
     element = 0
-    shifts_min = -1.9710e-01
-    shifts_max = 2.0000e-01
-    shifts_dx = 1.0000e-03
+    shifts_min = 2e-03
+    shifts_max = 3e-03
+    shifts_dx = 1.0000e-05
     shift_percentile_for_plotting = 5.4000e-01
 
-    overlap_plot_shift_value = shifts_min * (
-                1 - shift_percentile_for_plotting) + shift_percentile_for_plotting * shifts_max
-    shifts = np.arange(shifts_min, shifts_max, shifts_dx)
-    overlaps, _ = cavity.calculated_shifted_cavity_overlap_integral((element, parameter_index), shifts)
-    fig, ax = plt.subplots(3, 1, figsize=(12, 12))
-    ax[0].plot(shifts, overlaps)
-    ax[0].axvline(overlap_plot_shift_value, color='gray', linestyle='--')
-    cavity.plot(dim=dim, axis_span=axis_span, camera_center=focus_point, ax=ax[1])
-    ax[1].set_title(
-        f"NA short arm = {cavity.arms[2].mode_parameters.NA[1]:.4f} NA long arm = {cavity.arms[0].mode_parameters.NA[0]:.4f}")
-    plot_2_cavity_perturbation_overlap(cavity=cavity, parameter_index=(element, parameter_index),
-                                       shift_value=overlap_plot_shift_value, ax=ax[2],
-                                       axis_span=cavity.arms[0].mode_parameters.w_0[0] * 3)
-    plt.show()
-
+    threshold = 0.9
+    cavity.generate_tolerance_graphs(initial_step=1e-5, overlap_threshold=threshold, accuracy=1e-3)
 
