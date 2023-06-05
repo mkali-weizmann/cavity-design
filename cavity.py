@@ -1763,30 +1763,31 @@ def functions_first_crossing_both_directions(f: Callable, initial_step: float, c
 # %%
 
 if __name__ == '__main__':
-    x_1 = 3.4934200000e-01
-    x_1_b = 6.5789500000e-04
+    x_1 = 5.0000000000e-02
+    x_1_b = 1.7347234760e-18
     x_1_c = 0.0000000000e+00
     y_1 = 0.0000000000e+00
     t_1 = 0.0000000000e+00
     p_1 = 0.0000000000e+00
-    r_1 = 2.0000000000e-01
-    x_3 = -5.0000000000e-02
+    r_1 = 5.08e-02
+    x_3 = -5.0000000000e-2
     y_3 = 0.0000000000e+00
     t_3 = 0.0000000000e+00
     p_3 = 0.0000000000e+00
-    r_3 = 2.0000000000e-01
-    lambda_laser = 5.3200e-07
+    lambda_laser = 1064e-09
 
     x_1 += x_1_b
     x_1 += x_1_c
+    r_3 = r_1
     p_3 += np.pi
+
     dim = 2
     names = ['Right Mirror', 'Left Mirror']
 
     params = np.array([[x_1, y_1, t_1, p_1, r_1, 0, 0, 0, 0, 1, 0],
                        # [x_2, y_2, t_2, p_2, r_2, w_2, n_in, n_out, 0, 0, 2],
                        [x_3, y_3, t_3, p_3, r_3, 0, 0, 0, 0, 1, 0]])
-    ratios = 1 + np.concatenate((np.array([0]), np.logspace(-7, -3, 5, endpoint=True)))
+    ratios = 1 - np.concatenate((np.array([0]), np.logspace(-7, -3, 5, endpoint=True)))
     x_1_values = x_1 * ratios
     cavity = Cavity.from_params(params=params, standing_wave=True,
                                 lambda_laser=lambda_laser, names=names)
@@ -1797,19 +1798,20 @@ if __name__ == '__main__':
     plt.savefig('figures/systems/mirror-mirror.png', dpi=300, bbox_inches='tight')
     plt.show()
 
-#     NAs, tolerance_matrix = generate_tolerance_of_NA(params, parameter_index_for_NA_control=(0, 0), arm_index_for_NA=2,
+#     NAs, tolerance_matrix = generate_tolerance_of_NA(params, parameter_index_for_NA_control=(0, 0), arm_index_for_NA=0,
 #                                                      parameter_values=x_1_values)
 #     overlaps_series = cavity.generate_overlap_series(shifts=2 * np.abs(tolerance_matrix[:, :, 0]),
 #                                                      shift_size=30,
 #                                                      print_progress=True)
 # # %%
-#     cavity.generate_overlaps_graphs(overlap_threshold=0.9, arm_index_for_NA=2,
+#     cavity.generate_overlaps_graphs(overlap_threshold=0.9, arm_index_for_NA=0,
 #                                     tolerance_matrix=tolerance_matrix[:, :, 0], overlaps_series=overlaps_series)
-#     plt.savefig('figures/NA tolerance/mirror_lens_mirror_left_control_overlaps.png', dpi=300, bbox_inches='tight')
+#     plt.savefig('figures/NA tolerance/Fabry-Perot_overlaps.png', dpi=300, bbox_inches='tight')
 #     plt.show()
 # # %%
 #     fig, ax = plot_tolerance_of_NA(NAs=NAs, tolerance_matrix=tolerance_matrix, names=names)
-#     plt.savefig('figures/NA tolerance/mirror_lens_mirror_left_control_tolerance.png', dpi=300, bbox_inches='tight')
+#     plt.savefig('figures/NA tolerance/Fabry-Perot_tolerance.png', dpi=300, bbox_inches='tight')
 #     plt.show()
-
-
+# #
+#
+#
