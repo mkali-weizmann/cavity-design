@@ -1,3 +1,4 @@
+from __future__ import annotations
 import numpy as np
 import matplotlib.pyplot as plt
 from typing import List, Tuple, Optional, Union, Callable
@@ -8,13 +9,14 @@ import copy
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import pandas as pd
 from matplotlib import rc
+import pickle as pkl
 
 pd.options.display.float_format = '{:.3e}'.format
 
 
 INDICES_DICT = {'x': 0, 'y': 1, 't': 2, 'p': 3, 'r': 4, 'n_1': 5, 'w': 6, 'n_2': 7, 'z': 8, 'curvature_sign': 9,
                 'alpha_thermal_expansion': 10, 'beta_power_absorption': 11, 'kappa_thermal_conductivity': 12, 'dn_dT': 13,
-                'nu_poisson_ratio': 14, 'surface_type': 15}
+                'nu_poisson_ratio': 14, 'alpha_volume_absorption': 15, 'surface_type': 16}
 INDICES_DICT_INVERSE = {v: k for k, v in INDICES_DICT.items()}
 # set numpy to raise an error on warnings:
 SURFACE_TYPES_DICT = {'CurvedMirror': 0, 'Thick Lens': 1, 'CurvedRefractiveSurface': 2, 'IdealLens': 3, 'FlatMirror': 4}
@@ -22,43 +24,55 @@ SURFACE_TYPES_DICT = {'CurvedMirror': 0, 'Thick Lens': 1, 'CurvedRefractiveSurfa
 @dataclass
 class ThermalProperties:
     alpha_expansion: Optional[float] = None
-    beta_absorption: Optional[float] = None
+    beta_surface_absorption: Optional[float] = None
     kappa_conductivity: Optional[float] = None
     dn_dT: Optional[float] = None
     nu_poisson_ratio: Optional[float] = None
+    alpha_volume_absorption: Optional[float] = None
 
     @property
-    def array_representation(self) -> np.ndarray:
+    def to_array(self) -> np.ndarray:
         return np.array([self.alpha_expansion,
-                         self.beta_absorption,
+                         self.beta_surface_absorption,
                          self.kappa_conductivity,
                          self.dn_dT,
-                         self.nu_poisson_ratio])
+                         self.nu_poisson_ratio,
+                         self.alpha_volume_absorption])
 
 PHYSICAL_SIZES_DICT = {'thermal_properties_fused_silica': ThermalProperties(alpha_expansion=0.48e-6,
-                                                                            beta_absorption=1e-6,   # DUMMY
+                                                                            beta_surface_absorption=1e-6,  # DUMMY
                                                                             kappa_conductivity=1.38,
                                                                             dn_dT=12e-6,  # https://iopscience.iop.org/article/10.1088/0022-3727/16/5/002/pdf
-                                                                            nu_poisson_ratio=0.15),  # https://www.azom.com/properties.aspx?ArticleID=1387),
+                                                                            nu_poisson_ratio=0.15,
+                                                                            alpha_volume_absorption=1e-3# https://www.crystran.co.uk/optical-materials/silica-glass-sio2
+                                                                            ),  # https://www.azom.com/properties.aspx?ArticleID=1387),
                        'thermal_properties_yag': ThermalProperties(alpha_expansion=8e-6,  # https://www.crystran.co.uk/optical-materials/yttrium-aluminium-garnet-yag
-                                                                   beta_absorption=1e-6,   # DUMMY
+                                                                   beta_surface_absorption=1e-6,  # DUMMY
                                                                    kappa_conductivity=11.2,  # https://www.scientificmaterials.com/downloads/Nd_YAG.pdf, This does not agree: https://pubs.aip.org/aip/jap/article/131/2/020902/2836262/Thermal-conductivity-and-management-in-laser-gain
                                                                    dn_dT=9e-6,  # https://pubmed.ncbi.nlm.nih.gov/18319922/
-                                                                   nu_poisson_ratio=0.25 #  https://www.crystran.co.uk/userfiles/files/yttrium-aluminium-garnet-yag-data-sheet.pdf, https://www.korth.de/en/materials/detail/YAG
-                       ),
+                                                                   nu_poisson_ratio=0.25,  #  https://www.crystran.co.uk/userfiles/files/yttrium-aluminium-garnet-yag-data-sheet.pdf, https://www.korth.de/en/materials/detail/YAG
+
+                                                                   ),
                        'thermal_properties_sapphire': ThermalProperties(alpha_expansion=5.5e-6,
-                                                                        beta_absorption=1e-6,   # DUMMY
+                                                                        beta_surface_absorption=1e-6,  # DUMMY
                                                                         kappa_conductivity=46.06,  # https://www.google.com/search?q=sapphire+thermal+conductivity&rlz=1C1GCEB_enIL1023IL1023&oq=sapphire+thermal+c&aqs=chrome.0.35i39i650j69i57j0i20i263i512j0i22i30l3j0i10i15i22i30j0i22i30l3.3822j0j1&sourceid=chrome&ie=UTF-8
                                                                         dn_dT=11.7e-6,  # https://secwww.jhuapl.edu/techdigest/Content/techdigest/pdf/V14-N01/14-01-Lange.pdf
-                                                                        nu_poisson_ratio=0.3),  # https://www.google.com/search?q=sapphire+poisson+ratio&rlz=1C1GCEB_enIL1023IL1023&sxsrf=AB5stBgEUZwh7l9RzN9GwxjMPCw_DcShAw%3A1688647440018&ei=ELemZI1h0-2SBaukk-AH&ved=0ahUKEwiNqcD2jfr_AhXTtqQKHSvSBHwQ4dUDCA8&uact=5&oq=sapphire+poisson+ratio&gs_lcp=Cgxnd3Mtd2l6LXNlcnAQAzIECAAQHjIICAAQigUQhgMyCAgAEIoFEIYDMggIABCKBRCGAzIICAAQigUQhgMyCAgAEIoFEIYDOgoIABBHENYEELADSgQIQRgAUJsFWJsFYNQJaAFwAXgAgAF5iAF5kgEDMC4xmAEAoAEBwAEByAEI&sclient=gws-wiz-serp
+                                                                        nu_poisson_ratio=0.3,  # https://www.google.com/search?q=sapphire+poisson+ratio&rlz=1C1GCEB_enIL1023IL1023&sxsrf=AB5stBgEUZwh7l9RzN9GwxjMPCw_DcShAw%3A1688647440018&ei=ELemZI1h0-2SBaukk-AH&ved=0ahUKEwiNqcD2jfr_AhXTtqQKHSvSBHwQ4dUDCA8&uact=5&oq=sapphire+poisson+ratio&gs_lcp=Cgxnd3Mtd2l6LXNlcnAQAzIECAAQHjIICAAQigUQhgMyCAgAEIoFEIYDMggIABCKBRCGAzIICAAQigUQhgMyCAgAEIoFEIYDOgoIABBHENYEELADSgQIQRgAUJsFWJsFYNQJaAFwAXgAgAF5iAF5kgEDMC4xmAEAoAEBwAEByAEI&sclient=gws-wiz-serp
+                                                                        alpha_volume_absorption=3e-2),  # https://www.crystran.co.uk/optical-materials/sapphire-al2o3
                        'thermal_properties_bk7': ThermalProperties(alpha_expansion=7.1e-6,
                                                                    kappa_conductivity=1.114),
+                       'thermal_properties_ULE': ThermalProperties(alpha_expansion=1e-8,  # https://en.wikipedia.org/wiki/Ultra_low_expansion_glass#:~:text=It%20has%20a%20thermal%20conductivity,C%20%5B1832%20%C2%B0F%5D.
+                                                                   kappa_conductivity=1.31,
+                                                                   nu_poisson_ratio=0.17,
+                                                                   beta_surface_absorption=1e-6,  # DUMMY
+                                                                   ),
                        'refractive_indices': {'fused_silica': 1.455, # https://refractiveindex.info/?shelf=glass&book=fused_silica&page=Malitson
                                               'yag': 1.81,
                                               'sapphire': 1.76,
                                               'air': 1.0},
                         'c_mirror_radius_expansion': 1,  # DUMMY
                         'c_lens_focal_length_expansion': 1,  # DUMMY
+                        'c_lens_volumetric_absorbtion': 1,  # DUMMY
 }
 
 np.seterr(all='raise')
@@ -80,7 +94,7 @@ class OpticalObjectParams:
         else:
             surface_type = self.surface_type
         return np.concatenate((self.geometrical_params,
-                               self.thermal_properties.array_representation,
+                               self.thermal_properties.to_array,
                                np.array([surface_type])))
 
 
@@ -206,8 +220,15 @@ class ModeParameters:
     def local_mode_parameters(self, z_minus_z_0):
         return LocalModeParameters(z_minus_z_0, self.z_R)
 
-def maximal_lens_height(R: float, d: float) -> float:
-    return R * np.sqrt(1 - ((R - d) / R) ** 2)
+
+def nvl(var, val=0):
+  if var is None:
+    return val
+  return var
+
+
+def maximal_lens_height(R: float, w: float) -> float:
+    return R * np.sqrt(1 - ((R - w/2) / R) ** 2)
 
 
 def safe_exponent(a: Union[float, np.ndarray]) -> Union[float, np.ndarray]:
@@ -500,11 +521,11 @@ class Surface:
             params = params.array_representation
         params_pies = np.real(params) + np.pi * np.imag(params)
         x, y, t, p, r, n_1, w, n_2, z, curvature_sign, alpha_thermal_expansion, beta_power_absorption,\
-        kappa_thermal_conductivity, dn_dT, nu_poisson_ratio, surface_type = params_pies
+        kappa_thermal_conductivity, dn_dT, nu_poisson_ratio, alpha_volume_absorption, surface_type = params_pies
         center = np.array([x, y, z])
         outwards_normal = unit_vector_of_angles(t, p)
         thermal_properties = ThermalProperties(alpha_thermal_expansion, beta_power_absorption,
-                                               kappa_thermal_conductivity, dn_dT, nu_poisson_ratio)
+                                               kappa_thermal_conductivity, dn_dT, nu_poisson_ratio, alpha_volume_absorption)
         if surface_type == SURFACE_TYPES_DICT['CurvedMirror']:  # Mirror
             surface = CurvedMirror(radius=r,
                                    outwards_normal=outwards_normal,
@@ -581,24 +602,32 @@ class PhysicalSurface(Surface):
         n_1 = 0
         n_2 = 0
         alpha_thermal_expansion = self.thermal_properties.alpha_expansion
-        beta_power_absorption = self.thermal_properties.beta_absorption
+        beta_power_absorption = self.thermal_properties.beta_surface_absorption
         kappa_thermal_conductivity = self.thermal_properties.kappa_conductivity
-        dn_dT = self.thermal_properties.dn_dT
+        dn_dT = nvl(self.thermal_properties.dn_dT)
         nu_poisson_ratio = self.thermal_properties.nu_poisson_ratio
+        alpha_volume_absorption = nvl(self.thermal_properties.alpha_volume_absorption)
         if isinstance(self, CurvedMirror):
             surface_type = 0
+            curvature_sign = self.curvature_sign
         elif isinstance(self, CurvedRefractiveSurface):
             surface_type = 2
             n_1 = self.n_1
             n_2 = self.n_2
+            curvature_sign = self.curvature_sign
         elif isinstance(self, IdealLens):
             surface_type = 3
+            curvature_sign = 0
+        elif isinstance(self, FlatMirror):
+            surface_type = 4
+            curvature_sign = 0
         else:
             raise ValueError(f'Unknown surface type {type(self)}')
-        return np.array([x, y, t, p, r, n_1, 0, n_2, z, self.curvature_sign, alpha_thermal_expansion,
-                         beta_power_absorption, kappa_thermal_conductivity, dn_dT, nu_poisson_ratio, surface_type])
+        return np.array([x, y, t, p, r, n_1, 0, n_2, z, curvature_sign, alpha_thermal_expansion,
+                         beta_power_absorption, kappa_thermal_conductivity, dn_dT, nu_poisson_ratio,
+                         alpha_volume_absorption, surface_type])
 
-    def thermal_transformation(self, P_laser_power: float, w_spot_size: float):
+    def thermal_transformation(self, P_laser_power: float, w_spot_size: float, **kwargs):
         raise NotImplementedError
 
 
@@ -682,20 +711,20 @@ class FlatMirror(FlatSurface, PhysicalSurface):
     def center(self):
         return super().center
 
-    @property
-    def to_params(self):
-        t, p = angles_of_unit_vector(self.outwards_normal)
-        t = t / np.pi * 1j
-        p = p / np.pi * 1j
-        x, y, z = self.center
-        surface_type = SURFACE_TYPES_DICT['FlatMirror']
-        return np.array([x, y, t, p, 0, 0, 0, 0, z, 0, 0, 0, 0, 0, surface_type])
+    # @property
+    # def to_params(self):
+    #     t, p = angles_of_unit_vector(self.outwards_normal)
+    #     t = t / np.pi * 1j
+    #     p = p / np.pi * 1j
+    #     x, y, z = self.center
+    #     surface_type = SURFACE_TYPES_DICT['FlatMirror']
+    #     return np.array([x, y, t, p, 0, 0, 0, 0, z, 0, *self.thermal_properties.to_array, surface_type])
 
     def reflect_direction(self, ray: Ray) -> np.ndarray:
         dot_product = ray.k_vector @ self.outwards_normal  # m_rays
         k_projection_on_normal = dot_product[..., np.newaxis] * self.outwards_normal
-        reflected_direction = ray.k_vector - 2 * k_projection_on_normal
-        return reflected_direction
+        reflected_direction_test = ray.k_vector - 2 * k_projection_on_normal
+        return reflected_direction_test
 
     def ABCD_matrix(self, cos_theta_incoming: float = None) -> np.ndarray:
         # Assumes the ray is in the x-y plane, and the mirror is in the z-x plane
@@ -867,7 +896,7 @@ class CurvedSurface(Surface):
 
     @property
     def center(self):
-        return self.origin - self.radius * self.inwards_normal
+        return self.origin + self.radius * self.outwards_normal
 
     def get_spanning_vectors(self):
         # For the case of the sphere with normal on the x-axis, those will be the y and z axis.
@@ -948,12 +977,15 @@ class CurvedMirror(CurvedSurface, PhysicalSurface):
                 label=None)
         ax.plot(self.origin[0], self.origin[1], 'bo')
 
-    def thermal_transformation(self, P_laser_power: float, w_spot_size: float):
-        delta_curvature = - PHYSICAL_SIZES_DICT['c_mirror_radius_expansion'] * P_laser_power * self.thermal_properties.alpha_expansion * self.thermal_properties.beta_absorption / (self.thermal_properties.kappa_conductivity * w_spot_size ** 2)
-        new_radius = (self.radius**-1 + delta_curvature)**-1  # ARBITRARY - TAKING ONLY THE T AXIS
-        new_mirror = CurvedMirror(radius=new_radius, outwards_normal=self.outwards_normal, center=self.center, thermal_properties=self.thermal_properties)
-        new_mirror.radius = new_radius
-        return new_mirror
+    def thermal_transformation(self, P_laser_power: float, w_spot_size: float, transform_mirror: bool = True, **kwargs):
+        if not transform_mirror or np.isnan(w_spot_size):
+            return self
+        else:
+            delta_curvature = - PHYSICAL_SIZES_DICT['c_mirror_radius_expansion'] * P_laser_power * self.thermal_properties.alpha_expansion * self.thermal_properties.beta_surface_absorption / (self.thermal_properties.kappa_conductivity * w_spot_size ** 2)
+            new_radius = (self.radius**-1 + delta_curvature)**-1  # ARBITRARY - TAKING ONLY THE T AXIS
+            new_mirror = CurvedMirror(radius=new_radius, outwards_normal=self.outwards_normal, center=self.center, thermal_properties=self.thermal_properties)
+            new_mirror.radius = new_radius
+            return new_mirror
 
 
 
@@ -967,11 +999,13 @@ class CurvedRefractiveSurface(CurvedSurface, PhysicalSurface):
                  n_2: float = 1.5,
                  curvature_sign: int = 1,
                  name: Optional[str] = None,
-                 thermal_properties: Optional[ThermalProperties] = None,):
+                 thermal_properties: Optional[ThermalProperties] = None,
+                 thickness: Optional[float] = 5e-4):
         super().__init__(radius=radius, outwards_normal=outwards_normal, center=center, origin=origin,
                          curvature_sign=curvature_sign, name=name, thermal_properties=thermal_properties)
         self.n_1 = n_1
         self.n_2 = n_2
+        self.thickness = thickness
 
 
     def reflect_direction(self, ray: Ray, intersection_point: Optional[np.ndarray] = None) -> np.ndarray:
@@ -1004,24 +1038,49 @@ class CurvedRefractiveSurface(CurvedSurface, PhysicalSurface):
                          [0, 0, delta_n_e_in_plane / R_signed, cos_theta_incoming / cos_theta_outgoing]])  # phi
         return ABCD
 
-    def thermal_transformation(self, P_laser_power: float, w_spot_size: float):
+    def thermal_transformation(self,
+                               P_laser_power: float,
+                               w_spot_size: float,
+                               curvature_transform_lens: bool = True,
+                               n_surface_transform_lens: bool = True,
+                               n_volumetric_transform_lens: bool = True,
+                               z_transform_lens: bool = True,
+                               **kwargs):
+        if np.isnan(w_spot_size):
+            return self
         n_inside = np.max([self.n_1, self.n_2])
-        common_coefficient = PHYSICAL_SIZES_DICT['c_lens_focal_length_expansion'] * self.thermal_properties.beta_absorption * P_laser_power / (self.thermal_properties.kappa_conductivity * w_spot_size ** 2)
-        delta_optical_length_curvature_n = common_coefficient * self.thermal_properties.dn_dT
-        delta_curvature = common_coefficient * self.thermal_properties.alpha_expansion * (1+self.thermal_properties.nu_poisson_ratio) / (1-self.thermal_properties.nu_poisson_ratio)
+        common_coefficient = self.thermal_properties.beta_surface_absorption * P_laser_power / (self.thermal_properties.kappa_conductivity * w_spot_size ** 2)
+        delta_optical_length_curvature_n_surface = PHYSICAL_SIZES_DICT['c_lens_focal_length_expansion'] * common_coefficient * self.thermal_properties.dn_dT
+        delta_optical_length_curvature_n_volumetric = PHYSICAL_SIZES_DICT['c_lens_volumetric_absorbtion'] * self.thermal_properties.alpha_volume_absorption * P_laser_power * self.thermal_properties.dn_dT / self.thermal_properties.kappa_conductivity * (1/self.radius + self.thickness / w_spot_size**2)
+        delta_curvature = PHYSICAL_SIZES_DICT['c_lens_focal_length_expansion'] * common_coefficient * self.thermal_properties.alpha_expansion * (1+self.thermal_properties.nu_poisson_ratio) / (1-self.thermal_properties.nu_poisson_ratio)
         # A way which is also correct but less readable and intuitive:
-        # delta_optical_length_curvature_z = common_coefficient * n_inside * self.thermal_properties.alpha_expansion * (1+self.thermal_properties.nu_poisson_ratio) / (1-self.thermal_properties.nu_poisson_ratio)
+        delta_optical_length_curvature_z = common_coefficient * n_inside * self.thermal_properties.alpha_expansion * (1+self.thermal_properties.nu_poisson_ratio) / (1-self.thermal_properties.nu_poisson_ratio)
         # radius_new = self.radius * n_inside / (n_inside + delta_optical_length_curvature_z * self.radius)
-        radius_new = (self.radius**-1 + delta_curvature)**-1
+
+        if curvature_transform_lens:
+            radius_new = (self.radius**-1 + delta_curvature)**-1
+        else:
+            radius_new = self.radius
+
+        if z_transform_lens:
+            delta_z = delta_curvature * w_spot_size**2
+            center_new = self.center + delta_z * self.outwards_normal
+        else:
+            center_new = self.center
+
+        delta_optical_length_curvature_n = 0
+        if n_surface_transform_lens:
+            delta_optical_length_curvature_n += delta_optical_length_curvature_n_surface
+        if n_volumetric_transform_lens:
+            delta_optical_length_curvature_n += delta_optical_length_curvature_n_volumetric
         n_new = n_inside + delta_optical_length_curvature_n * self.radius
-        delta_z = delta_curvature * w_spot_size**2
-        center_new = self.center + delta_z * self.outwards_normal
         if self.n_1 == 1:
             n_1 = 1
             n_2 = n_new
         else:
             n_1 = n_new
             n_2 = 1
+
         return CurvedRefractiveSurface(radius=radius_new,
                                        outwards_normal=self.outwards_normal,
                                        center=center_new,
@@ -1037,7 +1096,7 @@ def generate_lens_from_params(params: np.ndarray, names: Optional[List[str]] = N
         params = params.array_representation
     params_pies = np.real(params) + np.pi * np.imag(params)
     x, y, t, p, r, n_in, w, n_out, z, curvature_sign, alpha_thermal_expansion, beta_power_absorption,\
-    kappa_thermal_conductivity, dn_dT, nu_poisson_ratio, surface_type = params_pies
+    kappa_thermal_conductivity, dn_dT, nu_poisson_ratio, alpha_volume_absorption, surface_type = params_pies
     if names is None:
         names = [None, None]
     center = np.array([x, y, z])
@@ -1045,7 +1104,7 @@ def generate_lens_from_params(params: np.ndarray, names: Optional[List[str]] = N
     center_1 = center - (1 / 2) * w * forward_direction
     center_2 = center + (1 / 2) * w * forward_direction
     thermal_properties = ThermalProperties(alpha_thermal_expansion, beta_power_absorption, kappa_thermal_conductivity,
-                                            dn_dT, nu_poisson_ratio)
+                                            dn_dT, nu_poisson_ratio, alpha_volume_absorption)
     surface_1 = CurvedRefractiveSurface(radius=r, outwards_normal=-forward_direction, center=center_1, n_1=n_out,
                                         n_2=n_in, curvature_sign=-1, name=names[0],
                                         thermal_properties=thermal_properties)
@@ -1202,7 +1261,7 @@ class Cavity:
                     p_is_trivial: bool = False,
                     power: Optional[float] = None):
         if isinstance(params, list):
-            params = np.stack([p.array_representation for p in params], axis=0)
+            params = np.stack([p.to_array for p in params], axis=0)
         mirrors = []
         if names is None:
             names = [None for i in range(len(params))]
@@ -1622,6 +1681,7 @@ class Cavity:
                                             [m.center[1] for m in self.physical_surfaces])) / 2,
                                         (np.max([m.center[2] for m in self.physical_surfaces]) + np.min(
                                             [m.center[2] for m in self.physical_surfaces])) / 2])
+
         else:
             camera_center_int = int(np.floor(camera_center))
             if np.mod(camera_center, 1) == 0.5:
@@ -1631,7 +1691,6 @@ class Cavity:
                 origin_camera = self.surfaces[camera_center_int].center
 
         x_index, y_index = plane_name_to_xy_indices(plane)
-
         ax.set_xlim(origin_camera[x_index] - axis_span[0] * 0.51, origin_camera[x_index] + axis_span[0] * 0.51)
         ax.set_ylim(origin_camera[y_index] - axis_span[1], origin_camera[y_index] + axis_span[1])
 
@@ -1816,11 +1875,12 @@ class Cavity:
         fig.tight_layout()
         return ax
 
-    def thermal_transformation(self):
+    def thermal_transformation(self, **kwargs) -> Cavity:
         unheated_surfaces = []
         for i, surface in enumerate(self.physical_surfaces):
-            unheated_surface = surface.thermal_transformation(P_laser_power=-self.power,  # minus because we are cooling it back
-                                                              w_spot_size=self.arms[i].mode_parameters_on_surface_1.spot_size(self.lambda_laser)[0])
+            unheated_surface = surface.thermal_transformation(P_laser_power=-self.power,
+                                                              w_spot_size=self.arms[i].mode_parameters_on_surface_1.spot_size(self.lambda_laser)[0],
+                                                              **kwargs)
             unheated_surfaces.append(unheated_surface)
 
         unheated_cavity = Cavity(physical_surfaces=unheated_surfaces,
@@ -1836,13 +1896,33 @@ class Cavity:
 
         return unheated_cavity
 
+    def analyze_thermal_transformation(self, arm_index_for_NA: int):
+        N = 5
+        boolean_array = np.eye(N).astype(bool)
+        boolean_array = np.vstack((np.zeros((1, N), dtype=bool), np.ones((1, N), dtype=bool), boolean_array))
+        cavities = []  # [self]
+        NA_orgiginal = self.arms[arm_index_for_NA].mode_parameters.NA[0]
+        NAs = np.zeros(N+2)
+        #NAs[0] = NA_orgiginal
+        for i in range(N+2):
+            curvature_transform_lens, n_surface_transform_lens, n_volumetric_transform_lens, z_transform_lens, transform_mirror = boolean_array[i,:]
+            unheated_cavity = self.thermal_transformation(curvature_transform_lens=curvature_transform_lens,
+                                                          n_surface_transform_lens=n_surface_transform_lens,
+                                                          n_volumetric_transform_lens=n_volumetric_transform_lens,
+                                                          z_transform_lens=z_transform_lens,
+                                                          transform_mirror=transform_mirror)
+            cavities.append(unheated_cavity)
+            NAs[i] = unheated_cavity.arms[arm_index_for_NA].mode_parameters.NA[0]
+        names_list = ['No transformation', 'All Transformations', 'Only lens curvature ', 'Only lens n surface ', 'Only lens n volumetric ', 'Only lens z ', 'Only mirror']
+        results_dict = dict(zip(names_list, NA_orgiginal / NAs))
+        return results_dict, cavities
+
     def print_table(self):
-        df = pd.DataFrame(self.to_params(convert_to_pies=True).T, columns=self.names, index = INDICES_DICT.keys())
+        df = pd.DataFrame(self.to_params(convert_to_pies=True).T, columns=self.names, index=INDICES_DICT.keys())
         print(df)
         parameters_dict = copy.copy(self.__dict__)
         del parameters_dict['physical_surfaces'], parameters_dict['names_memory'], parameters_dict['params'], parameters_dict['arms']
         print(parameters_dict)
-
 
 
 def generate_tolerance_of_NA(
@@ -2371,7 +2451,7 @@ def match_a_mirror_to_mode(mode: ModeParameters, z, thermal_properties: ThermalP
 def local_mode_2_of_lens_parameters(lens_parameters: np.ndarray,
                                     local_mode_1: LocalModeParameters):  # les_parameters = [r, n, w]
     R, w, n = lens_parameters
-    params = np.array([0, 0, 0, 0, R, n, w, 1, 0, 0, 0, 0, 0, 0, 0, 1])
+    params = np.array([0, 0, 0, 0, R, n, w, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1])
     surface_1, surface_2 = generate_lens_from_params(params)
     ABCD_first = surface_1.ABCD_matrix(cos_theta_incoming=1)
     ABCD_between = ABCD_free_space(w)
@@ -2437,44 +2517,10 @@ def compare_2_cylindrical_cavities(params_1: np.ndarray,
 
 # %%
 if __name__ == '__main__':
-    parameter_index = 1
-    element = 0
-    shifts_max = -7
-    shifts_n = 1.0000000000e+01
-    shift_percentile_for_plotting = 5.0000000000e-01
-    x_2 = 0
-    x_2_small_perturbation = 0
-    camera_center=-1
-
-    # 'x': 0, 'y': 1, 't': 2, 'p': 3, 'r': 4, 'n_1': 5, 'w': 6, 'n_2': 7, 'z': 8, 'curvature_sign': 9,
-    #                 'alpha_thermal_expansion': 10, 'beta_power_absorption': 11, 'kappa_thermal_conductivity': 12, 'dn_dT': 13,
-    #                 'nu_poisson_ratio': 14, 'surface_type': 15
-
-    params_low_NA = np.array([[ 2.7424349948e-01+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  1.7987943399e-01+0.j,  0.0000000000e+00+0.j,
-         0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  1.0000000000e+00+0.j,  4.8000000000e-07+0.j,  1.0000000000e-06+0.j,
-         1.3800000000e+00+0.j,  1.2000000000e-05+0.j,  1.5000000000e-01+0.j,  0.0000000000e+00+0.j],
-       [ 1.7347234760e-18+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+1.j,  1.4454397707e-02+0.j,  1.7600000000e+00+0.j,
-         1.0000000000e-03+0.j,  1.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  5.5000000000e-06+0.j,  1.0000000000e-06+0.j,
-         4.6060000000e+01+0.j,  1.1700000000e-05+0.j,  3.0000000000e-01+0.j,  1.0000000000e+00+0.j],
-       [-2.0500000000e-02+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00-1.j,  1.0000007169e-02+0.j,  0.0000000000e+00+0.j,
-         0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  1.0000000000e+00+0.j,  4.8000000000e-07+0.j,  1.0000000000e-06+0.j,
-         1.3800000000e+00+0.j,  1.2000000000e-05+0.j,  1.5000000000e-01+0.j,  0.0000000000e+00+0.j]])
-
-    params_high_NA = np.array([[ 2.7424349948e-01+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  1.3688702599e-01+0.j,  0.0000000000e+00+0.j,
-         0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  1.0000000000e+00+0.j,  4.8000000000e-07+0.j,  1.0000000000e-06+0.j,
-         1.3800000000e+00+0.j,  1.2000000000e-05+0.j,  1.5000000000e-01+0.j,  0.0000000000e+00+0.j],
-       [ 1.7347234760e-18+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+1.j,  1.4454397707e-02+0.j,  1.7600000000e+00+0.j,
-         1.0000000000e-03+0.j,  1.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  5.5000000000e-06+0.j,  1.0000000000e-06+0.j,
-         4.6060000000e+01+0.j,  1.1700000000e-05+0.j,  3.0000000000e-01+0.j,  1.0000000000e+00+0.j],
-       [-2.0500000000e-02+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j, -0.0000000000e+00-1.j,  1.0000007169e-02+0.j,  0.0000000000e+00+0.j,
-         0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  1.0000000000e+00+0.j,  4.8000000000e-07+0.j,  1.0000000000e-06+0.j,
-         1.3800000000e+00+0.j,  1.2000000000e-05+0.j,  1.5000000000e-01+0.j,  0.0000000000e+00+0.j]])
-
-    lambda_laser = 1064e-9
-    names = ['Right Mirror', 'lens', 'Left Mirror']
-    dim = 2
-    axis_span = None
-
+    lambda_laser=1064e-9
+    power = 5e4
+    overlap_threshold = 0.9
+    initial_step = 1e-6
 
     def mm_format(value, tick_number):
         return f"{value * 1e3:.2f}"
@@ -2483,69 +2529,53 @@ if __name__ == '__main__':
     def cm_format(value, tick_number):
         return f"{value * 1e2:.2f}"
 
-    font = {'size'   : 19}
-    rc('font', **font)
-    for i, params in enumerate([params_low_NA, params_high_NA]):
-        for aspect_ratio in [False, True]:  #
-            for left_side_only in [False, True]:  #
+    with open('data/params_dict.pkl', 'rb') as f:
+        params_dict = pkl.load(f)  # Sapphire, NA=0.1/0.039, Long arm length=0.3
+    for key in ['Sapphire, NA=0.1-0.039, L1=0.3 - Low NA axis']:  # params_dict.keys():
+        print(key)
+        cavity = Cavity.from_params(params=params_dict[key], standing_wave=True, lambda_laser=lambda_laser,
+                                    names=['Long Arm Mirror', 'Lens', 'Short Arm Mirror'], t_is_trivial=True,
+                                    p_is_trivial=True, power=power)
+        results_dict, cavities = cavity.analyze_thermal_transformation(0)
 
-                cavity = Cavity.from_params(params=params, set_initial_surface=False, standing_wave=True,
-                                            lambda_laser=lambda_laser, power=50000,
-                                            p_is_trivial=True, t_is_trivial=True, names=names)
-                if aspect_ratio:
-                    aspect_ratio_title = "even aspect ratio"
-                else:
-                    aspect_ratio_title = "uneven aspect ratio"
-                if left_side_only:
-                    left_side_title = "short arm only"
-                else:
-                    left_side_title = "whole cavity"
-                if i==0:
-                    NA_title = "low NA"
-                else:
-                    NA_title = "high NA"
-                title = f"{NA_title}, {aspect_ratio_title}, {left_side_title}"
-                x_3 = cavity.to_params(convert_to_pies=True)[2, 0]
-                x_2 = cavity.to_params(convert_to_pies=True)[1, 0]
-                diff = np.abs(x_3 - x_2)
-                # cavity.print_table()
-                unheated_cavity = cavity.thermal_transformation()
-                if aspect_ratio and not left_side_only:
-                    cavity.print_table()
-                fig, ax = plt.subplots(2, 1, figsize=(12, 10))
-                plt.subplots_adjust(hspace=0.4, right=0.98, left=0.125)
-                fig.suptitle(title)
-                cavity.plot(ax=ax[1])
-                ax[1].set_title(f"High power, Short Arm NA={cavity.arms[2].mode_parameters.NA[0]:.2e}")
-                ax[1].yaxis.set_major_formatter(plt.FuncFormatter(mm_format))
-                ax[1].xaxis.set_major_formatter(plt.FuncFormatter(cm_format))
-                ax[1].set_ylabel("y [mm]")
-                ax[1].set_xlabel("x [cm]")
-                ax[1].set_ymargin(0.3)
+        fig, axes = plt.subplots(4, 2, figsize=(13, 13))
+        for i, key_trans in enumerate(results_dict.keys()):
+            ax = axes.flatten()[i]
+            cavities[i].plot(ax=ax)
+            ax.set_title(f"{key_trans}, Power -> NA *= {results_dict[key_trans]:.2f}")
+            ax.yaxis.set_major_formatter(plt.FuncFormatter(mm_format))
+            ax.xaxis.set_major_formatter(plt.FuncFormatter(cm_format))
+            ax.set_ylabel("y [mm]")
+            ax.set_xlabel("x [cm]")
+        fig.suptitle(key)
+        fig.tight_layout()
+        plt.show()
+        # cavity.plot()
+        # plt.title(key)
+        # plt.savefig( f'figures/systems/{key}.svg', dpi=300, bbox_inches='tight')
+        # tolerance_matrix = cavity.generate_tolerance_threshold_matrix(initial_step=initial_step,
+        #                                                               overlap_threshold=overlap_threshold,
+        #                                                               print_progress=False)
+        # min_tolerance = np.nanmin(np.abs(tolerance_matrix))
+        # spot_size = cavity.arms[2].mode_parameters_on_surface_2.spot_size(lambda_laser=lambda_laser)[0]
+        # print(f"{min_tolerance=:.2e}, {spot_size=:.2e}")
+        # %%
+        # NAs, tolerance_matrix = generate_tolerance_of_NA(params_dict[key], parameter_index_for_NA_control=(1, 0),
+        #                                                  arm_index_for_NA=2, parameter_values=np.array([0]),
+        #                                                  t_is_trivial=True, p_is_trivial=True,
+        #                                                  return_cavities=False, lambda_laser=lambda_laser)
 
-                if left_side_only:
-                    ax[1].set_xlim(x_3 - 0.15 * diff, x_2 + 0.15 * diff)
-                if aspect_ratio:
-                    subplot_size = ax[1].get_window_extent().size
-                    subplot_size_ratio = subplot_size[1] / subplot_size[0]
-                    xlim = ax[1].get_xlim()
-                    x_length = xlim[1] - xlim[0]
-                    ax[1].set_ylim(x_length * subplot_size_ratio / 2, -x_length * subplot_size_ratio / 2)
+        # %%
+        # overlaps_series = cavity.generate_overlap_series(shifts=2 * np.abs(tolerance_matrix),
+        #                                                  shift_size=50,
+        #                                                  print_progress=False)
 
-
-
-                unheated_cavity.plot(ax=ax[0])
-                ax[0].set_title(f"Low power, Short Arm NA={unheated_cavity.arms[2].mode_parameters.NA[0]:.2e}")
-
-
-                ax[0].yaxis.set_major_formatter(plt.FuncFormatter(mm_format))
-                ax[0].xaxis.set_major_formatter(plt.FuncFormatter(cm_format))
-                ax[0].set_ylabel("y [mm]")
-                ax[0].set_xlabel("x [cm]")
-                ax[0].set_xlim(ax[1].get_xlim())
-                ax[0].set_ylim(ax[1].get_ylim())
-                plt.savefig(f"figures/systems/{title}.svg")
-
-                plt.show()
-
+        # %%
+        # cavity.generate_overlaps_graphs(overlaps_series=overlaps_series, tolerance_matrix=tolerance_matrix,
+        #                                 arm_index_for_NA=2)
+        # plt.suptitle(key)
+        # plt.savefig(
+        #     f'figures/NA tolerance/{key}.svg',
+        #     dpi=300, bbox_inches='tight')
+        # plt.show()
 
