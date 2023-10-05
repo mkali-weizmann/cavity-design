@@ -1,3 +1,4 @@
+# %%
 from __future__ import annotations
 import numpy as np
 import matplotlib.pyplot as plt
@@ -21,6 +22,9 @@ INDICES_DICT_INVERSE = {v: k for k, v in INDICES_DICT.items()}
 # set numpy to raise an error on warnings:
 SURFACE_TYPES_DICT = {'CurvedMirror': 0, 'Thick Lens': 1, 'CurvedRefractiveSurface': 2, 'IdealLens': 3, 'FlatMirror': 4}
 
+with open('data/params_dict.pkl', 'rb') as f:
+    params_dict = pkl.load(f)
+
 @dataclass
 class ThermalProperties:
     alpha_expansion: Optional[float] = None
@@ -35,11 +39,24 @@ class ThermalProperties:
         return np.array([self.alpha_expansion,
                          self.beta_surface_absorption,
                          self.kappa_conductivity,
-                         self.dn_dT,
+                         nvl(self.dn_dT),
                          self.nu_poisson_ratio,
-                         self.alpha_volume_absorption])
+                         nvl(self.alpha_volume_absorption)])
 
-PHYSICAL_SIZES_DICT = {'thermal_properties_fused_silica': ThermalProperties(alpha_expansion=0.48e-6,
+
+PHYSICAL_SIZES_DICT = {'thermal_properties_sapphire': ThermalProperties(alpha_expansion=5.5e-6,  # https://www.shinkosha.com/english/techinfo/feature/thermal-properties-of-sapphire/#:~:text=Sapphire%20has%20a%20large%20linear,very%20resistant%20to%20thermal%20shock., https://www.roditi.com/SingleCrystal/Sapphire/Properties.html
+                                                                        beta_surface_absorption=1e-6,  # DUMMY
+                                                                        kappa_conductivity=46.06,  # https://www.google.com/search?q=sapphire+thermal+conductivity&rlz=1C1GCEB_enIL1023IL1023&oq=sapphire+thermal+c&aqs=chrome.0.35i39i650j69i57j0i20i263i512j0i22i30l3j0i10i15i22i30j0i22i30l3.3822j0j1&sourceid=chrome&ie=UTF-8, https://www.shinkosha.com/english/techinfo/feature/thermal-properties-of-sapphire/, https://www.shinkosha.com/english/techinfo/feature/thermal-properties-of-sapphire/
+                                                                        dn_dT=11.7e-6,  # https://secwww.jhuapl.edu/techdigest/Content/techdigest/pdf/V14-N01/14-01-Lange.pdf
+                                                                        nu_poisson_ratio=0.3,  # https://www.google.com/search?q=sapphire+poisson+ratio&rlz=1C1GCEB_enIL1023IL1023&sxsrf=AB5stBgEUZwh7l9RzN9GwxjMPCw_DcShAw%3A1688647440018&ei=ELemZI1h0-2SBaukk-AH&ved=0ahUKEwiNqcD2jfr_AhXTtqQKHSvSBHwQ4dUDCA8&uact=5&oq=sapphire+poisson+ratio&gs_lcp=Cgxnd3Mtd2l6LXNlcnAQAzIECAAQHjIICAAQigUQhgMyCAgAEIoFEIYDMggIABCKBRCGAzIICAAQigUQhgMyCAgAEIoFEIYDOgoIABBHENYEELADSgQIQRgAUJsFWJsFYNQJaAFwAXgAgAF5iAF5kgEDMC4xmAEAoAEBwAEByAEI&sclient=gws-wiz-serp
+                                                                        alpha_volume_absorption=3e-2),  # https://www.crystran.co.uk/optical-materials/sapphire-al2o3,
+                       'thermal_properties_ULE': ThermalProperties(alpha_expansion=7.5e-8,
+                                                                   # https://en.wikipedia.org/wiki/Ultra_low_expansion_glass#:~:text=It%20has%20a%20thermal%20conductivity,C%20%5B1832%20%C2%B0F%5D, https://www.corning.com/media/worldwide/csm/documents/7972%20ULE%20Product%20Information%20Jan%202016.pdf
+                                                                   kappa_conductivity=1.31,
+                                                                   nu_poisson_ratio=0.17,
+                                                                   beta_surface_absorption=1e-6,  # DUMMY
+                                                                   ),
+                       'thermal_properties_fused_silica': ThermalProperties(alpha_expansion=0.48e-6,
                                                                             beta_surface_absorption=1e-6,  # DUMMY
                                                                             kappa_conductivity=1.38,
                                                                             dn_dT=12e-6,  # https://iopscience.iop.org/article/10.1088/0022-3727/16/5/002/pdf
@@ -53,24 +70,14 @@ PHYSICAL_SIZES_DICT = {'thermal_properties_fused_silica': ThermalProperties(alph
                                                                    nu_poisson_ratio=0.25,  #  https://www.crystran.co.uk/userfiles/files/yttrium-aluminium-garnet-yag-data-sheet.pdf, https://www.korth.de/en/materials/detail/YAG
 
                                                                    ),
-                       'thermal_properties_sapphire': ThermalProperties(alpha_expansion=5.5e-6,
-                                                                        beta_surface_absorption=1e-6,  # DUMMY
-                                                                        kappa_conductivity=46.06,  # https://www.google.com/search?q=sapphire+thermal+conductivity&rlz=1C1GCEB_enIL1023IL1023&oq=sapphire+thermal+c&aqs=chrome.0.35i39i650j69i57j0i20i263i512j0i22i30l3j0i10i15i22i30j0i22i30l3.3822j0j1&sourceid=chrome&ie=UTF-8
-                                                                        dn_dT=11.7e-6,  # https://secwww.jhuapl.edu/techdigest/Content/techdigest/pdf/V14-N01/14-01-Lange.pdf
-                                                                        nu_poisson_ratio=0.3,  # https://www.google.com/search?q=sapphire+poisson+ratio&rlz=1C1GCEB_enIL1023IL1023&sxsrf=AB5stBgEUZwh7l9RzN9GwxjMPCw_DcShAw%3A1688647440018&ei=ELemZI1h0-2SBaukk-AH&ved=0ahUKEwiNqcD2jfr_AhXTtqQKHSvSBHwQ4dUDCA8&uact=5&oq=sapphire+poisson+ratio&gs_lcp=Cgxnd3Mtd2l6LXNlcnAQAzIECAAQHjIICAAQigUQhgMyCAgAEIoFEIYDMggIABCKBRCGAzIICAAQigUQhgMyCAgAEIoFEIYDOgoIABBHENYEELADSgQIQRgAUJsFWJsFYNQJaAFwAXgAgAF5iAF5kgEDMC4xmAEAoAEBwAEByAEI&sclient=gws-wiz-serp
-                                                                        alpha_volume_absorption=3e-2),  # https://www.crystran.co.uk/optical-materials/sapphire-al2o3
                        'thermal_properties_bk7': ThermalProperties(alpha_expansion=7.1e-6,
                                                                    kappa_conductivity=1.114),
-                       'thermal_properties_ULE': ThermalProperties(alpha_expansion=1e-8,  # https://en.wikipedia.org/wiki/Ultra_low_expansion_glass#:~:text=It%20has%20a%20thermal%20conductivity,C%20%5B1832%20%C2%B0F%5D.
-                                                                   kappa_conductivity=1.31,
-                                                                   nu_poisson_ratio=0.17,
-                                                                   beta_surface_absorption=1e-6,  # DUMMY
-                                                                   ),
+
                        'refractive_indices': {'fused_silica': 1.455, # https://refractiveindex.info/?shelf=glass&book=fused_silica&page=Malitson
                                               'yag': 1.81,
                                               'sapphire': 1.76,
                                               'air': 1.0},
-                        'c_mirror_radius_expansion': 1,  # DUMMY
+                        'c_mirror_radius_expansion': 4,  # DUMMY
                         'c_lens_focal_length_expansion': 1,  # DUMMY
                         'c_lens_volumetric_absorbtion': 1,  # DUMMY
 }
@@ -88,7 +95,7 @@ class OpticalObjectParams:
     surface_type: Union[int, type]
 
     @property
-    def array_representation(self) -> np.ndarray:
+    def to_array(self) -> np.ndarray:
         if isinstance(self.surface_type, type):
             surface_type = SURFACE_TYPES_DICT[self.surface_type.__name__]
         else:
@@ -518,7 +525,7 @@ class Surface:
     @staticmethod
     def from_params(params: Union[np.ndarray, OpticalObjectParams], name: Optional[str] = None):
         if isinstance(params, OpticalObjectParams):
-            params = params.array_representation
+            params = params.to_array
         params_pies = np.real(params) + np.pi * np.imag(params)
         x, y, t, p, r, n_1, w, n_2, z, curvature_sign, alpha_thermal_expansion, beta_power_absorption,\
         kappa_thermal_conductivity, dn_dT, nu_poisson_ratio, alpha_volume_absorption, surface_type = params_pies
@@ -988,7 +995,6 @@ class CurvedMirror(CurvedSurface, PhysicalSurface):
             return new_mirror
 
 
-
 class CurvedRefractiveSurface(CurvedSurface, PhysicalSurface):
     def __init__(self,
                  radius: float,
@@ -1093,7 +1099,7 @@ class CurvedRefractiveSurface(CurvedSurface, PhysicalSurface):
 
 def generate_lens_from_params(params: np.ndarray, names: Optional[List[str]] = None):
     if isinstance(params, OpticalObjectParams):
-        params = params.array_representation
+        params = params.to_array
     params_pies = np.real(params) + np.pi * np.imag(params)
     x, y, t, p, r, n_in, w, n_out, z, curvature_sign, alpha_thermal_expansion, beta_power_absorption,\
     kappa_thermal_conductivity, dn_dT, nu_poisson_ratio, alpha_volume_absorption, surface_type = params_pies
@@ -1659,7 +1665,7 @@ class Cavity:
                 if self.arms[0].mode_parameters is not None and np.min(self.arms[0].mode_parameters_on_surface_1.z_R) > 0:
                     maximal_spot_size = np.max([arm.mode_parameters_on_surface_1.spot_size(lambda_laser=self.lambda_laser)[0]
                                                 for arm in self.arms])
-                    axis_span = np.array([axes_range[0], 2.55 * maximal_spot_size])
+                    axis_span = np.array([axes_range[0], 3 * maximal_spot_size])
                 else:
                     axis_span = np.array([axes_range[0], 0.01])
             else:
@@ -1708,7 +1714,7 @@ class Cavity:
                     spot_size = spot_size[1]
                 else:
                     spot_size = spot_size[0]
-                length = spot_size * 5
+                length = spot_size * 6
                 surface.plot(ax=ax, dim=dim, plane=plane, length=length)
 
         if self.lambda_laser is not None and plot_mode_lines and self.arms[0].central_line is not None:
@@ -1724,17 +1730,21 @@ class Cavity:
             except (FloatingPointError, AttributeError):
                 pass
         return ax
-
-    def calculated_shifted_cavity_overlap_integral(self, parameter_index: Tuple[int, int],
+    # parameter_index: Union[Tuple[int, int], Tuple[List[int], List[int]]],
+    #                    shift_value: Union[float, np.ndarray]
+    def calculated_shifted_cavity_overlap_integral(self, parameter_index: Union[Tuple[int, int], Tuple[List[int], List[int]]],
                                                    shift: Union[float, np.ndarray] = np.linspace(-1e-6, 1e-6, 50)) -> \
             Tuple[np.ndarray, np.ndarray]:
+        # For a prturbation of more than one parameter, the first dimension of shift is the shift version, and the second dimension for the parameter index
+        # For example, if shift = [[1e-6, 2e-6], [3e-6, 4e-6]], then the first perturbation is [1e-6, 2e-6] and the second is [3e-6, 4e-6].
         shift_input_is_float = isinstance(shift, (float, int))
         if shift_input_is_float:
             shift = np.array([shift])
-        overlaps = np.zeros_like(shift, dtype=np.float64)
-        NAs = np.zeros_like(shift)
-        for i, shift_value in enumerate(shift):
-            new_cavity = perturb_cavity(self, parameter_index, shift_value)
+        n_shifts = shift.shape[0]
+        overlaps = np.zeros(n_shifts, dtype=np.float64)
+        NAs = np.zeros(n_shifts)
+        for i in range(n_shifts):
+            new_cavity = perturb_cavity(self, parameter_index, shift[i])
             try:
                 overlap = calculate_cavities_overlap_matrices(cavity_1=self, cavity_2=new_cavity)
             except np.linalg.LinAlgError:
@@ -1760,7 +1770,7 @@ class Cavity:
     def generate_tolerance_threshold_matrix(self,
                                             initial_step: float = 1e-6,
                                             overlap_threshold: float = 0.9,
-                                            accuracy: float = 1e-3, print_progress: bool = True) -> np.ndarray:
+                                            accuracy: float = 1e-3, print_progress: bool = False) -> np.ndarray:
         tolerance_matrix = np.zeros((self.params.shape[0], self.number_of_params))
         number_of_params = params_to_number_of_parameters(self.params)
         j_range = list(np.arange(0, number_of_params, 1).astype(int))
@@ -1785,7 +1795,7 @@ class Cavity:
                                 # np.ndarray means that the i'th j'th element of shifts is the linspace limits of
                                 # the i'th j'th parameter.
                                 shift_size: int = 30,
-                                print_progress: bool = True, ) -> np.ndarray:
+                                print_progress: bool = False, ) -> np.ndarray:
         overlaps = np.zeros((self.params.shape[0], self.number_of_params, shift_size))
         for i in range(self.params.shape[0]):  # Iterate over optical elements
             if print_progress:
@@ -1811,7 +1821,7 @@ class Cavity:
                                  initial_step: float = 1e-6,
                                  overlap_threshold: float = 0.9,
                                  accuracy: float = 1e-3,
-                                 print_progress: bool = True,
+                                 print_progress: bool = False,
                                  arm_index_for_NA: int = 0,
                                  tolerance_matrix: Optional[np.ndarray] = None,
                                  overlaps_series: Optional[np.ndarray] = None,
@@ -1838,19 +1848,17 @@ class Cavity:
         if overlaps_series is None:
             overlaps_series = self.generate_overlap_series(shifts=2 * np.abs(tolerance_matrix),
                                                            shift_size=30,
-                                                           print_progress=True)
+                                                           print_progress=False)
         plt.suptitle(f"NA={self.arms[arm_index_for_NA].mode_parameters.NA[0]:.3e}")
 
         titles = ['Axial Position', 'Transverse Position', 'Tilt Angles', 'Radius and Index']
 
         for i in range(self.params.shape[0]):
-            print("  ", i)
             for j in range(len(parameters_indices)):
                 # The condition inside is for the case it is a mirror and the parameter is n, and then we don't want
                 # to draw it.
                 if parameters_indices[j] == INDICES_DICT['n_1'] and np.isnan(tolerance_matrix[i, parameters_indices[j]]):
                     continue
-                print("    ", parameters_indices[j])
                 tolerance = tolerance_matrix[i, parameters_indices[j]]
                 if tolerance == 0 or np.isnan(tolerance):
                     tolerance = initial_step
@@ -1858,6 +1866,7 @@ class Cavity:
                 shifts = np.linspace(-2 * tolerance_abs, 2 * tolerance_abs, overlaps_series.shape[2])
 
                 ax[i, j].plot(shifts, overlaps_series[i, parameters_indices[j], :])
+
                 title = f"{names[i]}, {INDICES_DICT_INVERSE[parameters_indices[j]]}, tolerance: {tolerance_abs:.2e}"
                 ax[i, j].set_title(title)
                 if i == self.params.shape[0] - 1:
@@ -1917,8 +1926,10 @@ class Cavity:
         results_dict = dict(zip(names_list, NA_orgiginal / NAs))
         return results_dict, cavities
 
-    def print_table(self):
-        df = pd.DataFrame(self.to_params(convert_to_pies=True).T, columns=self.names, index=INDICES_DICT.keys())
+    def print_table(self, names=None):
+        if names == None:
+            names = self.names
+        df = pd.DataFrame(self.to_params(convert_to_pies=True).T, columns=names, index=INDICES_DICT.keys())
         print(df)
         parameters_dict = copy.copy(self.__dict__)
         del parameters_dict['physical_surfaces'], parameters_dict['names_memory'], parameters_dict['params'], parameters_dict['arms']
@@ -1937,13 +1948,15 @@ def generate_tolerance_of_NA(
         standing_wave: bool = True,
         t_is_trivial: bool = False,
         p_is_trivial: bool = True,
-        return_cavities: bool = False) -> Union[
+        return_cavities: bool = False,
+        print_progress = False) -> Union[
     Tuple[np.ndarray, np.ndarray], Tuple[np.ndarray, np.ndarray, List[Cavity]]]:
     tolerance_matrix = np.zeros((params.shape[0], params_to_number_of_parameters(params), parameter_values.shape[0]))
     NAs = np.zeros(parameter_values.shape[0])
     cavities = []
     for k, parameter_value in enumerate(parameter_values):
-        print(k)
+        if print_progress:
+            print(k)
         params_temp = params.copy()
         params_temp[parameter_index_for_NA_control] = parameter_value
         cavity = Cavity.from_params(params=params_temp, set_mode_parameters=True, lambda_laser=lambda_laser,
@@ -1955,7 +1968,7 @@ def generate_tolerance_of_NA(
         cavities.append(cavity)
         tolerance_matrix[:, :, k] = cavity.generate_tolerance_threshold_matrix(initial_step=initial_step,
                                                                                overlap_threshold=overlap_threshold,
-                                                                               accuracy=accuracy)
+                                                                               accuracy=accuracy, print_progress=print_progress)
     if return_cavities:
         return NAs, tolerance_matrix, cavities
     else:
@@ -2136,7 +2149,7 @@ def evaluate_cavities_modes_on_surface(cavity_1: Cavity, cavity_2: Cavity):
     return A_1, A_2, b_1, b_2, c_1, c_2, P1, correct_modes
 
 
-def calculate_cavities_overlap_matrices(cavity_1: Cavity, cavity_2: Cavity):
+def calculate_cavities_overlap_matrices(cavity_1: Cavity, cavity_2: Cavity) -> float:
     A_1, A_2, b_1, b_2, c_1, c_2, P1, correct_modes = evaluate_cavities_modes_on_surface(cavity_1, cavity_2)
     if correct_modes is False:
         return np.nan
@@ -2163,7 +2176,7 @@ def gaussian_integral_2d_log(A: np.ndarray, b: np.ndarray, c):
 def gaussians_overlap_integral(A_1: np.ndarray, A_2: np.ndarray,
                                # mu_1: np.ndarray, mu_2: np.ndarray, # Seems like I don't need the mus.
                                b_1: np.ndarray, b_2: np.ndarray,
-                               c_1: float, c_2: float):
+                               c_1: float, c_2: float) -> float:
     A_1_conjugate = np.conjugate(A_1)
     b_1_conjugate = np.conjugate(b_1)
     c_1_conjugate = np.conjugate(c_1)
@@ -2232,21 +2245,34 @@ def plot_2_gaussians_colors(A_1: np.ndarray, A_2: np.ndarray,
     third_color_channel = np.zeros_like(first_gaussian_values)
     rgb_image = np.stack([first_gaussian_values, second_gaussian_values, third_color_channel], axis=2)
     if real_or_abs == 'abs':
-        rgb_image = np.abs(rgb_image)
+        rgb_image = np.clip(np.abs(rgb_image), 0, 1)
     else:
         rgb_image = np.real(rgb_image)
     ax.imshow(rgb_image)
     ax.set_title(title)
 
 
-def perturb_cavity(cavity: Cavity, parameter_index: Tuple[int, int], shift_value: float):
+def perturb_cavity(cavity: Cavity,
+                   parameter_index: Union[Tuple[int, int], Tuple[List[int], List[int]]],
+                   shift_value: Union[float, np.ndarray]):
     params = cavity.to_params()
     new_params = copy.copy(params)
-    new_params[parameter_index] = params[parameter_index] + shift_value
+    if isinstance(parameter_index[0], int):
+        new_params[parameter_index] = params[parameter_index] + shift_value
+        parameter_index_1_list = [parameter_index[1]]
+    else:
+        new_params[parameter_index[0], parameter_index[1]] += shift_value
+        parameter_index_1_list = parameter_index[1]
+
     # If the original cavity was symmetrical in the t axis or the p axis, and the perturbation does not disturb this
     # symmetry, then the new cavity is also symmetrical in the t axis or the p axis:
-    t_is_trivial = cavity.t_is_trivial and parameter_index[1] not in [INDICES_DICT['z'], INDICES_DICT['t']]
-    p_is_trivial = cavity.p_is_trivial and parameter_index[1] not in [INDICES_DICT['y'], INDICES_DICT['p']]
+    perturbance_in_z = [1 for i in parameter_index_1_list if i in [INDICES_DICT['z'], INDICES_DICT['t']]]
+    perturbance_in_y = [1 for i in parameter_index_1_list if i in [INDICES_DICT['y'], INDICES_DICT['p']]]
+    perturbance_in_z = bool(len(perturbance_in_z))
+    perturbance_in_y = bool(len(perturbance_in_y))
+
+    t_is_trivial = cavity.t_is_trivial and not perturbance_in_z
+    p_is_trivial = cavity.p_is_trivial and not perturbance_in_y
 
     new_cavity = Cavity.from_params(params=new_params, standing_wave=cavity.standing_wave,
                                     lambda_laser=cavity.lambda_laser, t_is_trivial=t_is_trivial,
@@ -2254,11 +2280,15 @@ def perturb_cavity(cavity: Cavity, parameter_index: Tuple[int, int], shift_value
     return new_cavity
 
 
-def plot_2_cavity_perturbation_overlap(cavity: Cavity, parameter_index: Tuple[int, int], shift_value: float,
+def plot_2_cavity_perturbation_overlap(cavity: Cavity,
+                                       parameter_index: Optional[Tuple[int, int]] = None,
+                                       shift_value: Optional[float] = None,
+                                       second_cavity: Cavity = None,
                                        ax: Optional[plt.Axes] = None, axis_span: float = 0.0005):
-    new_cavity = perturb_cavity(cavity, parameter_index, shift_value)
+    if second_cavity is None:
+        second_cavity = perturb_cavity(cavity, parameter_index, shift_value)
 
-    A_1, A_2, b_1, b_2, c_1, c_2, P1, correct_mode = evaluate_cavities_modes_on_surface(cavity, new_cavity)
+    A_1, A_2, b_1, b_2, c_1, c_2, P1, correct_mode = evaluate_cavities_modes_on_surface(cavity, second_cavity)
     if correct_mode:
         plot_2_gaussians_colors(A_1, A_2, b_1, b_2, c_1, c_2, ax=ax, axis_span=axis_span,
                                 title='Cavity perturbation overlap',
@@ -2492,8 +2522,7 @@ def compare_2_cylindrical_cavities(params_1: np.ndarray,
                                    params_2: np.ndarray,
                                    generate_tolerance_of_NA_dict: dict = {},
                                    cavities_names: List[str] = ['cavity 1', 'cavity 2'],
-                                   elements_names: List[str] = ['Long Arm Mirror', 'Lens', 'Short Arm Mirror'],
-                                   lambda_laser: float = 1064e-9):
+                                   elements_names: List[str] = ['Long Arm Mirror', 'Lens', 'Short Arm Mirror']):
     NAs_1, tolerance_matrix_1 = generate_tolerance_of_NA(params_1, **generate_tolerance_of_NA_dict,
                                                          p_is_trivial=True, t_is_trivial=True)
     NAs_2, tolerance_matrix_2 = generate_tolerance_of_NA(params_2, **generate_tolerance_of_NA_dict,
@@ -2514,13 +2543,115 @@ def compare_2_cylindrical_cavities(params_1: np.ndarray,
     return ax
 
 
+def maximize_overlap(cavity: Cavity,
+                     perturbed_parameter_index: Tuple[int, int],
+                     perturbation_value: float,
+                     control_parameters_indices: Tuple[List[int], List[int]],
+                     print_progress: bool = False):
+    perturbed_cavity = perturb_cavity(cavity, perturbed_parameter_index, perturbation_value)
+    original_overlap = np.abs(calculate_cavities_overlap_matrices(cavity_1=cavity, cavity_2=perturbed_cavity))
+    if print_progress:
+        print("Original overlap:", original_overlap)
+        I = 0
+
+    def controlled_overlap(control_parameters_values: np.ndarray):
+        corrected_cavity = perturb_cavity(perturbed_cavity, control_parameters_indices, control_parameters_values)  #  * 1e-3
+        overlap = calculate_cavities_overlap_matrices(cavity_1=cavity, cavity_2=corrected_cavity)
+        overlap_abs_minus = np.nan_to_num(- np.abs(overlap), nan=2)
+        if print_progress:
+            nonlocal I
+            I += 1
+            print("Iteration", I, "control_parameters_values", control_parameters_values,  "overlap:", np.abs(overlap))
+        return overlap_abs_minus
+
+    best_overlap = optimize.minimize(controlled_overlap, x0=np.zeros(len(control_parameters_indices[0])), tol=1e-6)
+    # best_overlap.x *= 1e-3
+    if print_progress:
+        print("Number of iterations:", I)
+    # best_overlap = optimize.fsolve(controlled_overlap, x0=np.zeros(len(control_parameters_indices[0])))
+
+    return best_overlap, original_overlap
+
 
 # %%
 if __name__ == '__main__':
-    lambda_laser=1064e-9
-    power = 5e4
-    overlap_threshold = 0.9
-    initial_step = 1e-6
+    key = 'Sapphire, NA=0.2, L1=0.3, w=4.33mm - High NA axis'# 'Sapphire, NA=0.2, L1=0.3, w=4.33mm - High NA axis'
+    params = params_dict[key]
+    # params = np.array([[ 3.0620448930e-01+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  2.7535951128e-01+0.j,  0.0000000000e+00+0.j,
+    #      0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  1.0000000000e+00+0.j,  1.0000000000e-08+0.j,  1.0000000000e-06+0.j,
+    #      1.3100000000e+00+0.j,  0.0000000000e+00+0.j,  1.7000000000e-01+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j],
+    #    [ 4.0000000000e-03+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+1.j,  1.5615719525e-02+0.j,  1.7600000000e+00+0.j,
+    #      4.3301206774e-03+0.j,  1.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  5.5000000000e-06+0.j,  1.0000000000e-06+0.j,
+    #      4.6060000000e+01+0.j,  1.1700000000e-05+0.j,  3.0000000000e-01+0.j,  3.0000000000e-02+0.j,  1.0000000000e+00+0.j],
+    #    [-1.8162939661e-02+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j, -0.0000000000e+00-1.j,  9.9989468312e-03+0.j,  0.0000000000e+00+0.j,
+    #      0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  1.0000000000e+00+0.j,  1.0000000000e-08+0.j,  1.0000000000e-06+0.j,
+    #      1.3100000000e+00+0.j,  0.0000000000e+00+0.j,  1.7000000000e-01+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j]])  # Extreme
+    # params = np.array([[ 3.0616335818e-01+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  2.5973038109e-01+0.j,  0.0000000000e+00+0.j,
+    #      0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  1.0000000000e+00+0.j,  1.0000000000e-08+0.j,  1.0000000000e-06+0.j,
+    #      1.3100000000e+00+0.j,  0.0000000000e+00+0.j,  1.7000000000e-01+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j],
+    #    [ 4.0000000000e-03+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+1.j,  1.5618651198e-02+0.j,  1.7600000000e+00+0.j,
+    #      4.3301206774e-03+0.j,  1.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  5.5000000000e-06+0.j,  1.0000000000e-06+0.j,
+    #      4.6060000000e+01+0.j,  1.1700000000e-05+0.j,  3.0000000000e-01+0.j,  3.0000000000e-02+0.j,  1.0000000000e+00+0.j],
+    #    [-1.8167769661e-02+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00-1.j,  1.0001361829e-02+0.j,  0.0000000000e+00+0.j,
+    #      0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  1.0000000000e+00+0.j,  1.0000000000e-08+0.j,  1.0000000000e-06+0.j,
+    #      1.3100000000e+00+0.j,  0.0000000000e+00+0.j,  1.7000000000e-01+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j]])  # Alternative
+    # params = np.array([[ 3.0620448930e-01+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  2.3961389728e-01+0.j,  0.0000000000e+00+0.j,
+    #      0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  1.0000000000e+00+0.j,  1.0000000000e-08+0.j,  1.0000000000e-06+0.j,
+    #      1.3100000000e+00+0.j,  0.0000000000e+00+0.j,  1.7000000000e-01+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j],
+    #    [ 4.0000000000e-03+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+1.j,  1.5615719525e-02+0.j,  1.7600000000e+00+0.j,
+    #      4.3301206774e-03+0.j,  1.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  5.5000000000e-06+0.j,  1.0000000000e-06+0.j,
+    #      4.6060000000e+01+0.j,  1.1700000000e-05+0.j,  3.0000000000e-01+0.j,  3.0000000000e-02+0.j,  1.0000000000e+00+0.j],
+    #    [-1.8162939661e-02+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j, -0.0000000000e+00-1.j,  9.9989468312e-03+0.j,  0.0000000000e+00+0.j,
+    #      0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  1.0000000000e+00+0.j,  1.0000000000e-08+0.j,  1.0000000000e-06+0.j,
+    #      1.3100000000e+00+0.j,  0.0000000000e+00+0.j,  1.7000000000e-01+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j]])  # Regular
+
+    auto_set_axes = True
+    axis_span = None
+    camera_center = -1
+    lambda_laser = 1064e-9
+    names = ['Right Mirror', 'lens', 'Left Mirror']
+
+    cavity = Cavity.from_params(params=params, standing_wave=True,
+                                lambda_laser=lambda_laser, names=names, t_is_trivial=True, p_is_trivial=True, power=50000)
+
+    fig, ax = plt.subplots(figsize=(13, 5))
+    cavity.plot(axis_span=axis_span, camera_center=camera_center, ax=ax, plane='xz')  #
+    unheated_cavity = cavity.thermal_transformation()
+
+    unheated_params = unheated_cavity.to_params(convert_to_pies=True)
+    unheated_params_reduced = unheated_params[[0, 1, 3], :]
+
+    print((params[:, 4] - unheated_params_reduced[:, 4]) / params[:, 4])
+    cavity.print_table()
+
+    # ax.set_xlim(x_3 - 0.01, x_1 + 0.01)
+    # ax.set_ylim(-0.002, 0.002)
+    title = f"short arm NA={cavity.arms[2].mode_parameters.NA[0]:.2e}, short arm length = {np.linalg.norm(cavity.surfaces[2].center - cavity.surfaces[3].center):.2e} [m]\n" + \
+            f"long arm NA={cavity.arms[0].mode_parameters.NA[0]:.2e},   long arm length = {np.linalg.norm(cavity.surfaces[1].center - cavity.surfaces[0].center):.2e} [m], spot_size = {2*cavity.arms[2].mode_parameters_on_surface_2.spot_size(lambda_laser=cavity.lambda_laser)[0]:.2e}"
+    
+
+    ax.set_title(title)
+    plt.savefig(
+        f'figures/systems/{key}.svg',
+        dpi=300, bbox_inches='tight')
+    plt.show()
+    # %%
+    tolerance_matrix = cavity.generate_tolerance_threshold_matrix()
+
+    # %%
+    overlaps_series = cavity.generate_overlap_series(shifts=2 * np.abs(tolerance_matrix[:, :]),
+                                                     shift_size=30,
+                                                     print_progress=False)
+
+    # %%
+    cavity.generate_overlaps_graphs(overlaps_series=overlaps_series, tolerance_matrix=tolerance_matrix[:, :],
+                                    arm_index_for_NA=2)
+    plt.suptitle(title)
+    plt.savefig(f'figures/NA tolerance/{key}.svg',
+        dpi=300, bbox_inches='tight')
+    plt.show()
+
+    # %%
 
     def mm_format(value, tick_number):
         return f"{value * 1e3:.2f}"
@@ -2529,53 +2660,82 @@ if __name__ == '__main__':
     def cm_format(value, tick_number):
         return f"{value * 1e2:.2f}"
 
-    with open('data/params_dict.pkl', 'rb') as f:
-        params_dict = pkl.load(f)  # Sapphire, NA=0.1/0.039, Long arm length=0.3
-    for key in ['Sapphire, NA=0.1-0.039, L1=0.3 - Low NA axis']:  # params_dict.keys():
-        print(key)
-        cavity = Cavity.from_params(params=params_dict[key], standing_wave=True, lambda_laser=lambda_laser,
-                                    names=['Long Arm Mirror', 'Lens', 'Short Arm Mirror'], t_is_trivial=True,
-                                    p_is_trivial=True, power=power)
-        results_dict, cavities = cavity.analyze_thermal_transformation(0)
+    fig, ax = plt.subplots(4, 2, figsize=(24, 20))
+    for aspect_ratio in [False, True]:  #
+        for left_side_only in [False, True]:  #
 
-        fig, axes = plt.subplots(4, 2, figsize=(13, 13))
-        for i, key_trans in enumerate(results_dict.keys()):
-            ax = axes.flatten()[i]
-            cavities[i].plot(ax=ax)
-            ax.set_title(f"{key_trans}, Power -> NA *= {results_dict[key_trans]:.2f}")
-            ax.yaxis.set_major_formatter(plt.FuncFormatter(mm_format))
-            ax.xaxis.set_major_formatter(plt.FuncFormatter(cm_format))
-            ax.set_ylabel("y [mm]")
-            ax.set_xlabel("x [cm]")
-        fig.suptitle(key)
-        fig.tight_layout()
-        plt.show()
-        # cavity.plot()
-        # plt.title(key)
-        # plt.savefig( f'figures/systems/{key}.svg', dpi=300, bbox_inches='tight')
-        # tolerance_matrix = cavity.generate_tolerance_threshold_matrix(initial_step=initial_step,
-        #                                                               overlap_threshold=overlap_threshold,
-        #                                                               print_progress=False)
-        # min_tolerance = np.nanmin(np.abs(tolerance_matrix))
-        # spot_size = cavity.arms[2].mode_parameters_on_surface_2.spot_size(lambda_laser=lambda_laser)[0]
-        # print(f"{min_tolerance=:.2e}, {spot_size=:.2e}")
-        # %%
-        # NAs, tolerance_matrix = generate_tolerance_of_NA(params_dict[key], parameter_index_for_NA_control=(1, 0),
-        #                                                  arm_index_for_NA=2, parameter_values=np.array([0]),
-        #                                                  t_is_trivial=True, p_is_trivial=True,
-        #                                                  return_cavities=False, lambda_laser=lambda_laser)
+            cavity = Cavity.from_params(params=params, set_initial_surface=False, standing_wave=True,
+                                        lambda_laser=lambda_laser, power=50000,
+                                        p_is_trivial=True, t_is_trivial=True, names=names)
+            if aspect_ratio:
+                aspect_ratio_title = "even aspect ratio"
+                i = 0
+            else:
+                aspect_ratio_title = "uneven aspect ratio"
+                i = 2
+            if left_side_only:
+                left_side_title = "short arm only"
+                j = 0
+            else:
+                left_side_title = "whole cavity"
+                j = 1
+            x_3 = cavity.to_params(convert_to_pies=True)[2, 0]
+            x_2 = cavity.to_params(convert_to_pies=True)[1, 0]
+            diff = np.abs(x_3 - x_2)
+            unheated_cavity = cavity.thermal_transformation()
+            if aspect_ratio and not left_side_only:
+                cavity.print_table()
+            plt.subplots_adjust(hspace=0.4, right=0.98, left=0.125)
+            fig.suptitle(key)
+            cavity.plot(ax=ax[i + 1, j])
+            ax[i + 1, j].set_title(f"High power, {left_side_title}, {aspect_ratio_title}")
+            ax[i + 1, j].yaxis.set_major_formatter(plt.FuncFormatter(mm_format))
+            ax[i + 1, j].xaxis.set_major_formatter(plt.FuncFormatter(cm_format))
+            ax[i + 1, j].set_ylabel("y [mm]")
+            ax[i + 1, j].set_xlabel("x [cm]")
+            ax[i + 1, j].set_ymargin(0.3)
 
-        # %%
-        # overlaps_series = cavity.generate_overlap_series(shifts=2 * np.abs(tolerance_matrix),
-        #                                                  shift_size=50,
-        #                                                  print_progress=False)
+            if left_side_only:
+                ax[i + 1, j].set_xlim(x_3 - 0.4 * diff, x_2 + 0.6 * diff)
+            if aspect_ratio:
+                subplot_size = ax[i + 1, j].get_window_extent().size
+                subplot_size_ratio = subplot_size[1] / subplot_size[0]
+                xlim = ax[i + 1, j].get_xlim()
+                x_length = xlim[1] - xlim[0]
+                ax[i + 1, j].set_ylim(x_length * subplot_size_ratio / 2, -x_length * subplot_size_ratio / 2)
 
-        # %%
-        # cavity.generate_overlaps_graphs(overlaps_series=overlaps_series, tolerance_matrix=tolerance_matrix,
-        #                                 arm_index_for_NA=2)
-        # plt.suptitle(key)
-        # plt.savefig(
-        #     f'figures/NA tolerance/{key}.svg',
-        #     dpi=300, bbox_inches='tight')
-        # plt.show()
+            unheated_cavity.plot(ax=ax[i, j])
+            ax[i, j].set_title(f"Low power, {left_side_title}, {aspect_ratio_title}")
 
+            ax[i, j].yaxis.set_major_formatter(plt.FuncFormatter(mm_format))
+            ax[i, j].xaxis.set_major_formatter(plt.FuncFormatter(cm_format))
+            ax[i, j].set_ylabel("y [mm]")
+            ax[i, j].set_xlabel("x [cm]")
+            ax[i, j].set_xlim(ax[i + 1, j].get_xlim())
+            ax[i, j].set_ylim(ax[i + 1, j].get_ylim())
+            plt.savefig(f"figures/systems/{key}_all_variations.svg")
+
+    plt.show()
+
+# %% add fused silica, w=3mm to params_dict
+# params = np.array([[ 3.0616335818e-01+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  2.5973038109e-01+0.j,  0.0000000000e+00+0.j,
+#          0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  1.0000000000e+00+0.j,  1.0000000000e-08+0.j,  1.0000000000e-06+0.j,
+#          1.3100000000e+00+0.j,  0.0000000000e+00+0.j,  1.7000000000e-01+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j],
+#        [ 4.0000000000e-03+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+1.j,  1.5618651198e-02+0.j,  1.7600000000e+00+0.j,
+#          4.3301206774e-03+0.j,  1.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  5.5000000000e-06+0.j,  1.0000000000e-06+0.j,
+#          4.6060000000e+01+0.j,  1.1700000000e-05+0.j,  3.0000000000e-01+0.j,  3.0000000000e-02+0.j,  1.0000000000e+00+0.j],
+#        [-1.8167769661e-02+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00-1.j,  1.0001361829e-02+0.j,  0.0000000000e+00+0.j,
+#          0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  1.0000000000e+00+0.j,  1.0000000000e-08+0.j,  1.0000000000e-06+0.j,
+#          1.3100000000e+00+0.j,  0.0000000000e+00+0.j,  1.7000000000e-01+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j]])
+
+# params_dict['Sapphire, NA=0.2, L1=0.3, w=4.33mm - Low NA axis'] = params
+# with open('data/params_dict.pkl', 'wb') as f:
+#     pkl.dump(params_dict, f)
+# # %%
+# for key in params_dict.keys():
+#     params_dict[key][0, INDICES_DICT['alpha_thermal_expansion']] = 7.5e-8
+#     params_dict[key][2, INDICES_DICT['alpha_thermal_expansion']] = 7.5e-8
+
+# # Save params_dict to data/params_dict.pkl:
+# with open('data/params_dict.pkl', 'wb') as f:
+#     pkl.dump(params_dict, f)
