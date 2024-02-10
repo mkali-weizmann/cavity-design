@@ -1643,7 +1643,7 @@ class Cavity:
 
     def plot(self,
              ax: Optional[plt.Axes] = None,
-             axis_span: Optional[float] = None,
+             axis_span: Optional[Union[float, np.ndarray]] = None,
              camera_center: Union[float, int] = -1,
              ray_list: Optional[List[Ray]] = None,
              dim: int = 2,
@@ -1728,6 +1728,7 @@ class Cavity:
                         ax.plot(line[0, :], line[1, :], line[2, :], color=laser_color, linestyle='--', alpha=0.8,
                                 linewidth=0.5)
             except (FloatingPointError, AttributeError):
+                print("Mode was not successfully found, mode lines not plotted.")
                 pass
         return ax
     # parameter_index: Union[Tuple[int, int], Tuple[List[int], List[int]]],
@@ -2248,7 +2249,7 @@ def plot_2_gaussians_colors(A_1: np.ndarray, A_2: np.ndarray,
         rgb_image = np.clip(np.abs(rgb_image), 0, 1)
     else:
         rgb_image = np.real(rgb_image)
-    ax.imshow(rgb_image)
+    ax.imshow(rgb_image, extent=[-axis_span, axis_span, -axis_span, axis_span])
     ax.set_title(title)
 
 
