@@ -1665,7 +1665,7 @@ class Cavity:
                 if self.arms[0].mode_parameters is not None and np.min(self.arms[0].mode_parameters_on_surface_1.z_R) > 0:
                     maximal_spot_size = np.max([arm.mode_parameters_on_surface_1.spot_size(lambda_laser=self.lambda_laser)[0]
                                                 for arm in self.arms])
-                    axis_span = np.array([axes_range[0], 3 * maximal_spot_size])
+                    axis_span = np.array([axes_range[0], 6 * maximal_spot_size])
                 else:
                     axis_span = np.array([axes_range[0], 0.01])
             else:
@@ -1697,14 +1697,14 @@ class Cavity:
                 origin_camera = self.surfaces[camera_center_int].center
 
         x_index, y_index = plane_name_to_xy_indices(plane)
-        ax.set_xlim(origin_camera[x_index] - axis_span[0] * 0.51, origin_camera[x_index] + axis_span[0] * 0.51)
-        ax.set_ylim(origin_camera[y_index] - axis_span[1], origin_camera[y_index] + axis_span[1])
+        ax.set_xlim(origin_camera[x_index] - axis_span[0] * 0.55, origin_camera[x_index] + axis_span[0] * 0.55)
+        ax.set_ylim(origin_camera[y_index] - axis_span[1] * 0.55, origin_camera[y_index] + axis_span[1] * 0.55)
 
         if ray_list is None and self.central_line is not None:
             ray_list = self.central_line
-
             for ray in ray_list:
                 ray.plot(ax=ax, dim=dim, color=laser_color, plane=plane)
+
         for i, surface in enumerate(self.surfaces):
             if self.arms[0].mode_parameters is None or np.any(self.arms[0].mode_parameters.z_R == 0):
                 surface.plot(ax=ax, dim=dim, plane=plane)
@@ -1762,11 +1762,16 @@ class Cavity:
                                                initial_step: float = 1e-6,
                                                overlap_threshold: float = 0.9,
                                                accuracy: float = 1e-3) -> float:
+        if np.isnan(self.arms[0].mode_parameters.NA[0]):
+            warnings.warn("cavity has no mode even before perturbation, returning nan.")
+            return np.nan
+
         def f(shift):
             return self.calculated_shifted_cavity_overlap_integral(parameter_index, shift)[0]
 
-        return functions_first_crossing_both_directions(f=f, initial_step=initial_step,
+        tolerance = functions_first_crossing_both_directions(f=f, initial_step=initial_step,
                                                         crossing_value=overlap_threshold, accuracy=accuracy)
+        return tolerance
 
     def generate_tolerance_threshold_matrix(self,
                                             initial_step: float = 1e-6,
@@ -1851,8 +1856,6 @@ class Cavity:
                                                            shift_size=30,
                                                            print_progress=False)
         plt.suptitle(f"NA={self.arms[arm_index_for_NA].mode_parameters.NA[0]:.3e}")
-
-        titles = ['Axial Position', 'Transverse Position', 'Tilt Angles', 'Radius and Index']
 
         for i in range(self.params.shape[0]):
             for j in range(len(parameters_indices)):
@@ -2375,6 +2378,9 @@ def functions_first_crossing(f: Callable, initial_step: float, crossing_value: f
     borders_max = np.nan
     loop_counter = 0
     f_0 = f(0)
+    if np.isnan(f_0):
+        warnings.warn('Function has no value at x_input=0, returning nan')
+        return np.nan
     f_borders_min = f_0
     f_borders_max = np.nan
     last_n_evaluations[0] = f_0
