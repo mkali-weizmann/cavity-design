@@ -41,15 +41,16 @@ def plot_high_power_and_low_power_cavity(cavity, title):
     plt.title(title, fontsize=FONT_SIZE_TITLES)
 
 
-def generate_low_power_NA_plots(cavity, powers: np.ndarray, arm_for_NA_measurement: int, title: str="low power NA vs. power\nhigh power NA is set to 0.1"):
+def generate_low_power_NA_plots(cavity, powers: np.ndarray, arm_for_NA_measurement: int, title: str="low power NA vs. power\nhigh power NA is set to 0.1"
+                                , create_new_axes: bool=True):
     N = len(powers)
     resulted_low_power_NAs = np.zeros(N)
     for i, power in enumerate(powers):
         cavity.power = power
         unheated_cavity = cavity.thermal_transformation()
         resulted_low_power_NAs[i] = unheated_cavity.arms[arm_for_NA_measurement].mode_parameters.NA[0]
-
-    fig, ax = plt.subplots(1, 1, figsize=(8, 4.5))
+    if create_new_axes:
+        fig, ax = plt.subplots(1, 1, figsize=(8, 4.5))
     plt.plot(powers, resulted_low_power_NAs)
     plt.gca().xaxis.set_major_formatter(plt.FuncFormatter(kW_format))
     plt.xlabel('Laser power, kW', fontsize=FONT_SIZE_AXIS_LABELS)
@@ -73,8 +74,10 @@ def generate_tolerance_series(cavity, surface_to_tilt_index: int, powers: np.nda
 
 def generate_tolerance_plots(powers: np.ndarray,
                              tolerances: np.ndarray,
-                             title: str = "Tolerance as a function of power"):
-    fig, ax = plt.subplots(figsize=(8, 4.6))
+                             title: str = "Tolerance as a function of power",
+                             create_new_axes: bool=True):
+    if create_new_axes:
+        fig, ax = plt.subplots(figsize=(8, 4.6))
     plt.plot(powers, tolerances)
     plt.gca().xaxis.set_major_formatter(plt.FuncFormatter(kW_format))
     # plt.gca().yaxis.set_major_formatter(plt.FuncFormatter(scientific_format))
@@ -104,7 +107,7 @@ generate_low_power_NA_plots(cavity=cavity_mirror_lens_mirror,
                        title="Low power NA vs. laser power\nHigh power NA is fixed to 0.1")
 plt.savefig('figures/low_power_NA_vs_power_mirror_lens_mirror.svg')
 plt.show()
-tolerance_serise_mirror_lens_mirror = generate_tolerance_series(cavity_mirror_lens_mirror, surface_to_tilt_index=3, powers=powers)
+# tolerance_serise_mirror_lens_mirror = generate_tolerance_series(cavity_mirror_lens_mirror, surface_to_tilt_index=3, powers=powers)
 generate_tolerance_plots(powers=powers, tolerances=tolerance_serise_mirror_lens_mirror, title="Tolerance to tilt of the small arm's mirrors vs. laser power\nMirror-lens-mirror cavity")
 plt.savefig('figures/tilt_tolerance_vs_power_mirror_lens_mirror.svg')
 plt.show()
@@ -138,7 +141,7 @@ generate_low_power_NA_plots(cavity=cavity_fabry_perot,
                        title="Low power NA vs. laser power\nHigh power NA is fixed to 0.1")
 plt.savefig('figures/low_power_NA_vs_power_fabry_perot.svg')
 plt.show()
-tolerance_series_fabry_perot = generate_tolerance_series(cavity_fabry_perot, surface_to_tilt_index=0, powers=powers)
+# tolerance_series_fabry_perot = generate_tolerance_series(cavity_fabry_perot, surface_to_tilt_index=0, powers=powers)
 generate_tolerance_plots(powers=powers, tolerances=tolerance_series_fabry_perot, title="Tolerance to mirror's tilt vs. laser power\nFabry-Perot cavity")
 
 plt.savefig('figures/tilt_tolerance_vs_power_fabry_perot.svg')
@@ -179,28 +182,33 @@ generate_low_power_NA_plots(cavity=cavity_fabry_perot_thermally_inverted,
                              "Mirrors have a negative thermal expansion coefficient")
 plt.savefig('figures/low_power_NA_vs_power_fabry_perot_thermally_inverted.svg')
 plt.show()
-tolerance_series_fabry_perot_thermally_inverted = generate_tolerance_series(cavity_fabry_perot_thermally_inverted, surface_to_tilt_index=0, powers=powers)
+# tolerance_series_fabry_perot_thermally_inverted = generate_tolerance_series(cavity_fabry_perot_thermally_inverted, surface_to_tilt_index=0, powers=powers)
 generate_tolerance_plots(powers=powers, tolerances=tolerance_series_fabry_perot_thermally_inverted, title="Tolerance to mirror's tilt vs. laser power\nFabry-Perot cavity with a negative thermal expansion coefficient")
 plt.savefig('figures/tilt_tolerance_vs_power_fabry_perot_thermally_inverted.svg')
 plt.show()
 # %% low_power NA Comparison:
+fig, ax = plt.subplots(figsize=(8, 4.5))
 generate_low_power_NA_plots(cavity=cavity_mirror_lens_mirror,
-                       powers=powers,
-                       arm_for_NA_measurement=2)
+                            powers=powers,
+                            arm_for_NA_measurement=2,
+                            create_new_axes=False)
 generate_low_power_NA_plots(cavity=cavity_fabry_perot,
-                       powers=powers,
-                       arm_for_NA_measurement=0)
+                            powers=powers,
+                            arm_for_NA_measurement=0,
+                            create_new_axes=False)
 generate_low_power_NA_plots(cavity=cavity_fabry_perot_thermally_inverted,
-                       powers=powers,
-                       arm_for_NA_measurement=0)
+                            powers=powers,
+                            arm_for_NA_measurement=0,
+                            create_new_axes=False)
 plt.legend(['Mirror-Lens-Mirror', 'Fabry-Perot', 'Fabry-Perot with negative thermal expansion coefficient'])
 plt.savefig('figures/low_power_NA_comparison.svg')
 plt.show()
 # %% tolerance comparison:
-tolerance_serise_mirror_lens_mirror_narrowed = generate_tolerance_series(cavity_mirror_lens_mirror, surface_to_tilt_index=3, powers=powers)
-generate_tolerance_plots(powers=powers, tolerances=tolerance_serise_mirror_lens_mirror_narrowed)
-generate_tolerance_plots(powers=powers, tolerances=tolerance_series_fabry_perot)
-generate_tolerance_plots(powers=powers, tolerances=tolerance_series_fabry_perot_thermally_inverted)
+# tolerance_serise_mirror_lens_mirror_narrowed = generate_tolerance_series(cavity_mirror_lens_mirror, surface_to_tilt_index=3, powers=powers)
+fig, ax = plt.subplots(figsize=(8, 4.5))
+generate_tolerance_plots(powers=powers, tolerances=tolerance_serise_mirror_lens_mirror_narrowed, create_new_axes=False)
+generate_tolerance_plots(powers=powers, tolerances=tolerance_series_fabry_perot, create_new_axes=False)
+generate_tolerance_plots(powers=powers, tolerances=tolerance_series_fabry_perot_thermally_inverted, create_new_axes=False)
 plt.legend(['Mirror-Lens-Mirror', 'Fabry-Perot', 'Fabry-Perot with negative thermal expansion coefficient'])
 plt.savefig('figures/tilt_tolerance_vs_power_comparison.svg')
 plt.show()
