@@ -1938,6 +1938,20 @@ class Cavity:
         parameters_dict = copy.copy(self.__dict__)
         del parameters_dict['physical_surfaces'], parameters_dict['names_memory'], parameters_dict['params'], parameters_dict['arms']
         print(parameters_dict)
+        for arm in self.arms:
+            first_surface_name = arm.surface_2.__class__.__name__
+            local_mode_parameters = arm.mode_parameters_on_surface_2
+            global_mode_parameters = arm.mode_parameters
+            spot_size_on_surface = spot_size(z=local_mode_parameters.z_minus_z_0[0], z_R=local_mode_parameters.z_R[0],
+                                             lambda_laser=self.lambda_laser)
+            print(f"Spot size on the surface of the {first_surface_name} is {spot_size_on_surface * 1e6:.2f}um")
+            ray_inclination = np.arctan(global_mode_parameters.w_0[0] / global_mode_parameters.z_R[0])
+            surface_inclination = np.arccos(spot_size_on_surface / arm.surface_1.radius)
+            print(f"arm's NA: {arm.mode_parameters.NA[0]}")
+            if arm.surface_2.__class__.__name__ == 'CurvedRefractiveSurface':
+                print(
+                    f"The angle between ray at height of one spot size to the surface is: {(surface_inclination - ray_inclination) / np.pi:.2f} pi radians "
+                    f"or {np.degrees(surface_inclination - ray_inclination):.2f} degrees")
 
 
 def generate_tolerance_of_NA(

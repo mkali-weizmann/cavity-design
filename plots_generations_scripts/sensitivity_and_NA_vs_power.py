@@ -7,6 +7,12 @@ from matplotlib.lines import Line2D
 FONT_SIZE_AXIS_LABELS = 14
 FONT_SIZE_TITLES = 14
 FONT_SIZE_TICKS = 12
+lambda_laser = 1064e-9
+save_figs = False
+
+powers_100kW = np.logspace(0, 5, 40)
+powers_5kW = np.linspace(0, 4.9e3, 40)
+powers_20kW = np.linspace(0, 2e4, 40)
 
 def mm_format(value, tick_number):
     return f"{value * 1e3:.2f}"
@@ -18,10 +24,6 @@ def cm_format(value, tick_number):
 
 def kW_format(value, tick_number):
     return f"{value * 1e-3:.0f}"
-
-
-# def scientific_format(value, tick_number):
-#     return f"{value:.2e}"
 
 
 def plot_high_power_and_low_power_cavity(cavity, title):
@@ -39,6 +41,7 @@ def plot_high_power_and_low_power_cavity(cavity, title):
     plt.xticks(fontsize=FONT_SIZE_TICKS)
     plt.yticks(fontsize=FONT_SIZE_TICKS)
     plt.title(title, fontsize=FONT_SIZE_TITLES)
+    plt.grid()
 
 
 def generate_low_power_NA_plots(cavity, powers: np.ndarray, arm_for_NA_measurement: int, title: str="low power NA vs. power\nhigh power NA is set to 0.1"
@@ -51,10 +54,13 @@ def generate_low_power_NA_plots(cavity, powers: np.ndarray, arm_for_NA_measureme
         resulted_low_power_NAs[i] = unheated_cavity.arms[arm_for_NA_measurement].mode_parameters.NA[0]
     if create_new_axes:
         fig, ax = plt.subplots(1, 1, figsize=(8, 4.5))
+    plt.grid()
     plt.plot(powers, resulted_low_power_NAs)
     plt.gca().xaxis.set_major_formatter(plt.FuncFormatter(kW_format))
     plt.xlabel('Laser power, kW', fontsize=FONT_SIZE_AXIS_LABELS)
     plt.ylabel('Low power NA', fontsize=FONT_SIZE_AXIS_LABELS)
+    ylim = plt.gca().get_ylim()
+    plt.ylim(0, ylim[1]*1.1)
     plt.xticks(fontsize=FONT_SIZE_TICKS)
     plt.yticks(fontsize=FONT_SIZE_TICKS)
     plt.title(title, fontsize=FONT_SIZE_TITLES)
@@ -87,30 +93,35 @@ def generate_tolerance_plots(powers: np.ndarray,
     plt.xticks(fontsize=FONT_SIZE_TICKS)
     plt.yticks(fontsize=FONT_SIZE_TICKS)
     plt.title(title, fontsize=FONT_SIZE_TITLES)
+    plt.grid()
 
 # %% Mirror-lens-mirror cavity:
 with open('data/params_dict.pkl', 'rb') as f:
     params_dict = pkl.load(f)
-params = params_dict['Sapphire, NA=0.1-0.039, L1=0.3 - High NA axis']
+params = params_dict['Sapphire, NA=0.2, L1=0.3, w=4.33mm - High NA axis']#['Fused Silica, NA=0.1-0.0569, L1=0.3 - High NA axis']#['Sapphire, NA=0.2, L1=0.3, w=4.8mm - High NA axis']
 
-lambda_laser = 1064e-9
 power_laser = 2e4
-powers = np.logspace(2, 5, 40)
 cavity_mirror_lens_mirror = Cavity.from_params(params=params, set_initial_surface=False, standing_wave=True,
                                 lambda_laser=lambda_laser, power=power_laser, p_is_trivial=True, t_is_trivial=True)
-plot_high_power_and_low_power_cavity(cavity_mirror_lens_mirror, "The modes in the cavity for ~0kW and for 20kW circulating power")
-plt.savefig('figures/high_power_low_power_cavity_mirror_lens_mirror.svg')
+plot_high_power_and_low_power_cavity(cavity_mirror_lens_mirror, "The modes in the cavity for low power and for 20kW circulating power.\nMirror-lens-mirror cavity")
+if save_figs:
+    plt.savefig('figures/high_power_low_power_cavity_mirror_lens_mirror.svg')
 plt.show()
 generate_low_power_NA_plots(cavity=cavity_mirror_lens_mirror,
-                       powers=powers,
-                       arm_for_NA_measurement=2,
-                       title="Low power NA vs. laser power\nHigh power NA is fixed to 0.1")
-plt.savefig('figures/low_power_NA_vs_power_mirror_lens_mirror.svg')
+                            powers=powers_100kW,
+                            arm_for_NA_measurement=2,
+                            title="Low power NA vs. laser power\nHigh power NA is fixed to 0.1")
+
+# plt.savefig('figures/low_power_NA_vs_power_mirror_lens_mirror.svg')
 plt.show()
-# tolerance_serise_mirror_lens_mirror = generate_tolerance_series(cavity_mirror_lens_mirror, surface_to_tilt_index=3, powers=powers)
-generate_tolerance_plots(powers=powers, tolerances=tolerance_serise_mirror_lens_mirror, title="Tolerance to tilt of the small arm's mirrors vs. laser power\nMirror-lens-mirror cavity")
-plt.savefig('figures/tilt_tolerance_vs_power_mirror_lens_mirror.svg')
-plt.show()
+# tolerance_serise_mirror_lens_mirror = generate_tolerance_series(cavity_mirror_lens_mirror, surface_to_tilt_index=3, powers=powers_100kW)
+# generate_tolerance_plots(powers=powers_100kW, tolerances=tolerance_serise_mirror_lens_mirror, title="Tolerance to tilt of the small arm's mirrors vs. laser power\nMirror-lens-mirror cavity")
+# if save_figs:
+#     plt.savefig('figures/tilt_tolerance_vs_power_mirror_lens_mirror.svg')
+# plt.show()
+# Print spot sizes on different surfaces and cavity details:
+cavity_mirror_lens_mirror.print_table()
+
 
 # %% Do the same for a Fabry-Perot cavity:
 x_1 = 2.0000000000e-02
@@ -128,23 +139,24 @@ p_3 += np.pi
 names = ['Right Mirror', 'Left Mirror']
 params = np.array([[x_1, y_1, t_1, p_1, r_1, 0, 0, 0, 0, 1, *PHYSICAL_SIZES_DICT['thermal_properties_ULE'].to_array, 0],
                    [x_3, y_3, t_3, p_3, r_3, 0, 0, 0, 0, 1, *PHYSICAL_SIZES_DICT['thermal_properties_ULE'].to_array, 0]])
-powers = np.linspace(0, 4.9e3, 40)
+
 cavity_fabry_perot = Cavity.from_params(params=params, standing_wave=True,
                             lambda_laser=lambda_laser, power=4.9e3,
                             names=names, t_is_trivial=True, p_is_trivial=True)
-plot_high_power_and_low_power_cavity(cavity_fabry_perot, "The modes in the cavity for ~0kW and for 4.9kW circulating power")
-plt.savefig('figures/high_power_low_power_cavity_fabry_perot.svg')
+plot_high_power_and_low_power_cavity(cavity_fabry_perot, "The modes in the cavity for low power and for 4.9kW circulating power\nFabry-Perot cavity")
+if save_figs:
+    plt.savefig('figures/high_power_low_power_cavity_fabry_perot.svg')
 plt.show()
 generate_low_power_NA_plots(cavity=cavity_fabry_perot,
-                       powers=powers,
-                       arm_for_NA_measurement=0,
-                       title="Low power NA vs. laser power\nHigh power NA is fixed to 0.1")
-plt.savefig('figures/low_power_NA_vs_power_fabry_perot.svg')
+                            powers=powers_5kW,
+                            arm_for_NA_measurement=0,
+                            title="Low power NA vs. laser power\nHigh power NA is fixed to 0.1")
+# plt.savefig('figures/low_power_NA_vs_power_fabry_perot.svg')
 plt.show()
-# tolerance_series_fabry_perot = generate_tolerance_series(cavity_fabry_perot, surface_to_tilt_index=0, powers=powers)
-generate_tolerance_plots(powers=powers, tolerances=tolerance_series_fabry_perot, title="Tolerance to mirror's tilt vs. laser power\nFabry-Perot cavity")
-
-plt.savefig('figures/tilt_tolerance_vs_power_fabry_perot.svg')
+tolerance_series_fabry_perot = generate_tolerance_series(cavity_fabry_perot, surface_to_tilt_index=0, powers=powers_5kW)
+generate_tolerance_plots(powers=powers_5kW, tolerances=tolerance_series_fabry_perot, title="Tolerance to mirror's tilt vs. laser power\nFabry-Perot cavity")
+if save_figs:
+    plt.savefig('figures/tilt_tolerance_vs_power_fabry_perot.svg')
 plt.show()
 
 
@@ -170,45 +182,53 @@ params = np.array([[x_1, y_1, t_1, p_1, r_1, 0, 0, 0, 0, 1, *thermal_properties_
 cavity_fabry_perot_thermally_inverted = Cavity.from_params(params=params, standing_wave=True,
                             lambda_laser=lambda_laser, power=4.9e3,
                             names=names, t_is_trivial=True, p_is_trivial=True)
-powers = np.linspace(0, 4.9e3, 40)
-plot_high_power_and_low_power_cavity(cavity_fabry_perot_thermally_inverted, "The modes in the cavity for ~0kW and for 4.9kW circulating power\n"
-                                 "Mirrors have a negative thermal expansion coefficient")
-plt.savefig('figures/high_power_low_power_cavity_fabry_perot_thermally_inverted.svg')
+plot_high_power_and_low_power_cavity(cavity_fabry_perot_thermally_inverted, "The modes in the cavity for low power and for 4.9kW circulating power\n"
+                                 "Fabry-Perot cavity with a negative thermal expansion coefficient")
+if save_figs:
+    plt.savefig('figures/high_power_low_power_cavity_fabry_perot_thermally_inverted.svg')
 plt.show()
 generate_low_power_NA_plots(cavity=cavity_fabry_perot_thermally_inverted,
-                       powers=powers,
-                       arm_for_NA_measurement=0,
-                       title="Low power NA as a function of the laser power high power NA is fixed to 0.1\n"
-                             "Mirrors have a negative thermal expansion coefficient")
-plt.savefig('figures/low_power_NA_vs_power_fabry_perot_thermally_inverted.svg')
+                            powers=powers_100kW,
+                            arm_for_NA_measurement=0,
+                            title="Low power NA as a function of the laser power high power NA is fixed to 0.1\n"
+                             "Fabry-Perot cavity with a negative thermal expansion coefficient")
+# plt.savefig('figures/low_power_NA_vs_power_fabry_perot_thermally_inverted.svg')
 plt.show()
-# tolerance_series_fabry_perot_thermally_inverted = generate_tolerance_series(cavity_fabry_perot_thermally_inverted, surface_to_tilt_index=0, powers=powers)
-generate_tolerance_plots(powers=powers, tolerances=tolerance_series_fabry_perot_thermally_inverted, title="Tolerance to mirror's tilt vs. laser power\nFabry-Perot cavity with a negative thermal expansion coefficient")
-plt.savefig('figures/tilt_tolerance_vs_power_fabry_perot_thermally_inverted.svg')
+tolerance_series_fabry_perot_thermally_inverted = generate_tolerance_series(cavity_fabry_perot_thermally_inverted, surface_to_tilt_index=0, powers=powers_100kW)
+generate_tolerance_plots(powers=powers_100kW, tolerances=tolerance_series_fabry_perot_thermally_inverted, title="Tolerance to mirror's tilt vs. laser power\nFabry-Perot cavity with a negative thermal expansion coefficient")
+if save_figs:
+    plt.savefig('figures/tilt_tolerance_vs_power_fabry_perot_thermally_inverted.svg')
 plt.show()
+
 # %% low_power NA Comparison:
 fig, ax = plt.subplots(figsize=(8, 4.5))
+
 generate_low_power_NA_plots(cavity=cavity_mirror_lens_mirror,
-                            powers=powers,
+                            powers=powers_20kW,
                             arm_for_NA_measurement=2,
                             create_new_axes=False)
 generate_low_power_NA_plots(cavity=cavity_fabry_perot,
-                            powers=powers,
+                            powers=powers_5kW,
                             arm_for_NA_measurement=0,
                             create_new_axes=False)
 generate_low_power_NA_plots(cavity=cavity_fabry_perot_thermally_inverted,
-                            powers=powers,
+                            powers=powers_20kW,
                             arm_for_NA_measurement=0,
                             create_new_axes=False)
-plt.legend(['Mirror-Lens-Mirror', 'Fabry-Perot', 'Fabry-Perot with negative thermal expansion coefficient'])
-plt.savefig('figures/low_power_NA_comparison.svg')
+plt.legend(['Mirror-Lens-Mirror', 'Fabry-Perot', 'Fabry-Perot with negative\nthermal expansion coefficient'])
+ax.set_ylim(0, 0.3)
+if save_figs:
+    plt.savefig('figures/low_power_NA_comparison.svg')
 plt.show()
+
 # %% tolerance comparison:
-# tolerance_serise_mirror_lens_mirror_narrowed = generate_tolerance_series(cavity_mirror_lens_mirror, surface_to_tilt_index=3, powers=powers)
+tolerance_serise_mirror_lens_mirror_narrowed = generate_tolerance_series(cavity_mirror_lens_mirror, surface_to_tilt_index=3, powers=powers_20kW)
+tolerance_series_fabry_perot_thermally_inverted_narrowed = generate_tolerance_series(cavity_fabry_perot_thermally_inverted, surface_to_tilt_index=0, powers=powers_20kW)
 fig, ax = plt.subplots(figsize=(8, 4.5))
-generate_tolerance_plots(powers=powers, tolerances=tolerance_serise_mirror_lens_mirror_narrowed, create_new_axes=False)
-generate_tolerance_plots(powers=powers, tolerances=tolerance_series_fabry_perot, create_new_axes=False)
-generate_tolerance_plots(powers=powers, tolerances=tolerance_series_fabry_perot_thermally_inverted, create_new_axes=False)
+generate_tolerance_plots(powers=powers_20kW, tolerances=tolerance_serise_mirror_lens_mirror_narrowed, create_new_axes=False)
+generate_tolerance_plots(powers=powers_5kW, tolerances=tolerance_series_fabry_perot, create_new_axes=False)
+generate_tolerance_plots(powers=powers_20kW, tolerances=tolerance_series_fabry_perot_thermally_inverted_narrowed, create_new_axes=False)
 plt.legend(['Mirror-Lens-Mirror', 'Fabry-Perot', 'Fabry-Perot with negative thermal expansion coefficient'])
-plt.savefig('figures/tilt_tolerance_vs_power_comparison.svg')
+if save_figs:
+    plt.savefig('figures/tilt_tolerance_vs_power_comparison.svg')
 plt.show()
