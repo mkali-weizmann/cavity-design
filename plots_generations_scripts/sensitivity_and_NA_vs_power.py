@@ -153,11 +153,11 @@ generate_low_power_NA_plots(cavity=cavity_fabry_perot,
                             title="Low power NA vs. laser power\nHigh power NA is fixed to 0.1")
 # plt.savefig('figures/low_power_NA_vs_power_fabry_perot.svg')
 plt.show()
-tolerance_series_fabry_perot = generate_tolerance_series(cavity_fabry_perot, surface_to_tilt_index=0, powers=powers_5kW)
-generate_tolerance_plots(powers=powers_5kW, tolerances=tolerance_series_fabry_perot, title="Tolerance to mirror's tilt vs. laser power\nFabry-Perot cavity")
-if save_figs:
-    plt.savefig('figures/tilt_tolerance_vs_power_fabry_perot.svg')
-plt.show()
+# tolerance_series_fabry_perot = generate_tolerance_series(cavity_fabry_perot, surface_to_tilt_index=0, powers=powers_5kW)
+# generate_tolerance_plots(powers=powers_5kW, tolerances=tolerance_series_fabry_perot, title="Tolerance to mirror's tilt vs. laser power\nFabry-Perot cavity")
+# if save_figs:
+#     plt.savefig('figures/tilt_tolerance_vs_power_fabry_perot.svg')
+# plt.show()
 
 
 # %% Do the same for a Fabry-Perot cavity with a negative thermal expansion coefficient:

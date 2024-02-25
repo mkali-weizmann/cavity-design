@@ -1247,6 +1247,53 @@ class Arm:
     def names(self):
         return [self.surface_1.name, self.surface_2.name]
 
+    def print_parameters_on_surface(self, surface_index, print_angles=True):
+        if isinstance(self.surface_1, FlatSurface) or isinstance(self.surface_1, FlatSurface):
+            raise NotImplementedError('This method is not yet implemented for flat surfaces')
+        if surface_index == 1:
+            surface = self.surface_1
+            local_mode_parameters = self.mode_parameters_on_surface_1
+            curvature_sign = surface.curvature_sign# * -1
+        elif surface_index == 2:
+            surface = self.surface_2
+            local_mode_parameters = self.mode_parameters_on_surface_2
+            curvature_sign = surface.curvature_sign
+        else:
+            raise ValueError('Surface index should be 1 or 2')
+
+        # The sign of the curvature of the surface is the sign with respect to the incident beam: 1 for if the beam
+        # hits a concave surface, -1 if it hits a convex surface. Since surface1 is the surface of the leaving beam,
+        # and not the incidence beam, if the surface is a refractive surface, then the sign of the curvature with
+        # respect to the leaving beam is the opposite of the sign with respect to the incidence beam and needs to be
+        # inverted.
+        curvature_sign = surface.curvature_sign
+        if isinstance(surface, CurvedRefractiveSurface) and surface_index == 1:
+            curvature_sign = surface.curvature_sign * -1
+
+        surface_name = surface.name
+        spot_size_on_surface = spot_size(z=local_mode_parameters.z_minus_z_0[0],
+                                           z_R=local_mode_parameters.z_R[0],
+                                           lambda_laser=self.lambda_laser)
+        global_mode_parameters = self.mode_parameters
+
+        print(f"Spot size on the surface of the {surface_name} is {spot_size_on_surface * 1e6:.2f}um")
+        print(f"Minimal transverse radius of optical element is 3 times the spot size: {spot_size_on_surface * 1e6 * 3:.2f}um")
+        if print_angles:
+            # ray inclination with respect to the optical_axis (assuming z >> z_R, that is - the hyperbole is at
+            # it's asimptote):
+            ray_inclination = np.arctan(global_mode_parameters.w_0[0] / global_mode_parameters.z_R[0])
+            # surface inclination with respect to the optical_axis:
+            # curvature_sign is 1 if the mirror is hitting the sphere from the inside. in that case we want to
+            # subtract the two inclinations.
+            surface_inclination = np.arcsin(spot_size_on_surface / surface.radius) * (-curvature_sign)
+            # angle of incidence between the ray and the surface:
+            angle_of_incidenct = np.pi / 2 - np.abs(ray_inclination + surface_inclination)
+            print(
+                f"The angle between ray at height of one spot size to the surface is: {angle_of_incidenct / np.pi:.2f} pi radians "
+                f"or {np.degrees(angle_of_incidenct):.2f} degrees")
+        else:
+            print("incidence angle not yet implemented for non-standing wave cavities")
+
 
 class Cavity:
     def __init__(self,
@@ -2030,36 +2077,26 @@ class Cavity:
     def print_specs(self, names=None):
         if names == None:
             names = self.names
-        df = pd.DataFrame(self.to_params(convert_to_pies=True).T, columns=names, index=INDICES_DICT.keys())
-        print(df)
+        df = pd.DataFrame(self.to_params(convert_to_pies=True).T, columns=names, index=list(INDICES_DICT.keys()))
+        print(df, end="\n\n")
 
         print(f"finesse: {self.finesse:.4e}\n"
               f"free_spectral_range: {self.free_spectral_range:.4e}\n"
               f"roundtrip power losses: {self.roundtrip_power_losses:.4e}\n"
-              f"power decay rate: {self.power_decay_rate:.4e}")
+              f"power decay rate: {self.power_decay_rate:.4e}", end="\n\n")
 
         parameters_dict = copy.copy(self.__dict__)
         del parameters_dict['physical_surfaces'], parameters_dict['names_memory'], parameters_dict['params'], parameters_dict['arms']
         print(parameters_dict)
 
-        for arm in self.arms:
-            first_surface_name = arm.surface_2.__class__.__name__
-            local_mode_parameters = arm.mode_parameters_on_surface_2
-            global_mode_parameters = arm.mode_parameters
-            spot_size_on_surface = spot_size(z=local_mode_parameters.z_minus_z_0[0], z_R=local_mode_parameters.z_R[0],
-                                             lambda_laser=self.lambda_laser)
-            print(f"Spot size on the surface of the {first_surface_name} is {spot_size_on_surface * 1e6:.2f}um")
-            ray_inclination = np.arctan(global_mode_parameters.w_0[0] / global_mode_parameters.z_R[0])
-            surface_inclination = np.arccos(spot_size_on_surface / arm.surface_1.radius) * arm.surface_1.curvature_sign
+        for i, arm in enumerate(self.arms):
+            if self.standing_wave and i >= len(self.arms) // 2:
+                break
+            print(f"\nArm number {i}")
+            arm.print_parameters_on_surface(surface_index=1, print_angles=self.standing_wave)
             print(f"arm's NA: {arm.mode_parameters.NA[0]}")
-            if self.standing_wave:
-                if arm.surface_2.__class__.__name__ == 'CurvedRefractiveSurface':
-                    print(
-                        f"The angle between ray at height of one spot size to the surface is: {(surface_inclination - ray_inclination) / np.pi:.2f} pi radians "
-                        f"or {np.degrees(surface_inclination - ray_inclination):.2f} degrees")
-            else:
-                print("incidence angle not yet implemented for non-standing wave cavities")
-    # Calculate and print the finesse of the cavity:
+            arm.print_parameters_on_surface(surface_index=2, print_angles=self.standing_wave)
+
 
 def generate_tolerance_of_NA(
         params: np.ndarray,
