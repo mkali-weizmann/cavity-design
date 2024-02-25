@@ -25,7 +25,7 @@ for w in ['3mm', '4mm', '8mm']:
     #     dpi=300, bbox_inches='tight')
     # plt.show()
     # %%
-    tolerance_matrix = cavity.generate_tolerance_threshold_matrix(print_progress=False)
+    tolerance_matrix = cavity.generate_tolerance_matrix(print_progress=False)
 
     # %%
     overlaps_series = cavity.generate_overlap_series(shifts=2 * np.abs(tolerance_matrix[:, :]),

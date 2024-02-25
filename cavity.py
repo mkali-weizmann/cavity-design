@@ -1901,7 +1901,7 @@ class Cavity:
             overlaps = overlaps[0]
         return overlaps, NAs
 
-    def calculate_parameter_critical_tolerance(self,
+    def calculate_parameter_tolerance(self,
                                                parameter_index: Tuple[int, int],
                                                initial_step: float = 1e-6,
                                                overlap_threshold: float = 0.9,
@@ -1917,7 +1917,7 @@ class Cavity:
                                                         crossing_value=overlap_threshold, accuracy=accuracy)
         return tolerance
 
-    def generate_tolerance_threshold_matrix(self,
+    def generate_tolerance_matrix(self,
                                             initial_step: float = 1e-6,
                                             overlap_threshold: float = 0.9,
                                             accuracy: float = 1e-3, print_progress: bool = False) -> np.ndarray:
@@ -1932,10 +1932,10 @@ class Cavity:
             for j in j_range:
                 if print_progress:
                     print("    ", j)
-                tolerance_matrix[i, j] = self.calculate_parameter_critical_tolerance(parameter_index=(i, j),
-                                                                                     initial_step=initial_step,
-                                                                                     overlap_threshold=overlap_threshold,
-                                                                                     accuracy=accuracy)
+                tolerance_matrix[i, j] = self.calculate_parameter_tolerance(parameter_index=(i, j),
+                                                                            initial_step=initial_step,
+                                                                            overlap_threshold=overlap_threshold,
+                                                                            accuracy=accuracy)
         if self.t_is_trivial and self.p_is_trivial:
             tolerance_matrix[:, INDICES_DICT['t']] = tolerance_matrix[:, INDICES_DICT['p']]
         return tolerance_matrix
@@ -1991,10 +1991,9 @@ class Cavity:
         else:
             fig = ax.flatten()[0].get_figure()
         if tolerance_matrix is None:
-            tolerance_matrix = self.generate_tolerance_threshold_matrix(initial_step=initial_step,
-                                                                        overlap_threshold=overlap_threshold,
-                                                                        accuracy=accuracy,
-                                                                        print_progress=print_progress)
+            tolerance_matrix = self.generate_tolerance_matrix(initial_step=initial_step,
+                                                              overlap_threshold=overlap_threshold, accuracy=accuracy,
+                                                              print_progress=print_progress)
         if overlaps_series is None:
             overlaps_series = self.generate_overlap_series(shifts=2 * np.abs(tolerance_matrix),
                                                            shift_size=30,
@@ -2128,9 +2127,9 @@ def generate_tolerance_of_NA(
             continue
         NAs[k] = cavity.mode_parameters[arm_index_for_NA].NA[0]  # ARBITRARY
         cavities.append(cavity)
-        tolerance_matrix[:, :, k] = cavity.generate_tolerance_threshold_matrix(initial_step=initial_step,
-                                                                               overlap_threshold=overlap_threshold,
-                                                                               accuracy=accuracy, print_progress=print_progress)
+        tolerance_matrix[:, :, k] = cavity.generate_tolerance_matrix(initial_step=initial_step,
+                                                                     overlap_threshold=overlap_threshold,
+                                                                     accuracy=accuracy, print_progress=print_progress)
     if return_cavities:
         return NAs, tolerance_matrix, cavities
     else:
@@ -2801,7 +2800,7 @@ if __name__ == '__main__':
         dpi=300, bbox_inches='tight')
     plt.show()
     # %%
-    tolerance_matrix = cavity.generate_tolerance_threshold_matrix()
+    tolerance_matrix = cavity.generate_tolerance_matrix()
 
     # %%
     overlaps_series = cavity.generate_overlap_series(shifts=2 * np.abs(tolerance_matrix[:, :]),

@@ -32,7 +32,7 @@ for i, params_name in enumerate(['Sapphire, NA=0.2, L1=0.3, w=3mm - High NA axis
         # dpi=300, bbox_inches='tight')
     # plt.show()
     # %%
-    tolerance_matrix = cavity.generate_tolerance_threshold_matrix(print_progress=False)
+    tolerance_matrix = cavity.generate_tolerance_matrix(print_progress=False)
 
     # %%
     overlaps_series = cavity.generate_overlap_series(shifts=2 * np.abs(tolerance_matrix[:, :]),
@@ -107,7 +107,7 @@ for i, params in enumerate(params_list):
         # dpi=300, bbox_inches='tight')
     # plt.show()
     # %%
-    tolerance_matrix = cavity.generate_tolerance_threshold_matrix(print_progress=False)
+    tolerance_matrix = cavity.generate_tolerance_matrix(print_progress=False)
 
     # %%
     overlaps_series = cavity.generate_overlap_series(shifts=2 * np.abs(tolerance_matrix[:, :]),

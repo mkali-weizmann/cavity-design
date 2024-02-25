@@ -74,7 +74,7 @@ def generate_tolerance_series(cavity, surface_to_tilt_index: int, powers: np.nda
         cavity.power = power
         unheated_cavity = cavity.thermal_transformation()
         tolerances_low_power[i] = np.abs(
-            unheated_cavity.calculate_parameter_critical_tolerance(parameter_index=(surface_to_tilt_index, 2), accuracy=1e-4))
+            unheated_cavity.calculate_parameter_tolerance(parameter_index=(surface_to_tilt_index, 2), accuracy=1e-4))
     return tolerances_low_power
 
 
