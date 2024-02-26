@@ -18,6 +18,7 @@ pd.options.display.float_format = '{:.3e}'.format
 INDICES_DICT = {'x': 0, 'y': 1, 't': 2, 'p': 3, 'r': 4, 'n_1': 5, 'w': 6, 'n_2': 7, 'z': 8, 'curvature_sign': 9,
                 'alpha_thermal_expansion': 10, 'beta_power_absorption': 11, 'kappa_thermal_conductivity': 12, 'dn_dT': 13,
                 'nu_poisson_ratio': 14, 'alpha_volume_absorption': 15, 'intensity_reflectivity': 16, 'intensity_transmittance': 17, 'surface_type': 18}
+
 INDICES_DICT_INVERSE = {v: k for k, v in INDICES_DICT.items()}
 # set numpy to raise an error on warnings:
 SURFACE_TYPES_DICT = {'CurvedMirror': 0, 'Thick Lens': 1, 'CurvedRefractiveSurface': 2, 'IdealLens': 3, 'FlatMirror': 4}
@@ -169,13 +170,19 @@ def plane_name_to_xy_indices(plane: str) -> Tuple[int, int]:
     return x_index, y_index
 
 
-def params_to_number_of_parameters(params: np.ndarray) -> int:
-    if np.any(params[:, -1] == 2):
-        return 7
-    elif np.any(params[:, -1] == 1):
-        return 6
+def params_to_perturbable_params_indices(params: np.ndarray, remove_one_of_the_angles: bool = False) -> int:
+    # Associates the cavity parameters with the number of parameters needed to describe the cavity.
+    # If there is a lens, then the number of parameters is 7 (x, y, t, p, r, n_2):
+    if (np.any(params[:, -1] == SURFACE_TYPES_DICT['CurvedRefractiveSurface'])
+     or np.any(params[:, -1] == SURFACE_TYPES_DICT['Thick Lens'])):
+        params_indices = list(range(6))
+    # If there is no lens but there is a curved mirror: (x, y, t, p, r)
     else:
-        return 5
+        params_indices = list(range(5))
+    if remove_one_of_the_angles:
+        params_indices.remove(INDICES_DICT['t'])
+    return params_indices
+
 
 
 class LocalModeParameters:
@@ -1447,8 +1454,11 @@ class Cavity:
             return self.names_memory
 
     @property
-    def number_of_params(self):
-        return params_to_number_of_parameters(self.to_params())
+    def perturbable_params_indices(self):
+        perturbable_params_indices_list = params_to_perturbable_params_indices(self.to_params(convert_to_pies=True),
+                                                                               self.t_is_trivial and self.p_is_trivial)
+        return perturbable_params_indices_list
+
 
     @property
     def roundtrip_power_losses(self):
@@ -1921,23 +1931,18 @@ class Cavity:
                                             initial_step: float = 1e-6,
                                             overlap_threshold: float = 0.9,
                                             accuracy: float = 1e-3, print_progress: bool = False) -> np.ndarray:
-        tolerance_matrix = np.zeros((self.params.shape[0], self.number_of_params))
-        number_of_params = params_to_number_of_parameters(self.params)
-        j_range = list(np.arange(0, number_of_params, 1).astype(int))
-        if self.t_is_trivial and self.p_is_trivial:
-            j_range.remove(INDICES_DICT['t'])
-        for i in range(self.params.shape[0]):
+        j_range = self.perturbable_params_indices
+        tolerance_matrix = np.zeros((self.to_params().shape[0], len(j_range)))
+        for i in range(self.to_params().shape[0]):
             if print_progress:
                 print("  ", i)
-            for j in j_range:
+            for j_tolerance_matrix_index, j_param_matrix_index in enumerate(j_range):
                 if print_progress:
-                    print("    ", j)
-                tolerance_matrix[i, j] = self.calculate_parameter_tolerance(parameter_index=(i, j),
+                    print("    ", j_tolerance_matrix_index)
+                tolerance_matrix[i, j_tolerance_matrix_index] = self.calculate_parameter_tolerance(parameter_index=(i, j_param_matrix_index),
                                                                             initial_step=initial_step,
                                                                             overlap_threshold=overlap_threshold,
                                                                             accuracy=accuracy)
-        if self.t_is_trivial and self.p_is_trivial:
-            tolerance_matrix[:, INDICES_DICT['t']] = tolerance_matrix[:, INDICES_DICT['p']]
         return tolerance_matrix
 
     def generate_overlap_series(self,
@@ -1946,11 +1951,11 @@ class Cavity:
                                 # the i'th j'th parameter.
                                 shift_size: int = 30,
                                 print_progress: bool = False, ) -> np.ndarray:
-        overlaps = np.zeros((self.params.shape[0], self.number_of_params, shift_size))
+        overlaps = np.zeros((self.params.shape[0], self.number_of_perturbable_params, shift_size))
         for i in range(self.params.shape[0]):  # Iterate over optical elements
             if print_progress:
                 print("  ", i)
-            for j in range(self.number_of_params):  # iterate over element's features (radius, position, angle, etc.)
+            for j in range(self.number_of_perturbable_params):  # iterate over element's features (radius, position, angle, etc.)
                 if print_progress:
                     print("    ", j)
                 if isinstance(shifts, (float, int)):
@@ -2039,10 +2044,23 @@ class Cavity:
                                                               **kwargs)
             unheated_surfaces.append(unheated_surface)
 
+        # After heating the lens is not necessarily symmetrical, and so we have to decompose it to to surfaces.
+        if self.names[0] is None:
+            names = None
+        else:
+            names = copy.copy(self.names)
+            for i, surface_type in enumerate(self.to_params(convert_to_pies=True)[:, INDICES_DICT['surface_type']]):
+                if surface_type == SURFACE_TYPES_DICT['Thick Lens']:
+                    names.insert(i + 1, names[i] + "_2")
+                    names[i] = names[i] + "_1"
+
+
+
+
         unheated_cavity = Cavity(physical_surfaces=unheated_surfaces,
                  standing_wave=self.standing_wave,
                  lambda_laser=self.lambda_laser,
-                 names=self.names,
+                 names=names,
                  set_central_line=True,
                  set_mode_parameters=True,
                  set_initial_surface=False,
@@ -2073,7 +2091,7 @@ class Cavity:
         results_dict = dict(zip(names_list, NA_orgiginal / NAs))
         return results_dict, cavities
 
-    def print_specs(self, names=None):
+    def print_specs(self, names=None, tolerance_matrix: Union[np.ndarray, bool] = False):
         if names == None:
             names = self.names
         df = pd.DataFrame(self.to_params(convert_to_pies=True).T, columns=names, index=list(INDICES_DICT.keys()))
@@ -2096,6 +2114,18 @@ class Cavity:
             print(f"arm's NA: {arm.mode_parameters.NA[0]}")
             arm.print_parameters_on_surface(surface_index=2, print_angles=self.standing_wave)
 
+        if tolerance_matrix is not False:
+            print("\nTolerance matrix:")
+            if isinstance(tolerance_matrix, bool):
+                tolerance_matrix = self.generate_tolerance_matrix()
+            if self.p_is_trivial and self.t_is_trivial:
+                index = ['Axial Displacement', 'Transversal Displacement', 'Tile Angle', 'Radius of Curvature', 'Refractive Index']
+            else:
+                index = [INDICES_DICT_INVERSE[j] for j in self.perturbable_params_indices]
+            df_tolerance = pd.DataFrame(tolerance_matrix.T, columns=names, index=index)
+            print(df_tolerance)
+            df_tolerance.to_csv('data/tolerance_matrix.csv')
+
 
 def generate_tolerance_of_NA(
         params: np.ndarray,
@@ -2112,7 +2142,8 @@ def generate_tolerance_of_NA(
         return_cavities: bool = False,
         print_progress = False) -> Union[
     Tuple[np.ndarray, np.ndarray], Tuple[np.ndarray, np.ndarray, List[Cavity]]]:
-    tolerance_matrix = np.zeros((params.shape[0], params_to_number_of_parameters(params), parameter_values.shape[0]))
+    tolerance_matrix = np.zeros((params.shape[0],
+                                 params_to_perturbable_params_indices(params, t_is_trivial and p_is_trivial), parameter_values.shape[0]))
     NAs = np.zeros(parameter_values.shape[0])
     cavities = []
     for k, parameter_value in enumerate(parameter_values):
@@ -2146,6 +2177,8 @@ def plot_tolerance_of_NA(params: Optional[np.ndarray] = None,
                          names: Optional[List[str]] = None,
                          lambda_laser: Optional[float] = 1064e-9,
                          standing_wave: Optional[bool] = True,
+                         t_is_trivial: bool = False,
+                         p_is_trivial: bool = True,
                          NAs: Optional[np.ndarray] = None,
                          tolerance_matrix: Optional[np.ndarray] = None):
     if tolerance_matrix is None:
@@ -2156,7 +2189,7 @@ def plot_tolerance_of_NA(params: Optional[np.ndarray] = None,
                                                          overlap_threshold=overlap_threshold, accuracy=accuracy,
                                                          lambda_laser=lambda_laser, standing_wave=standing_wave)
     tolerance_matrix = np.abs(tolerance_matrix)
-    number_of_params = params_to_number_of_parameters(params)
+    number_of_params = len(params_to_perturbable_params_indices(params, t_is_trivial and p_is_trivial))
     fig, ax = plt.subplots(tolerance_matrix.shape[0], number_of_params,
                            figsize=(number_of_params * 5, tolerance_matrix.shape[0] * 2))
     if names is None:
@@ -2735,171 +2768,3 @@ def maximize_overlap(cavity: Cavity,
     # best_overlap = optimize.fsolve(controlled_overlap, x0=np.zeros(len(control_parameters_indices[0])))
 
     return best_overlap, original_overlap
-
-
-# %%
-if __name__ == '__main__':
-    key = 'Sapphire, NA=0.2, L1=0.3, w=4.33mm - High NA axis'# 'Sapphire, NA=0.2, L1=0.3, w=4.33mm - High NA axis'
-    params = params_dict[key]
-    # params = np.array([[ 3.0620448930e-01+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  2.7535951128e-01+0.j,  0.0000000000e+00+0.j,
-    #      0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  1.0000000000e+00+0.j,  1.0000000000e-08+0.j,  1.0000000000e-06+0.j,
-    #      1.3100000000e+00+0.j,  0.0000000000e+00+0.j,  1.7000000000e-01+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j],
-    #    [ 4.0000000000e-03+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+1.j,  1.5615719525e-02+0.j,  1.7600000000e+00+0.j,
-    #      4.3301206774e-03+0.j,  1.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  5.5000000000e-06+0.j,  1.0000000000e-06+0.j,
-    #      4.6060000000e+01+0.j,  1.1700000000e-05+0.j,  3.0000000000e-01+0.j,  3.0000000000e-02+0.j,  1.0000000000e+00+0.j],
-    #    [-1.8162939661e-02+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j, -0.0000000000e+00-1.j,  9.9989468312e-03+0.j,  0.0000000000e+00+0.j,
-    #      0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  1.0000000000e+00+0.j,  1.0000000000e-08+0.j,  1.0000000000e-06+0.j,
-    #      1.3100000000e+00+0.j,  0.0000000000e+00+0.j,  1.7000000000e-01+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j]])  # Extreme
-    # params = np.array([[ 3.0616335818e-01+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  2.5973038109e-01+0.j,  0.0000000000e+00+0.j,
-    #      0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  1.0000000000e+00+0.j,  1.0000000000e-08+0.j,  1.0000000000e-06+0.j,
-    #      1.3100000000e+00+0.j,  0.0000000000e+00+0.j,  1.7000000000e-01+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j],
-    #    [ 4.0000000000e-03+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+1.j,  1.5618651198e-02+0.j,  1.7600000000e+00+0.j,
-    #      4.3301206774e-03+0.j,  1.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  5.5000000000e-06+0.j,  1.0000000000e-06+0.j,
-    #      4.6060000000e+01+0.j,  1.1700000000e-05+0.j,  3.0000000000e-01+0.j,  3.0000000000e-02+0.j,  1.0000000000e+00+0.j],
-    #    [-1.8167769661e-02+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00-1.j,  1.0001361829e-02+0.j,  0.0000000000e+00+0.j,
-    #      0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  1.0000000000e+00+0.j,  1.0000000000e-08+0.j,  1.0000000000e-06+0.j,
-    #      1.3100000000e+00+0.j,  0.0000000000e+00+0.j,  1.7000000000e-01+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j]])  # Alternative
-    # params = np.array([[ 3.0620448930e-01+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  2.3961389728e-01+0.j,  0.0000000000e+00+0.j,
-    #      0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  1.0000000000e+00+0.j,  1.0000000000e-08+0.j,  1.0000000000e-06+0.j,
-    #      1.3100000000e+00+0.j,  0.0000000000e+00+0.j,  1.7000000000e-01+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j],
-    #    [ 4.0000000000e-03+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+1.j,  1.5615719525e-02+0.j,  1.7600000000e+00+0.j,
-    #      4.3301206774e-03+0.j,  1.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  5.5000000000e-06+0.j,  1.0000000000e-06+0.j,
-    #      4.6060000000e+01+0.j,  1.1700000000e-05+0.j,  3.0000000000e-01+0.j,  3.0000000000e-02+0.j,  1.0000000000e+00+0.j],
-    #    [-1.8162939661e-02+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j, -0.0000000000e+00-1.j,  9.9989468312e-03+0.j,  0.0000000000e+00+0.j,
-    #      0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  1.0000000000e+00+0.j,  1.0000000000e-08+0.j,  1.0000000000e-06+0.j,
-    #      1.3100000000e+00+0.j,  0.0000000000e+00+0.j,  1.7000000000e-01+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j]])  # Regular
-
-    auto_set_axes = True
-    axis_span = None
-    camera_center = -1
-    lambda_laser = 1064e-9
-    names = ['Right Mirror', 'lens', 'Left Mirror']
-
-    cavity = Cavity.from_params(params=params, standing_wave=True,
-                                lambda_laser=lambda_laser, names=names, t_is_trivial=True, p_is_trivial=True, power=50000)
-
-    fig, ax = plt.subplots(figsize=(13, 5))
-    cavity.plot(axis_span=axis_span, camera_center=camera_center, ax=ax, plane='xz')  #
-    unheated_cavity = cavity.thermal_transformation()
-
-    unheated_params = unheated_cavity.to_params(convert_to_pies=True)
-    unheated_params_reduced = unheated_params[[0, 1, 3], :]
-
-    print((params[:, 4] - unheated_params_reduced[:, 4]) / params[:, 4])
-    cavity.print_specs()
-
-    # ax.set_xlim(x_3 - 0.01, x_1 + 0.01)
-    # ax.set_ylim(-0.002, 0.002)
-    title = f"short arm NA={cavity.arms[2].mode_parameters.NA[0]:.2e}, short arm length = {np.linalg.norm(cavity.surfaces[2].center - cavity.surfaces[3].center):.2e} [m]\n" + \
-            f"long arm NA={cavity.arms[0].mode_parameters.NA[0]:.2e},   long arm length = {np.linalg.norm(cavity.surfaces[1].center - cavity.surfaces[0].center):.2e} [m], spot_size = {2*cavity.arms[2].mode_parameters_on_surface_2.spot_size(lambda_laser=cavity.lambda_laser)[0]:.2e}"
-    
-
-    ax.set_title(title)
-    plt.savefig(
-        f'figures/systems/{key}.svg',
-        dpi=300, bbox_inches='tight')
-    plt.show()
-    # %%
-    tolerance_matrix = cavity.generate_tolerance_matrix()
-
-    # %%
-    overlaps_series = cavity.generate_overlap_series(shifts=2 * np.abs(tolerance_matrix[:, :]),
-                                                     shift_size=30,
-                                                     print_progress=False)
-
-    # %%
-    cavity.generate_overlaps_graphs(overlaps_series=overlaps_series, tolerance_matrix=tolerance_matrix[:, :],
-                                    arm_index_for_NA=2)
-    plt.suptitle(title)
-    plt.savefig(f'figures/NA tolerance/{key}.svg',
-        dpi=300, bbox_inches='tight')
-    plt.show()
-
-    # %%
-
-    def mm_format(value, tick_number):
-        return f"{value * 1e3:.2f}"
-
-
-    def cm_format(value, tick_number):
-        return f"{value * 1e2:.2f}"
-
-    fig, ax = plt.subplots(4, 2, figsize=(24, 20))
-    for aspect_ratio in [False, True]:  #
-        for left_side_only in [False, True]:  #
-
-            cavity = Cavity.from_params(params=params, set_initial_surface=False, standing_wave=True,
-                                        lambda_laser=lambda_laser, power=50000,
-                                        p_is_trivial=True, t_is_trivial=True, names=names)
-            if aspect_ratio:
-                aspect_ratio_title = "even aspect ratio"
-                i = 0
-            else:
-                aspect_ratio_title = "uneven aspect ratio"
-                i = 2
-            if left_side_only:
-                left_side_title = "short arm only"
-                j = 0
-            else:
-                left_side_title = "whole cavity"
-                j = 1
-            x_3 = cavity.to_params(convert_to_pies=True)[2, 0]
-            x_2 = cavity.to_params(convert_to_pies=True)[1, 0]
-            diff = np.abs(x_3 - x_2)
-            unheated_cavity = cavity.thermal_transformation()
-            if aspect_ratio and not left_side_only:
-                cavity.print_specs()
-            plt.subplots_adjust(hspace=0.4, right=0.98, left=0.125)
-            fig.suptitle(key)
-            cavity.plot(ax=ax[i + 1, j])
-            ax[i + 1, j].set_title(f"High power, {left_side_title}, {aspect_ratio_title}")
-            ax[i + 1, j].yaxis.set_major_formatter(plt.FuncFormatter(mm_format))
-            ax[i + 1, j].xaxis.set_major_formatter(plt.FuncFormatter(cm_format))
-            ax[i + 1, j].set_ylabel("y [mm]")
-            ax[i + 1, j].set_xlabel("x [cm]")
-            ax[i + 1, j].set_ymargin(0.3)
-
-            if left_side_only:
-                ax[i + 1, j].set_xlim(x_3 - 0.4 * diff, x_2 + 0.6 * diff)
-            if aspect_ratio:
-                subplot_size = ax[i + 1, j].get_window_extent().size
-                subplot_size_ratio = subplot_size[1] / subplot_size[0]
-                xlim = ax[i + 1, j].get_xlim()
-                x_length = xlim[1] - xlim[0]
-                ax[i + 1, j].set_ylim(x_length * subplot_size_ratio / 2, -x_length * subplot_size_ratio / 2)
-
-            unheated_cavity.plot(ax=ax[i, j])
-            ax[i, j].set_title(f"Low power, {left_side_title}, {aspect_ratio_title}")
-
-            ax[i, j].yaxis.set_major_formatter(plt.FuncFormatter(mm_format))
-            ax[i, j].xaxis.set_major_formatter(plt.FuncFormatter(cm_format))
-            ax[i, j].set_ylabel("y [mm]")
-            ax[i, j].set_xlabel("x [cm]")
-            ax[i, j].set_xlim(ax[i + 1, j].get_xlim())
-            ax[i, j].set_ylim(ax[i + 1, j].get_ylim())
-            plt.savefig(f"figures/systems/{key}_all_variations.svg")
-
-    plt.show()
-
-# %% add fused silica, w=3mm to params_dict
-# params = np.array([[ 3.0616335818e-01+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  2.5973038109e-01+0.j,  0.0000000000e+00+0.j,
-#          0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  1.0000000000e+00+0.j,  1.0000000000e-08+0.j,  1.0000000000e-06+0.j,
-#          1.3100000000e+00+0.j,  0.0000000000e+00+0.j,  1.7000000000e-01+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j],
-#        [ 4.0000000000e-03+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+1.j,  1.5618651198e-02+0.j,  1.7600000000e+00+0.j,
-#          4.3301206774e-03+0.j,  1.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  5.5000000000e-06+0.j,  1.0000000000e-06+0.j,
-#          4.6060000000e+01+0.j,  1.1700000000e-05+0.j,  3.0000000000e-01+0.j,  3.0000000000e-02+0.j,  1.0000000000e+00+0.j],
-#        [-1.8167769661e-02+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00-1.j,  1.0001361829e-02+0.j,  0.0000000000e+00+0.j,
-#          0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  1.0000000000e+00+0.j,  1.0000000000e-08+0.j,  1.0000000000e-06+0.j,
-#          1.3100000000e+00+0.j,  0.0000000000e+00+0.j,  1.7000000000e-01+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j]])
-
-# params_dict['Sapphire, NA=0.2, L1=0.3, w=4.33mm - Low NA axis'] = params
-# with open('data/params_dict.pkl', 'wb') as f:
-#     pkl.dump(params_dict, f)
-# # %%
-# for key in params_dict.keys():
-#     params_dict[key][0, INDICES_DICT['alpha_thermal_expansion']] = 7.5e-8
-#     params_dict[key][2, INDICES_DICT['alpha_thermal_expansion']] = 7.5e-8
-
-# # Save params_dict to data/params_dict.pkl:
-# with open('data/params_dict.pkl', 'wb') as f:
-#     pkl.dump(params_dict, f)

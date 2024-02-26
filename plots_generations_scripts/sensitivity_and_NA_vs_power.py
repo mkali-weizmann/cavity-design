@@ -101,7 +101,7 @@ with open('data/params_dict.pkl', 'rb') as f:
 params = params_dict['Sapphire, NA=0.2, L1=0.3, w=4.33mm - High NA axis']#['Fused Silica, NA=0.1-0.0569, L1=0.3 - High NA axis']#['Sapphire, NA=0.2, L1=0.3, w=4.8mm - High NA axis']
 power_laser = 2e4
 cavity_mirror_lens_mirror = Cavity.from_params(params=params, set_initial_surface=False, standing_wave=True,
-                                lambda_laser=lambda_laser, power=power_laser, p_is_trivial=True, t_is_trivial=True)
+                                lambda_laser=lambda_laser, power=power_laser, p_is_trivial=True, t_is_trivial=True, names=['Right Mirror', 'Lens', 'Left Mirror'])
 
 plot_high_power_and_low_power_cavity(cavity_mirror_lens_mirror, "The modes in the cavity for low power and for 20kW circulating power.\nMirror-lens-mirror cavity")
 if save_figs:
@@ -120,7 +120,9 @@ plt.show()
 #     plt.savefig('figures/tilt_tolerance_vs_power_mirror_lens_mirror.svg')
 # plt.show()
 # Print spot sizes on different surfaces and cavity details:
-cavity_mirror_lens_mirror.print_specs()
+cavity_mirror_lens_mirror.print_specs(tolerance_matrix=True)
+unheated_cavity = cavity_mirror_lens_mirror.thermal_transformation()
+unheated_cavity.print_specs(tolerance_matrix=True)
 
 
 # %% Do the same for a Fabry-Perot cavity:
