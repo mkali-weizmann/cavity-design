@@ -98,11 +98,27 @@ def generate_tolerance_plots(powers: np.ndarray,
 # %% Mirror-lens-mirror cavity:
 with open('data/params_dict.pkl', 'rb') as f:
     params_dict = pkl.load(f)
-params = params_dict['Sapphire, NA=0.2, L1=0.3, w=4.33mm - High NA axis']#['Fused Silica, NA=0.1-0.0569, L1=0.3 - High NA axis']#['Sapphire, NA=0.2, L1=0.3, w=4.8mm - High NA axis']
+# params = params_dict['Sapphire, NA=0.2, L1=0.3, w=4.33mm - High NA axis']#['Fused Silica, NA=0.1-0.0569, L1=0.3 - High NA axis']#['Sapphire, NA=0.2, L1=0.3, w=4.8mm - High NA axis']
+# Add a column of zeros before the last column of params np array:
+# params = np.insert(params, -1, 0, axis=1)
+# NA=0.2, L1=0.3, w=5.9mm - High NA axis
+params = np.array([[ 3.0695707324e-01+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  1.5001380651e-01+0.j,  0.0000000000e+00+0.j,
+         0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  1.0000000000e+00+0.j,  7.5000000000e-08+0.j,  1.0000000000e-06+0.j,
+         1.3100000000e+00+0.j,  0.0000000000e+00+0.j,  1.7000000000e-01+0.j,  0.0000000000e+00+0.j,  9.9989900000e-01+0.j,  1.0000000000e-04+0.j,
+                      np.nan+0.j,  0.0000000000e+00+0.j],
+       [ 4.0000000000e-03+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+1.j,  1.5166312489e-02+0.j,  1.7600000000e+00+0.j,
+         5.9000000000e-03+0.j,  1.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  5.5000000000e-06+0.j,  1.0000000000e-06+0.j,
+         4.6060000000e+01+0.j,  1.1700000000e-05+0.j,  3.0000000000e-01+0.j,  1.0000000000e-02+0.j,  1.0000000000e-04+0.j,  9.9989900000e-01+0.j,
+                      np.nan+0.j,  1.0000000000e+00+0.j],
+       [-1.7378000000e-02+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j, -0.0000000000e+00-1.j,  9.2140077806e-03+0.j,  0.0000000000e+00+0.j,
+         0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  1.0000000000e+00+0.j,  7.5000000000e-08+0.j,  1.0000000000e-06+0.j,
+         1.3100000000e+00+0.j,  0.0000000000e+00+0.j,  1.7000000000e-01+0.j,  0.0000000000e+00+0.j,  9.9989900000e-01+0.j,  1.0000000000e-04+0.j,
+                      np.nan+0.j,  0.0000000000e+00+0.j]])
+
 power_laser = 2e4
 cavity_mirror_lens_mirror = Cavity.from_params(params=params, set_initial_surface=False, standing_wave=True,
                                 lambda_laser=lambda_laser, power=power_laser, p_is_trivial=True, t_is_trivial=True, names=['Right Mirror', 'Lens', 'Left Mirror'])
-
+cavity_mirror_lens_mirror.roundtrip_power_losses
 plot_high_power_and_low_power_cavity(cavity_mirror_lens_mirror, "The modes in the cavity for low power and for 20kW circulating power.\nMirror-lens-mirror cavity")
 if save_figs:
     plt.savefig('figures/high_power_low_power_cavity_mirror_lens_mirror.svg')
@@ -120,10 +136,20 @@ plt.show()
 #     plt.savefig('figures/tilt_tolerance_vs_power_mirror_lens_mirror.svg')
 # plt.show()
 # Print spot sizes on different surfaces and cavity details:
-cavity_mirror_lens_mirror.print_specs(tolerance_matrix=True)
 unheated_cavity = cavity_mirror_lens_mirror.thermal_transformation()
-unheated_cavity.print_specs(tolerance_matrix=True)
-
+unheated_cavity_lens_params = unheated_cavity.to_params()[1:3, :]
+old_cavity_lens_params = cavity_mirror_lens_mirror.to_params()[1, :]
+new_radius = (unheated_cavity_lens_params[0, INDICES_DICT['r']] + unheated_cavity_lens_params[1, INDICES_DICT['r']]) / 2
+new_index_of_refraction = (unheated_cavity_lens_params[0, INDICES_DICT['n_2']] + unheated_cavity_lens_params[1, INDICES_DICT['n_1']]) / 2
+new_params = copy.copy(cavity_mirror_lens_mirror.to_params())
+new_params[1, INDICES_DICT['r']] = new_radius
+new_params[1, INDICES_DICT['n_1']] = new_index_of_refraction
+# new_lens = generate_lens_from_params(new_params)
+cavity_mirror_lens_mirror.print_specs(tolerance_matrix=True)
+# unheated_cavity.print_specs(tolerance_matrix=True)
+new_unheated_cavity = Cavity.from_params(params=new_params, set_initial_surface=False, standing_wave=True,
+                                         lambda_laser=lambda_laser, power=0, p_is_trivial=True, t_is_trivial=True, names=['Right Mirror', 'Lens', 'Left Mirror'])
+new_unheated_cavity.print_specs(tolerance_matrix=True)
 
 # %% Do the same for a Fabry-Perot cavity:
 x_1 = 2.0000000000e-02
