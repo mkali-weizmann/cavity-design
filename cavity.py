@@ -11,14 +11,37 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 import pandas as pd
 from matplotlib import rc
 import pickle as pkl
+from datetime import datetime
+from scipy.optimize import fsolve
+pd.set_option('display.max_rows', 500)
 
 pd.options.display.float_format = '{:.3e}'.format
 
 
-INDICES_DICT = {'x': 0, 'y': 1, 't': 2, 'p': 3, 'r': 4, 'n_1': 5, 'w': 6, 'n_2': 7, 'z': 8, 'curvature_sign': 9,
-                'alpha_thermal_expansion': 10, 'beta_power_absorption': 11, 'kappa_thermal_conductivity': 12, 'dn_dT': 13,
-                'nu_poisson_ratio': 14, 'alpha_volume_absorption': 15, 'intensity_reflectivity': 16,
-                'intensity_transmittance': 17, 'temperature': 18, 'surface_type': 19}
+
+PRETTY_INDICES_NAMES = {'x': 'x [m]',
+                        'y': 'y [m]',
+                        't': 'Elevation angle [rads]',
+                        'p': 'Azimuthal angle [rads]',
+                        'r': 'Radius of curvature [m]',
+                        'n_1': 'Index of refraction (before the surface)',
+                        'w': 'Center thickness [m]',
+                        'n_2': 'Index of refraction',
+                        'z': 'z [m]',
+                        'curvature_sign': 'Curvature sign',
+                        'alpha_thermal_expansion': 'Thermal expansion coefficient [1/K]',
+                        'beta_power_absorption': 'Surface power absorption coefficient',
+                        'kappa_thermal_conductivity': 'Thermal conductivity coefficient [W/(m*K)]',
+                        'dn_dT': 'dn_dT [1/K]',
+                        'nu_poisson_ratio': 'Poisson ratio',
+                        'alpha_volume_absorption': 'Volume power absorption coefficient [1/m]',
+                        'intensity_reflectivity': 'Intensity reflectivity',
+                        'intensity_transmittance': 'Transmissivity',
+                        'temperature': 'Temperature increase [K]',
+                        'surface_type': 'Surface type'}
+
+INDICES_DICT = {name: i for i, name in enumerate(PRETTY_INDICES_NAMES.keys())}
+
 INDICES_DICT_INVERSE = {v: k for k, v in INDICES_DICT.items()}
 # set numpy to raise an error on warnings:
 SURFACE_TYPES_DICT = {'CurvedMirror': 0, 'Thick Lens': 1, 'CurvedRefractiveSurface': 2, 'IdealLens': 3, 'FlatMirror': 4}
@@ -582,11 +605,7 @@ class Surface:
                                    name=name,
                                    thermal_properties=thermal_properties)
         elif surface_type == SURFACE_TYPES_DICT['Thick Lens']:  # Thick lens
-            if name is None:
-                names = None
-            else:
-                names = [name + '_1', name + '_2']
-            surface = generate_lens_from_params(params, names=names)
+            surface = generate_lens_from_params(params, name=name)
         elif surface_type == SURFACE_TYPES_DICT['CurvedRefractiveSurface']:  # Refractive surface (one side of a lens)
             surface = CurvedRefractiveSurface(radius=r, outwards_normal=outwards_normal, center=center, n_1=n_1,
                                               n_2=n_2, curvature_sign=curvature_sign, name=name,
@@ -1142,16 +1161,25 @@ class CurvedRefractiveSurface(CurvedSurface, PhysicalSurface):
                                        thermal_properties=new_thermal_properties)
         # return self
 
-def generate_lens_from_params(params: np.ndarray, names: Optional[List[str]] = None):
+def generate_lens_from_params(params: np.ndarray, name: Optional[str] = 'Lens'):
     if isinstance(params, OpticalObjectParams):
         params = params.to_array
     params_pies = np.real(params) + np.pi * np.imag(params)
     x, y, t, p, r, n_in, w, n_out, z, curvature_sign, alpha_thermal_expansion, beta_power_absorption,\
     kappa_thermal_conductivity, dn_dT, nu_poisson_ratio, alpha_volume_absorption, intensity_reflectivity, intensity_transmittance, temperature, surface_type = params_pies
-    if names is None:
-        names = [None, None]
     center = np.array([x, y, z])
     forward_direction = unit_vector_of_angles(t, p)
+
+    # Generate names according to the direction the lens is pointing to
+    main_axis = np.argmax(np.abs(forward_direction))
+    directions_nams = [['_left', '_right'], ['_down', '_up'], ['_back', '_front']]
+    suffixes = directions_nams[main_axis]
+    if forward_direction[main_axis] < 0:
+        suffixes = suffixes[::-1]
+    if name is None:
+        name = 'Lens'
+    names = [name + suffix for suffix in suffixes]
+
     center_1 = center - (1 / 2) * w * forward_direction
     center_2 = center + (1 / 2) * w * forward_direction
     thermal_properties = MaterialProperties(alpha_thermal_expansion, beta_power_absorption, kappa_thermal_conductivity,
@@ -1168,26 +1196,26 @@ def generate_lens_from_params(params: np.ndarray, names: Optional[List[str]] = N
 
 class Arm:
     def __init__(self,
+                 surface_0: Surface,
                  surface_1: Surface,
-                 surface_2: Surface,
                  central_line: Optional[Ray] = None,
+                 mode_parameters_on_surface_0: Optional[LocalModeParameters] = None,
                  mode_parameters_on_surface_1: Optional[LocalModeParameters] = None,
-                 mode_parameters_on_surface_2: Optional[LocalModeParameters] = None,
                  mode_principle_axes: Optional[np.ndarray] = None,
                  lambda_laser: Optional[float] = None):
+        self.surface_0 = surface_0
         self.surface_1 = surface_1
-        self.surface_2 = surface_2
+        self.mode_parameters_on_surface_0 = mode_parameters_on_surface_0
         self.mode_parameters_on_surface_1 = mode_parameters_on_surface_1
-        self.mode_parameters_on_surface_2 = mode_parameters_on_surface_2
         self.central_line = central_line
         self.mode_principle_axes = mode_principle_axes
         self.lambda_laser = lambda_laser
 
     def propagate(self, ray: Ray):
-        if isinstance(self.surface_2, PhysicalSurface):
-            ray = self.surface_2.reflect_ray(ray)
+        if isinstance(self.surface_1, PhysicalSurface):
+            ray = self.surface_1.reflect_ray(ray)
         else:
-            new_position = self.surface_2.find_intersection_with_ray(ray)
+            new_position = self.surface_1.find_intersection_with_ray(ray)
             ray = Ray(new_position, ray.k_vector)
         return ray
 
@@ -1202,10 +1230,10 @@ class Arm:
     def ABCD_matrix_reflection(self):
         if self.central_line is None:
             raise ValueError('Central line not set')
-        cos_theta = np.abs(self.central_line.k_vector @ self.surface_2.outwards_normal)  # ABS because we want the
+        cos_theta = np.abs(self.central_line.k_vector @ self.surface_1.outwards_normal)  # ABS because we want the
         # angle between the ray and the normal to be positive
-        if isinstance(self.surface_2, PhysicalSurface):
-            matrix = self.surface_2.ABCD_matrix(cos_theta)
+        if isinstance(self.surface_1, PhysicalSurface):
+            matrix = self.surface_1.ABCD_matrix(cos_theta)
         else:
             matrix = np.eye(4)
         return matrix
@@ -1216,12 +1244,12 @@ class Arm:
         return matrix
 
     def propagate_local_mode_parameters(self):
-        if self.mode_parameters_on_surface_1 is None:
+        if self.mode_parameters_on_surface_0 is None:
             raise ValueError('Mode parameters on surface 1 not set')
-        self.mode_parameters_on_surface_2 = propagate_local_mode_parameter_through_ABCD(
-            self.mode_parameters_on_surface_1,
+        self.mode_parameters_on_surface_1 = propagate_local_mode_parameter_through_ABCD(
+            self.mode_parameters_on_surface_0,
             self.ABCD_matrix_free_space)
-        next_mode_parameters = propagate_local_mode_parameter_through_ABCD(self.mode_parameters_on_surface_2,
+        next_mode_parameters = propagate_local_mode_parameter_through_ABCD(self.mode_parameters_on_surface_1,
                                                                            self.ABCD_matrix_reflection)
         return next_mode_parameters
 
@@ -1236,14 +1264,14 @@ class Arm:
 
     @property
     def mode_parameters(self):
-        if self.mode_parameters_on_surface_1 is None:
+        if self.mode_parameters_on_surface_0 is None:
             return None
-        center = self.surface_1.center - \
-                 self.mode_parameters_on_surface_1.z_minus_z_0[..., np.newaxis] * \
+        center = self.surface_0.center - \
+                 self.mode_parameters_on_surface_0.z_minus_z_0[..., np.newaxis] * \
                  self.central_line.k_vector
         mode_parameters = ModeParameters(center=center,
                                          k_vector=self.central_line.k_vector,
-                                         z_R=self.mode_parameters_on_surface_1.z_R,
+                                         z_R=self.mode_parameters_on_surface_0.z_R,
                                          principle_axes=self.mode_principle_axes,
                                          lambda_laser=self.lambda_laser)
         return mode_parameters
@@ -1251,27 +1279,73 @@ class Arm:
     def local_mode_parameters_on_a_point(self, point: np.ndarray):
         if self.central_line is None:
             raise ValueError('Central line not set')
-        if self.mode_parameters_on_surface_1 is None:
+        if self.mode_parameters_on_surface_0 is None:
             return None
 
         point_plane_distance_from_surface_1 = (point - self.central_line.origin) @ self.central_line.k_vector
         propagation_ABCD = ABCD_free_space(point_plane_distance_from_surface_1)
-        local_mode_parameters = propagate_local_mode_parameter_through_ABCD(self.mode_parameters_on_surface_1,
+        local_mode_parameters = propagate_local_mode_parameter_through_ABCD(self.mode_parameters_on_surface_0,
                                                                             propagation_ABCD)
         return local_mode_parameters
 
     @property
-    def names(self):
-        return [self.surface_1.name, self.surface_2.name]
+    def surfaces(self):
+        return [self.surface_0, self.surface_1]
+
+    @property
+    def mode_parameters_on_surfaces(self):
+        return [self.mode_parameters_on_surface_0, self.mode_parameters_on_surface_1]
+
+    def specs(self):
+        list_of_data_frames = []
+        for i in [0, 1]:
+            surface = self.surfaces[i]
+            local_mode_parameters = self.mode_parameters_on_surfaces[i]
+            curvature_sign = surface.curvature_sign  # * -1
+            # The sign of the curvature of the surface is the sign with respect to the incident beam: 1 for if the beam
+            # hits a concave surface, -1 if it hits a convex surface. Since surface_0 is the surface of the leaving beam,
+            # and not the incidence beam, if the surface is a refractive surface, then the sign of the curvature with
+            # respect to the leaving beam is the opposite of the sign with respect to the incidence beam and needs to be
+            # inverted.
+            if isinstance(surface, CurvedRefractiveSurface) and i == 0:
+                curvature_sign = surface.curvature_sign * -1
+            spot_size_on_surface = spot_size(z=local_mode_parameters.z_minus_z_0[0],
+                                             z_R=local_mode_parameters.z_R[0],
+                                             lambda_laser=self.lambda_laser)
+
+            ray_inclination = np.arctan(self.mode_parameters.w_0[0] / self.mode_parameters.z_R[0]) * np.sign(local_mode_parameters.z_minus_z_0[0]) * (1-2*i)
+            # surface inclination with respect to the optical_axis:
+            # curvature_sign is 1 if the mirror is hitting the sphere from the inside. in that case we want to
+            # subtract the two inclinations.
+            surface_inclination = np.arcsin(spot_size_on_surface / surface.radius) * (-curvature_sign)
+            # angle of incidence between the ray and the surface:
+            angle_of_incidenct = np.pi / 2 - np.abs(ray_inclination - surface_inclination)
+
+            df = pd.DataFrame({
+                'Element': [surface.name] * 4,
+                'Parameter': ['Spot size [m]',
+                              'Minimal allowed diameter [m]',
+                              'Temperature raise [K]',
+                              'Angle of incidence [deg]'],
+                'Value':     [spot_size_on_surface,
+                              spot_size_on_surface * 3,
+                              surface.material_properties.temperature - ROOM_TEMPERATURE,
+                              np.degrees(angle_of_incidenct)]},
+           )
+
+            list_of_data_frames.append(df)
+        joined_df = pd.concat(list_of_data_frames)
+        return joined_df
+
 
     def print_parameters_on_surface(self, surface_index, print_angles=True):
-        if surface_index == 1:
+        if surface_index == 0:
+            surface = self.surface_0
+            local_mode_parameters = self.mode_parameters_on_surface_0
+            curvature_sign = surface.curvature_sign# * -1
+        elif surface_index == 1:
             surface = self.surface_1
             local_mode_parameters = self.mode_parameters_on_surface_1
-            curvature_sign = surface.curvature_sign# * -1
-        elif surface_index == 2:
-            surface = self.surface_2
-            local_mode_parameters = self.mode_parameters_on_surface_2
             curvature_sign = surface.curvature_sign
         else:
             raise ValueError('Surface index should be 1 or 2')
@@ -1314,7 +1388,6 @@ class Arm:
                 f"or {np.degrees(angle_of_incidenct):.2f} degrees")
         else:
             print("incidence angle not yet implemented for non-standing wave cavities")
-
 
 class Cavity:
     def __init__(self,
@@ -1365,7 +1438,7 @@ class Cavity:
             params = np.stack([p.to_array for p in params], axis=0)
         mirrors = []
         if names is None:
-            names = [None for i in range(len(params))]
+            names = [f"surface_{i}" for i in range(len(params))]
         for i in range(len(params)):
             surface_temp = Surface.from_params(params[i, :], name=names[i])
             if isinstance(surface_temp, tuple):
@@ -1434,14 +1507,14 @@ class Cavity:
 
     @property
     def surfaces(self):
-        return [arm.surface_1 for arm in self.arms]
+        return [arm.surface_0 for arm in self.arms]
 
     @property
     def default_initial_k_vector(self) -> np.ndarray:
         if self.central_line is not None and self.central_line_successfully_traced:
             initial_k_vector = self.central_line[0].k_vector
         else:
-            initial_k_vector = self.arms[0].surface_2.center - self.arms[0].surface_1.center
+            initial_k_vector = self.arms[0].surface_1.center - self.arms[0].surface_0.center
             initial_k_vector = normalize_vector(initial_k_vector)
         return initial_k_vector
 
@@ -1457,7 +1530,7 @@ class Cavity:
             return self.central_line[0]
         else:
             initial_k_vector = self.default_initial_k_vector
-            initial_ray = Ray(origin=self.arms[0].surface_1.center, k_vector=initial_k_vector)
+            initial_ray = Ray(origin=self.arms[0].surface_0.center, k_vector=initial_k_vector)
             return initial_ray
 
     @property
@@ -1481,7 +1554,7 @@ class Cavity:
         # losses = 0
         starting_power = 1
         for arm in self.arms:
-            first_surface = arm.surface_1
+            first_surface = arm.surface_0
             if isinstance(first_surface, (CurvedMirror, FlatMirror)):
                 surface_unlost_portion = first_surface.material_properties.intensity_reflectivity
             elif isinstance(first_surface, CurvedRefractiveSurface):
@@ -1508,8 +1581,8 @@ class Cavity:
         else:
             optical_length = 0
             for arm in self.arms:
-                if isinstance(arm.surface_1, CurvedRefractiveSurface):
-                    optical_length += arm.central_line.length * arm.surface_1.n_2
+                if isinstance(arm.surface_0, CurvedRefractiveSurface):
+                    optical_length += arm.central_line.length * arm.surface_0.n_2
                 else:
                     optical_length += arm.central_line.length
         return optical_length
@@ -1561,7 +1634,7 @@ class Cavity:
         initial_ray = self.ray_of_initial_parameters(starting_position_and_angles)
         ray_history = self.trace_ray(initial_ray)
         final_intersection_point = ray_history[-1].origin
-        t_o, p_o = self.arms[0].surface_1.get_parameterization(final_intersection_point)  # Here it is the initial
+        t_o, p_o = self.arms[0].surface_0.get_parameterization(final_intersection_point)  # Here it is the initial
         # surface on purpose.
         theta_o, phi_o = angles_of_unit_vector(ray_history[-1].k_vector)
         final_position_and_angles = np.array([t_o, theta_o, p_o, phi_o])
@@ -1584,7 +1657,7 @@ class Cavity:
         if self.central_line_successfully_traced is not None and not override_existing:
             # I never debugged those two lines:
             initial_theta, initial_phi = angles_of_unit_vector(self.central_line[0].k_vector)
-            initial_t, initial_p = self.arms[0].surface_1.get_parameterization(self.central_line[0].origin)
+            initial_t, initial_p = self.arms[0].surface_0.get_parameterization(self.central_line[0].origin)
             return np.array([initial_t, initial_theta, initial_p, initial_phi]), self.central_line_successfully_traced
 
         theta_initial_guess, phi_initial_guess = self.default_initial_angles
@@ -1661,7 +1734,7 @@ class Cavity:
 
         if root_error < 1e-9 * STRETCH_FACTOR:
             central_line_successfully_traced = True
-            origin_solution = self.arms[0].surface_1.parameterization(central_line_initial_parameters[0],
+            origin_solution = self.arms[0].surface_0.parameterization(central_line_initial_parameters[0],
                                                                       central_line_initial_parameters[2])  # t, p
             k_vector_solution = unit_vector_of_angles(central_line_initial_parameters[1],
                                                       central_line_initial_parameters[3])  # theta, phi
@@ -1683,7 +1756,7 @@ class Cavity:
             return None
         mode_parameters_current = local_mode_parameters_of_round_trip_ABCD(self.ABCD_round_trip)
         for arm in self.arms:
-            arm.mode_parameters_on_surface_1 = mode_parameters_current
+            arm.mode_parameters_on_surface_0 = mode_parameters_current
             mode_parameters_current = arm.propagate_local_mode_parameters()
             arm.mode_principle_axes = self.principle_axes(arm.central_line.k_vector)
 
@@ -1709,7 +1782,7 @@ class Cavity:
 
     def ray_of_initial_parameters(self, initial_parameters: np.ndarray):
         k_vector_i = unit_vector_of_angles(theta=initial_parameters[1], phi=initial_parameters[3])
-        origin_i = self.arms[0].surface_1.parameterization(t=initial_parameters[0], p=initial_parameters[2])
+        origin_i = self.arms[0].surface_0.parameterization(t=initial_parameters[0], p=initial_parameters[2])
         input_ray = Ray(origin=origin_i, k_vector=k_vector_i)
         return input_ray
 
@@ -1758,8 +1831,8 @@ class Cavity:
     def set_initial_surface(self) -> Optional[Surface]:
         # adds a virtual surface on the first arm that is perpendicular to the beam and centered between the first two
         # physical_surfaces.
-        if not isinstance(self.arms[0].surface_1, PhysicalSurface):
-            return self.arms[0].surface_1
+        if not isinstance(self.arms[0].surface_0, PhysicalSurface):
+            return self.arms[0].surface_0
         # gets a surface that sits between the first two physical_surfaces, centered and perpendicular to the central line.
         if self.central_line is None:
             final_position_and_angles, success = self.find_central_line()
@@ -1770,12 +1843,12 @@ class Cavity:
         initial_surface = FlatSurface(outwards_normal=-self.central_line[0].k_vector, center=middle_point)
 
         first_leg = self.arms[0]
-        first_leg_first_sub_leg = Arm(first_leg.surface_1, initial_surface)
-        first_leg_second_sub_leg = Arm(initial_surface, first_leg.surface_2)
+        first_leg_first_sub_leg = Arm(first_leg.surface_0, initial_surface)
+        first_leg_second_sub_leg = Arm(initial_surface, first_leg.surface_1)
         if self.standing_wave:
             last_leg = self.arms[-1]
-            last_leg_first_sub_leg = Arm(last_leg.surface_1, initial_surface)
-            last_leg_second_sub_leg = Arm(initial_surface, last_leg.surface_2)
+            last_leg_first_sub_leg = Arm(last_leg.surface_0, initial_surface)
+            last_leg_second_sub_leg = Arm(initial_surface, last_leg.surface_1)
             legs_list = [first_leg_second_sub_leg] + self.arms[1:-1] + [last_leg_first_sub_leg,
                                                                         last_leg_second_sub_leg,
                                                                         first_leg_first_sub_leg]
@@ -1795,7 +1868,7 @@ class Cavity:
             if not success:
                 raise ValueError("Could not find central line")
 
-        if isinstance(self.arms[0].surface_1, PhysicalSurface):
+        if isinstance(self.arms[0].surface_0, PhysicalSurface):
             self.set_initial_surface()
 
         dr = 1e-9
@@ -1832,8 +1905,8 @@ class Cavity:
                                   ])
 
             if self.t_is_trivial and self.p_is_trivial and dim == 2:
-                if self.arms[0].mode_parameters is not None and np.min(self.arms[0].mode_parameters_on_surface_1.z_R) > 0:
-                    maximal_spot_size = np.max([arm.mode_parameters_on_surface_1.spot_size(lambda_laser=self.lambda_laser)[0]
+                if self.arms[0].mode_parameters is not None and np.min(self.arms[0].mode_parameters_on_surface_0.z_R) > 0:
+                    maximal_spot_size = np.max([arm.mode_parameters_on_surface_0.spot_size(lambda_laser=self.lambda_laser)[0]
                                                 for arm in self.arms])
                     axis_span = np.array([axes_range[0], 6 * maximal_spot_size])
                 else:
@@ -1861,8 +1934,8 @@ class Cavity:
         else:
             camera_center_int = int(np.floor(camera_center))
             if np.mod(camera_center, 1) == 0.5:
-                origin_camera = (self.arms[camera_center_int].surface_1.center + self.arms[
-                    camera_center_int].surface_2.center) / 2
+                origin_camera = (self.arms[camera_center_int].surface_0.center + self.arms[
+                    camera_center_int].surface_1.center) / 2
             else:
                 origin_camera = self.surfaces[camera_center_int].center
 
@@ -1879,7 +1952,7 @@ class Cavity:
             if self.arms[0].mode_parameters is None or np.any(self.arms[0].mode_parameters.z_R == 0):
                 surface.plot(ax=ax, dim=dim, plane=plane)
             else:
-                spot_size = self.arms[i].mode_parameters_on_surface_1.spot_size(self.lambda_laser)
+                spot_size = self.arms[i].mode_parameters_on_surface_0.spot_size(self.lambda_laser)
                 if plane == 'xy':
                     spot_size = spot_size[1]
                 else:
@@ -2056,7 +2129,7 @@ class Cavity:
         unheated_surfaces = []
         for i, surface in enumerate(self.physical_surfaces):
             unheated_surface = surface.thermal_transformation(P_laser_power=-self.power,
-                                                              w_spot_size=self.arms[i].mode_parameters_on_surface_1.spot_size(self.lambda_laser)[0],
+                                                              w_spot_size=self.arms[i].mode_parameters_on_surface_0.spot_size(self.lambda_laser)[0],
                                                               **kwargs)
             unheated_surfaces.append(unheated_surface)
 
@@ -2105,56 +2178,85 @@ class Cavity:
         results_dict = dict(zip(names_list, NA_orgiginal / NAs))
         return results_dict, cavities
 
-    def print_specs(self, names=None, tolerance_matrix: Union[np.ndarray, bool] = False):  # , unheated_cavity: Union[Cavity, bool] = False
-        if names == None:
-            names = self.names
-        df = pd.DataFrame(self.to_params(convert_to_pies=True).T, columns=names, index=list(INDICES_DICT.keys()))
-        print(df, end="\n\n")
-
-        print(f"finesse: {self.finesse:.4e}\n"
-              f"free_spectral_range: {self.free_spectral_range:.4e}\n"
-              f"roundtrip power losses: {self.roundtrip_power_losses:.4e}\n"
-              f"power decay rate: {self.power_decay_rate:.4e}", end="\n\n")
-
-        parameters_dict = copy.copy(self.__dict__)
-        del parameters_dict['physical_surfaces'], parameters_dict['names_memory'], parameters_dict['params'], parameters_dict['arms']
-        print(parameters_dict)
-
-        # if unheated_cavity is True:
-            # This part of the code is here and not at the end together with the print_specs of the unheated cavity
-            # in order for the temperature to be calculated before printing the arms parameters.
-            # unheated_cavity = self.thermal_transformation()
-
+    def specs(self, save_specs_name: Optional[str] = None,
+                    tolerance_matrix: Union[np.ndarray, bool] = False,
+                    print_specs: bool = False,
+                    contraced: bool = True):
+        df_elements = pd.DataFrame(self.to_params(convert_to_pies=True).T, columns=self.names, index=PRETTY_INDICES_NAMES.values())
+        df_elements_stacked = stack_df_for_print(df_elements)
+        NAs_list = []
+        lengths_list = []
+        df_arms_list = []
         for i, arm in enumerate(self.arms):
-            if self.standing_wave and i >= len(self.arms) // 2:
+            if self.standing_wave and i >= len(self.arms) // 2:  # If it is a standing wave cavity, print only half of the arms, as the second half is the same arms in reverse
                 break
-            print(f"\nArm number {i}")
-            arm.print_parameters_on_surface(surface_index=1, print_angles=self.standing_wave)
-            print(f"arm's NA: {arm.mode_parameters.NA[0]}")
-            print(f"arm's length: {arm.central_line.length}")
-            arm.print_parameters_on_surface(surface_index=2, print_angles=self.standing_wave)
+            NAs_list.append(arm.mode_parameters.NA[0])
+            lengths_list.append(arm.central_line.length)
+            df_arms_list.append(arm.specs())
 
-        if tolerance_matrix is not False:
-            print("\nTolerance matrix:")
-            if isinstance(tolerance_matrix, bool):
-                tolerance_matrix = self.generate_tolerance_matrix()
-            if self.p_is_trivial and self.t_is_trivial:
-                index = ['Axial Displacement', 'Transversal Displacement', 'Tilt Angle', 'Radius of Curvature', 'Refractive Index']
-            else:
-                index = [INDICES_DICT_INVERSE[j] for j in self.perturbable_params_indices]
-            df_tolerance = pd.DataFrame(tolerance_matrix.T, columns=names, index=index)
-            print(df_tolerance)
-            df_tolerance.to_csv('data/tolerance_matrix.csv')
+        df_cavity = pd.DataFrame({'Element': ['Cavity']*(5 + len(NAs_list) + len(lengths_list)),
+                                  'Parameter': ['Finesse',
+                                                'Free spectral range',
+                                                'Roundtrip power losses',
+                                                'Power decay rate',
+                                                'Amplitude amplification factor'] +
+                                               [f'NA_{i}' for i in range(len(NAs_list))] +
+                                               [f'length_{i}' for i in range(len(lengths_list))],
+                                  'Value': [self.finesse,
+                                            self.free_spectral_range,
+                                            self.roundtrip_power_losses,
+                                            self.power_decay_rate,
+                                            123123123123] + # complete the last value
+                                           NAs_list +
+                                           lengths_list})
+  # If it is a standing wave cavity, print only half of the arms, as the second half is the same arms in reverse
+        df_arms = pd.concat(df_arms_list)
 
-        # if tolerance_
-        #
-        # matrix is not False:
-        #     unheated_tolerance_matrix = True
-        # else:
-        #     unheated_tolerance_matrix = False
-        #
-        # if unheated_cavity is not False:
-        #     unheated_cavity.print_specs(names=names, tolerance_matrix=unheated_tolerance_matrix, unheated_cavity=False)
+        if isinstance(tolerance_matrix, bool):
+            tolerance_matrix = self.generate_tolerance_matrix()
+        if self.p_is_trivial and self.t_is_trivial:
+            index = ['Tolerance - axial displacement', 'Tolerance - transversal displacement', 'Tolerance - tilt angle', 'Tolerance - radius of Curvature',
+                     'Tolerance - refractive Index']
+        else:
+            index = [PRETTY_INDICES_NAMES[INDICES_DICT_INVERSE[j]] for j in self.perturbable_params_indices]
+        df_tolerance = pd.DataFrame(tolerance_matrix.T, columns=self.names, index=index)
+        df_tolerance_stacked = stack_df_for_print(df_tolerance)
+
+        whole_df = pd.concat([df_elements_stacked, df_cavity, df_arms, df_tolerance_stacked])
+        whole_df['Value'] = whole_df['Value'].apply(lambda x: signif(x, 6))
+        whole_df.drop_duplicates(inplace=True)
+
+        if contraced:
+            whole_df = whole_df[~whole_df['Parameter'].isin(['Power decay rate', 'Roundtrip power losses', 'Free spectral range', 'Azimuthal angle [rads]', 'Curvature sign', 'Elevation angle [rads]', 'Poisson ratio', 'Surface type', 'x [m]', 'y [m]', 'z [m]'])]
+            whole_df = whole_df[whole_df['Value'] != 0]
+
+        index = pd.MultiIndex.from_arrays([whole_df['Element'], whole_df['Parameter']])
+        whole_df.set_index(index, inplace=True)
+        whole_df.drop(columns=['Parameter', 'Element'], inplace=True)
+        whole_df.sort_index(inplace=True)
+
+
+        if save_specs_name is not None:
+            whole_df.to_csv(f'data//cavities_specs//specs_{datetime.now().strftime("%Y-%m-%d %H-%M-%S-%f")}_{save_specs_name}.csv')
+
+        if print_specs:
+            print(whole_df, end="\n\n")
+
+        return whole_df
+
+
+def stack_df_for_print(df):
+    stacked_df = df.stack().reset_index()
+    stacked_df.columns = ['Parameter', 'Element', 'Value']
+    stacked_df = stacked_df[['Element', 'Parameter', 'Value']]
+    return stacked_df
+
+
+def signif(x, p):
+    x = np.asarray(x)
+    x_positive = np.where(np.isfinite(x) & (x != 0), np.abs(x), 10**(p-1))
+    mags = 10 ** (p - 1 - np.floor(np.log10(x_positive)))
+    return np.round(x * mags) / mags
 
 def generate_tolerance_of_NA(
         params: np.ndarray,
@@ -2686,10 +2788,10 @@ def match_a_mirror_to_mode(mode: ModeParameters, z, thermal_properties: Material
 #             R, w = lens_parameters
 #             n = n_lens
 #         params = np.array([0, 0, 0, 0, R, n, w, 1, 0, 0, 1])
-#         surface_1, surface_2 = generate_lens_from_params(params)
-#         ABCD_first = surface_1.ABCD_matrix(cos_theta_incoming=1)
+#         surface_0, surface_1 = generate_lens_from_params(params)
+#         ABCD_first = surface_0.ABCD_matrix(cos_theta_incoming=1)
 #         ABCD_between = ABCD_free_space(lens_parameters[2])
-#         ABCD_second = surface_2.ABCD_matrix(cos_theta_incoming=1)
+#         ABCD_second = surface_1.ABCD_matrix(cos_theta_incoming=1)
 #         ABCD_total = ABCD_second @ ABCD_between @ ABCD_first
 #         propagated_parameters = propagate_local_mode_parameter_through_ABCD(local_mode_1, ABCD_total)
 #         q_error = propagated_parameters.q[0] - local_mode_2.q[0]
@@ -2708,8 +2810,8 @@ def local_mode_2_of_lens_parameters(lens_parameters: np.ndarray,
                                     local_mode_1: LocalModeParameters):  # les_parameters = [r, n, w]
     R, w, n = lens_parameters
     params = np.array([0, 0, 0, 0, R, n, w, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1])
-    surface_1, surface_2 = generate_lens_from_params(params)
-    ABCD_first = surface_1.ABCD_matrix(cos_theta_incoming=1)
+    surface_0, surface_2 = generate_lens_from_params(params)
+    ABCD_first = surface_0.ABCD_matrix(cos_theta_incoming=1)
     ABCD_between = ABCD_free_space(w)
     ABCD_second = surface_2.ABCD_matrix(cos_theta_incoming=1)
     ABCD_total = ABCD_second @ ABCD_between @ ABCD_first
@@ -2797,3 +2899,15 @@ def maximize_overlap(cavity: Cavity,
     # best_overlap = optimize.fsolve(controlled_overlap, x0=np.zeros(len(control_parameters_indices[0])))
 
     return best_overlap, original_overlap
+
+
+# def find_required_value_for_desired_change(cavity: Cavity,
+#                                            parameter_index_to_change: Tuple[int, int],
+#                                            desired_parameter: Callable,
+#                                            desired_value: float) -> float:
+#     def perturbing_function(perturbation_value: float):
+#         perturbed_cavity = perturb_cavity(cavity, parameter_index_to_change, perturbation_value)
+#         return desired_parameter(perturbed_cavity) - desired_value
+#
+#     perturbation_value = optimize.fsolve(perturbing_function, 0)
+#     return perturbation_value

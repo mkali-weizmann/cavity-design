@@ -131,3 +131,4 @@ dmypy.json
 .idea/
 /gaussian_integral_validation_matrices.py
 /figures/
+/data/cavities_specs/

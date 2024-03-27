@@ -62,7 +62,7 @@ cavity = Cavity.from_params(params=params, standing_wave=True,
 cavity.plot()
 plt.xlim(-0.025, 0.01)
 R = np.real(params[1, INDICES_DICT['r']])
-spot_size = cavity.arms[0].mode_parameters_on_surface_2.spot_size(cavity.lambda_laser)[0]
+spot_size = cavity.arms[0].mode_parameters_on_surface_1.spot_size(cavity.lambda_laser)[0]
 h = 3 * spot_size
 d = R * (1 - np.sqrt(1- h**2 / R**2))
 alpha = np.arcsin(h / R)
