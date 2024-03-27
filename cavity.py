@@ -3,6 +3,8 @@ from __future__ import annotations
 import numpy as np
 import matplotlib.pyplot as plt
 from typing import List, Tuple, Optional, Union, Callable, Any
+
+from pandas import DataFrame
 from scipy import optimize
 import warnings
 from dataclasses import dataclass
@@ -1307,8 +1309,15 @@ class Arm:
             # and not the incidence beam, if the surface is a refractive surface, then the sign of the curvature with
             # respect to the leaving beam is the opposite of the sign with respect to the incidence beam and needs to be
             # inverted.
-            if isinstance(surface, CurvedRefractiveSurface) and i == 0:
-                curvature_sign = surface.curvature_sign * -1
+            if isinstance(surface, CurvedRefractiveSurface):
+                if i == 0:
+                    curvature_sign *= -1
+                if i == 0 and surface.n_2 == 1 or i == 1 and surface.n_1 == 1:
+                    angle_side = ''
+                else:
+                    angle_side = '_inside'
+            else:
+                angle_side = ''
             spot_size_on_surface = spot_size(z=local_mode_parameters.z_minus_z_0[0],
                                              z_R=local_mode_parameters.z_R[0],
                                              lambda_laser=self.lambda_laser)
@@ -1319,75 +1328,24 @@ class Arm:
             # subtract the two inclinations.
             surface_inclination = np.arcsin(spot_size_on_surface / surface.radius) * (-curvature_sign)
             # angle of incidence between the ray and the surface:
-            angle_of_incidenct = np.pi / 2 - np.abs(ray_inclination - surface_inclination)
+            angle_of_incidenct = np.abs(ray_inclination - surface_inclination)
+            angle_of_incidenct_deg = np.degrees(angle_of_incidenct)
 
             df = pd.DataFrame({
                 'Element': [surface.name] * 4,
                 'Parameter': ['Spot size [m]',
                               'Minimal allowed diameter [m]',
                               'Temperature raise [K]',
-                              'Angle of incidence [deg]'],
+                              f'Angle of incidence{angle_side} [deg]'],
                 'Value':     [spot_size_on_surface,
                               spot_size_on_surface * 3,
                               surface.material_properties.temperature - ROOM_TEMPERATURE,
-                              np.degrees(angle_of_incidenct)]},
+                              angle_of_incidenct_deg]},
            )
 
             list_of_data_frames.append(df)
         joined_df = pd.concat(list_of_data_frames)
         return joined_df
-
-
-    def print_parameters_on_surface(self, surface_index, print_angles=True):
-        if surface_index == 0:
-            surface = self.surface_0
-            local_mode_parameters = self.mode_parameters_on_surface_0
-            curvature_sign = surface.curvature_sign# * -1
-        elif surface_index == 1:
-            surface = self.surface_1
-            local_mode_parameters = self.mode_parameters_on_surface_1
-            curvature_sign = surface.curvature_sign
-        else:
-            raise ValueError('Surface index should be 1 or 2')
-
-        if isinstance(surface, FlatSurface):
-            raise NotImplementedError('This method is not yet implemented for flat surfaces')
-
-        # The sign of the curvature of the surface is the sign with respect to the incident beam: 1 for if the beam
-        # hits a concave surface, -1 if it hits a convex surface. Since surface1 is the surface of the leaving beam,
-        # and not the incidence beam, if the surface is a refractive surface, then the sign of the curvature with
-        # respect to the leaving beam is the opposite of the sign with respect to the incidence beam and needs to be
-        # inverted.
-        curvature_sign = surface.curvature_sign
-        if isinstance(surface, CurvedRefractiveSurface) and surface_index == 1:
-            curvature_sign = surface.curvature_sign * -1
-
-        surface_name = surface.name
-        spot_size_on_surface = spot_size(z=local_mode_parameters.z_minus_z_0[0],
-                                           z_R=local_mode_parameters.z_R[0],
-                                           lambda_laser=self.lambda_laser)
-        global_mode_parameters = self.mode_parameters
-
-        print(f"Spot size on the surface of the {surface_name} is {spot_size_on_surface:.4e}")
-        print(f"Minimal transverse radius of optical element is 3 times the spot size: {spot_size_on_surface * 3:.4e}")
-        if surface.material_properties.temperature is not None and surface.material_properties.temperature is not np.nan:
-            print(f"Temperature of the {surface_name} is {surface.material_properties.temperature:.2f}K,"
-                  f"which is {surface.material_properties.temperature - ROOM_TEMPERATURE:.2f}K above room temperature")
-        if print_angles:
-            # ray inclination with respect to the optical_axis (assuming z >> z_R, that is - the hyperbole is at
-            # it's asimptote):
-            ray_inclination = np.arctan(global_mode_parameters.w_0[0] / global_mode_parameters.z_R[0])
-            # surface inclination with respect to the optical_axis:
-            # curvature_sign is 1 if the mirror is hitting the sphere from the inside. in that case we want to
-            # subtract the two inclinations.
-            surface_inclination = np.arcsin(spot_size_on_surface / surface.radius) * (-curvature_sign)
-            # angle of incidence between the ray and the surface:
-            angle_of_incidenct = np.pi / 2 - np.abs(ray_inclination + surface_inclination)
-            print(
-                f"The angle between ray at height of one spot size to the surface is: {angle_of_incidenct / np.pi:.2f} pi radians "
-                f"or {np.degrees(angle_of_incidenct):.2f} degrees")
-        else:
-            print("incidence angle not yet implemented for non-standing wave cavities")
 
 class Cavity:
     def __init__(self,
@@ -2183,6 +2141,7 @@ class Cavity:
                     print_specs: bool = False,
                     contraced: bool = True):
         df_elements = pd.DataFrame(self.to_params(convert_to_pies=True).T, columns=self.names, index=PRETTY_INDICES_NAMES.values())
+
         df_elements_stacked = stack_df_for_print(df_elements)
         NAs_list = []
         lengths_list = []
@@ -2194,7 +2153,7 @@ class Cavity:
             lengths_list.append(arm.central_line.length)
             df_arms_list.append(arm.specs())
 
-        df_cavity = pd.DataFrame({'Element': ['Cavity']*(5 + len(NAs_list) + len(lengths_list)),
+        df_cavity = pd.DataFrame({
                                   'Parameter': ['Finesse',
                                                 'Free spectral range',
                                                 'Roundtrip power losses',
@@ -2209,6 +2168,8 @@ class Cavity:
                                             123123123123] + # complete the last value
                                            NAs_list +
                                            lengths_list})
+        df_cavity['Element'] = 'Cavity'
+        # df_cavity['Category'] = 'Cavity'
   # If it is a standing wave cavity, print only half of the arms, as the second half is the same arms in reverse
         df_arms = pd.concat(df_arms_list)
 
@@ -2227,7 +2188,7 @@ class Cavity:
         whole_df.drop_duplicates(inplace=True)
 
         if contraced:
-            whole_df = whole_df[~whole_df['Parameter'].isin(['Power decay rate', 'Roundtrip power losses', 'Free spectral range', 'Azimuthal angle [rads]', 'Curvature sign', 'Elevation angle [rads]', 'Poisson ratio', 'Surface type', 'x [m]', 'y [m]', 'z [m]'])]
+            whole_df = whole_df[~whole_df['Parameter'].isin(['Power decay rate', 'Roundtrip power losses', 'Free spectral range', 'Azimuthal angle [rads]', 'Curvature sign', 'Elevation angle [rads]', 'Poisson ratio', 'Surface type', 'x [m]', 'y [m]', 'z [m]', 'Angle of incidence_inside [deg]'])]
             whole_df = whole_df[whole_df['Value'] != 0]
 
         index = pd.MultiIndex.from_arrays([whole_df['Element'], whole_df['Parameter']])
