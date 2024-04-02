@@ -118,7 +118,7 @@ PHYSICAL_SIZES_DICT = {'thermal_properties_sapphire': MaterialProperties(alpha_e
                                               'yag': 1.81,
                                               'sapphire': 1.76,
                                               'air': 1.0},
-                        'c_mirror_radius_expansion': 4,  # DUMMY
+                        'c_mirror_radius_expansion': 4,  # DUMMY temp - should be 4
                         'c_lens_focal_length_expansion': 1,  # DUMMY
                         'c_lens_volumetric_absorption': 1,  # DUMMY
 }
@@ -977,7 +977,7 @@ class CurvedMirror(CurvedSurface, PhysicalSurface):
     def __init__(self, radius: float,
                  outwards_normal: np.ndarray,  # Pointing from the origin of the sphere to the mirror's center.
                  center: Optional[np.ndarray] = None,  # Not the center of the sphere but the center of
-                 # the plate.
+                 # the plate, where the beam should hit.
                  origin: Optional[np.ndarray] = None,  # The center of the sphere.
                  curvature_sign: int = 1,
                  name: Optional[str] = None,
@@ -1033,7 +1033,7 @@ class CurvedMirror(CurvedSurface, PhysicalSurface):
         if not transform_mirror or np.isnan(w_spot_size):
             return self
         else:
-            poisson_ratio_factor = (1 + self.material_properties.nu_poisson_ratio / (1 - self.material_properties.nu_poisson_ratio))
+            poisson_ratio_factor = (1 + self.material_properties.nu_poisson_ratio) / (1 - self.material_properties.nu_poisson_ratio)
             delta_T = PHYSICAL_SIZES_DICT['c_mirror_radius_expansion'] * P_laser_power * self.material_properties.beta_surface_absorption / (self.material_properties.kappa_conductivity * w_spot_size)
             delta_curvature = - delta_T * self.material_properties.alpha_expansion * poisson_ratio_factor / w_spot_size  # The minus is because we are cooling it down.
             # delta_z = delta_curvature * w_spot_size ** 2  # Technically the curvature is calculated based on this delta_z, but I skip it in the code and calculate the curvature directly.
@@ -1045,7 +1045,8 @@ class CurvedMirror(CurvedSurface, PhysicalSurface):
             new_thermal_properties = copy.copy(self.material_properties)
             new_thermal_properties.temperature = delta_T
             
-            new_mirror = CurvedMirror(radius=new_radius, outwards_normal=self.outwards_normal, center=self.center, thermal_properties=new_thermal_properties)
+            new_mirror = CurvedMirror(radius=new_radius, outwards_normal=self.outwards_normal, center=self.center,
+                                      thermal_properties=new_thermal_properties)
             new_mirror.radius = new_radius
             return new_mirror
 
@@ -1105,7 +1106,7 @@ class CurvedRefractiveSurface(CurvedSurface, PhysicalSurface):
                                curvature_transform_lens: bool = True,
                                n_surface_transform_lens: bool = True,
                                n_volumetric_transform_lens: bool = True,
-                               z_transform_lens: bool = True,
+                               z_transform_lens: bool = False,
                                **kwargs):
         if np.isnan(w_spot_size):
             return self
@@ -1132,8 +1133,9 @@ class CurvedRefractiveSurface(CurvedSurface, PhysicalSurface):
             radius_new = self.radius
 
         if z_transform_lens:
-            delta_z = delta_curvature * w_spot_size**2
-            center_new = self.center + delta_z * self.outwards_normal
+            # delta_z = 0
+            # center_new = self.center + delta_z * self.outwards_normal
+            raise NotImplementedError
         else:
             center_new = self.center
 
@@ -2174,7 +2176,7 @@ class Cavity:
         df_arms = pd.concat(df_arms_list)
 
         if isinstance(tolerance_matrix, bool):
-            tolerance_matrix = self.generate_tolerance_matrix()
+            tolerance_matrix = np.abs(self.generate_tolerance_matrix())
         if self.p_is_trivial and self.t_is_trivial:
             index = ['Tolerance - axial displacement', 'Tolerance - transversal displacement', 'Tolerance - tilt angle', 'Tolerance - radius of Curvature',
                      'Tolerance - refractive Index']
