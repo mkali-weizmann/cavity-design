@@ -117,8 +117,8 @@ PHYSICAL_SIZES_DICT = {'thermal_properties_sapphire': MaterialProperties(alpha_e
                        'refractive_indices': {'fused_silica': 1.455, # https://refractiveindex.info/?shelf=glass&book=fused_silica&page=Malitson
                                               'yag': 1.81,
                                               'sapphire': 1.76,
-                                              'air': 1.0},
-                        'c_mirror_radius_expansion': 4,  # DUMMY temp - should be 4
+                                              'air': 1.0}, # A better implementation will be one in which the refractive index is inside the MaterialProperties class.
+                        'c_mirror_radius_expansion': 1,  # DUMMY temp - should be 4
                         'c_lens_focal_length_expansion': 1,  # DUMMY
                         'c_lens_volumetric_absorption': 1,  # DUMMY
 }
@@ -1103,15 +1103,16 @@ class CurvedRefractiveSurface(CurvedSurface, PhysicalSurface):
     def thermal_transformation(self,
                                P_laser_power: float,
                                w_spot_size: float,
-                               curvature_transform_lens: bool = True,
                                n_surface_transform_lens: bool = True,
                                n_volumetric_transform_lens: bool = True,
+                               curvature_transform_lens: bool = True,
+                               change_lens_by_changing_n: bool = True,
+                               change_lens_by_changing_R: bool = False,
                                z_transform_lens: bool = False,
                                **kwargs):
         if np.isnan(w_spot_size):
             return self
-        n_inside = np.max([self.n_1, self.n_2])
-
+        n_inside = np.max((self.n_1, self.n_2))
         delta_T_volumetric = PHYSICAL_SIZES_DICT['c_lens_volumetric_absorption'] * self.material_properties.alpha_volume_absorption * P_laser_power / self.material_properties.kappa_conductivity  # ARBITRARY - CHANGE THE DIMENSIONLESS CONSTANT
         delta_T_surface = PHYSICAL_SIZES_DICT['c_lens_focal_length_expansion'] * self.material_properties.beta_surface_absorption * P_laser_power / (self.material_properties.kappa_conductivity * w_spot_size)  # ARBITRARY - CHANGE THE DIMENSIONLESS CONSTANT
         delta_T = delta_T_volumetric + delta_T_surface
@@ -1119,18 +1120,40 @@ class CurvedRefractiveSurface(CurvedSurface, PhysicalSurface):
 
 
         common_coefficient = self.material_properties.beta_surface_absorption * P_laser_power / (self.material_properties.kappa_conductivity * w_spot_size ** 2)
-        delta_optical_length_curvature_n_surface = PHYSICAL_SIZES_DICT['c_lens_focal_length_expansion'] * common_coefficient * self.material_properties.dn_dT
-        delta_optical_length_curvature_n_volumetric = PHYSICAL_SIZES_DICT['c_lens_volumetric_absorption'] * self.material_properties.alpha_volume_absorption * P_laser_power * self.material_properties.dn_dT / self.material_properties.kappa_conductivity * (1 / self.radius + self.thickness / w_spot_size ** 2)
-        delta_curvature = PHYSICAL_SIZES_DICT['c_lens_focal_length_expansion'] * common_coefficient * self.material_properties.alpha_expansion * (1 + self.material_properties.nu_poisson_ratio) / (1 - self.material_properties.nu_poisson_ratio)
+        delta_optical_length_curvature_n_surface = -PHYSICAL_SIZES_DICT['c_lens_focal_length_expansion'] * common_coefficient * self.material_properties.dn_dT
+        delta_optical_length_curvature_n_volumetric = -PHYSICAL_SIZES_DICT['c_lens_volumetric_absorption'] * self.material_properties.alpha_volume_absorption *\
+                                                      P_laser_power * self.material_properties.dn_dT / self.material_properties.kappa_conductivity *\
+                                                      (1 / self.radius + self.thickness / w_spot_size ** 2)  # (1 / self.radius self.thickness / w_spot_size ** 2) The last parenthesis should be this but the 1/R is negligible.
+        delta_optical_length_curvature_buldging = -PHYSICAL_SIZES_DICT['c_lens_focal_length_expansion'] *\
+                                                  common_coefficient * self.material_properties.alpha_expansion *\
+                                                  n_inside * (1 + self.material_properties.nu_poisson_ratio) /\
+                                                  (1 - self.material_properties.nu_poisson_ratio)
+
+        delta_optical_length_curvature = delta_optical_length_curvature_n_surface * n_surface_transform_lens +\
+                                         delta_optical_length_curvature_n_volumetric * n_volumetric_transform_lens +\
+                                         delta_optical_length_curvature_buldging * curvature_transform_lens
+
 
         # A way which is also correct but less readable and less intuitive:
         # delta_optical_length_curvature_z = common_coefficient * n_inside * self.material_properties.alpha_expansion * (1+self.material_properties.nu_poisson_ratio) / (1-self.material_properties.nu_poisson_ratio)
         # radius_new = self.radius * n_inside / (n_inside + delta_optical_length_curvature_z * self.radius)
 
-        if curvature_transform_lens:
-            radius_new = (self.radius**-1 + delta_curvature)**-1
-        else:
+        if change_lens_by_changing_n:
             radius_new = self.radius
+            n_new = n_inside - delta_optical_length_curvature * self.radius
+
+        elif change_lens_by_changing_R:
+            radius_new = n_inside * self.radius / (n_inside - delta_optical_length_curvature * self.radius)
+            n_new = n_inside
+        else:
+            raise ValueError("at least change_lens_by_changing_n or change_lens_by_changing_R has to be True")
+
+        if self.n_1 == 1:
+            n_1 = 1
+            n_2 = n_new
+        else:
+            n_1 = n_new
+            n_2 = 1
 
         if z_transform_lens:
             # delta_z = 0
@@ -1138,19 +1161,6 @@ class CurvedRefractiveSurface(CurvedSurface, PhysicalSurface):
             raise NotImplementedError
         else:
             center_new = self.center
-
-        delta_optical_length_curvature_n = 0
-        if n_surface_transform_lens:
-            delta_optical_length_curvature_n += delta_optical_length_curvature_n_surface
-        if n_volumetric_transform_lens:
-            delta_optical_length_curvature_n += delta_optical_length_curvature_n_volumetric
-        n_new = n_inside + delta_optical_length_curvature_n * self.radius
-        if self.n_1 == 1:
-            n_1 = 1
-            n_2 = n_new
-        else:
-            n_1 = n_new
-            n_2 = 1
 
         new_thermal_properties = copy.copy(self.material_properties)
         new_thermal_properties.temperature = ROOM_TEMPERATURE
@@ -1190,11 +1200,11 @@ def generate_lens_from_params(params: np.ndarray, name: Optional[str] = 'Lens'):
                                             dn_dT, nu_poisson_ratio, alpha_volume_absorption, intensity_reflectivity, intensity_transmittance)
     surface_1 = CurvedRefractiveSurface(radius=r, outwards_normal=-forward_direction, center=center_1, n_1=n_out,
                                         n_2=n_in, curvature_sign=-1, name=names[0],
-                                        thermal_properties=thermal_properties)
+                                        thermal_properties=thermal_properties, thickness=w/2)
 
     surface_2 = CurvedRefractiveSurface(radius=r, outwards_normal=forward_direction, center=center_2, n_1=n_in,
                                         n_2=n_out, curvature_sign=1, name=names[1],
-                                        thermal_properties=thermal_properties)
+                                        thermal_properties=thermal_properties, thickness=w/2)
     return surface_1, surface_2
 
 
