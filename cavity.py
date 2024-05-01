@@ -3,7 +3,6 @@ from __future__ import annotations
 import numpy as np
 import matplotlib.pyplot as plt
 from typing import List, Tuple, Optional, Union, Callable, Any
-
 from pandas import DataFrame
 from scipy import optimize
 import warnings
@@ -15,6 +14,8 @@ from matplotlib import rc
 import pickle as pkl
 from datetime import datetime
 from scipy.optimize import fsolve
+from hashlib import md5
+
 pd.set_option('display.max_rows', 500)
 
 pd.options.display.float_format = '{:.3e}'.format
@@ -95,9 +96,9 @@ PHYSICAL_SIZES_DICT = {'thermal_properties_sapphire': MaterialProperties(alpha_e
                                                                     intensity_reflectivity=1 - 100e-6 - 1e-6 - 10e-6,  # All - transmittance - absorption - scattering
                                                                     intensity_transmittance=100e-6  # DUMMY - for mirrors
                                                                     ),
-                       'thermal_properties_fused_silica': MaterialProperties(alpha_expansion=0.48e-6,
+                       'thermal_properties_fused_silica': MaterialProperties(alpha_expansion=0.48e-6,  # https://www.rp-photonics.com/fused_silica.html#:~:text=However%2C%20fused%20silica%20may%20exhibit,10%E2%88%926%20K%E2%88%921., https://www.swiftglass.com/blog/material-month-fused-silica/
                                                                              beta_surface_absorption=1e-6,  # DUMMY
-                                                                             kappa_conductivity=1.38,
+                                                                             kappa_conductivity=1.38,  # https://www.swiftglass.com/blog/material-month-fused-silica/, https://www.heraeus-conamic.com/knowlegde-base/properties
                                                                              dn_dT=12e-6,  # https://iopscience.iop.org/article/10.1088/0022-3727/16/5/002/pdf
                                                                              nu_poisson_ratio=0.15,
                                                                              alpha_volume_absorption=1e-3,  # https://www.crystran.co.uk/optical-materials/silica-glass-sio2
@@ -109,7 +110,6 @@ PHYSICAL_SIZES_DICT = {'thermal_properties_sapphire': MaterialProperties(alpha_e
                                                                     kappa_conductivity=11.2,  # https://www.scientificmaterials.com/downloads/Nd_YAG.pdf, This does not agree: https://pubs.aip.org/aip/jap/article/131/2/020902/2836262/Thermal-conductivity-and-management-in-laser-gain
                                                                     dn_dT=9e-6,  # https://pubmed.ncbi.nlm.nih.gov/18319922/
                                                                     nu_poisson_ratio=0.25,  #  https://www.crystran.co.uk/userfiles/files/yttrium-aluminium-garnet-yag-data-sheet.pdf, https://www.korth.de/en/materials/detail/YAG
-
                                                                     ),
                        'thermal_properties_bk7': MaterialProperties(alpha_expansion=7.1e-6,
                                                                     kappa_conductivity=1.114),
@@ -118,10 +118,33 @@ PHYSICAL_SIZES_DICT = {'thermal_properties_sapphire': MaterialProperties(alpha_e
                                               'yag': 1.81,
                                               'sapphire': 1.76,
                                               'air': 1.0}, # A better implementation will be one in which the refractive index is inside the MaterialProperties class.
-                        'c_mirror_radius_expansion': 1,  # DUMMY temp - should be 4
+                        'c_mirror_radius_expansion': 1,  # DUMMY temp - should be 4 according to Lidan's simulation
+                       # But we take it to be 1 as the other values are currently 1.
                         'c_lens_focal_length_expansion': 1,  # DUMMY
                         'c_lens_volumetric_absorption': 1,  # DUMMY
 }
+
+
+def convert_material_to_mirror_or_lens(material_properties: MaterialProperties,
+                                       convert_to_type: str,
+                                       intensity_transmittance: Optional[float] = None,
+                                       intensity_reflectivity: Optional[float] = None,
+                                       scattering: Optional[float] = None) -> MaterialProperties:
+    # The defaults are like so with the nvl because there are two defaults - for lenses and for mirrors.
+    if convert_to_type.lower() == 'lens':
+        intensity_reflectivity = nvl(intensity_reflectivity, 100e-6)
+        intensity_transmittance = 1 - material_properties.beta_surface_absorption - intensity_reflectivity
+    elif convert_to_type.lower() == 'mirror':
+        scattering = nvl(scattering, 10e-6)
+        intensity_transmittance = nvl(intensity_transmittance, 100e-6)
+        intensity_reflectivity = 1 - scattering - material_properties.beta_surface_absorption - intensity_transmittance
+    else:
+        raise ValueError("convert_to_type argument must be either 'lens' or 'mirror'")
+
+    material_properties.intensity_reflectivity = intensity_reflectivity
+    material_properties.intensity_transmittance = intensity_transmittance
+
+    return material_properties
 
 np.seterr(all='raise')
 # N = 50
@@ -1041,10 +1064,10 @@ class CurvedMirror(CurvedSurface, PhysicalSurface):
             self.material_properties.temperature = ROOM_TEMPERATURE - delta_T  # The delta_T is negative, and after
             # cooling the mirror goes to room temperature. Therefore, the temperature is when heated is the room
             # temperature minus the delta_T.
-            
+
             new_thermal_properties = copy.copy(self.material_properties)
             new_thermal_properties.temperature = delta_T
-            
+
             new_mirror = CurvedMirror(radius=new_radius, outwards_normal=self.outwards_normal, center=self.center,
                                       thermal_properties=new_thermal_properties)
             new_mirror.radius = new_radius
@@ -1068,7 +1091,6 @@ class CurvedRefractiveSurface(CurvedSurface, PhysicalSurface):
         self.n_1 = n_1
         self.n_2 = n_2
         self.thickness = thickness
-
 
     def reflect_direction(self, ray: Ray, intersection_point: Optional[np.ndarray] = None) -> np.ndarray:
         if intersection_point is None:
@@ -1345,12 +1367,12 @@ class Arm:
 
             df = pd.DataFrame({
                 'Element': [surface.name] * 4,
-                'Parameter': ['Spot size [m]',
-                              'Minimal allowed diameter [m]',
+                'Parameter': ['Spot size diameter [m]',
+                              'Minimal clear aperture diameter [m]',
                               'Temperature raise [K]',
                               f'Angle of incidence{angle_side} [deg]'],
-                'Value':     [spot_size_on_surface,
-                              spot_size_on_surface * 3,
+                'Value':     [spot_size_on_surface * 2,
+                              spot_size_on_surface * 2 * 3,
                               surface.material_properties.temperature - ROOM_TEMPERATURE,
                               angle_of_incidenct_deg]},
            )
@@ -1431,6 +1453,10 @@ class Cavity:
             params = np.real(params) + np.pi * np.imag(params)
         return params
 
+    @property
+    def id(self):
+        hashed_str = int(md5(self.to_params()).hexdigest()[:5], 16)
+        return hashed_str
 
     @property
     def physical_surfaces_ordered(self):
@@ -2152,7 +2178,7 @@ class Cavity:
                     tolerance_matrix: Union[np.ndarray, bool] = False,
                     print_specs: bool = False,
                     contraced: bool = True):
-        df_elements = pd.DataFrame(self.to_params(convert_to_pies=True).T, columns=self.names, index=PRETTY_INDICES_NAMES.values())
+        df_elements = pd.DataFrame(self.to_params(convert_to_pies=True).T, columns=self.names, index=list(PRETTY_INDICES_NAMES.values()))
 
         df_elements_stacked = stack_df_for_print(df_elements)
         NAs_list = []
@@ -2166,18 +2192,19 @@ class Cavity:
             df_arms_list.append(arm.specs())
 
         df_cavity = pd.DataFrame({
-                                  'Parameter': ['Finesse',
+                                  'Parameter': ['Id',
+                                                'Finesse',
                                                 'Free spectral range',
                                                 'Roundtrip power losses',
-                                                'Power decay rate',
-                                                'Amplitude amplification factor'] +
+                                                'Power decay rate',  # 'Amplitude amplification factor'
+                                                ] +
                                                [f'NA_{i}' for i in range(len(NAs_list))] +
                                                [f'length_{i}' for i in range(len(lengths_list))],
-                                  'Value': [self.finesse,
+                                  'Value': [self.id,
+                                            self.finesse,
                                             self.free_spectral_range,
                                             self.roundtrip_power_losses,
-                                            self.power_decay_rate,
-                                            123123123123] + # complete the last value
+                                            self.power_decay_rate,] +
                                            NAs_list +
                                            lengths_list})
         df_cavity['Element'] = 'Cavity'
@@ -2375,7 +2402,6 @@ def plot_tolerance_of_NA_same_plot(params: Optional[np.ndarray] = None,
         a.set_title(titles[l])
         a.legend()
     return ax
-
 
 
 def calculate_gaussian_parameters_on_surface(surface: FlatSurface, mode_parameters: ModeParameters):
