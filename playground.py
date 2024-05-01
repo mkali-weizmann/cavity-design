@@ -54,5 +54,3 @@ delta_f_surface_term = f_inverse(n_lens + delta_n_surface_term) - f_inverse(n_le
 delta_f_radius_term = f_inverse(n_lens + delta_n_radius_term) - f_inverse(n_lens)
 delta_f_radius_vol_profile_term = f_inverse(n_lens + delta_n_radius_vol_profile_term) - f_inverse(n_lens)
 delta_f_curvature_term = f_inverse(n_lens + delta_n_curvature_term) - f_inverse(n_lens)
-
-
