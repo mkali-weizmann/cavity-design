@@ -85,7 +85,7 @@ PHYSICAL_SIZES_DICT = {'thermal_properties_sapphire': MaterialProperties(alpha_e
                                                                          kappa_conductivity=46.06,  # https://www.google.com/search?q=sapphire+thermal+conductivity&rlz=1C1GCEB_enIL1023IL1023&oq=sapphire+thermal+c&aqs=chrome.0.35i39i650j69i57j0i20i263i512j0i22i30l3j0i10i15i22i30j0i22i30l3.3822j0j1&sourceid=chrome&ie=UTF-8, https://www.shinkosha.com/english/techinfo/feature/thermal-properties-of-sapphire/, https://www.shinkosha.com/english/techinfo/feature/thermal-properties-of-sapphire/
                                                                          dn_dT=11.7e-6,  # https://secwww.jhuapl.edu/techdigest/Content/techdigest/pdf/V14-N01/14-01-Lange.pdf
                                                                          nu_poisson_ratio=0.3,  # https://www.google.com/search?q=sapphire+poisson+ratio&rlz=1C1GCEB_enIL1023IL1023&sxsrf=AB5stBgEUZwh7l9RzN9GwxjMPCw_DcShAw%3A1688647440018&ei=ELemZI1h0-2SBaukk-AH&ved=0ahUKEwiNqcD2jfr_AhXTtqQKHSvSBHwQ4dUDCA8&uact=5&oq=sapphire+poisson+ratio&gs_lcp=Cgxnd3Mtd2l6LXNlcnAQAzIECAAQHjIICAAQigUQhgMyCAgAEIoFEIYDMggIABCKBRCGAzIICAAQigUQhgMyCAgAEIoFEIYDOgoIABBHENYEELADSgQIQRgAUJsFWJsFYNQJaAFwAXgAgAF5iAF5kgEDMC4xmAEAoAEBwAEByAEI&sclient=gws-wiz-serp
-                                                                         alpha_volume_absorption=100e-6 * 100,  # https://labcit.ligo.caltech.edu/~ligo2/pdf/Gustafson2c.pdf  # https://www.nature.com/articles/s41598-020-80313-1  # https://www.crystran.co.uk/optical-materials/sapphire-al2o3,
+                                                                         alpha_volume_absorption=100e-6 * 100,  # The data is in ppm/cm and I convert it to ppm/m  # https://labcit.ligo.caltech.edu/~ligo2/pdf/Gustafson2c.pdf  # https://www.nature.com/articles/s41598-020-80313-1  # https://www.crystran.co.uk/optical-materials/sapphire-al2o3,
                                                                          intensity_reflectivity=100e-6,  # DUMMY - for lenses
                                                                          intensity_transmittance=1 - 100e-6 - 1e-6)  # DUMMY - for lenses
     ,
@@ -1332,6 +1332,8 @@ class Arm:
     def mode_parameters_on_surfaces(self):
         return [self.mode_parameters_on_surface_0, self.mode_parameters_on_surface_1]
 
+
+
     def specs(self):
         list_of_data_frames = []
         for i in [0, 1]:
@@ -1361,6 +1363,7 @@ class Arm:
             # curvature_sign is 1 if the mirror is hitting the sphere from the inside. in that case we want to
             # subtract the two inclinations.
             surface_inclination = np.arcsin(spot_size_on_surface / surface.radius) * (-curvature_sign)
+            # (np.arcsin((surface.radius + local_mode_parameters.z_minus_z_0[0]) * ray_inclination / surface.radius) - ray_inclination) * (-curvature_sign) * (1-2*i)
             # angle of incidence between the ray and the surface:
             angle_of_incidenct = np.abs(ray_inclination - surface_inclination)
             angle_of_incidenct_deg = np.degrees(angle_of_incidenct)
@@ -1833,7 +1836,7 @@ class Cavity:
         if self.central_line is None:
             final_position_and_angles, success = self.find_central_line()
             if not success:
-                warnings.warn("Could not find central line, so no initial surface could be set.")
+                # warnings.warn("Could not find central line, so no initial surface could be set.")
                 return None
         middle_point = (self.central_line[0].origin + self.central_line[1].origin) / 2
         initial_surface = FlatSurface(outwards_normal=-self.central_line[0].k_vector, center=middle_point)
@@ -1953,7 +1956,7 @@ class Cavity:
                     spot_size = spot_size[1]
                 else:
                     spot_size = spot_size[0]
-                length = spot_size * 6
+                length = spot_size * 5
                 surface.plot(ax=ax, dim=dim, plane=plane, length=length)
 
         if self.lambda_laser is not None and plot_mode_lines and self.arms[0].central_line is not None:
@@ -1967,7 +1970,7 @@ class Cavity:
                         ax.plot(line[0, :], line[1, :], line[2, :], color=laser_color, linestyle='--', alpha=0.8,
                                 linewidth=0.5)
             except (FloatingPointError, AttributeError):
-                print("Mode was not successfully found, mode lines not plotted.")
+                # print("Mode was not successfully found, mode lines not plotted.")
                 pass
         return ax
     # parameter_index: Union[Tuple[int, int], Tuple[List[int], List[int]]],
@@ -2848,8 +2851,8 @@ def match_a_lens_parameters_to_modes(local_mode_1: LocalModeParameters, local_mo
 def compare_2_cylindrical_cavities(params_1: np.ndarray,
                                    params_2: np.ndarray,
                                    generate_tolerance_of_NA_dict: dict = {},
-                                   cavities_names: List[str] = ['cavity 1', 'cavity 2'],
-                                   elements_names: List[str] = ['Long Arm Mirror', 'Lens', 'Short Arm Mirror']):
+                                   cavities_names: Tuple[str] = ('cavity 1', 'cavity 2'),
+                                   elements_names: Tuple[str] = ('Long Arm Mirror', 'Lens', 'Short Arm Mirror')):
     NAs_1, tolerance_matrix_1 = generate_tolerance_of_NA(params_1, **generate_tolerance_of_NA_dict,
                                                          p_is_trivial=True, t_is_trivial=True)
     NAs_2, tolerance_matrix_2 = generate_tolerance_of_NA(params_2, **generate_tolerance_of_NA_dict,
@@ -2898,6 +2901,18 @@ def maximize_overlap(cavity: Cavity,
     # best_overlap = optimize.fsolve(controlled_overlap, x0=np.zeros(len(control_parameters_indices[0])))
 
     return best_overlap, original_overlap
+
+def find_minimal_width_for_spot_size_and_radius(radius, spot_size_radius, T_edge = 1e-3, h_divided_by_spot_size = 2.8):
+    # relies on the derivation in figures/lens thickness calculation.jpg
+    h = h_divided_by_spot_size * spot_size_radius
+    try:
+        dT_c = radius * (1 - np.sqrt(1 - h ** 2 / radius ** 2))
+        minimal_T_c = 2 * dT_c + T_edge
+        return minimal_T_c
+    except FloatingPointError:
+        warnings.warn("The spot size radius is too large for the given radius, returning nan",)
+        return np.nan
+
 
 
 # def find_required_value_for_desired_change(cavity: Cavity,
