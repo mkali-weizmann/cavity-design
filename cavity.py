@@ -634,7 +634,7 @@ class Surface:
         elif surface_type == SURFACE_TYPES_DICT['CurvedRefractiveSurface']:  # Refractive surface (one side of a lens)
             surface = CurvedRefractiveSurface(radius=r, outwards_normal=outwards_normal, center=center, n_1=n_1,
                                               n_2=n_2, curvature_sign=curvature_sign, name=name,
-                                              thermal_properties=thermal_properties)
+                                              thermal_properties=thermal_properties, thickness=w)
         elif surface_type == SURFACE_TYPES_DICT['IdealLens']:  # Ideal lens
             surface = IdealLens(outwards_normal=outwards_normal,
                                 center=center,
@@ -1332,7 +1332,14 @@ class Arm:
     def mode_parameters_on_surfaces(self):
         return [self.mode_parameters_on_surface_0, self.mode_parameters_on_surface_1]
 
+    def calculate_incidence_angle(self,
+                                  surface_index: int) -> float:
 
+        return calculate_incidence_angle(lambda_laser=self.lambda_laser,
+                                         surface=self.surfaces[surface_index],
+                                         local_mode_parameters=self.mode_parameters_on_surfaces[surface_index],
+                                         global_mode_parameters=self.mode_parameters,
+                                         outgoing_0_incoming_1=surface_index)
 
     def specs(self):
         list_of_data_frames = []
@@ -2913,6 +2920,38 @@ def find_minimal_width_for_spot_size_and_radius(radius, spot_size_radius, T_edge
         warnings.warn("The spot size radius is too large for the given radius, returning nan",)
         return np.nan
 
+
+def calculate_incidence_angle(lambda_laser: float,
+                              surface: Surface,
+                              local_mode_parameters: LocalModeParameters,
+                              global_mode_parameters: ModeParameters,
+                              outgoing_0_incoming_1: int) -> float:
+    if isinstance(surface, FlatSurface):
+        raise NotImplementedError("The function is not implemented for flat surfaces")
+    curvature_sign = surface.curvature_sign  # * -1
+    # The sign of the curvature of the surface is the sign with respect to the incident beam: 1 for if the beam
+    # hits a concave surface, -1 if it hits a convex surface. Since surface_0 is the surface of the leaving beam,
+    # and not the incidence beam, if the surface is a refractive surface, then the sign of the curvature with
+    # respect to the leaving beam is the opposite of the sign with respect to the incidence beam and needs to be
+    # inverted.
+    if isinstance(surface, CurvedRefractiveSurface) and outgoing_0_incoming_1 == 0:
+        curvature_sign *= -1
+
+    spot_size_on_surface = spot_size(z=local_mode_parameters.z_minus_z_0[0],
+                                     z_R=local_mode_parameters.z_R[0],
+                                     lambda_laser=lambda_laser)
+
+    ray_inclination = np.arctan(global_mode_parameters.w_0[0] / global_mode_parameters.z_R[0]) * np.sign(
+        local_mode_parameters.z_minus_z_0[0]) * (1 - 2 * outgoing_0_incoming_1)
+    # surface inclination with respect to the optical_axis:
+    # curvature_sign is 1 if the mirror is hitting the sphere from the inside. in that case we want to
+    # subtract the two inclinations.
+    surface_inclination = np.arcsin(spot_size_on_surface / surface.radius) * (-curvature_sign)
+    # (np.arcsin((surface.radius + local_mode_parameters.z_minus_z_0[0]) * ray_inclination / surface.radius) - ray_inclination) * (-curvature_sign) * (1-2*i)
+    # angle of incidence between the ray and the surface:
+    angle_of_incidenct = np.abs(ray_inclination - surface_inclination)
+    angle_of_incidenct_deg = np.degrees(angle_of_incidenct)
+    return angle_of_incidenct_deg
 
 
 # def find_required_value_for_desired_change(cavity: Cavity,
