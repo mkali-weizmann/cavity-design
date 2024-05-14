@@ -316,7 +316,7 @@ class ModeParameters:
                 return np.sqrt(self.lambda_laser / (np.pi * self.z_R))
 
     def local_mode_parameters(self, z_minus_z_0):
-        return LocalModeParameters(z_minus_z_0, self.z_R, self.lambda_laser)
+        return LocalModeParameters(z_minus_z_0=z_minus_z_0, z_R=self.z_R, lambda_laser=self.lambda_laser)
 
 
 def nvl(var, val: Any=0):
@@ -1763,7 +1763,8 @@ class Cavity:
             self.find_central_line()
         if self.central_line_successfully_traced is False:
             return None
-        mode_parameters_current = local_mode_parameters_of_round_trip_ABCD(self.ABCD_round_trip)
+        mode_parameters_current = local_mode_parameters_of_round_trip_ABCD(self.ABCD_round_trip,
+                                                                           lambda_laser=self.lambda_laser)
         for arm in self.arms:
             arm.mode_parameters_on_surface_0 = mode_parameters_current
             mode_parameters_current = arm.propagate_local_mode_parameters()
@@ -2944,7 +2945,7 @@ def calculate_incidence_angle(lambda_laser: float,
                                      z_R=local_mode_parameters.z_R[0],
                                      lambda_laser=lambda_laser)
 
-    ray_inclination = np.arctan(local_mode_parameters.w_0()[0] / local_mode_parameters.z_R[0]) * np.sign(
+    ray_inclination = np.arctan(local_mode_parameters.w_0[0] / local_mode_parameters.z_R[0]) * np.sign(
         local_mode_parameters.z_minus_z_0[0]) * (1 - 2 * outgoing_0_incoming_1)
     # surface inclination with respect to the optical_axis:
     # curvature_sign is 1 if the mirror is hitting the sphere from the inside. in that case we want to
