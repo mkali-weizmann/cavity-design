@@ -29,7 +29,7 @@ PRETTY_INDICES_NAMES = {'x': 'x [m]',
                         'r': 'Radius of curvature [m]',
                         'n_1': 'Index of refraction (before the surface)',
                         'w': 'Center thickness [m]',
-                        'n_2': 'Index of refraction',
+                        'n_2': 'Index of refraction (after the surface)',
                         'z': 'z [m]',
                         'curvature_sign': 'Curvature sign',
                         'alpha_thermal_expansion': 'Thermal expansion coefficient [1/K]',
@@ -69,11 +69,11 @@ class MaterialProperties:
 
     @property
     def to_array(self) -> np.ndarray:
-        return np.array([self.alpha_expansion,
-                         self.beta_surface_absorption,
-                         self.kappa_conductivity,
-                         nvl(self.dn_dT),
-                         self.nu_poisson_ratio,
+        return np.array([nvl(self.alpha_expansion, np.nan),
+                         nvl(self.beta_surface_absorption, np.nan),
+                         nvl(self.kappa_conductivity, np.nan),
+                         nvl(self.dn_dT, np.nan),
+                         nvl(self.nu_poisson_ratio, np.nan),
                          nvl(self.alpha_volume_absorption),
                          nvl(self.intensity_reflectivity),
                          nvl(self.intensity_transmittance),
@@ -256,6 +256,9 @@ class LocalModeParameters:
     @property
     def z_R(self):
         return self.q.imag
+
+    def w_0(self, lambda_laser: float):
+        return w_0_of_z_R(z_R=self.z_R, lambda_laser=lambda_laser)
 
     def to_mode_parameters(self,
                         location_of_local_mode_parameter: np.ndarray,
@@ -444,7 +447,7 @@ class Ray:
 
         self.origin = origin  # m_rays | 3
         self.k_vector = normalize_vector(k_vector)  # m_rays | 3
-        if length is not None and isinstance(length, float):
+        if length is not None and isinstance(length, float) and origin.ndim > 1:  # If there is one length for many rays
             length = np.ones(origin.shape[0]) * length
         self.length = length  # m_rays or None
 
@@ -709,6 +712,8 @@ class PhysicalSurface(Surface):
             curvature_sign = 0
         else:
             raise ValueError(f'Unknown surface type {type(self)}')
+        if self.material_properties is None:
+            self.material_properties = MaterialProperties()
         return np.array([x, y, t, p, r, n_1, 0, n_2, z, curvature_sign, *self.material_properties.to_array, surface_type])
 
     def thermal_transformation(self, P_laser_power: float, w_spot_size: float, **kwargs):
@@ -1335,10 +1340,8 @@ class Arm:
     def calculate_incidence_angle(self,
                                   surface_index: int) -> float:
 
-        return calculate_incidence_angle(lambda_laser=self.lambda_laser,
-                                         surface=self.surfaces[surface_index],
+        return calculate_incidence_angle(lambda_laser=self.lambda_laser, surface=self.surfaces[surface_index],
                                          local_mode_parameters=self.mode_parameters_on_surfaces[surface_index],
-                                         global_mode_parameters=self.mode_parameters,
                                          outgoing_0_incoming_1=surface_index)
 
     def specs(self):
@@ -1438,16 +1441,16 @@ class Cavity:
                     power: Optional[float] = None):
         if isinstance(params, list):
             params = np.stack([p.to_array for p in params], axis=0)
-        mirrors = []
+        physical_surfaces = []
         if names is None:
             names = [f"surface_{i}" for i in range(len(params))]
         for i in range(len(params)):
             surface_temp = Surface.from_params(params[i, :], name=names[i])
             if isinstance(surface_temp, tuple):
-                mirrors.extend(surface_temp)
+                physical_surfaces.extend(surface_temp)
             else:
-                mirrors.append(surface_temp)
-        cavity = Cavity(mirrors, standing_wave, lambda_laser, params=params, names=names,
+                physical_surfaces.append(surface_temp)
+        cavity = Cavity(physical_surfaces, standing_wave, lambda_laser, params=params, names=names,
                         set_central_line=set_central_line, set_mode_parameters=set_mode_parameters,
                         set_initial_surface=set_initial_surface, t_is_trivial=t_is_trivial, p_is_trivial=p_is_trivial,
                         power=power)
@@ -2924,7 +2927,6 @@ def find_minimal_width_for_spot_size_and_radius(radius, spot_size_radius, T_edge
 def calculate_incidence_angle(lambda_laser: float,
                               surface: Surface,
                               local_mode_parameters: LocalModeParameters,
-                              global_mode_parameters: ModeParameters,
                               outgoing_0_incoming_1: int) -> float:
     if isinstance(surface, FlatSurface):
         raise NotImplementedError("The function is not implemented for flat surfaces")
@@ -2941,7 +2943,7 @@ def calculate_incidence_angle(lambda_laser: float,
                                      z_R=local_mode_parameters.z_R[0],
                                      lambda_laser=lambda_laser)
 
-    ray_inclination = np.arctan(global_mode_parameters.w_0[0] / global_mode_parameters.z_R[0]) * np.sign(
+    ray_inclination = np.arctan(local_mode_parameters.w_0(lambda_laser)[0] / local_mode_parameters.z_R[0]) * np.sign(
         local_mode_parameters.z_minus_z_0[0]) * (1 - 2 * outgoing_0_incoming_1)
     # surface inclination with respect to the optical_axis:
     # curvature_sign is 1 if the mirror is hitting the sphere from the inside. in that case we want to
@@ -2952,6 +2954,111 @@ def calculate_incidence_angle(lambda_laser: float,
     angle_of_incidenct = np.abs(ray_inclination - surface_inclination)
     angle_of_incidenct_deg = np.degrees(angle_of_incidenct)
     return angle_of_incidenct_deg
+
+
+# def generate_spot_size_lines(mode: ModeParameters, z_min: float, z_max: float, dim: int = 2, plane: str = 'xy', principle_axes: Optional[np.ndarray] = None):
+#     z_minus_z_0 = np.linspace(z_min, z_max, 100)  # Before
+#     # the norm the size is 100 | 2 | 3 and after it is 100 | 2 (100 points for in_plane and out_of_plane
+#     # dimensions)
+#     sign = np.array([1, -1])
+#     spot_size_value = spot_size(z_minus_z_0, mode.z_R, self.lambda_laser)
+#     spot_size_lines = ray_points[:, np.newaxis, np.newaxis, :] + \
+#                       spot_size_value[:, :, np.newaxis, np.newaxis] * \
+#                       principle_axes[np.newaxis, :, np.newaxis, :] * \
+#                       sign[np.newaxis, np.newaxis, :,
+#                       np.newaxis]  # The size is 100 (n_points) | 2 (axis, []) | 2 (sign, [1, -1]) | 3 (coordinate, [x,y,z])
+#     if dim == 2:
+#         if plane in ['xy', 'yx']:
+#             relevant_axis_index = 1
+#             relevant_diminsions = [0, 1]
+#         elif plane in ['xz', 'zx']:
+#             relevant_axis_index = 0
+#             relevant_diminsions = [0, 2]
+#         else:
+#             relevant_axis_index = 0
+#             relevant_diminsions = [1, 2]
+#         spot_size_lines = spot_size_lines[:, relevant_axis_index, :,
+#                           relevant_diminsions]  # Drop the z axis, and drop the lines of the
+#         # transverse axis the size is 2 (selected spatial axes) | 100 (n_points) | 2 (sign, [1, -1]
+#         list_of_spot_size_lines.extend(
+#             [spot_size_lines[:, :, 0], spot_size_lines[:, :, 1]])  # Each element is a
+#         # 100 (n_points) | 2 (selected spatial axes) array
+#
+#     else:
+#         list_of_spot_size_lines.extend([spot_size_lines[:, 0, 0, :], spot_size_lines[:, 0, 1, :],
+#                                         spot_size_lines[:, 1, 0, :], spot_size_lines[:, 1, 1, :]])  # Each
+#         # element is a  100 | 3 array.
+#
+# return list_of_spot_size_lines
+
+
+def dT_c_of_a_lens(R, h):
+    dT_c = R * (1- np.sqrt(1 - h ** 2 / R ** 2))
+    return dT_c
+
+def thick_lens_focal_length(T_c: float, R_1: float, R_2: float, n: float) -> float:
+    f_inverse = (n - 1) * (1 / R_1 - 1 / R_2 + (n - 1) * T_c / (n * R_1 * R_2))
+    f = 1 / f_inverse
+    return f
+
+def working_distance_of_a_lens(R_1, R_2, n, T_c):
+    f = thick_lens_focal_length(T_c, R_1, R_2, n)
+    h_2 = -f * (n-1) * T_c / (n * R_1)
+    working_distance = f - h_2
+    return working_distance
+
+def find_equal_angles_surface(mode_before_lens: ModeParameters,
+                             surface_0: CurvedRefractiveSurface,
+                             T_edge: float = 1e-3,
+                             h: float = 3.875e-3,
+                             lambda_laser: float = 1064e-9,
+                             ) -> CurvedRefractiveSurface:
+    mode_parameters_just_before_surface_0 = mode_before_lens.local_mode_parameters(np.linalg.norm(surface_0.center - mode_before_lens.center[0]))
+    first_angle_of_incidence = calculate_incidence_angle(lambda_laser=lambda_laser,
+                                                         surface=surface_0,
+                                                         local_mode_parameters=mode_parameters_just_before_surface_0,
+                                                         outgoing_0_incoming_1=1)
+    dT_c_0 = dT_c_of_a_lens(R=surface_0.radius, h=h)
+    mode_parameters_right_after_surface_0 = propagate_local_mode_parameter_through_ABCD(mode_parameters_just_before_surface_0,
+                                                                                        surface_0.ABCD_matrix(cos_theta_incoming=1))
+
+    def match_surface_to_radius(R_1: float) -> float:
+        T_c = dT_c_0 + T_edge + dT_c_of_a_lens(R=R_1, h=h)
+        center_1 = surface_0.center + surface_0.inwards_normal * T_c
+        second_surface = CurvedRefractiveSurface(radius=R_1,
+                                                 outwards_normal=-surface_0.outwards_normal,
+                                                 center=center_1,
+                                                 n_1=surface_0.n_2,
+                                                 n_2=1,
+                                                 curvature_sign=-1 * surface_0.curvature_sign,
+                                                 thickness=T_c / 2)
+        return second_surface
+
+    def f_for_root(R_1: np.ndarray) -> float:  # ARBITRARY - ASSUMES CONVEX LENS
+        R_1 = R_1[0]
+        second_surface = match_surface_to_radius(R_1)
+        arm = Arm(surface_0=surface_0,
+                  surface_1=second_surface,
+                  central_line=Ray(origin=surface_0.center,
+                                   k_vector=normalize_vector(second_surface.center - surface_0.center),
+                                   length=np.linalg.norm(second_surface.center - surface_0.center)
+                                   ),
+                  mode_parameters_on_surface_0=mode_parameters_right_after_surface_0,
+                  )
+        mode_parameters_right_after_surface_2 = arm.propagate_local_mode_parameters()
+        second_angle_of_incidence = calculate_incidence_angle(lambda_laser=lambda_laser,
+                                                              surface=second_surface,
+                                                              local_mode_parameters=mode_parameters_right_after_surface_2,
+                                                              outgoing_0_incoming_1=0)
+        return first_angle_of_incidence - second_angle_of_incidence
+
+    solution = optimize.fsolve(f_for_root, surface_0.radius)
+    R_1 = solution[0]
+
+    second_surface = match_surface_to_radius(R_1)
+
+    return second_surface
+
 
 
 # def find_required_value_for_desired_change(cavity: Cavity,
