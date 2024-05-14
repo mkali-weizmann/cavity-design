@@ -231,11 +231,12 @@ def params_to_perturbable_params_indices(params: np.ndarray, remove_one_of_the_a
     return params_indices
 
 
-
 class LocalModeParameters:
-    def __init__(self, z_minus_z_0: Optional[Union[np.ndarray, float]] = None,
+    def __init__(self,
+                 z_minus_z_0: Optional[Union[np.ndarray, float]] = None,
                  z_R: Optional[Union[np.ndarray, float]] = None,
-                 q: Optional[Union[np.ndarray, float]] = None):
+                 q: Optional[Union[np.ndarray, float]] = None,
+                 lambda_laser: Optional[float] = None):
         if q is not None:
             if isinstance(q, float):
                 q = np.array([q, q])
@@ -248,6 +249,7 @@ class LocalModeParameters:
             self.q: np.ndarray = z_minus_z_0 + 1j * z_R
         else:
             raise ValueError('Either q or z_minus_z_0 and z_R must be provided')
+        self.lambda_laser = lambda_laser
 
     @property
     def z_minus_z_0(self):
@@ -257,13 +259,13 @@ class LocalModeParameters:
     def z_R(self):
         return self.q.imag
 
-    def w_0(self, lambda_laser: float):
-        return w_0_of_z_R(z_R=self.z_R, lambda_laser=lambda_laser)
+    @property
+    def w_0(self):
+        return w_0_of_z_R(z_R=self.z_R, lambda_laser=self.lambda_laser)
 
     def to_mode_parameters(self,
-                        location_of_local_mode_parameter: np.ndarray,
-                        k_vector: np.ndarray,
-                        lambda_laser: Optional[float]):
+                           location_of_local_mode_parameter: np.ndarray,
+                           k_vector: np.ndarray):
         center = location_of_local_mode_parameter - self.z_minus_z_0[:, np.newaxis] * k_vector
         z_hat = np.array([0, 0, 1])
         if np.linalg.norm(k_vector - z_hat) < 1e-10:
@@ -272,15 +274,15 @@ class LocalModeParameters:
         pseudo_z = normalize_vector(np.cross(k_vector, pseudo_y))
         principle_axes = np.stack([pseudo_z, pseudo_y], axis=-1)
 
-        return ModeParameters(center=center, k_vector=k_vector, z_R=self.z_R, principle_axes=principle_axes,
-                              lambda_laser=lambda_laser)
+        return ModeParameters(center=center,k_vector=k_vector, z_R=self.z_R, principle_axes=principle_axes,
+                              lambda_laser=self.lambda_laser)
 
-    def spot_size(self, lambda_laser: float):
+    @property
+    def spot_size(self):
         if np.any(self.z_R == 0):
             w_z = np.array([np.nan, np.nan])
         else:
-            w_0 = w_0_of_z_R(self.z_R, lambda_laser)
-            w_z = w_0 * np.sqrt(1 + (self.z_minus_z_0 / self.z_R) ** 2)
+            w_z = spot_size(z=self.z_minus_z_0, z_R=self.z_R, lambda_laser=self.lambda_laser)
         return w_z
 
 
@@ -314,7 +316,7 @@ class ModeParameters:
                 return np.sqrt(self.lambda_laser / (np.pi * self.z_R))
 
     def local_mode_parameters(self, z_minus_z_0):
-        return LocalModeParameters(z_minus_z_0, self.z_R)
+        return LocalModeParameters(z_minus_z_0, self.z_R, self.lambda_laser)
 
 
 def nvl(var, val: Any=0):
@@ -334,9 +336,9 @@ def safe_exponent(a: Union[float, np.ndarray]) -> Union[float, np.ndarray]:
 
 def ABCD_free_space(length: float) -> np.ndarray:
     return np.array([[1, length, 0, 0],
-                     [0, 1, 0, 0],
-                     [0, 0, 1, length],  # / cos_theta_between_planes
-                     [0, 0, 0, 1]])
+                     [0, 1,      0, 0],
+                     [0, 0,      1, length],  # / cos_theta_between_planes
+                     [0, 0,      0, 1]])
 
 
 def normalize_vector(vector: Union[np.ndarray, list]) -> np.ndarray:
@@ -405,15 +407,15 @@ def propagate_local_mode_parameter_through_ABCD(local_mode_parameters: LocalMode
                                                 ABCD: np.ndarray) -> LocalModeParameters:
     A, B, C, D = decompose_ABCD_matrix(ABCD)
     q_new = (A * local_mode_parameters.q + B) / (C * local_mode_parameters.q + D)
-    return LocalModeParameters(q=q_new)
+    return LocalModeParameters(q=q_new, lambda_laser=local_mode_parameters.lambda_laser)
 
 
-def local_mode_parameters_of_round_trip_ABCD(round_trip_ABCD: np.ndarray) -> LocalModeParameters:
+def local_mode_parameters_of_round_trip_ABCD(round_trip_ABCD: np.ndarray, lambda_laser: Optional[float] = None) -> LocalModeParameters:
     A, B, C, D = decompose_ABCD_matrix(round_trip_ABCD)
     q_z = (A - D + np.sqrt(A ** 2 + 2 * C * B + D ** 2 - 2 + 0j)) / (2 * C)
     q_z = np.real(q_z) + 1j * np.abs(np.imag(q_z))  # ATTENTION - make sure this line is justified.
 
-    return LocalModeParameters(q=q_z)  # First dimension is theta or phi,second dimension is z_minus_z_0 or
+    return LocalModeParameters(q=q_z, lambda_laser=lambda_laser)  # First dimension is theta or phi,second dimension is z_minus_z_0 or
     # z_R.
 
 
@@ -1364,9 +1366,7 @@ class Arm:
                     angle_side = '_inside'
             else:
                 angle_side = ''
-            spot_size_on_surface = spot_size(z=local_mode_parameters.z_minus_z_0[0],
-                                             z_R=local_mode_parameters.z_R[0],
-                                             lambda_laser=self.lambda_laser)
+            spot_size_on_surface = local_mode_parameters.spot_size
 
             ray_inclination = np.arctan(self.mode_parameters.w_0[0] / self.mode_parameters.z_R[0]) * np.sign(local_mode_parameters.z_minus_z_0[0]) * (1-2*i)
             # surface inclination with respect to the optical_axis:
@@ -1915,7 +1915,7 @@ class Cavity:
 
             if self.t_is_trivial and self.p_is_trivial and dim == 2:
                 if self.arms[0].mode_parameters is not None and np.min(self.arms[0].mode_parameters_on_surface_0.z_R) > 0:
-                    maximal_spot_size = np.max([arm.mode_parameters_on_surface_0.spot_size(lambda_laser=self.lambda_laser)[0]
+                    maximal_spot_size = np.max([arm.mode_parameters_on_surface_0.spot_size[0]
                                                 for arm in self.arms])
                     axis_span = np.array([axes_range[0], 6 * maximal_spot_size])
                 else:
@@ -1961,7 +1961,7 @@ class Cavity:
             if self.arms[0].mode_parameters is None or np.any(self.arms[0].mode_parameters.z_R == 0):
                 surface.plot(ax=ax, dim=dim, plane=plane)
             else:
-                spot_size = self.arms[i].mode_parameters_on_surface_0.spot_size(self.lambda_laser)
+                spot_size = self.arms[i].mode_parameters_on_surface_0.spot_size
                 if plane == 'xy':
                     spot_size = spot_size[1]
                 else:
@@ -2138,7 +2138,8 @@ class Cavity:
         unheated_surfaces = []
         for i, surface in enumerate(self.physical_surfaces):
             unheated_surface = surface.thermal_transformation(P_laser_power=-self.power,
-                                                              w_spot_size=self.arms[i].mode_parameters_on_surface_0.spot_size(self.lambda_laser)[0],
+                                                              w_spot_size=
+                                                              self.arms[i].mode_parameters_on_surface_0.spot_size[0],
                                                               **kwargs)
             unheated_surfaces.append(unheated_surface)
 
@@ -2943,7 +2944,7 @@ def calculate_incidence_angle(lambda_laser: float,
                                      z_R=local_mode_parameters.z_R[0],
                                      lambda_laser=lambda_laser)
 
-    ray_inclination = np.arctan(local_mode_parameters.w_0(lambda_laser)[0] / local_mode_parameters.z_R[0]) * np.sign(
+    ray_inclination = np.arctan(local_mode_parameters.w_0()[0] / local_mode_parameters.z_R[0]) * np.sign(
         local_mode_parameters.z_minus_z_0[0]) * (1 - 2 * outgoing_0_incoming_1)
     # surface inclination with respect to the optical_axis:
     # curvature_sign is 1 if the mirror is hitting the sphere from the inside. in that case we want to
