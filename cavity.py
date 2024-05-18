@@ -272,7 +272,7 @@ class LocalModeParameters:
             z_hat = np.array([0, 1, 0])
         pseudo_y = normalize_vector(np.cross(z_hat, k_vector))
         pseudo_z = normalize_vector(np.cross(k_vector, pseudo_y))
-        principle_axes = np.stack([pseudo_z, pseudo_y], axis=-1)
+        principle_axes = np.stack([pseudo_z, pseudo_y], axis=0)
 
         return ModeParameters(center=center,k_vector=k_vector, z_R=self.z_R, principle_axes=principle_axes,
                               lambda_laser=self.lambda_laser)
@@ -1394,6 +1394,7 @@ class Arm:
         joined_df = pd.concat(list_of_data_frames)
         return joined_df
 
+
 class Cavity:
     def __init__(self,
                  physical_surfaces: List[PhysicalSurface],
@@ -1406,7 +1407,9 @@ class Cavity:
                  set_initial_surface: bool = False,
                  t_is_trivial: bool = False,
                  p_is_trivial: bool = False,
-                 power: Optional[float] = None):
+                 power: Optional[float] = None,
+                 initial_local_mode_parameters: Optional[LocalModeParameters] = None,
+                 initial_mode_parameters: Optional[ModeParameters] = None):
         self.standing_wave = standing_wave
         self.physical_surfaces = physical_surfaces
         self.arms: List[Arm] = [
@@ -1414,6 +1417,7 @@ class Cavity:
                 self.physical_surfaces_ordered[np.mod(i + 1, len(self.physical_surfaces_ordered))],
                 lambda_laser=lambda_laser) for i in range(len(self.physical_surfaces_ordered))]
         self.central_line_successfully_traced: Optional[bool] = None
+        self.resonating_mode_successfully_traced: Optional[bool] = None
         self.lambda_laser: Optional[float] = lambda_laser
         self.params = params
         self.names_memory = names
@@ -1424,7 +1428,7 @@ class Cavity:
         if set_central_line:
             self.find_central_line()
         if set_mode_parameters:
-            self.set_mode_parameters()
+            self.set_mode_parameters(mode_parameters_first_arm=initial_mode_parameters, local_mode_parameters_first_surface=initial_local_mode_parameters)
         if set_initial_surface:
             self.set_initial_surface()
 
@@ -1438,7 +1442,9 @@ class Cavity:
                     set_initial_surface: bool = False,
                     t_is_trivial: bool = False,
                     p_is_trivial: bool = False,
-                    power: Optional[float] = None):
+                    power: Optional[float] = None,
+                    initial_local_mode_parameters: Optional[LocalModeParameters] = None,
+                    initial_mode_parameters: Optional[ModeParameters] = None):
         if isinstance(params, list):
             params = np.stack([p.to_array for p in params], axis=0)
         physical_surfaces = []
@@ -1453,7 +1459,8 @@ class Cavity:
         cavity = Cavity(physical_surfaces, standing_wave, lambda_laser, params=params, names=names,
                         set_central_line=set_central_line, set_mode_parameters=set_mode_parameters,
                         set_initial_surface=set_initial_surface, t_is_trivial=t_is_trivial, p_is_trivial=p_is_trivial,
-                        power=power)
+                        power=power, initial_local_mode_parameters=initial_local_mode_parameters,
+                        initial_mode_parameters=initial_mode_parameters)
         return cavity
 
     def to_params(self, convert_to_pies: bool = False):
@@ -1758,17 +1765,41 @@ class Cavity:
 
         return central_line_initial_parameters, self.central_line_successfully_traced
 
-    def set_mode_parameters(self):
+    def set_mode_parameters(self,
+                            mode_parameters_first_arm: Optional[ModeParameters] = None,
+                            local_mode_parameters_first_surface: Optional[LocalModeParameters] = None):
+        # Sets the mode parameters sequentially in all arms of the cavity. tries to find a mode solution for the cavity,
+        # if it fails, it will set the resonating_mode_successfully_traced to False, and will use the input
+        # local_mode_parameters_first_surface instead.
         if self.central_line_successfully_traced is None:
             self.find_central_line()
         if self.central_line_successfully_traced is False:
+            self.resonating_mode_successfully_traced = False
             return None
-        mode_parameters_current = local_mode_parameters_of_round_trip_ABCD(self.ABCD_round_trip,
-                                                                           lambda_laser=self.lambda_laser)
-        for arm in self.arms:
-            arm.mode_parameters_on_surface_0 = mode_parameters_current
-            mode_parameters_current = arm.propagate_local_mode_parameters()
-            arm.mode_principle_axes = self.principle_axes(arm.central_line.k_vector)
+
+        local_mode_parameters_current = local_mode_parameters_of_round_trip_ABCD(round_trip_ABCD=self.ABCD_round_trip,
+                                                                                 lambda_laser=self.lambda_laser)
+        if local_mode_parameters_current.z_R[0] == 0 or local_mode_parameters_current.z_R[1] == 0:  # When there is no solution,
+            # the z_R value comes out as zero.
+            self.resonating_mode_successfully_traced = False
+            if local_mode_parameters_first_surface is not None or mode_parameters_first_arm is not None:  # if there is
+                # no wave solution, but the user gave an input wave to the cavity, then just propagate it throughout
+                # the cavity, even though it is not a wave solution.
+                if mode_parameters_first_arm is not None:
+                    # If the user preferred to give ModeParameters instead of LocalModeParameters, then convert it to
+                    # LocalModeParameters.
+                    local_mode_parameters_first_surface = mode_parameters_first_arm.local_mode_parameters(
+                        np.linalg.norm(mode_parameters_first_arm.center - self.arms[0].surface_0.center)
+                    )
+                local_mode_parameters_current = local_mode_parameters_first_surface
+
+        # If there is a valid mode to start propagating, then propagate it through the cavity:
+        if local_mode_parameters_current.z_R[0] != 0 and local_mode_parameters_current.z_R[1] != 0:
+            for arm in self.arms:
+                arm.mode_parameters_on_surface_0 = local_mode_parameters_current
+                local_mode_parameters_current = arm.propagate_local_mode_parameters()
+                arm.mode_principle_axes = self.principle_axes(arm.central_line.k_vector)
+            self.resonating_mode_successfully_traced = True
 
     def principle_axes(self, k_vector: np.ndarray):
         # Returns two vectors that are orthogonal to k_vector and each other, one lives in the central line plane,
@@ -1800,42 +1831,14 @@ class Cavity:
         if self.arms[0].mode_parameters is None:
             self.set_mode_parameters()
         list_of_spot_size_lines = []
-        for arm in self.arms:
-            t = np.linspace(0, arm.central_line.length, 100)
-            ray_points = arm.central_line.parameterization(t=t)
-            z_minus_z_0 = np.linalg.norm(ray_points[:, np.newaxis, :] - arm.mode_parameters.center, axis=2)  # Before
-            # the norm the size is 100 | 2 | 3 and after it is 100 | 2 (100 points for in_plane and out_of_plane
-            # dimensions)
-            principle_axes = arm.mode_principle_axes
-            sign = np.array([1, -1])
-            spot_size_value = spot_size(z_minus_z_0, arm.mode_parameters.z_R, self.lambda_laser)
-            spot_size_lines = ray_points[:, np.newaxis, np.newaxis, :] + \
-                              spot_size_value[:, :, np.newaxis, np.newaxis] * \
-                              principle_axes[np.newaxis, :, np.newaxis, :] * \
-                              sign[np.newaxis, np.newaxis, :,
-                              np.newaxis]  # The size is 100 (n_points) | 2 (axis, []) | 2 (sign, [1, -1]) | 3 (coordinate, [x,y,z])
-            if dim == 2:
-                if plane in ['xy', 'yx']:
-                    relevant_axis_index = 1
-                    relevant_diminsions = [0, 1]
-                elif plane in ['xz', 'zx']:
-                    relevant_axis_index = 0
-                    relevant_diminsions = [0, 2]
-                else:
-                    relevant_axis_index = 0
-                    relevant_diminsions = [1, 2]
-                spot_size_lines = spot_size_lines[:, relevant_axis_index, :,
-                                  relevant_diminsions]  # Drop the z axis, and drop the lines of the
-                # transverse axis the size is 2 (selected spatial axes) | 100 (n_points) | 2 (sign, [1, -1]
-                list_of_spot_size_lines.extend(
-                    [spot_size_lines[:, :, 0], spot_size_lines[:, :, 1]])  # Each element is a
-                # 100 (n_points) | 2 (selected spatial axes) array
-
-            else:
-                list_of_spot_size_lines.extend([spot_size_lines[:, 0, 0, :], spot_size_lines[:, 0, 1, :],
-                                                spot_size_lines[:, 1, 0, :], spot_size_lines[:, 1, 1, :]])  # Each
-                # element is a  100 | 3 array.
-
+        if self.resonating_mode_successfully_traced is True:
+            for arm in self.arms:
+                spot_size_lines_separated = generate_spot_size_lines(arm.mode_parameters,
+                                                                     first_point=arm.central_line.origin,
+                                                                     last_point=arm.central_line.origin + arm.central_line.k_vector * arm.central_line.length,
+                                                                     principle_axes=arm.mode_principle_axes, dim=dim,
+                                                                     plane=plane)
+                list_of_spot_size_lines.extend(spot_size_lines_separated)
         return list_of_spot_size_lines
 
     def set_initial_surface(self) -> Optional[Surface]:
@@ -1959,9 +1962,11 @@ class Cavity:
                 ray.plot(ax=ax, dim=dim, color=laser_color, plane=plane)
 
         for i, surface in enumerate(self.surfaces):
+            # If there is not information on the spot size of the element, plot it with default length:
             if self.arms[0].mode_parameters is None or np.any(self.arms[0].mode_parameters.z_R == 0):
                 surface.plot(ax=ax, dim=dim, plane=plane)
             else:
+                # If there is information on the spot size of the element, plot it with the spot size length*2.5:
                 spot_size = self.arms[i].mode_parameters_on_surface_0.spot_size
                 if plane == 'xy':
                     spot_size = spot_size[1]
@@ -2272,6 +2277,7 @@ def signif(x, p):
     x_positive = np.where(np.isfinite(x) & (x != 0), np.abs(x), 10**(p-1))
     mags = 10 ** (p - 1 - np.floor(np.log10(x_positive)))
     return np.round(x * mags) / mags
+
 
 def generate_tolerance_of_NA(
         params: np.ndarray,
@@ -2958,40 +2964,49 @@ def calculate_incidence_angle(lambda_laser: float,
     return angle_of_incidenct_deg
 
 
-# def generate_spot_size_lines(mode: ModeParameters, z_min: float, z_max: float, dim: int = 2, plane: str = 'xy', principle_axes: Optional[np.ndarray] = None):
-#     z_minus_z_0 = np.linspace(z_min, z_max, 100)  # Before
-#     # the norm the size is 100 | 2 | 3 and after it is 100 | 2 (100 points for in_plane and out_of_plane
-#     # dimensions)
-#     sign = np.array([1, -1])
-#     spot_size_value = spot_size(z_minus_z_0, mode.z_R, self.lambda_laser)
-#     spot_size_lines = ray_points[:, np.newaxis, np.newaxis, :] + \
-#                       spot_size_value[:, :, np.newaxis, np.newaxis] * \
-#                       principle_axes[np.newaxis, :, np.newaxis, :] * \
-#                       sign[np.newaxis, np.newaxis, :,
-#                       np.newaxis]  # The size is 100 (n_points) | 2 (axis, []) | 2 (sign, [1, -1]) | 3 (coordinate, [x,y,z])
-#     if dim == 2:
-#         if plane in ['xy', 'yx']:
-#             relevant_axis_index = 1
-#             relevant_diminsions = [0, 1]
-#         elif plane in ['xz', 'zx']:
-#             relevant_axis_index = 0
-#             relevant_diminsions = [0, 2]
-#         else:
-#             relevant_axis_index = 0
-#             relevant_diminsions = [1, 2]
-#         spot_size_lines = spot_size_lines[:, relevant_axis_index, :,
-#                           relevant_diminsions]  # Drop the z axis, and drop the lines of the
-#         # transverse axis the size is 2 (selected spatial axes) | 100 (n_points) | 2 (sign, [1, -1]
-#         list_of_spot_size_lines.extend(
-#             [spot_size_lines[:, :, 0], spot_size_lines[:, :, 1]])  # Each element is a
-#         # 100 (n_points) | 2 (selected spatial axes) array
-#
-#     else:
-#         list_of_spot_size_lines.extend([spot_size_lines[:, 0, 0, :], spot_size_lines[:, 0, 1, :],
-#                                         spot_size_lines[:, 1, 0, :], spot_size_lines[:, 1, 1, :]])  # Each
-#         # element is a  100 | 3 array.
-#
-# return list_of_spot_size_lines
+def generate_spot_size_lines(mode_parameters: ModeParameters,
+                             first_point: np.ndarray,
+                             last_point: np.ndarray,
+                             dim: int = 2,
+                             plane: str = 'xy',
+                             principle_axes: Optional[np.ndarray] = None,):
+    if mode_parameters.principle_axes is not None and principle_axes is None:
+        principle_axes = mode_parameters.principle_axes
+    elif plane == 'xy' and principle_axes is None:
+        principle_axes = np.array([[0, 0, 1], [0, -1, 0]])
+    central_line = Ray(origin=first_point, k_vector=mode_parameters.k_vector, length=np.linalg.norm(last_point - first_point))
+    t = np.linspace(0, central_line.length, 100)
+    ray_points = central_line.parameterization(t=t)
+    z_minus_z_0 = np.linalg.norm(ray_points[:, np.newaxis, :] - mode_parameters.center, axis=2)  # Before
+    # the norm the size is 100 | 2 | 3 and after it is 100 | 2 (100 points for in_plane and out_of_plane
+    # dimensions)
+    sign = np.array([1, -1])
+    spot_size_value = spot_size(z_minus_z_0, mode_parameters.z_R, mode_parameters.lambda_laser)
+    spot_size_lines = ray_points[:, np.newaxis, np.newaxis, :] + \
+                      spot_size_value[:, :, np.newaxis, np.newaxis] * \
+                      principle_axes[np.newaxis, :, np.newaxis, :] * \
+                      sign[np.newaxis, np.newaxis, :,
+                      np.newaxis]  # The size is 100 (n_points) | 2 (axis, []) | 2 (sign, [1, -1]) | 3 (coordinate, [x,y,z])
+    if dim == 2:
+        if plane in ['xy', 'yx']:
+            relevant_axis_index = 1
+            relevant_diminsions = [0, 1]
+        elif plane in ['xz', 'zx']:
+            relevant_axis_index = 0
+            relevant_diminsions = [0, 2]
+        else:
+            relevant_axis_index = 0
+            relevant_diminsions = [1, 2]
+        spot_size_lines = spot_size_lines[:, relevant_axis_index, :, relevant_diminsions]  # Drop the z axis,
+        # and drop the lines of the transverse axis the size is:
+        # 2 (selected spatial axes) | 100 (n_points) | 2 (sign, [1, -1]
+        spot_size_lines_separated = [spot_size_lines[:, :, 0], spot_size_lines[:, :, 1]]
+    else:
+        spot_size_lines_separated = [spot_size_lines[:, 0, 0, :], spot_size_lines[:, 0, 1, :],
+                                     spot_size_lines[:, 1, 0, :], spot_size_lines[:, 1, 1, :]]  # Each
+        # element is a  100 | 3 array.
+
+    return spot_size_lines_separated
 
 
 def dT_c_of_a_lens(R, h):
@@ -3024,7 +3039,7 @@ def find_equal_angles_surface(mode_before_lens: ModeParameters,
     mode_parameters_right_after_surface_0 = propagate_local_mode_parameter_through_ABCD(mode_parameters_just_before_surface_0,
                                                                                         surface_0.ABCD_matrix(cos_theta_incoming=1))
 
-    def match_surface_to_radius(R_1: float) -> float:
+    def match_surface_to_radius(R_1: float) -> CurvedRefractiveSurface:
         T_c = dT_c_0 + T_edge + dT_c_of_a_lens(R=R_1, h=h)
         center_1 = surface_0.center + surface_0.inwards_normal * T_c
         second_surface = CurvedRefractiveSurface(radius=R_1,
@@ -3037,7 +3052,7 @@ def find_equal_angles_surface(mode_before_lens: ModeParameters,
         return second_surface
 
     def f_for_root(R_1: np.ndarray) -> float:  # ARBITRARY - ASSUMES CONVEX LENS
-        R_1 = R_1[0]
+        # R_1 = R_1[0]
         second_surface = match_surface_to_radius(R_1)
         arm = Arm(surface_0=surface_0,
                   surface_1=second_surface,
@@ -3052,24 +3067,40 @@ def find_equal_angles_surface(mode_before_lens: ModeParameters,
                                                               surface=second_surface,
                                                               local_mode_parameters=mode_parameters_right_after_surface_2,
                                                               outgoing_0_incoming_1=0)
-        return first_angle_of_incidence - second_angle_of_incidence
+        diff = first_angle_of_incidence - second_angle_of_incidence
+        return diff
 
-    solution = optimize.fsolve(f_for_root, surface_0.radius)
-    R_1 = solution[0]
+    R_1 = optimize.brentq(f=f_for_root, a=h, b=1000 * surface_0.radius)  # surface_0.radius
+    # R_1 = 0
 
     second_surface = match_surface_to_radius(R_1)
 
     return second_surface
 
 
+def find_required_value_for_desired_change(cavity_generator: Callable,  # Takes a float as input and returns a cavity
+                                           desired_parameter: Callable,  # Takes a cavity as input and returns a float
+                                           # (NA of some arm, length of some arm, radius of curvature, etc.)
+                                           desired_value: float,  # Desired value to end up with for the parameter
+                                           solver: Callable = optimize.fsolve,
+                                           **kwargs) -> float:
+    def f_root(parameter_value: float):
+        perturbed_cavity = cavity_generator(parameter_value)
+        return desired_parameter(perturbed_cavity) - desired_value
 
-# def find_required_value_for_desired_change(cavity: Cavity,
-#                                            parameter_index_to_change: Tuple[int, int],
-#                                            desired_parameter: Callable,
-#                                            desired_value: float) -> float:
-#     def perturbing_function(perturbation_value: float):
-#         perturbed_cavity = perturb_cavity(cavity, parameter_index_to_change, perturbation_value)
-#         return desired_parameter(perturbed_cavity) - desired_value
-#
-#     perturbation_value = optimize.fsolve(perturbing_function, 0)
-#     return perturbation_value
+    perturbation_value = solver(f_root, **kwargs)
+    return perturbation_value
+
+
+def find_required_perturbation_for_desired_change(cavity: Cavity,
+                                                  parameter_index_to_change: Tuple[int, int],
+                                                  desired_parameter: Callable,
+                                                  desired_value: float) -> float:
+    def cavity_generator(perturbation_value: float):
+        return perturb_cavity(cavity, parameter_index_to_change, perturbation_value)
+
+    return find_required_value_for_desired_change(cavity_generator, desired_parameter, desired_value)
+
+# %%
+
+
