@@ -2921,6 +2921,7 @@ def maximize_overlap(cavity: Cavity,
 
     return best_overlap, original_overlap
 
+
 def find_minimal_width_for_spot_size_and_radius(radius, spot_size_radius, T_edge = 1e-3, h_divided_by_spot_size = 2.8):
     # relies on the derivation in figures/lens thickness calculation.jpg
     h = h_divided_by_spot_size * spot_size_radius
@@ -3026,11 +3027,11 @@ def working_distance_of_a_lens(R_1, R_2, n, T_c):
     return working_distance
 
 def find_equal_angles_surface(mode_before_lens: ModeParameters,
-                             surface_0: CurvedRefractiveSurface,
-                             T_edge: float = 1e-3,
-                             h: float = 3.875e-3,
-                             lambda_laser: float = 1064e-9,
-                             ) -> CurvedRefractiveSurface:
+                              surface_0: CurvedRefractiveSurface,
+                              T_edge: float = 1e-3,
+                              h: float = 3.875e-3,
+                              lambda_laser: float = 1064e-9,
+                              ) -> CurvedRefractiveSurface:
     mode_parameters_just_before_surface_0 = mode_before_lens.local_mode_parameters(np.linalg.norm(surface_0.center - mode_before_lens.center[0]))
     first_angle_of_incidence = calculate_incidence_angle(lambda_laser=lambda_laser,
                                                          surface=surface_0,
@@ -3084,12 +3085,16 @@ def find_required_value_for_desired_change(cavity_generator: Callable,  # Takes 
                                            # (NA of some arm, length of some arm, radius of curvature, etc.)
                                            desired_value: float,  # Desired value to end up with for the parameter
                                            solver: Callable = optimize.fsolve,
-                                           **kwargs) -> float:
-    def f_root(parameter_value: Union[float, np.ndarray]):
-        if isinstance(parameter_value, np.ndarray):
-            parameter_value = parameter_value[0]
-        perturbed_cavity = cavity_generator(parameter_value)
-        diff = desired_parameter(perturbed_cavity) - desired_value
+                                           print_progress=False,
+                                           **kwargs) -> Cavity:
+    def f_root(input_parameter_value: Union[float, np.ndarray]):
+        if isinstance(input_parameter_value, np.ndarray):
+            input_parameter_value = input_parameter_value[0]
+        perturbed_cavity = cavity_generator(input_parameter_value)
+        output_parameter_value = desired_parameter(perturbed_cavity)
+        diff = output_parameter_value - desired_value
+        if print_progress:
+            print(f"input_parameter_value: {input_parameter_value:.10e}, output_parameter_value: {output_parameter_value:.3e}, diff: {diff:.3e}")
         return diff
 
     perturbation_value = solver(f_root, **kwargs)
@@ -3127,6 +3132,10 @@ def mirror_lens_mirror_cavity_general_generator(NA_left: float = 0.1,
                                                 set_R_right_to_equalize_angles: bool = False,
                                                 set_R_right_to_R_left: bool = False,
                                                 ):
+    assert not (set_R_right_to_equalize_angles and set_R_right_to_R_left), "Can not set both R_right to equalize angles and to R_left"
+
+    if set_R_right_to_R_left:
+        R_right = R_left
 
     mirrors_material_properties = convert_material_to_mirror_or_lens(
         PHYSICAL_SIZES_DICT[f"thermal_properties_{mirrors_fixed_properties}"], 'mirror')
@@ -3175,8 +3184,6 @@ def mirror_lens_mirror_cavity_general_generator(NA_left: float = 0.1,
         T_c = T_edge + dT_c_left + dT_c_right
 
     if not set_R_right_to_equalize_angles:
-        if set_R_right_to_R_left:
-            R_right = R_left
         x_2_right = x_2_left + T_c
 
         surface_right = CurvedRefractiveSurface(center=np.array([x_2_right, 0, 0]),
@@ -3244,12 +3251,12 @@ def mirror_lens_mirror_cavity_general_generator(NA_left: float = 0.1,
 
 
 def plot_mirror_lens_mirror_cavity_analysis(cavity: Cavity,
-                                            auto_set_x: bool,
-                                            x_span: float,
-                                            auto_set_y: bool,
-                                            y_span: float,
-                                            camera_center: Union[int, float],
-                                            add_unheated_cavity: bool,
+                                            auto_set_x: bool = True,
+                                            x_span: float = 4e-1,
+                                            auto_set_y: bool = True,
+                                            y_span: float = 8e-3,
+                                            camera_center: Union[int, float] = 1,
+                                            add_unheated_cavity: bool = False,
                                             minimal_h_divided_by_spot_size: float = 2.5,
                                             T_edge=1e-3,
                                             CA: float=5e-3,
@@ -3263,7 +3270,7 @@ def plot_mirror_lens_mirror_cavity_analysis(cavity: Cavity,
     angle_right = cavity.arms[2].calculate_incidence_angle(surface_index=0)
     angle_left = cavity.arms[0].calculate_incidence_angle(surface_index=1)
     spot_size_lens_right = cavity.arms[1].mode_parameters_on_surfaces[1].spot_size[0]
-    CA_divided_by_2spot_size = CA / spot_size_lens_right
+    CA_divided_by_2spot_size = CA / (2*spot_size_lens_right)
     short_arm_NA = cavity.arms[0].mode_parameters.NA[0]
     long_arm_NA = cavity.arms[2].mode_parameters.NA[0]
     short_arm_length = np.linalg.norm(cavity.surfaces[1].center - cavity.surfaces[0].center)
@@ -3323,6 +3330,3 @@ def plot_mirror_lens_mirror_cavity_analysis(cavity: Cavity,
             f"unheated_cavity, short arm NA={unheated_cavity.arms[2].mode_parameters.NA[0]:.2e}, Left spot size = {2 * unheated_cavity.arms[2].mode_parameters_on_surface_1.spot_size[0]:.2e}")
     plt.subplots_adjust(hspace=0.35)
     fig.tight_layout()
-
-c = mirror_lens_mirror_cavity_general_generator()
-plot_mirror_lens_mirror_cavity_analysis(c, auto_set_x=True, x_span=0.2, auto_set_y=True, y_span=0.01, camera_center=0, add_unheated_cavity=False)
