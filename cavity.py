@@ -1789,7 +1789,7 @@ class Cavity:
                     # If the user preferred to give ModeParameters instead of LocalModeParameters, then convert it to
                     # LocalModeParameters.
                     local_mode_parameters_first_surface = mode_parameters_first_arm.local_mode_parameters(
-                        np.linalg.norm(mode_parameters_first_arm.center - self.arms[0].surface_0.center)
+                        (self.arms[0].surface_0.center - mode_parameters_first_arm.center[0]) @ mode_parameters_first_arm.k_vector
                     )
                 local_mode_parameters_current = local_mode_parameters_first_surface
 
@@ -1988,6 +1988,7 @@ class Cavity:
             except (FloatingPointError, AttributeError):
                 # print("Mode was not successfully found, mode lines not plotted.")
                 pass
+        ax.grid()
         return ax
     # parameter_index: Union[Tuple[int, int], Tuple[List[int], List[int]]],
     #                    shift_value: Union[float, np.ndarray]
@@ -3084,12 +3085,16 @@ def find_required_value_for_desired_change(cavity_generator: Callable,  # Takes 
                                            desired_value: float,  # Desired value to end up with for the parameter
                                            solver: Callable = optimize.fsolve,
                                            **kwargs) -> float:
-    def f_root(parameter_value: float):
+    def f_root(parameter_value: Union[float, np.ndarray]):
+        if isinstance(parameter_value, np.ndarray):
+            parameter_value = parameter_value[0]
         perturbed_cavity = cavity_generator(parameter_value)
-        return desired_parameter(perturbed_cavity) - desired_value
+        diff = desired_parameter(perturbed_cavity) - desired_value
+        return diff
 
     perturbation_value = solver(f_root, **kwargs)
-    return perturbation_value
+    cavity = cavity_generator(perturbation_value[0])
+    return cavity
 
 
 def find_required_perturbation_for_desired_change(cavity: Cavity,
@@ -3100,7 +3105,4 @@ def find_required_perturbation_for_desired_change(cavity: Cavity,
         return perturb_cavity(cavity, parameter_index_to_change, perturbation_value)
 
     return find_required_value_for_desired_change(cavity_generator, desired_parameter, desired_value)
-
-# %%
-
 
