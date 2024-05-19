@@ -3106,3 +3106,223 @@ def find_required_perturbation_for_desired_change(cavity: Cavity,
 
     return find_required_value_for_desired_change(cavity_generator, desired_parameter, desired_value)
 
+
+def mirror_lens_mirror_cavity_general_generator(NA_left: float = 0.1,
+                                                waist_to_lens: float = 5e-3,
+                                                h: float = 3.875e-3,
+                                                R_left: float = 5e-3,
+                                                R_right: float = 5e-3,
+                                                T_c: float = 5e-3,
+                                                T_edge: float = 1e-3,
+                                                right_arm_length: float = 0.3,
+                                                lens_fixed_properties='fused_silica',
+                                                mirrors_fixed_properties='fused_silica',
+                                                symmetric_left_arm: bool = True,
+                                                waist_to_left_mirror: float = 5e-3,
+                                                lambda_laser=1064e-9,
+                                                power: float = 2e4,
+                                                set_h_instead_of_w: bool = True,
+                                                right_mirror_on_waist: bool = False,
+                                                auto_set_right_arm_length: bool = True,
+                                                set_R_right_to_equalize_angles: bool = False,
+                                                set_R_right_to_R_left: bool = False,
+                                                ):
+
+    mirrors_material_properties = convert_material_to_mirror_or_lens(
+        PHYSICAL_SIZES_DICT[f"thermal_properties_{mirrors_fixed_properties}"], 'mirror')
+    lens_material_properties = convert_material_to_mirror_or_lens(
+        PHYSICAL_SIZES_DICT[f"thermal_properties_{lens_fixed_properties}"], 'lens')
+
+    # Generate left arm's mirror:
+    z_R_left = lambda_laser / (np.pi * NA_left ** 2)
+    left_waist_x = 0
+    if symmetric_left_arm:
+        x_left = left_waist_x - waist_to_lens
+    else:
+        x_left = waist_to_left_mirror
+    mode_left_center = np.array([left_waist_x, 0, 0])
+
+    mode_left_k_vector = np.array([1, 0, 0])
+    mode_left = ModeParameters(center=np.stack([mode_left_center, mode_left_center], axis=0),
+                               k_vector=mode_left_k_vector,
+                               z_R=np.array([z_R_left, z_R_left]), principle_axes=np.array([[0, 0, 1], [0, 1, 0]]),
+                               lambda_laser=lambda_laser)
+    mirror_left = match_a_mirror_to_mode(mode_left, x_left - mode_left.center[0, 0], mirrors_material_properties)
+    # Generate lens:
+    # if lens_material_properties_override:
+    alpha_lens, beta_lens, kappa_lens, dn_dT_lens, nu_lens, alpha_absorption_lens, intensity_reflectivity, intensity_transmittance, temperature = lens_material_properties.to_array
+    n = PHYSICAL_SIZES_DICT['refractive_indices'][lens_fixed_properties]
+    x_2_left = left_waist_x + waist_to_lens
+    surface_left = CurvedRefractiveSurface(center=np.array([x_2_left, 0, 0]),
+                                           radius=R_left,
+                                           outwards_normal=np.array([-1, 0, 0]),
+                                           n_1=1,
+                                           n_2=n,
+                                           curvature_sign=-1,
+                                           name='lens_left',
+                                           thermal_properties=lens_material_properties)
+    if set_R_right_to_equalize_angles:
+        surface_right = find_equal_angles_surface(mode_before_lens=mode_left, surface_0=surface_left, T_edge=T_edge,
+                                                  h=h,
+                                                  lambda_laser=lambda_laser)
+        R_right = surface_right.radius
+
+    if set_h_instead_of_w:
+        assert R_left, f"transverse radius of lens ({h:.2e}), can not be bigger than left radius of curvature ({R_left:.2e})"
+        assert R_right, f"transverse radius of lens ({h:.2e}), can not be bigger than right radius of curvature ({R_right:.2e})"
+        dT_c_left = R_left * (1 - np.sqrt(1 - h ** 2 / R_left ** 2))
+        dT_c_right = R_right * (1 - np.sqrt(1 - h ** 2 / R_right ** 2))
+        T_c = T_edge + dT_c_left + dT_c_right
+
+    if not set_R_right_to_equalize_angles:
+        if set_R_right_to_R_left:
+            R_right = R_left
+        x_2_right = x_2_left + T_c
+
+        surface_right = CurvedRefractiveSurface(center=np.array([x_2_right, 0, 0]),
+                                                radius=R_right,
+                                                outwards_normal=np.array([1, 0, 0]),
+                                                n_1=n,
+                                                n_2=1,
+                                                curvature_sign=1,
+                                                name='lens_right',
+                                                thermal_properties=lens_material_properties)
+
+    mode_parameters_just_before_surface_left = mode_left.local_mode_parameters(
+        np.linalg.norm(surface_left.center - mode_left.center[0]))
+
+    mode_parameters_right_after_surface_left = propagate_local_mode_parameter_through_ABCD(
+        mode_parameters_just_before_surface_left,
+        surface_left.ABCD_matrix(cos_theta_incoming=1))
+
+    arm = Arm(surface_0=surface_left,
+              surface_1=surface_right,
+              central_line=Ray(origin=surface_left.center,
+                               k_vector=normalize_vector(surface_right.center - surface_left.center),
+                               length=np.linalg.norm(surface_right.center - surface_left.center)
+                               ),
+              mode_parameters_on_surface_0=mode_parameters_right_after_surface_left,
+              )
+    mode_parameters_right_after_surface_right = arm.propagate_local_mode_parameters()
+
+    mode_right = mode_parameters_right_after_surface_right.to_mode_parameters(
+        location_of_local_mode_parameter=surface_right.center,
+        k_vector=np.array([1, 0, 0]))
+
+    lens_params_right = surface_right.to_params
+    lens_params_left = surface_left.to_params
+
+    z_minus_z_0_right_surface = mode_parameters_right_after_surface_right.z_minus_z_0[0]
+
+    if z_minus_z_0_right_surface > 0:
+        z_minus_z_0_right_mirror = z_minus_z_0_right_surface + right_arm_length + 1 / z_minus_z_0_right_surface  # This 1 / z_minus_z_0_right_surface is here to make the mirror further as the NA grows larger.
+    else:
+        if auto_set_right_arm_length:
+            z_minus_z_0_right_mirror = - z_minus_z_0_right_surface
+        elif right_mirror_on_waist:
+            z_minus_z_0_right_mirror = 0
+        else:
+            z_minus_z_0_right_mirror = z_minus_z_0_right_surface + right_arm_length
+    mirror_right = match_a_mirror_to_mode(mode_right, z_minus_z_0_right_mirror, mirrors_material_properties)
+    mirror_left_params = mirror_left.to_params
+    mirror_right_params = mirror_right.to_params
+    params = np.stack([mirror_left_params, lens_params_left, lens_params_right, mirror_right_params], axis=0)
+
+    # the surfaces, the beam was propagated from left to right, but in the cavity they are ordered from right to left.
+    cavity = Cavity.from_params(params,
+                                lambda_laser=lambda_laser,
+                                standing_wave=True,
+                                p_is_trivial=True,
+                                t_is_trivial=True,
+                                set_mode_parameters=True,
+                                names=['Left mirror', 'lens_left', 'lens_right', 'Right mirror'],
+                                power=power,
+                                initial_mode_parameters=mode_left
+                                )
+
+    return cavity
+
+
+def plot_mirror_lens_mirror_cavity_analysis(cavity: Cavity,
+                                            auto_set_x: bool,
+                                            x_span: float,
+                                            auto_set_y: bool,
+                                            y_span: float,
+                                            camera_center: Union[int, float],
+                                            add_unheated_cavity: bool,
+                                            minimal_h_divided_by_spot_size: float = 2.5,
+                                            T_edge=1e-3,
+                                            CA: float=5e-3,
+                                            h: float=3.875e-3,
+                                            set_h_instead_of_w: bool = True,):
+    # Assumes: surfaces[0] is the left mirror, surfaces[1] is the lens_left side, surfaces[2] is the lens_right side,
+    # surfaces[3] is the right mirror
+    R_left = cavity.surfaces[1].radius
+    R_right = cavity.surfaces[2].radius
+    T_c = np.linalg.norm(cavity.surfaces[2].center - cavity.surfaces[1].center)
+    angle_right = cavity.arms[2].calculate_incidence_angle(surface_index=0)
+    angle_left = cavity.arms[0].calculate_incidence_angle(surface_index=1)
+    spot_size_lens_right = cavity.arms[1].mode_parameters_on_surfaces[1].spot_size[0]
+    CA_divided_by_2spot_size = CA / spot_size_lens_right
+    short_arm_NA = cavity.arms[0].mode_parameters.NA[0]
+    long_arm_NA = cavity.arms[2].mode_parameters.NA[0]
+    short_arm_length = np.linalg.norm(cavity.surfaces[1].center - cavity.surfaces[0].center)
+    long_arm_length = np.linalg.norm(cavity.surfaces[3].center - cavity.surfaces[2].center)
+    waist_to_lens_short_arm = cavity.surfaces[1].center[0] - cavity.mode_parameters[0].center[0, 0]
+    waist_to_lens_long_arm = cavity.mode_parameters[2].center[0, 0] - cavity.surfaces[2].center[0]
+    spot_size_left_mirror = cavity.arms[0].mode_parameters_on_surfaces[0].spot_size[0]
+    spot_size_right_mirror = cavity.arms[2].mode_parameters_on_surfaces[1].spot_size[0]
+
+    if add_unheated_cavity:
+        fig, ax = plt.subplots(2, 1, figsize=(16, 12))
+    else:
+        fig, ax = plt.subplots(1, 1, figsize=(16, 6))
+        ax = [ax]
+    cavity.plot(axis_span=x_span, camera_center=camera_center, ax=ax[0])
+
+    minimal_width_lens = find_minimal_width_for_spot_size_and_radius(radius=cavity.surfaces[1].radius,
+                                                                     spot_size_radius=
+                                                                     cavity.arms[1].mode_parameters_on_surfaces[
+                                                                         1].spot_size[0],
+                                                                     T_edge=T_edge,
+                                                                     h_divided_by_spot_size=minimal_h_divided_by_spot_size)
+    geometric_feasibility = True
+
+    if set_h_instead_of_w:
+        if CA_divided_by_2spot_size < 2.5:
+            geometric_feasibility = False
+        lens_specs_string = (f"R_left = {R_left:.3e},  R_right = {R_right:.3e},  D = {2 * h:.3e},  T_edge = {T_edge:.2e},  T_c = {T_c:.3e},  CA={CA:.2e}\n"
+                             f"spot_size (2w) = {2 * spot_size_lens_right:.3e},   CA / 2w_spot_size = {CA_divided_by_2spot_size:.3e}, lens is wide enough = {geometric_feasibility},   {angle_left=:.1f},   {angle_right=:.1f}")
+    else:
+        if T_c < minimal_width_lens:
+            geometric_feasibility = False
+        minimal_CA_lens = minimal_h_divided_by_spot_size * spot_size_lens_right
+        lens_specs_string = f"R_lens = {R_left:.3e},  T_c = {T_c:.3e},  minimal_w_lens = {minimal_width_lens:.2e},  minimal_CA_lens={minimal_CA_lens:.3e},  lens is thick enough = {geometric_feasibility}"
+
+    ax[0].set_title(
+        f"Short Arm: NA = {short_arm_NA:.3e},  length = {short_arm_length:.3e} [m], waist to lens = {waist_to_lens_short_arm:.3e}\n"  # 
+        f" Long Arm NA = {long_arm_NA:.3e},  length = {long_arm_length:.3e} [m], waist to lens = {waist_to_lens_long_arm:.3e}\n"  # 
+        f"{lens_specs_string}, \n"
+        f"R_left_mirror = {cavity.surfaces[0].radius:.3e}, spot diameters left mirror = {2 * spot_size_left_mirror:.2e}, R_right = {cavity.surfaces[3].radius:.3e}, spot diameters right mirror = {2 * spot_size_right_mirror:.2e}")
+
+    if auto_set_x:
+        # cavity_length = cavity.surfaces[3].center[0] - cavity.surfaces[0].center[0]
+        # ax[0].set_xlim(cavity.surfaces[0].center[0] - 0.01 * cavity_length, cavity.surfaces[3].center[0] + 0.01 * cavity_length)
+        ax[0].set_xlim(cavity.surfaces[0].center[0] - 0.01, cavity.surfaces[2].center[0] + 0.4)
+    if auto_set_y:
+        y_lim = maximal_lens_height(R_left, T_c) * 1.1
+    else:
+        y_lim = y_span
+    ax[0].set_ylim(-y_lim, y_lim)
+    if add_unheated_cavity:
+        unheated_cavity = cavity.thermal_transformation()
+        unheated_cavity.plot(axis_span=x_span, camera_center=camera_center, ax=ax[1])
+        ax[1].set_xlim(ax[0].get_xlim())
+        ax[1].set_ylim(ax[0].get_ylim())
+        ax[1].set_title(
+            f"unheated_cavity, short arm NA={unheated_cavity.arms[2].mode_parameters.NA[0]:.2e}, Left spot size = {2 * unheated_cavity.arms[2].mode_parameters_on_surface_1.spot_size[0]:.2e}")
+    plt.subplots_adjust(hspace=0.35)
+    fig.tight_layout()
+
+c = mirror_lens_mirror_cavity_general_generator()
+plot_mirror_lens_mirror_cavity_analysis(c, auto_set_x=True, x_span=0.2, auto_set_y=True, y_span=0.01, camera_center=0, add_unheated_cavity=False)
