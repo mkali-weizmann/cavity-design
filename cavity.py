@@ -55,8 +55,10 @@ ROOM_TEMPERATURE = 293  # [K]
 with open('data/params_dict.pkl', 'rb') as f:
     params_dict = pkl.load(f)
 
+
 @dataclass
 class MaterialProperties:
+    refractive_index: Optional[float] = None
     alpha_expansion: Optional[float] = None
     beta_surface_absorption: Optional[float] = None
     kappa_conductivity: Optional[float] = None
@@ -69,7 +71,8 @@ class MaterialProperties:
 
     @property
     def to_array(self) -> np.ndarray:
-        return np.array([nvl(self.alpha_expansion, np.nan),
+        return np.array([nvl(self.refractive_index),
+                         nvl(self.alpha_expansion, np.nan),
                          nvl(self.beta_surface_absorption, np.nan),
                          nvl(self.kappa_conductivity, np.nan),
                          nvl(self.dn_dT, np.nan),
@@ -77,10 +80,12 @@ class MaterialProperties:
                          nvl(self.alpha_volume_absorption),
                          nvl(self.intensity_reflectivity),
                          nvl(self.intensity_transmittance),
-                         nvl(self.temperature, np.nan)])
+                         nvl(self.temperature, np.nan),
+                         ])
 
 
-PHYSICAL_SIZES_DICT = {'thermal_properties_sapphire': MaterialProperties(alpha_expansion=5.5e-6,  # https://www.shinkosha.com/english/techinfo/feature/thermal-properties-of-sapphire/#:~:text=Sapphire%20has%20a%20large%20linear,very%20resistant%20to%20thermal%20shock., https://www.roditi.com/SingleCrystal/Sapphire/Properties.html
+PHYSICAL_SIZES_DICT = {'thermal_properties_sapphire': MaterialProperties(refractive_index=1.76,
+                                                                         alpha_expansion=5.5e-6,  # https://www.shinkosha.com/english/techinfo/feature/thermal-properties-of-sapphire/#:~:text=Sapphire%20has%20a%20large%20linear,very%20resistant%20to%20thermal%20shock., https://www.roditi.com/SingleCrystal/Sapphire/Properties.html
                                                                          beta_surface_absorption=1e-6,  # DUMMY
                                                                          kappa_conductivity=46.06,  # https://www.google.com/search?q=sapphire+thermal+conductivity&rlz=1C1GCEB_enIL1023IL1023&oq=sapphire+thermal+c&aqs=chrome.0.35i39i650j69i57j0i20i263i512j0i22i30l3j0i10i15i22i30j0i22i30l3.3822j0j1&sourceid=chrome&ie=UTF-8, https://www.shinkosha.com/english/techinfo/feature/thermal-properties-of-sapphire/, https://www.shinkosha.com/english/techinfo/feature/thermal-properties-of-sapphire/
                                                                          dn_dT=11.7e-6,  # https://secwww.jhuapl.edu/techdigest/Content/techdigest/pdf/V14-N01/14-01-Lange.pdf
@@ -96,7 +101,8 @@ PHYSICAL_SIZES_DICT = {'thermal_properties_sapphire': MaterialProperties(alpha_e
                                                                     intensity_reflectivity=1 - 100e-6 - 1e-6 - 10e-6,  # All - transmittance - absorption - scattering
                                                                     intensity_transmittance=100e-6  # DUMMY - for mirrors
                                                                     ),
-                       'thermal_properties_fused_silica': MaterialProperties(alpha_expansion=0.48e-6,  # https://www.rp-photonics.com/fused_silica.html#:~:text=However%2C%20fused%20silica%20may%20exhibit,10%E2%88%926%20K%E2%88%921., https://www.swiftglass.com/blog/material-month-fused-silica/
+                       'thermal_properties_fused_silica': MaterialProperties(refractive_index=1.455, # https://refractiveindex.info/?shelf=glass&book=fused_silica&page=Malitson,
+                                                                             alpha_expansion=0.48e-6,  # https://www.rp-photonics.com/fused_silica.html#:~:text=However%2C%20fused%20silica%20may%20exhibit,10%E2%88%926%20K%E2%88%921., https://www.swiftglass.com/blog/material-month-fused-silica/
                                                                              beta_surface_absorption=1e-6,  # DUMMY
                                                                              kappa_conductivity=1.38,  # https://www.swiftglass.com/blog/material-month-fused-silica/, https://www.heraeus-conamic.com/knowlegde-base/properties
                                                                              dn_dT=12e-6,  # https://iopscience.iop.org/article/10.1088/0022-3727/16/5/002/pdf
@@ -105,7 +111,8 @@ PHYSICAL_SIZES_DICT = {'thermal_properties_sapphire': MaterialProperties(alpha_e
                                                                              intensity_reflectivity=100e-6,  # DUMMY - for lenses
                                                                              intensity_transmittance=1 - 100e-6 - 1e-6  # DUMMY - for lenses
                                                                              ),  # https://www.azom.com/properties.aspx?ArticleID=1387),
-                       'thermal_properties_yag': MaterialProperties(alpha_expansion=8e-6,  # https://www.crystran.co.uk/optical-materials/yttrium-aluminium-garnet-yag
+                       'thermal_properties_yag': MaterialProperties(refractive_index=1.81,
+                                                                    alpha_expansion=8e-6,  # https://www.crystran.co.uk/optical-materials/yttrium-aluminium-garnet-yag
                                                                     beta_surface_absorption=1e-6,  # DUMMY
                                                                     kappa_conductivity=11.2,  # https://www.scientificmaterials.com/downloads/Nd_YAG.pdf, This does not agree: https://pubs.aip.org/aip/jap/article/131/2/020902/2836262/Thermal-conductivity-and-management-in-laser-gain
                                                                     dn_dT=9e-6,  # https://pubmed.ncbi.nlm.nih.gov/18319922/
@@ -113,11 +120,6 @@ PHYSICAL_SIZES_DICT = {'thermal_properties_sapphire': MaterialProperties(alpha_e
                                                                     ),
                        'thermal_properties_bk7': MaterialProperties(alpha_expansion=7.1e-6,
                                                                     kappa_conductivity=1.114),
-
-                       'refractive_indices': {'fused_silica': 1.455, # https://refractiveindex.info/?shelf=glass&book=fused_silica&page=Malitson
-                                              'yag': 1.81,
-                                              'sapphire': 1.76,
-                                              'air': 1.0}, # A better implementation will be one in which the refractive index is inside the MaterialProperties class.
                         'c_mirror_radius_expansion': 1,  # DUMMY temp - should be 4 according to Lidan's simulation
                        # But we take it to be 1 as the other values are currently 1.
                         'c_lens_focal_length_expansion': 1,  # DUMMY
@@ -145,6 +147,7 @@ def convert_material_to_mirror_or_lens(material_properties: MaterialProperties,
     material_properties.intensity_transmittance = intensity_transmittance
 
     return material_properties
+
 
 np.seterr(all='raise')
 # N = 50
@@ -319,7 +322,7 @@ class ModeParameters:
         return LocalModeParameters(z_minus_z_0=z_minus_z_0, z_R=self.z_R, lambda_laser=self.lambda_laser)
 
 
-def nvl(var, val: Any=0):
+def nvl(var, val: Any = np.nan):
   if var is None:
     return val
   return var
@@ -716,7 +719,9 @@ class PhysicalSurface(Surface):
             raise ValueError(f'Unknown surface type {type(self)}')
         if self.material_properties is None:
             self.material_properties = MaterialProperties()
-        return np.array([x, y, t, p, r, n_1, 0, n_2, z, curvature_sign, *self.material_properties.to_array, surface_type])
+        material_properties_without_refractive_index = self.material_properties.to_array[1:]
+        return np.array([x, y, t, p, r, n_1, 0, n_2, z, curvature_sign, *material_properties_without_refractive_index,
+                         surface_type])
 
     def thermal_transformation(self, P_laser_power: float, w_spot_size: float, **kwargs):
         raise NotImplementedError
@@ -1207,7 +1212,8 @@ class CurvedRefractiveSurface(CurvedSurface, PhysicalSurface):
 def generate_lens_from_params(params: np.ndarray, name: Optional[str] = 'Lens'):
     if isinstance(params, OpticalObjectParams):
         params = params.to_array
-    params_pies = np.real(params) + np.pi * np.imag(params)
+    params_pies = np.real(params) + np.pi * np.imag(params)  # To reduce numerical errors, the imaginary part is
+    # representing the pre-factor of pi.
     x, y, t, p, r, n_in, w, n_out, z, curvature_sign, alpha_thermal_expansion, beta_power_absorption,\
     kappa_thermal_conductivity, dn_dT, nu_poisson_ratio, alpha_volume_absorption, intensity_reflectivity, intensity_transmittance, temperature, surface_type = params_pies
     center = np.array([x, y, z])
@@ -3159,8 +3165,7 @@ def mirror_lens_mirror_cavity_general_generator(NA_left: float = 0.1,
     mirror_left = match_a_mirror_to_mode(mode_left, x_left - mode_left.center[0, 0], mirrors_material_properties)
     # Generate lens:
     # if lens_material_properties_override:
-    alpha_lens, beta_lens, kappa_lens, dn_dT_lens, nu_lens, alpha_absorption_lens, intensity_reflectivity, intensity_transmittance, temperature = lens_material_properties.to_array
-    n = PHYSICAL_SIZES_DICT['refractive_indices'][lens_fixed_properties]
+    n, alpha_lens, beta_lens, kappa_lens, dn_dT_lens, nu_lens, alpha_absorption_lens, intensity_reflectivity, intensity_transmittance, temperature = lens_material_properties.to_array
     x_2_left = left_waist_x + waist_to_lens
     surface_left = CurvedRefractiveSurface(center=np.array([x_2_left, 0, 0]),
                                            radius=R_left,
