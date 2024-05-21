@@ -29,7 +29,7 @@ PRETTY_INDICES_NAMES = {'x': 'x [m]',
                         'r_1': 'Radius of curvature 1 [m]',
                         'r_2': 'Radius of curvature 2 [m]',
                         'n_1': 'Index of refraction (before the surface)',
-                        'w': 'Center thickness [m]',
+                        'T_c': 'Center thickness [m]',
                         'n_2': 'Index of refraction (after the surface)',
                         'z': 'z [m]',
                         'curvature_sign': 'Curvature sign',
@@ -1223,6 +1223,7 @@ class CurvedRefractiveSurface(CurvedSurface, PhysicalSurface):
         # return self
 
 def generate_lens_from_params(params: np.ndarray, name: Optional[str] = 'Lens'):
+    # generates a convex-convex lens from the parameters
     if isinstance(params, OpticalObjectParams):
         params = params.to_array
     params_pies = np.real(params) + np.pi * np.imag(params)  # To reduce numerical errors, the imaginary part is
@@ -2110,7 +2111,7 @@ class Cavity:
             names = self.names
 
         parameters_indices = [INDICES_DICT['x'], INDICES_DICT['y'], INDICES_DICT['z'], INDICES_DICT['t'],
-                              INDICES_DICT['p'], INDICES_DICT['r'], INDICES_DICT['n_1']]
+                              INDICES_DICT['p'], INDICES_DICT['r_1'], INDICES_DICT['n_1']]
         if self.t_is_trivial and self.p_is_trivial:
             parameters_indices.remove(INDICES_DICT['t'])
             parameters_indices.remove(INDICES_DICT['z'])
@@ -2413,7 +2414,7 @@ def plot_tolerance_of_NA_same_plot(params: Optional[np.ndarray] = None,
         [INDICES_DICT['x']],
         [INDICES_DICT['y'], INDICES_DICT['z']],
         [INDICES_DICT['t'], INDICES_DICT['p']],
-        [INDICES_DICT['r'], INDICES_DICT['n_1']],
+        [INDICES_DICT['r_1'], INDICES_DICT['n_1']],
     ]
     titles = ['Axial Position', 'Transverse Position', 'Tilt Angles', 'Radius and Index']
 
@@ -3236,9 +3237,6 @@ def mirror_lens_mirror_cavity_general_generator(NA_left: float = 0.1,
         location_of_local_mode_parameter=surface_right.center,
         k_vector=np.array([1, 0, 0]))
 
-    lens_params_right = surface_right.to_params()
-    lens_params_left = surface_left.to_params()
-
     z_minus_z_0_right_surface = mode_parameters_right_after_surface_right.z_minus_z_0[0]
 
     if z_minus_z_0_right_surface > 0:
@@ -3253,8 +3251,18 @@ def mirror_lens_mirror_cavity_general_generator(NA_left: float = 0.1,
     mirror_right = match_a_mirror_to_mode(mode_right, z_minus_z_0_right_mirror, mirrors_material_properties)
     mirror_left_params = mirror_left.to_params()
     mirror_right_params = mirror_right.to_params()
-    params = np.stack([mirror_left_params, lens_params_left, lens_params_right, mirror_right_params], axis=0)
-    # the surfaces, the beam was propagated from left to right, but in the cavity they are ordered from right to left.
+
+    params_lens = surface_right.to_params()
+    params_lens[INDICES_DICT['x']] = (surface_left.center[0] + surface_right.center[0]) / 2
+    params_lens[INDICES_DICT['r_1']] = surface_left.radius
+    params_lens[INDICES_DICT['r_2']] = surface_right.radius
+    params_lens[INDICES_DICT['T_c']] = T_c
+    params_lens[INDICES_DICT['n_1']] = n
+    params_lens[INDICES_DICT['n_2']] = 1
+    params_lens[INDICES_DICT['surface_type']] = SURFACE_TYPES_DICT['Thick Lens']
+
+    params = np.stack([mirror_left_params, params_lens, mirror_right_params], axis=0)
+
     cavity = Cavity.from_params(params,
                                 lambda_laser=lambda_laser,
                                 standing_wave=True,
