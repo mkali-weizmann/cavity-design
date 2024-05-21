@@ -26,7 +26,8 @@ PRETTY_INDICES_NAMES = {'x': 'x [m]',
                         'y': 'y [m]',
                         't': 'Elevation angle [rads]',
                         'p': 'Azimuthal angle [rads]',
-                        'r': 'Radius of curvature [m]',
+                        'r_1': 'Radius of curvature 1 [m]',
+                        'r_2': 'Radius of curvature 2 [m]',
                         'n_1': 'Index of refraction (before the surface)',
                         'w': 'Center thickness [m]',
                         'n_2': 'Index of refraction (after the surface)',
@@ -499,9 +500,10 @@ class Ray:
 
 
 class Surface:
-    def __init__(self, outwards_normal: np.ndarray, name: Optional[str] = None, **kwargs):
+    def __init__(self, outwards_normal: np.ndarray, radius: float, name: Optional[str] = None, **kwargs):
         self.outwards_normal = normalize_vector(outwards_normal)
         self.name = name
+        self.radius = radius
 
     @property
     def center(self):
@@ -621,7 +623,7 @@ class Surface:
         if isinstance(params, OpticalObjectParams):
             params = params.to_array
         params_pies = np.real(params) + np.pi * np.imag(params)
-        x, y, t, p, r, n_1, w, n_2, z, curvature_sign, alpha_thermal_expansion, beta_power_absorption,\
+        x, y, t, p, r_1, r_2, n_1, w, n_2, z, curvature_sign, alpha_thermal_expansion, beta_power_absorption,\
         kappa_thermal_conductivity, dn_dT, nu_poisson_ratio, alpha_volume_absorption,\
         intensity_reflectivity, intensity_transmittance, temperature, surface_type = params_pies
         center = np.array([x, y, z])
@@ -631,7 +633,7 @@ class Surface:
                                                 alpha_volume_absorption, intensity_reflectivity,
                                                 intensity_transmittance)
         if surface_type == SURFACE_TYPES_DICT['CurvedMirror']:  # Mirror
-            surface = CurvedMirror(radius=r,
+            surface = CurvedMirror(radius=r_1,
                                    outwards_normal=outwards_normal,
                                    center=center,
                                    curvature_sign=curvature_sign,
@@ -640,13 +642,13 @@ class Surface:
         elif surface_type == SURFACE_TYPES_DICT['Thick Lens']:  # Thick lens
             surface = generate_lens_from_params(params, name=name)
         elif surface_type == SURFACE_TYPES_DICT['CurvedRefractiveSurface']:  # Refractive surface (one side of a lens)
-            surface = CurvedRefractiveSurface(radius=r, outwards_normal=outwards_normal, center=center, n_1=n_1,
+            surface = CurvedRefractiveSurface(radius=r_1, outwards_normal=outwards_normal, center=center, n_1=n_1,
                                               n_2=n_2, curvature_sign=curvature_sign, name=name,
                                               thermal_properties=thermal_properties, thickness=w)
         elif surface_type == SURFACE_TYPES_DICT['IdealLens']:  # Ideal lens
             surface = IdealLens(outwards_normal=outwards_normal,
                                 center=center,
-                                focal_length=r,
+                                focal_length=r_1,
                                 name=name,
                                 thermal_properties=thermal_properties)
         elif surface_type == SURFACE_TYPES_DICT['FlatMirror']:  # Ideal lens
@@ -661,12 +663,16 @@ class Surface:
 
 
 class PhysicalSurface(Surface):
-    def __init__(self, outwards_normal: np.ndarray, name: Optional[str] = None,
-                 material_properties: Optional[MaterialProperties] = None, **kwargs):
+    def __init__(self,
+                 outwards_normal: np.ndarray,
+                 radius: float,
+                 name: Optional[str] = None,
+                 material_properties: Optional[MaterialProperties] = None,
+                 **kwargs):
 
         self.material_properties = material_properties
 
-        super().__init__(outwards_normal=outwards_normal, name=name, **kwargs)
+        super().__init__(outwards_normal=outwards_normal, name=name, radius=radius, **kwargs)
 
     @property
     def center(self):
@@ -687,15 +693,18 @@ class PhysicalSurface(Surface):
     def ABCD_matrix(self, cos_theta_incoming: Optional[float] = None) -> np.ndarray:
         raise NotImplementedError
 
-    @property
+    # This could be a @property, but the Cavity's to_param can not be a @property and I want them to be the same
     def to_params(self):
         x, y, z = self.center
         if isinstance(self, IdealLens):
-            r = self.focal_length
+            r_1 = self.focal_length
+            r_2 = np.nan
         elif isinstance(self, CurvedSurface):
-            r = self.radius
+            r_1 = self.radius
+            r_2 = np.nan
         else:
-            r = 0
+            r_1 = 0
+            r_2 = 0
         t, p = angles_of_unit_vector(self.outwards_normal)
         t = 1j * t / np.pi
         p = 1j * p / np.pi
@@ -720,7 +729,7 @@ class PhysicalSurface(Surface):
         if self.material_properties is None:
             self.material_properties = MaterialProperties()
         material_properties_without_refractive_index = self.material_properties.to_array[1:]
-        return np.array([x, y, t, p, r, n_1, 0, n_2, z, curvature_sign, *material_properties_without_refractive_index,
+        return np.array([x, y, t, p, r_1, r_2, n_1, 0, n_2, z, curvature_sign, *material_properties_without_refractive_index,
                          surface_type])
 
     def thermal_transformation(self, P_laser_power: float, w_spot_size: float, **kwargs):
@@ -734,7 +743,7 @@ class FlatSurface(Surface):
                  center: Optional[np.ndarray] = None,
                  name: Optional[str] = None,
                  **kwargs):
-        super().__init__(outwards_normal=outwards_normal, name=name, **kwargs)
+        super().__init__(outwards_normal=outwards_normal, name=name, radius=np.inf, **kwargs)
         if distance_from_origin is None and center is None:
             raise ValueError('Either distance_from_origin or center must be specified')
         if distance_from_origin is not None and center is not None:
@@ -787,8 +796,12 @@ class FlatMirror(FlatSurface, PhysicalSurface):
                  center: Optional[np.ndarray] = None,
                  name: Optional[str] = None,
                  thermal_properties: Optional[MaterialProperties] = None, ):
-        super().__init__(outwards_normal=outwards_normal, name=name, material_properties=thermal_properties,
-                         distance_from_origin=distance_from_origin, center=center)
+        super().__init__(outwards_normal=outwards_normal,
+                         name=name,
+                         material_properties=thermal_properties,
+                         distance_from_origin=distance_from_origin,
+                         center=center,
+                         radius=np.inf)
 
     def plot(self, ax: Optional[plt.Axes] = None, name: Optional[str] = None, dim: int = 3, length=0.6,
              plane: str = 'xy'):
@@ -910,7 +923,8 @@ class IdealLens(FlatSurface, PhysicalSurface):
 
 
 class CurvedSurface(Surface):
-    def __init__(self, radius: float,
+    def __init__(self,
+                 radius: float,
                  outwards_normal: np.ndarray,  # Pointing from the origin of the sphere to the mirror's center.
                  center: Optional[np.ndarray] = None,  # Not the center of the sphere but the center of
                  # the plate.
@@ -922,8 +936,7 @@ class CurvedSurface(Surface):
                  name: Optional[str] = None,
                  **kwargs
                  ):
-        super().__init__(outwards_normal=outwards_normal, name=name, **kwargs)
-        self.radius = radius
+        super().__init__(outwards_normal=outwards_normal, name=name, radius=radius, **kwargs)
         self.curvature_sign = curvature_sign
         if origin is None and center is None:
             raise ValueError('Either origin or center must be provided.')
@@ -1214,7 +1227,7 @@ def generate_lens_from_params(params: np.ndarray, name: Optional[str] = 'Lens'):
         params = params.to_array
     params_pies = np.real(params) + np.pi * np.imag(params)  # To reduce numerical errors, the imaginary part is
     # representing the pre-factor of pi.
-    x, y, t, p, r, n_in, w, n_out, z, curvature_sign, alpha_thermal_expansion, beta_power_absorption,\
+    x, y, t, p, r_1, r_2, n_in, T_c, n_out, z, curvature_sign, alpha_thermal_expansion, beta_power_absorption,\
     kappa_thermal_conductivity, dn_dT, nu_poisson_ratio, alpha_volume_absorption, intensity_reflectivity, intensity_transmittance, temperature, surface_type = params_pies
     center = np.array([x, y, z])
     forward_direction = unit_vector_of_angles(t, p)
@@ -1229,17 +1242,17 @@ def generate_lens_from_params(params: np.ndarray, name: Optional[str] = 'Lens'):
         name = 'Lens'
     names = [name + suffix for suffix in suffixes]
 
-    center_1 = center - (1 / 2) * w * forward_direction
-    center_2 = center + (1 / 2) * w * forward_direction
+    center_1 = center - (1 / 2) * T_c * forward_direction
+    center_2 = center + (1 / 2) * T_c * forward_direction
     thermal_properties = MaterialProperties(alpha_thermal_expansion, beta_power_absorption, kappa_thermal_conductivity,
                                             dn_dT, nu_poisson_ratio, alpha_volume_absorption, intensity_reflectivity, intensity_transmittance)
-    surface_1 = CurvedRefractiveSurface(radius=r, outwards_normal=-forward_direction, center=center_1, n_1=n_out,
+    surface_1 = CurvedRefractiveSurface(radius=r_1, outwards_normal=-forward_direction, center=center_1, n_1=n_out,
                                         n_2=n_in, curvature_sign=-1, name=names[0],
-                                        thermal_properties=thermal_properties, thickness=w/2)
+                                        thermal_properties=thermal_properties, thickness=T_c / 2)
 
-    surface_2 = CurvedRefractiveSurface(radius=r, outwards_normal=forward_direction, center=center_2, n_1=n_in,
+    surface_2 = CurvedRefractiveSurface(radius=r_2, outwards_normal=forward_direction, center=center_2, n_1=n_in,
                                         n_2=n_out, curvature_sign=1, name=names[1],
-                                        thermal_properties=thermal_properties, thickness=w/2)
+                                        thermal_properties=thermal_properties, thickness=T_c / 2)
     return surface_1, surface_2
 
 
@@ -1471,7 +1484,7 @@ class Cavity:
 
     def to_params(self, convert_to_pies: bool = False):
         if self.params is None:
-            params = np.array([surface.to_params for surface in self.physical_surfaces])
+            params = np.array([surface.to_params() for surface in self.physical_surfaces])
         else:
             params = self.params
 
@@ -3079,7 +3092,6 @@ def find_equal_angles_surface(mode_before_lens: ModeParameters,
         return diff
 
     R_1 = optimize.brentq(f=f_for_root, a=h, b=1000 * surface_0.radius)  # surface_0.radius
-    # R_1 = 0
 
     second_surface = match_surface_to_radius(R_1)
 
@@ -3111,7 +3123,7 @@ def find_required_value_for_desired_change(cavity_generator: Callable,  # Takes 
 def find_required_perturbation_for_desired_change(cavity: Cavity,
                                                   parameter_index_to_change: Tuple[int, int],
                                                   desired_parameter: Callable,
-                                                  desired_value: float) -> float:
+                                                  desired_value: float) -> Cavity:
     def cavity_generator(perturbation_value: float):
         return perturb_cavity(cavity, parameter_index_to_change, perturbation_value)
 
@@ -3138,7 +3150,10 @@ def mirror_lens_mirror_cavity_general_generator(NA_left: float = 0.1,
                                                 set_R_right_to_equalize_angles: bool = False,
                                                 set_R_right_to_R_left: bool = False,
                                                 ):
-    assert not (set_R_right_to_equalize_angles and set_R_right_to_R_left), "Can not set both R_right to equalize angles and to R_left"
+    # This function receives many parameters that can define a cavity of mirror-lens-mirror and creates a Cavity object
+    # out of them.
+    assert not (set_R_right_to_equalize_angles and set_R_right_to_R_left),\
+        "Can not set both R_right to equalize angles and to R_left"
 
     if set_R_right_to_R_left:
         R_right = R_left
@@ -3179,16 +3194,16 @@ def mirror_lens_mirror_cavity_general_generator(NA_left: float = 0.1,
         surface_right = find_equal_angles_surface(mode_before_lens=mode_left, surface_0=surface_left, T_edge=T_edge,
                                                   h=h,
                                                   lambda_laser=lambda_laser)
-        R_right = surface_right.radius
+    else:
+        if set_h_instead_of_w:
+            # In case the user wants to set the height and the edge thickness of the lens instead of the thickness, then
+            # the thickness is calculated using tha radii and the edge thickness.
+            assert R_left, f"transverse radius of lens ({h:.2e}), can not be bigger than left radius of curvature ({R_left:.2e})"
+            assert R_right, f"transverse radius of lens ({h:.2e}), can not be bigger than right radius of curvature ({R_right:.2e})"
+            dT_c_left = R_left * (1 - np.sqrt(1 - h ** 2 / R_left ** 2))
+            dT_c_right = R_right * (1 - np.sqrt(1 - h ** 2 / R_right ** 2))
+            T_c = T_edge + dT_c_left + dT_c_right
 
-    if set_h_instead_of_w:
-        assert R_left, f"transverse radius of lens ({h:.2e}), can not be bigger than left radius of curvature ({R_left:.2e})"
-        assert R_right, f"transverse radius of lens ({h:.2e}), can not be bigger than right radius of curvature ({R_right:.2e})"
-        dT_c_left = R_left * (1 - np.sqrt(1 - h ** 2 / R_left ** 2))
-        dT_c_right = R_right * (1 - np.sqrt(1 - h ** 2 / R_right ** 2))
-        T_c = T_edge + dT_c_left + dT_c_right
-
-    if not set_R_right_to_equalize_angles:
         x_2_right = x_2_left + T_c
 
         surface_right = CurvedRefractiveSurface(center=np.array([x_2_right, 0, 0]),
@@ -3221,8 +3236,8 @@ def mirror_lens_mirror_cavity_general_generator(NA_left: float = 0.1,
         location_of_local_mode_parameter=surface_right.center,
         k_vector=np.array([1, 0, 0]))
 
-    lens_params_right = surface_right.to_params
-    lens_params_left = surface_left.to_params
+    lens_params_right = surface_right.to_params()
+    lens_params_left = surface_left.to_params()
 
     z_minus_z_0_right_surface = mode_parameters_right_after_surface_right.z_minus_z_0[0]
 
@@ -3236,10 +3251,9 @@ def mirror_lens_mirror_cavity_general_generator(NA_left: float = 0.1,
         else:
             z_minus_z_0_right_mirror = z_minus_z_0_right_surface + right_arm_length
     mirror_right = match_a_mirror_to_mode(mode_right, z_minus_z_0_right_mirror, mirrors_material_properties)
-    mirror_left_params = mirror_left.to_params
-    mirror_right_params = mirror_right.to_params
+    mirror_left_params = mirror_left.to_params()
+    mirror_right_params = mirror_right.to_params()
     params = np.stack([mirror_left_params, lens_params_left, lens_params_right, mirror_right_params], axis=0)
-
     # the surfaces, the beam was propagated from left to right, but in the cavity they are ordered from right to left.
     cavity = Cavity.from_params(params,
                                 lambda_laser=lambda_laser,
