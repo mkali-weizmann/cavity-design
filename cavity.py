@@ -1,60 +1,20 @@
 # %%
 from __future__ import annotations
+from utils import *
 import numpy as np
 import matplotlib.pyplot as plt
-from typing import List, Tuple, Optional, Union, Callable, Any
-from pandas import DataFrame
 from scipy import optimize
-import warnings
 from dataclasses import dataclass
 import copy
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import pandas as pd
 from matplotlib import rc
-import pickle as pkl
 from datetime import datetime
 from scipy.optimize import fsolve
 from hashlib import md5
 
 pd.set_option('display.max_rows', 500)
-
 pd.options.display.float_format = '{:.3e}'.format
-
-
-
-PRETTY_INDICES_NAMES = {'x': 'x [m]',
-                        'y': 'y [m]',
-                        't': 'Elevation angle [rads]',
-                        'p': 'Azimuthal angle [rads]',
-                        'r_1': 'Radius of curvature 1 [m]',
-                        'r_2': 'Radius of curvature 2 [m]',
-                        'n_1': 'Index of refraction (before the surface)',
-                        'T_c': 'Center thickness [m]',
-                        'n_2': 'Index of refraction (after the surface)',
-                        'z': 'z [m]',
-                        'curvature_sign': 'Curvature sign',
-                        'alpha_thermal_expansion': 'Thermal expansion coefficient [1/K]',
-                        'beta_power_absorption': 'Surface power absorption coefficient',
-                        'kappa_thermal_conductivity': 'Thermal conductivity coefficient [W/(m*K)]',
-                        'dn_dT': 'dn_dT [1/K]',
-                        'nu_poisson_ratio': 'Poisson ratio',
-                        'alpha_volume_absorption': 'Volume power absorption coefficient [1/m]',
-                        'intensity_reflectivity': 'Intensity reflectivity',
-                        'intensity_transmittance': 'Transmissivity',
-                        'temperature': 'Temperature increase [K]',
-                        'surface_type': 'Surface type'}
-
-INDICES_DICT = {name: i for i, name in enumerate(PRETTY_INDICES_NAMES.keys())}
-
-INDICES_DICT_INVERSE = {v: k for k, v in INDICES_DICT.items()}
-# set numpy to raise an error on warnings:
-SURFACE_TYPES_DICT = {'CurvedMirror': 0, 'Thick Lens': 1, 'CurvedRefractiveSurface': 2, 'IdealLens': 3, 'FlatMirror': 4}
-
-C_LIGHT_SPEED = 299792458  # [m/s]
-ROOM_TEMPERATURE = 293  # [K]
-
-with open('data/params_dict.pkl', 'rb') as f:
-    params_dict = pkl.load(f)
 
 
 @dataclass
@@ -82,8 +42,7 @@ class MaterialProperties:
                          nvl(self.intensity_reflectivity),
                          nvl(self.intensity_transmittance),
                          nvl(self.temperature, np.nan),
-                         ])
-
+                         ])  # Note: When changing the order or adding this list - the order or added items should be also updated in the from_array method of OpticalElementParams
 
 PHYSICAL_SIZES_DICT = {'thermal_properties_sapphire': MaterialProperties(refractive_index=1.76,
                                                                          alpha_expansion=5.5e-6,  # https://www.shinkosha.com/english/techinfo/feature/thermal-properties-of-sapphire/#:~:text=Sapphire%20has%20a%20large%20linear,very%20resistant%20to%20thermal%20shock., https://www.roditi.com/SingleCrystal/Sapphire/Properties.html
@@ -150,17 +109,24 @@ def convert_material_to_mirror_or_lens(material_properties: MaterialProperties,
     return material_properties
 
 
-np.seterr(all='raise')
-# N = 50
-# ROOT_ERRORS = np.zeros(N)
-# I = 0
-STRETCH_FACTOR = 0.01  # 0.001
-
 @dataclass
-class OpticalObjectParams:
-    geometrical_params: np.ndarray
-    thermal_properties: MaterialProperties
+class OpticalElementParams:
     surface_type: Union[int, type]
+    x: float  # Of the center of the surface (the estimated point of intersection with the central line of the beam)
+    y: float
+    z: float
+    t: float  # the out-of-plane angle normal vector to the surface. when the plane is x,y, this is the theta angle.
+    p: float  # the in-plane angle normal vector to the surface. when the plane is x,y, this is the phi angle.
+    r_1: float  # radius of curvature. np.inf for flat surfaces.
+    r_2: float  # nan if the optical object has only one face, or if the two faces are fixed to the same radius of curvature.
+    curvature_sign: int  # 1 if the surface is convex, -1 if it is concave  # ATTENTION: ONCE CONCAVE ELEMENTS WILL BE USED, THERE WILL HAVE TO BE TWO CURVATURE SIGNS
+    T_c: float  # center thickness of the element
+    n_inside_or_after: float  # refractive index inside the optical object (for a thick lens) or after it (for a refractive surface)
+    n_outside_or_before: float  # refractive index outside the optical object (for a thick lens) or before it (for a refractive surface)
+    material_properties: MaterialProperties
+
+    # def __post_init__(self):
+    #     assert self.material_properties.refractive_index == self.n_inside_or_after or self.material_properties.refractive_index == self.n_outside_or_before or np.isnan(self.material_properties.refractive_index), "The refractive index of the material properties is neither of the refractive indices of the optical element!"
 
     @property
     def to_array(self) -> np.ndarray:
@@ -168,9 +134,38 @@ class OpticalObjectParams:
             surface_type = SURFACE_TYPES_DICT[self.surface_type.__name__]
         else:
             surface_type = self.surface_type
-        return np.concatenate((self.geometrical_params,
-                               self.thermal_properties.to_array,
-                               np.array([surface_type])))
+        array = np.zeros(len(INDICES_DICT.keys())).astype(np.complex128)
+        array[[INDICES_DICT['surface_type'], INDICES_DICT['x'], INDICES_DICT['y'], INDICES_DICT['z'], INDICES_DICT['t'], INDICES_DICT['p'], INDICES_DICT['r_1'], INDICES_DICT['r_2'], INDICES_DICT['curvature_sign'], INDICES_DICT['T_c'], INDICES_DICT['n_inside_or_after'], INDICES_DICT['n_outside_or_before'], INDICES_DICT['material_refractive_index'], INDICES_DICT['alpha_expansion'], INDICES_DICT['beta_surface_absorption'], INDICES_DICT['kappa_conductivity'], INDICES_DICT['dn_dT'], INDICES_DICT['nu_poisson_ratio'], INDICES_DICT['alpha_volume_absorption'], INDICES_DICT['intensity_reflectivity'], INDICES_DICT['intensity_transmittance'], INDICES_DICT['temperature']]] = [surface_type, self.x, self.y, self.z, self.t, self.p, self.r_1, self.r_2, self.curvature_sign, self.T_c, self.n_inside_or_after, self.n_outside_or_before, *self.material_properties.to_array]
+        array[INDICES_DICT['t']] = 1j * array[INDICES_DICT['t']] / np.pi
+        array[INDICES_DICT['p']] = 1j * array[INDICES_DICT['p']] / np.pi
+        return array
+
+    @staticmethod
+    def from_array(params: np.ndarray):
+        params = np.real(params) + np.pi * np.imag(params)
+        return OpticalElementParams(surface_type=params[INDICES_DICT['surface_type']],
+                                    x=params[INDICES_DICT['x']],
+                                    y=params[INDICES_DICT['y']],
+                                    z=params[INDICES_DICT['z']],
+                                    t=params[INDICES_DICT['t']],
+                                    p=params[INDICES_DICT['p']],
+                                    r_1=params[INDICES_DICT['r_1']],
+                                    r_2=params[INDICES_DICT['r_2']],
+                                    curvature_sign=params[INDICES_DICT['curvature_sign']],
+                                    T_c=params[INDICES_DICT['T_c']],
+                                    n_inside_or_after=params[INDICES_DICT['n_inside_or_after']],
+                                    n_outside_or_before=params[INDICES_DICT['n_outside_or_before']],
+                                    material_properties=MaterialProperties(refractive_index=nvl(params[INDICES_DICT['material_refractive_index']], params[INDICES_DICT['n_inside_or_after']]),
+                                                                           alpha_expansion=params[INDICES_DICT['alpha_expansion']],
+                                                                           beta_surface_absorption=params[INDICES_DICT['beta_surface_absorption']],
+                                                                           kappa_conductivity=params[INDICES_DICT['kappa_conductivity']],
+                                                                           dn_dT=params[INDICES_DICT['dn_dT']],
+                                                                           nu_poisson_ratio=params[INDICES_DICT['nu_poisson_ratio']],
+                                                                           alpha_volume_absorption=params[INDICES_DICT['alpha_volume_absorption']],
+                                                                           intensity_reflectivity=params[INDICES_DICT['intensity_reflectivity']],
+                                                                           intensity_transmittance=params[INDICES_DICT['intensity_transmittance']],
+                                                                           temperature=params[INDICES_DICT['temperature']])
+                                    )
 
 
 # Throughout the code, all tensors can take any number of dimensions, but the last dimension is always the coordinate
@@ -188,51 +183,6 @@ class OpticalObjectParams:
 # theta and phi). also, t and theta appear before p and phi.
 # If for example there is a parameter q both for t axis and p axis, then the first element of q will be the q of t,
 # and the second element of q will be the q of p.
-
-
-def fix_old_params_format(params: np.ndarray, lens_reflectivity: float=100e-6, mirror_transmitance: float=100e-6) -> np.ndarray:
-    if params.shape[1] == 17:
-        new_columns = np.full((params.shape[0], 2), 0)
-        index_to_insert = [16, 16]
-        params = np.insert(params, index_to_insert, new_columns, axis=1)
-        for i in range(params.shape[0]):
-            if params[i, 18] in (SURFACE_TYPES_DICT['CurvedRefractiveSurface'], SURFACE_TYPES_DICT['Thick Lens'], SURFACE_TYPES_DICT['IdealLens']):
-                params[i, INDICES_DICT['intensity_reflectivity']] = lens_reflectivity
-                params[i, INDICES_DICT['intensity_transmittance']] = 1-lens_reflectivity-params[i, INDICES_DICT['beta_power_absorption']]
-            elif params[i, 18] in (SURFACE_TYPES_DICT['CurvedMirror'], SURFACE_TYPES_DICT['FlatMirror']):
-                params[i, INDICES_DICT['intensity_transmittance']] = mirror_transmitance
-                params[i, INDICES_DICT['intensity_reflectivity']] = 1 - mirror_transmitance - params[i, INDICES_DICT['beta_power_absorption']]
-
-    return params
-
-
-def plane_name_to_xy_indices(plane: str) -> Tuple[int, int]:
-    if plane in ['xy', 'yx']:
-        x_index = 0
-        y_index = 1
-    elif plane in ['xz', 'zx']:
-        x_index = 0
-        y_index = 2
-    elif plane in ['yz', 'zy']:
-        x_index = 1
-        y_index = 2
-    else:
-        raise ValueError("plane must be one of 'xy', 'xz', 'yz'")
-    return x_index, y_index
-
-
-def params_to_perturbable_params_indices(params: np.ndarray, remove_one_of_the_angles: bool = False) -> List[int]:
-    # Associates the cavity parameters with the number of parameters needed to describe the cavity.
-    # If there is a lens, then the number of parameters is 7 (x, y, t, p, r, n_2):
-    if (np.any(params[:, -1] == SURFACE_TYPES_DICT['CurvedRefractiveSurface'])
-     or np.any(params[:, -1] == SURFACE_TYPES_DICT['Thick Lens'])):
-        params_indices = list(range(6))
-    # If there is no lens but there is a curved mirror: (x, y, t, p, r)
-    else:
-        params_indices = list(range(5))
-    if remove_one_of_the_angles:
-        params_indices.remove(INDICES_DICT['t'])
-    return params_indices
 
 
 class LocalModeParameters:
@@ -323,80 +273,6 @@ class ModeParameters:
         return LocalModeParameters(z_minus_z_0=z_minus_z_0, z_R=self.z_R, lambda_laser=self.lambda_laser)
 
 
-def nvl(var, val: Any = np.nan):
-  if var is None:
-    return val
-  return var
-
-
-def maximal_lens_height(R: float, w: float) -> float:
-    return R * np.sqrt(1 - ((R - w/2) / R) ** 2)
-
-
-def safe_exponent(a: Union[float, np.ndarray]) -> Union[float, np.ndarray]:
-    a_safe = np.clip(a=np.real(a), a_min=-200, a_max=None) + 1j * np.imag(a)  # ARBITRARY
-    return np.exp(a_safe)
-
-
-def ABCD_free_space(length: float) -> np.ndarray:
-    return np.array([[1, length, 0, 0],
-                     [0, 1,      0, 0],
-                     [0, 0,      1, length],  # / cos_theta_between_planes
-                     [0, 0,      0, 1]])
-
-
-def normalize_vector(vector: Union[np.ndarray, list]) -> np.ndarray:
-    if isinstance(vector, list):
-        vector = np.array(vector)
-    return vector / np.linalg.norm(vector, axis=-1)[..., np.newaxis]
-
-
-def rotation_matrix_around_n(n, theta):
-    # Rotates a vector around the axis n by theta radians.
-    # This funny stacked syntax is to allow theta to be of any dimension
-    A = np.stack([np.stack([np.cos(theta) + n[0] ** 2 * (1 - np.cos(theta)),
-                            n[0] * n[1] * (1 - np.cos(theta)) - n[2] * np.sin(theta),
-                            n[0] * n[2] * (1 - np.cos(theta)) + n[1] * np.sin(theta)], axis=-1),
-                  np.stack([n[1] * n[0] * (1 - np.cos(theta)) + n[2] * np.sin(theta),
-                            np.cos(theta) + n[1] ** 2 * (1 - np.cos(theta)),
-                            n[1] * n[2] * (1 - np.cos(theta)) - n[0] * np.sin(theta)], axis=-1),
-                  np.stack([n[2] * n[0] * (1 - np.cos(theta)) - n[1] * np.sin(theta),
-                            n[2] * n[1] * (1 - np.cos(theta)) + n[0] * np.sin(theta),
-                            np.cos(theta) + n[2] ** 2 * (1 - np.cos(theta))], axis=-1)], axis=-1)
-    return A
-
-
-def focal_length_of_lens(R_1, R_2, n, width):
-    # for R_1 = R_2 = 0.05, d=0.01, n=1.5, this function returns 1.5 [m]
-    one_over_f = (n - 1) * ((1 / R_1) + (1 / R_2) + ((n - 1) * width) / (n * R_1 * R_2))
-    return 1 / one_over_f
-
-
-def unit_vector_of_angles(theta: Union[np.ndarray, float], phi: Union[np.ndarray, float]) -> np.ndarray:
-    # theta and phi are assumed to be in radians
-    return np.stack([np.cos(theta) * np.cos(phi), np.cos(theta) * np.sin(phi), np.sin(theta)], axis=-1)
-
-
-def angles_of_unit_vector(unit_vector: Union[np.ndarray, float]) -> Union[Tuple[np.ndarray, np.ndarray],
-                                                                          Tuple[float, float]]:
-    # theta and phi are returned in radians
-    theta = np.arcsin(unit_vector[..., 2])
-    phi = np.arctan2(unit_vector[..., 1], unit_vector[..., 0])
-    return theta, phi
-
-
-def angles_distance(direction_vector_1: np.ndarray, direction_vector_2: np.ndarray):
-    inner_product = np.sum(direction_vector_1 * direction_vector_2, axis=-1)
-    inner_product = np.clip(inner_product, -1, 1)
-    return np.arccos(inner_product)
-
-
-def angles_difference(angle_1: Union[np.ndarray, float], angle_2: Union[np.ndarray, float]) -> np.ndarray:
-    diff = angle_2 - angle_1
-    result = np.mod(diff + np.pi, 2 * np.pi) - np.pi
-    return result
-
-
 def decompose_ABCD_matrix(ABCD: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     if ABCD.shape == (4, 4):
         A, B, C, D = ABCD[(0, 2), (0, 2)], ABCD[(0, 2), (1, 3)], \
@@ -423,26 +299,6 @@ def local_mode_parameters_of_round_trip_ABCD(round_trip_ABCD: np.ndarray, lambda
     # z_R.
 
 
-def radius_of_f_and_n(f: float, n: float) -> float:
-    return 2 * f * (n - 1)
-
-
-def w_0_of_z_R(z_R: np.ndarray, lambda_laser: float) -> np.ndarray:
-    return np.sqrt(z_R * lambda_laser / np.pi)
-
-
-def w_of_z_R(z: np.ndarray, z_R: np.ndarray, lambda_laser) -> np.ndarray:
-    w_0 = w_0_of_z_R(z_R, lambda_laser)
-    w_z = w_0 * np.sqrt(1 + (z / z_R) ** 2)
-    return w_z
-
-
-def spot_size(z: np.ndarray, z_R: np.ndarray, lambda_laser) -> np.ndarray:
-    w_0 = w_0_of_z_R(z_R, lambda_laser)
-    w_z = w_0 * np.sqrt(1 + (z / z_R) ** 2)
-    return w_z
-
-
 class Ray:
     def __init__(self, origin: np.ndarray, k_vector: np.ndarray,
                  length: Optional[Union[np.ndarray, float]] = None):
@@ -462,7 +318,7 @@ class Ray:
         # t needs to be either a float or a numpy array with dimensions m_rays
         return self.origin + t[..., np.newaxis] * self.k_vector
 
-    def plot(self, ax: Optional[plt.Axes] = None, dim=2, color='r', linewidth: float = 1, plane: str = 'xy'):
+    def plot(self, ax: Optional[plt.Axes] = None, dim=2, plane: str = 'xy', **kwargs):
         if ax is None:
             fig = plt.figure()
             if dim == 3:
@@ -484,7 +340,7 @@ class Ray:
                  ray_origin_reshaped[i, 1] + lengths_reshaped[i] * ray_k_vector_reshaped[i, 1]],
                 [ray_origin_reshaped[i, 2],
                  ray_origin_reshaped[i, 2] + lengths_reshaped[i] * ray_k_vector_reshaped[i, 2]],
-                color=color, linewidth=linewidth)
+                **kwargs)
                 for i in range(ray_origin_reshaped.shape[0])]
         else:
             x_index, y_index = plane_name_to_xy_indices(plane)
@@ -493,7 +349,7 @@ class Ray:
                  ray_origin_reshaped[i, x_index] + lengths_reshaped[i] * ray_k_vector_reshaped[i, x_index]],
                 [ray_origin_reshaped[i, y_index],
                  ray_origin_reshaped[i, y_index] + lengths_reshaped[i] * ray_k_vector_reshaped[i, y_index]],
-                color=color, linewidth=linewidth)
+                **kwargs)
                 for i in range(ray_origin_reshaped.shape[0])]
 
         return ax
@@ -613,52 +469,39 @@ class Surface:
         pseudo_z = normalize_vector(np.cross(self.inwards_normal, pseudo_y))
         return pseudo_z, pseudo_y
 
-    # INDICES_DICT = {'x': 0, 'y': 1, 't': 2, 'p': 3, 'r': 4, 'n_1': 5, 'w': 6, 'n_2': 7, 'z': 8, 'curvature_sign': 9,
-    #                 'alpha_thermal_expansion': 10, 'kappa_thermal_conductivity': 11, 'dn_dT': 12,
-    #                 'nu_poisson_ratio': 13,
-    #                 'beta_power_absorption': 14, 'surface_type': 15}
 
     @staticmethod
-    def from_params(params: Union[np.ndarray, OpticalObjectParams], name: Optional[str] = None):
-        if isinstance(params, OpticalObjectParams):
-            params = params.to_array
-        params_pies = np.real(params) + np.pi * np.imag(params)
-        x, y, t, p, r_1, r_2, n_1, w, n_2, z, curvature_sign, alpha_thermal_expansion, beta_power_absorption,\
-        kappa_thermal_conductivity, dn_dT, nu_poisson_ratio, alpha_volume_absorption,\
-        intensity_reflectivity, intensity_transmittance, temperature, surface_type = params_pies
-        center = np.array([x, y, z])
-        outwards_normal = unit_vector_of_angles(t, p)
-        thermal_properties = MaterialProperties(alpha_thermal_expansion, beta_power_absorption,
-                                                kappa_thermal_conductivity, dn_dT, nu_poisson_ratio,
-                                                alpha_volume_absorption, intensity_reflectivity,
-                                                intensity_transmittance)
-        if surface_type == SURFACE_TYPES_DICT['CurvedMirror']:  # Mirror
-            surface = CurvedMirror(radius=r_1,
+    def from_params(params: OpticalElementParams, name: Optional[str] = None):
+        p = params
+        center = np.array([p.x, p.y, p.z])
+        outwards_normal = unit_vector_of_angles(p.t, p.p)
+        if p.surface_type == SURFACE_TYPES_DICT['CurvedMirror']:  # Mirror
+            surface = CurvedMirror(radius=p.r_1,
                                    outwards_normal=outwards_normal,
                                    center=center,
-                                   curvature_sign=curvature_sign,
+                                   curvature_sign=p.curvature_sign,
                                    name=name,
-                                   thermal_properties=thermal_properties)
-        elif surface_type == SURFACE_TYPES_DICT['Thick Lens']:  # Thick lens
-            surface = generate_lens_from_params(params, name=name)
-        elif surface_type == SURFACE_TYPES_DICT['CurvedRefractiveSurface']:  # Refractive surface (one side of a lens)
-            surface = CurvedRefractiveSurface(radius=r_1, outwards_normal=outwards_normal, center=center, n_1=n_1,
-                                              n_2=n_2, curvature_sign=curvature_sign, name=name,
-                                              thermal_properties=thermal_properties, thickness=w)
-        elif surface_type == SURFACE_TYPES_DICT['IdealLens']:  # Ideal lens
+                                   thermal_properties=p.material_properties)
+        elif p.surface_type == SURFACE_TYPES_DICT['Thick Lens']:  # Thick lens
+            surface = generate_lens_from_params(p, name=name)
+        elif p.surface_type == SURFACE_TYPES_DICT['CurvedRefractiveSurface']:  # Refractive surface (one side of a lens)
+            surface = CurvedRefractiveSurface(radius=p.r_1, outwards_normal=outwards_normal, center=center, n_1=p.n_outside_or_before,
+                                              n_2=p.n_inside_or_after, curvature_sign=p.curvature_sign, name=name,
+                                              thermal_properties=p.material_properties, thickness=p.T_c)
+        elif p.surface_type == SURFACE_TYPES_DICT['IdealLens']:  # Ideal lens
             surface = IdealLens(outwards_normal=outwards_normal,
                                 center=center,
-                                focal_length=r_1,
+                                focal_length=p.r_1,
                                 name=name,
-                                thermal_properties=thermal_properties)
-        elif surface_type == SURFACE_TYPES_DICT['FlatMirror']:  # Ideal lens
+                                thermal_properties=p.material_properties)
+        elif p.surface_type == SURFACE_TYPES_DICT['FlatMirror']:  # Ideal lens
             surface = FlatMirror(
                 outwards_normal=outwards_normal,
                 center=center,
                 name=name,
-                thermal_properties=thermal_properties)
+                thermal_properties=p.material_properties)
         else:
-            raise ValueError(f'Unknown surface type {surface_type}')
+            raise ValueError(f'Unknown surface type {p.surface_type}')
         return surface
 
 
@@ -694,7 +537,8 @@ class PhysicalSurface(Surface):
         raise NotImplementedError
 
     # This could be a @property, but the Cavity's to_param can not be a @property and I want them to be the same
-    def to_params(self):
+    @property
+    def to_params(self) -> OpticalElementParams:
         x, y, z = self.center
         if isinstance(self, IdealLens):
             r_1 = self.focal_length
@@ -706,8 +550,6 @@ class PhysicalSurface(Surface):
             r_1 = 0
             r_2 = 0
         t, p = angles_of_unit_vector(self.outwards_normal)
-        t = 1j * t / np.pi
-        p = 1j * p / np.pi
         n_1 = 0
         n_2 = 0
         if isinstance(self, CurvedMirror):
@@ -728,9 +570,21 @@ class PhysicalSurface(Surface):
             raise ValueError(f'Unknown surface type {type(self)}')
         if self.material_properties is None:
             self.material_properties = MaterialProperties()
-        material_properties_without_refractive_index = self.material_properties.to_array[1:]
-        return np.array([x, y, t, p, r_1, r_2, n_1, 0, n_2, z, curvature_sign, *material_properties_without_refractive_index,
-                         surface_type])
+
+        params = OpticalElementParams(surface_type=surface_type,
+                                      x=x,
+                                      y=y,
+                                      z=z,
+                                      t=t,
+                                      p=p,
+                                      r_1=r_1,
+                                      r_2=r_2,
+                                      curvature_sign=curvature_sign,
+                                      T_c=np.nan,
+                                      n_inside_or_after=n_2,
+                                      n_outside_or_before=n_1,
+                                      material_properties=self.material_properties)
+        return params
 
     def thermal_transformation(self, P_laser_power: float, w_spot_size: float, **kwargs):
         raise NotImplementedError
@@ -876,7 +730,8 @@ class IdealLens(FlatSurface, PhysicalSurface):
     def center(self):
         return super().center
 
-    def to_params(self):
+    @property
+    def to_params(self) -> OpticalElementParams:
         raise NotImplementedError
 
     def reflect_direction(self, ray: Ray) -> np.ndarray:
@@ -1222,16 +1077,12 @@ class CurvedRefractiveSurface(CurvedSurface, PhysicalSurface):
                                        thermal_properties=new_thermal_properties)
         # return self
 
-def generate_lens_from_params(params: np.ndarray, name: Optional[str] = 'Lens'):
+
+def generate_lens_from_params(params: OpticalElementParams, name: Optional[str] = 'Lens'):
+    p = params
     # generates a convex-convex lens from the parameters
-    if isinstance(params, OpticalObjectParams):
-        params = params.to_array
-    params_pies = np.real(params) + np.pi * np.imag(params)  # To reduce numerical errors, the imaginary part is
-    # representing the pre-factor of pi.
-    x, y, t, p, r_1, r_2, n_in, T_c, n_out, z, curvature_sign, alpha_thermal_expansion, beta_power_absorption,\
-    kappa_thermal_conductivity, dn_dT, nu_poisson_ratio, alpha_volume_absorption, intensity_reflectivity, intensity_transmittance, temperature, surface_type = params_pies
-    center = np.array([x, y, z])
-    forward_direction = unit_vector_of_angles(t, p)
+    center = np.array([p.x, p.y, p.z])
+    forward_direction = unit_vector_of_angles(p.t, p.p)
 
     # Generate names according to the direction the lens is pointing to
     main_axis = np.argmax(np.abs(forward_direction))
@@ -1243,17 +1094,15 @@ def generate_lens_from_params(params: np.ndarray, name: Optional[str] = 'Lens'):
         name = 'Lens'
     names = [name + suffix for suffix in suffixes]
 
-    center_1 = center - (1 / 2) * T_c * forward_direction
-    center_2 = center + (1 / 2) * T_c * forward_direction
-    thermal_properties = MaterialProperties(alpha_thermal_expansion, beta_power_absorption, kappa_thermal_conductivity,
-                                            dn_dT, nu_poisson_ratio, alpha_volume_absorption, intensity_reflectivity, intensity_transmittance)
-    surface_1 = CurvedRefractiveSurface(radius=r_1, outwards_normal=-forward_direction, center=center_1, n_1=n_out,
-                                        n_2=n_in, curvature_sign=-1, name=names[0],
-                                        thermal_properties=thermal_properties, thickness=T_c / 2)
+    center_1 = center - (1 / 2) * p.T_c * forward_direction
+    center_2 = center + (1 / 2) * p.T_c * forward_direction
+    surface_1 = CurvedRefractiveSurface(radius=p.r_1, outwards_normal=-forward_direction, center=center_1, n_1=p.n_outside_or_before,
+                                        n_2=p.n_inside_or_after, curvature_sign=-1, name=names[0],
+                                        thermal_properties=p.material_properties, thickness=p.T_c / 2)
 
-    surface_2 = CurvedRefractiveSurface(radius=r_2, outwards_normal=forward_direction, center=center_2, n_1=n_in,
-                                        n_2=n_out, curvature_sign=1, name=names[1],
-                                        thermal_properties=thermal_properties, thickness=T_c / 2)
+    surface_2 = CurvedRefractiveSurface(radius=p.r_2, outwards_normal=forward_direction, center=center_2, n_1=p.n_inside_or_after,
+                                        n_2=p.n_outside_or_before, curvature_sign=1, name=names[1],
+                                        thermal_properties=p.material_properties, thickness=p.T_c / 2)
     return surface_1, surface_2
 
 
@@ -1420,7 +1269,7 @@ class Cavity:
                  physical_surfaces: List[PhysicalSurface],
                  standing_wave: bool = False,
                  lambda_laser: Optional[float] = None,
-                 params: Optional[np.ndarray] = None,
+                 params: Optional[List[OpticalElementParams]] = None,
                  names: Optional[List[str]] = None,
                  set_central_line: bool = True,
                  set_mode_parameters: bool = True,
@@ -1453,7 +1302,7 @@ class Cavity:
             self.set_initial_surface()
 
     @staticmethod
-    def from_params(params: Union[np.ndarray, List[OpticalObjectParams]],
+    def from_params(params: Union[np.ndarray, List[OpticalElementParams]],
                     standing_wave: bool = True,
                     lambda_laser: Optional[float] = None,
                     names: Optional[List[str]] = None,
@@ -1465,37 +1314,42 @@ class Cavity:
                     power: Optional[float] = None,
                     initial_local_mode_parameters: Optional[LocalModeParameters] = None,
                     initial_mode_parameters: Optional[ModeParameters] = None):
-        if isinstance(params, list):
-            params = np.stack([p.to_array for p in params], axis=0)
+        if isinstance(params, np.ndarray):
+            p = [OpticalElementParams.from_array(params[i, :]) for i in range(len(params))]
+        else:
+            p = params
         physical_surfaces = []
         if names is None:
-            names = [f"surface_{i}" for i in range(len(params))]
-        for i in range(len(params)):
-            surface_temp = Surface.from_params(params[i, :], name=names[i])
+            names = [f"surface_{i}" for i in range(len(p))]
+        for i in range(len(p)):
+            surface_temp = Surface.from_params(p[i], name=names[i])
             if isinstance(surface_temp, tuple):
                 physical_surfaces.extend(surface_temp)
             else:
                 physical_surfaces.append(surface_temp)
-        cavity = Cavity(physical_surfaces, standing_wave, lambda_laser, params=params, names=names,
+        cavity = Cavity(physical_surfaces, standing_wave, lambda_laser, params=p, names=names,
                         set_central_line=set_central_line, set_mode_parameters=set_mode_parameters,
                         set_initial_surface=set_initial_surface, t_is_trivial=t_is_trivial, p_is_trivial=p_is_trivial,
                         power=power, initial_local_mode_parameters=initial_local_mode_parameters,
                         initial_mode_parameters=initial_mode_parameters)
         return cavity
 
-    def to_params(self, convert_to_pies: bool = False):
+    @property
+    def to_params(self) -> List[OpticalElementParams]:
         if self.params is None:
-            params = np.array([surface.to_params() for surface in self.physical_surfaces])
+            params = [surface.to_params for surface in self.physical_surfaces]
         else:
             params = self.params
-
-        if convert_to_pies:
-            params = np.real(params) + np.pi * np.imag(params)
         return params
 
     @property
+    def to_array(self) -> np.ndarray:
+        array = np.stack([param.to_array for param in self.to_params], axis=0)
+        return array
+
+    @property
     def id(self):
-        hashed_str = int(md5(self.to_params()).hexdigest()[:5], 16)
+        hashed_str = int(md5(self.to_params).hexdigest()[:5], 16)
         return hashed_str
 
     @property
@@ -1578,7 +1432,7 @@ class Cavity:
 
     @property
     def perturbable_params_indices(self):
-        perturbable_params_indices_list = params_to_perturbable_params_indices(self.to_params(convert_to_pies=True),
+        perturbable_params_indices_list = params_to_perturbable_params_indices(self.to_array,
                                                                                self.t_is_trivial and self.p_is_trivial)
         return perturbable_params_indices_list
 
@@ -1979,7 +1833,7 @@ class Cavity:
         if ray_list is None and self.central_line is not None:
             ray_list = self.central_line
             for ray in ray_list:
-                ray.plot(ax=ax, dim=dim, color=laser_color, plane=plane)
+                ray.plot(ax=ax, dim=dim, color=laser_color, plane=plane, linestyle='--', alpha=0.8)
 
         for i, surface in enumerate(self.surfaces):
             # If there is not information on the spot size of the element, plot it with default length:
@@ -2057,8 +1911,8 @@ class Cavity:
                                             overlap_threshold: float = 0.9,
                                             accuracy: float = 1e-3, print_progress: bool = False) -> np.ndarray:
         j_range = self.perturbable_params_indices
-        tolerance_matrix = np.zeros((self.to_params().shape[0], len(j_range)))
-        for i in range(self.to_params().shape[0]):
+        tolerance_matrix = np.zeros((len(self.params), len(j_range)))
+        for i in range(len(self.params)):
             if print_progress:
                 print("  ", i)
             for j_tolerance_matrix_index, j_param_matrix_index in enumerate(j_range):
@@ -2076,11 +1930,11 @@ class Cavity:
                                 # the i'th j'th parameter.
                                 shift_size: int = 30,
                                 print_progress: bool = False, ) -> np.ndarray:
-        overlaps = np.zeros((self.params.shape[0], self.number_of_perturbable_params, shift_size))
-        for i in range(self.params.shape[0]):  # Iterate over optical elements
+        overlaps = np.zeros((len(self.params), len(self.perturbable_params_indices), shift_size))
+        for i in range(len(self.params)):  # Iterate over optical elements
             if print_progress:
                 print("  ", i)
-            for j in range(self.number_of_perturbable_params):  # iterate over element's features (radius, position, angle, etc.)
+            for j in range(len(self.perturbable_params_indices)):  # iterate over element's features (radius, position, angle, etc.)
                 if print_progress:
                     print("    ", j)
                 if isinstance(shifts, (float, int)):
@@ -2092,7 +1946,7 @@ class Cavity:
                         shift_series = np.linspace(-shifts[i, j], shifts[i, j], shift_size)
                 # The condition inside is for the case it is a mirror and the parameter is n, and then we don't want
                 # to draw it.
-                if not(j == INDICES_DICT['n_1'] and np.isnan(shifts[i, j])):
+                if not(j == INDICES_DICT['n_inside_or_after'] and np.isnan(shifts[i, j])):
                     overlaps[i, j, :], _ = self.calculated_shifted_cavity_overlap_integral(parameter_index=(i, j),
                                                                                            shift=shift_series)
         return overlaps
@@ -2110,14 +1964,10 @@ class Cavity:
         if names is None:
             names = self.names
 
-        parameters_indices = [INDICES_DICT['x'], INDICES_DICT['y'], INDICES_DICT['z'], INDICES_DICT['t'],
-                              INDICES_DICT['p'], INDICES_DICT['r_1'], INDICES_DICT['n_1']]
-        if self.t_is_trivial and self.p_is_trivial:
-            parameters_indices.remove(INDICES_DICT['t'])
-            parameters_indices.remove(INDICES_DICT['z'])
+        parameters_indices = self.perturbable_params_indices
         if ax is None:
-            fig, ax = plt.subplots(self.params.shape[0], len(parameters_indices),
-                                   figsize=(len(parameters_indices) * 5, self.params.shape[0] * 2.1))
+            fig, ax = plt.subplots(len(self.params), len(parameters_indices),
+                                   figsize=(len(parameters_indices) * 5, len(self.params) * 2.1))
         else:
             fig = ax.flatten()[0].get_figure()
         if tolerance_matrix is None:
@@ -2130,23 +1980,23 @@ class Cavity:
                                                            print_progress=False)
         plt.suptitle(f"NA={self.arms[arm_index_for_NA].mode_parameters.NA[0]:.3e}")
 
-        for i in range(self.params.shape[0]):
+        for i in range(len(self.params)):
             for j in range(len(parameters_indices)):
                 # The condition inside is for the case it is a mirror and the parameter is n, and then we don't want
                 # to draw it.
-                if parameters_indices[j] == INDICES_DICT['n_1'] and np.isnan(tolerance_matrix[i, parameters_indices[j]]):
+                if parameters_indices[j] == INDICES_DICT['n_inside_or_after'] and np.isnan(tolerance_matrix[i, j]):
                     continue
-                tolerance = tolerance_matrix[i, parameters_indices[j]]
+                tolerance = tolerance_matrix[i, j]
                 if tolerance == 0 or np.isnan(tolerance):
                     tolerance = initial_step
                 tolerance_abs = np.abs(tolerance)
                 shifts = np.linspace(-2 * tolerance_abs, 2 * tolerance_abs, overlaps_series.shape[2])
 
-                ax[i, j].plot(shifts, overlaps_series[i, parameters_indices[j], :])
+                ax[i, j].plot(shifts, overlaps_series[i, j, :])
 
                 title = f"{names[i]}, {INDICES_DICT_INVERSE[parameters_indices[j]]}, tolerance: {tolerance_abs:.2e}"
                 ax[i, j].set_title(title)
-                if i == self.params.shape[0] - 1:
+                if i == len(self.params) - 1:
                     ax[i, j].set_xlabel("Shift")
                 if j == 0:
                     ax[i, j].set_ylabel("Overlap")
@@ -2175,7 +2025,7 @@ class Cavity:
             names = None
         else:
             names = copy.copy(self.names)
-            for i, surface_type in enumerate(self.to_params(convert_to_pies=True)[:, INDICES_DICT['surface_type']]):
+            for i, surface_type in enumerate(self.to_array[:, INDICES_DICT['surface_type']]):
                 if surface_type == SURFACE_TYPES_DICT['Thick Lens']:
                     names.insert(i + 1, names[i] + "_2")
                     names[i] = names[i] + "_1"
@@ -2219,7 +2069,7 @@ class Cavity:
                     tolerance_matrix: Union[np.ndarray, bool] = False,
                     print_specs: bool = False,
                     contraced: bool = True):
-        df_elements = pd.DataFrame(self.to_params(convert_to_pies=True).T, columns=self.names, index=list(PRETTY_INDICES_NAMES.values()))
+        df_elements = pd.DataFrame(self.to_array.T, columns=self.names, index=list(PRETTY_INDICES_NAMES.values()))
 
         df_elements_stacked = stack_df_for_print(df_elements)
         NAs_list = []
@@ -2286,22 +2136,8 @@ class Cavity:
         return whole_df
 
 
-def stack_df_for_print(df):
-    stacked_df = df.stack().reset_index()
-    stacked_df.columns = ['Parameter', 'Element', 'Value']
-    stacked_df = stacked_df[['Element', 'Parameter', 'Value']]
-    return stacked_df
-
-
-def signif(x, p):
-    x = np.asarray(x)
-    x_positive = np.where(np.isfinite(x) & (x != 0), np.abs(x), 10**(p-1))
-    mags = 10 ** (p - 1 - np.floor(np.log10(x_positive)))
-    return np.round(x * mags) / mags
-
-
 def generate_tolerance_of_NA(
-        params: np.ndarray,
+        params_array: np.ndarray,
         parameter_index_for_NA_control: Tuple[int, int],
         arm_index_for_NA: int,
         parameter_values: np.ndarray,
@@ -2315,14 +2151,14 @@ def generate_tolerance_of_NA(
         return_cavities: bool = False,
         print_progress = False) -> Union[
     Tuple[np.ndarray, np.ndarray], Tuple[np.ndarray, np.ndarray, List[Cavity]]]:
-    tolerance_matrix = np.zeros((params.shape[0],
-                                 params_to_perturbable_params_indices(params, t_is_trivial and p_is_trivial), parameter_values.shape[0]))
+    tolerance_matrix = np.zeros((params_array.shape[0],
+                                 params_to_perturbable_params_indices(params_array, t_is_trivial and p_is_trivial), parameter_values.shape[0]))
     NAs = np.zeros(parameter_values.shape[0])
     cavities = []
     for k, parameter_value in enumerate(parameter_values):
         if print_progress:
             print(k)
-        params_temp = params.copy()
+        params_temp = params_array.copy()
         params_temp[parameter_index_for_NA_control] = parameter_value
         cavity = Cavity.from_params(params=params_temp, set_mode_parameters=True, lambda_laser=lambda_laser,
                                     standing_wave=standing_wave, t_is_trivial=t_is_trivial, p_is_trivial=p_is_trivial)
@@ -2355,7 +2191,7 @@ def plot_tolerance_of_NA(params: Optional[np.ndarray] = None,
                          NAs: Optional[np.ndarray] = None,
                          tolerance_matrix: Optional[np.ndarray] = None):
     if tolerance_matrix is None:
-        NAs, tolerance_matrix = generate_tolerance_of_NA(params=params,
+        NAs, tolerance_matrix = generate_tolerance_of_NA(params_array=params,
                                                          parameter_index_for_NA_control=parameter_index_for_NA_control,
                                                          arm_index_for_NA=arm_index_for_NA,
                                                          parameter_values=parameter_values, initial_step=initial_step,
@@ -2397,7 +2233,7 @@ def plot_tolerance_of_NA_same_plot(params: Optional[np.ndarray] = None,
                                    ax: plt.Axes = None,
                                    t_and_p_are_trivial: bool = False):
     if tolerance_matrix is None:
-        NAs, tolerance_matrix = generate_tolerance_of_NA(params=params,
+        NAs, tolerance_matrix = generate_tolerance_of_NA(params_array=params,
                                                          parameter_index_for_NA_control=parameter_index_for_NA_control,
                                                          arm_index_for_NA=arm_index_for_NA,
                                                          parameter_values=parameter_values, initial_step=initial_step,
@@ -2414,7 +2250,7 @@ def plot_tolerance_of_NA_same_plot(params: Optional[np.ndarray] = None,
         [INDICES_DICT['x']],
         [INDICES_DICT['y'], INDICES_DICT['z']],
         [INDICES_DICT['t'], INDICES_DICT['p']],
-        [INDICES_DICT['r_1'], INDICES_DICT['n_1']],
+        [INDICES_DICT['r_1'], INDICES_DICT['n_inside_or_after']],
     ]
     titles = ['Axial Position', 'Transverse Position', 'Tilt Angles', 'Radius and Index']
 
@@ -2427,7 +2263,7 @@ def plot_tolerance_of_NA_same_plot(params: Optional[np.ndarray] = None,
             for j in j_ranges[l]:
                 # The condition inside is for the case it is a mirror and the parameter is n, and then we don't want
                 # to draw it.
-                if not(j == INDICES_DICT['n_1'] and
+                if not(j == INDICES_DICT['n_inside_or_after'] and
                        (np.isnan(tolerance_matrix[i, j, 0]) or tolerance_matrix[i, j, 0]==0)):
                     linewidth = 1 + 0.2*(n_elements - i-1)
                     print(linewidth)
@@ -2523,40 +2359,6 @@ def calculate_cavities_overlap_matrices(cavity_1: Cavity, cavity_2: Cavity) -> f
         return gaussians_overlap_integral(A_1, A_2, b_1, b_2, c_1, c_2)
 
 
-def gaussian_norm_log(A: np.ndarray, b: np.ndarray, c: float):
-    return 1 / 2 * gaussian_integral_2d_log(A + np.conjugate(A), b + np.conjugate(b), c + np.conjugate(c))
-
-
-def gaussian_integral_2d_log(A: np.ndarray, b: np.ndarray, c):
-    # The integral over exp( x.T A_2 x + b.T x + c):
-    eigen_values = np.linalg.eigvals(A)
-    A_inv = np.linalg.inv(A)
-    dim = A.shape[0]
-    try:
-        log_integral = np.log(np.sqrt((2 * np.pi) ** dim / np.linalg.det(A))) + 0.5 * b.T @ A_inv @ b + c
-    except FloatingPointError:
-        log_integral = np.nan
-    return log_integral
-
-
-def gaussians_overlap_integral(A_1: np.ndarray, A_2: np.ndarray,
-                               # mu_1: np.ndarray, mu_2: np.ndarray, # Seems like I don't need the mus.
-                               b_1: np.ndarray, b_2: np.ndarray,
-                               c_1: float, c_2: float) -> float:
-    A_1_conjugate = np.conjugate(A_1)
-    b_1_conjugate = np.conjugate(b_1)
-    c_1_conjugate = np.conjugate(c_1)
-
-    A = A_1_conjugate + A_2
-    b = b_1_conjugate + b_2
-    c = c_1_conjugate + c_2
-    # b = mu_1.T @ A_1_conjugate + mu_2.T @ A_2 + b_1_conjugate + b_2
-    # c = (-1/2) * (mu_1.T @ A_1_conjugate @ mu_1 + mu_2.T @ A_2 @ mu_2) + c_1_conjugate + c_2
-    normalization_factor_log = gaussian_norm_log(A_1, b_1, c_1) + gaussian_norm_log(A_2, b_2, c_2)
-    integral_normalized_log = gaussian_integral_2d_log(A, b, c) - normalization_factor_log
-    return safe_exponent(integral_normalized_log)
-
-
 def evaluate_gaussian(A: np.ndarray, b: np.ndarray, c: complex, axis_span: float, N: int = 100):
     x = np.linspace(-axis_span, axis_span, N)
     y = np.linspace(-axis_span, axis_span, N)
@@ -2567,6 +2369,34 @@ def evaluate_gaussian(A: np.ndarray, b: np.ndarray, c: complex, axis_span: float
     R_normed_squared = np.einsum('ijk,kl,ijl->ij', R, A, R)
     functions_values = safe_exponent(-(1 / 2) * R_normed_squared + np.einsum('k,ijk->ij', b, R) + c)
     return functions_values
+
+
+def perturb_cavity(cavity: Cavity,
+                   parameter_index: Union[Tuple[int, int], Tuple[List[int], List[int]]],
+                   shift_value: Union[float, np.ndarray]):
+    params = cavity.to_array
+    new_params = copy.copy(params)
+    if isinstance(parameter_index[0], int):
+        new_params[parameter_index] = params[parameter_index] + shift_value
+        parameter_index_1_list = [parameter_index[1]]
+    else:
+        new_params[parameter_index[0], parameter_index[1]] += shift_value
+        parameter_index_1_list = parameter_index[1]
+
+    # If the original cavity was symmetrical in the t axis or the p axis, and the perturbation does not disturb this
+    # symmetry, then the new cavity is also symmetrical in the t axis or the p axis:
+    perturbance_in_z = [1 for i in parameter_index_1_list if i in [INDICES_DICT['z'], INDICES_DICT['t']]]
+    perturbance_in_y = [1 for i in parameter_index_1_list if i in [INDICES_DICT['y'], INDICES_DICT['p']]]
+    perturbance_in_z = bool(len(perturbance_in_z))
+    perturbance_in_y = bool(len(perturbance_in_y))
+
+    t_is_trivial = cavity.t_is_trivial and not perturbance_in_z
+    p_is_trivial = cavity.p_is_trivial and not perturbance_in_y
+
+    new_cavity = Cavity.from_params(params=new_params, standing_wave=cavity.standing_wave,
+                                    lambda_laser=cavity.lambda_laser, t_is_trivial=t_is_trivial,
+                                    p_is_trivial=p_is_trivial)
+    return new_cavity
 
 
 def plot_gaussian_subplot(A: np.ndarray, b: np.ndarray, c: float, axis_span: float = 0.0005,
@@ -2616,34 +2446,6 @@ def plot_2_gaussians_colors(A_1: np.ndarray, A_2: np.ndarray,
         rgb_image = np.real(rgb_image)
     ax.imshow(rgb_image, extent=[-axis_span, axis_span, -axis_span, axis_span])
     ax.set_title(title)
-
-
-def perturb_cavity(cavity: Cavity,
-                   parameter_index: Union[Tuple[int, int], Tuple[List[int], List[int]]],
-                   shift_value: Union[float, np.ndarray]):
-    params = cavity.to_params()
-    new_params = copy.copy(params)
-    if isinstance(parameter_index[0], int):
-        new_params[parameter_index] = params[parameter_index] + shift_value
-        parameter_index_1_list = [parameter_index[1]]
-    else:
-        new_params[parameter_index[0], parameter_index[1]] += shift_value
-        parameter_index_1_list = parameter_index[1]
-
-    # If the original cavity was symmetrical in the t axis or the p axis, and the perturbation does not disturb this
-    # symmetry, then the new cavity is also symmetrical in the t axis or the p axis:
-    perturbance_in_z = [1 for i in parameter_index_1_list if i in [INDICES_DICT['z'], INDICES_DICT['t']]]
-    perturbance_in_y = [1 for i in parameter_index_1_list if i in [INDICES_DICT['y'], INDICES_DICT['p']]]
-    perturbance_in_z = bool(len(perturbance_in_z))
-    perturbance_in_y = bool(len(perturbance_in_y))
-
-    t_is_trivial = cavity.t_is_trivial and not perturbance_in_z
-    p_is_trivial = cavity.p_is_trivial and not perturbance_in_y
-
-    new_cavity = Cavity.from_params(params=new_params, standing_wave=cavity.standing_wave,
-                                    lambda_laser=cavity.lambda_laser, t_is_trivial=t_is_trivial,
-                                    p_is_trivial=p_is_trivial)
-    return new_cavity
 
 
 def plot_2_cavity_perturbation_overlap(cavity: Cavity,
@@ -2722,80 +2524,6 @@ def find_distance_to_first_crossing(shifts: np.ndarray, overlaps: np.ndarray, cr
     else:
         raise ValueError('Debug me')
     return crossing_shift
-
-
-def interval_parameterization(a: float, b: float, t: float) -> float:
-    return a + t * (b - a)
-
-
-def functions_first_crossing(f: Callable, initial_step: float, crossing_value: float = 0.9,
-                             accuracy: float = 0.001, max_f_eval: int = 100) -> float:
-    # assumes f(0) == 1 and a decreasing function.
-    stopping_flag = False
-    increasing_ratio = 2
-    n = 10
-    last_n_evaluations = np.zeros(n)
-    last_n_xs = np.zeros(n)
-    borders_min = 0
-    borders_max = np.nan
-    loop_counter = 0
-    f_0 = f(0)
-    if np.isnan(f_0):
-        warnings.warn('Function has no value at x_input=0, returning nan')
-        return np.nan
-    f_borders_min = f_0
-    f_borders_max = np.nan
-    last_n_evaluations[0] = f_0
-    x = initial_step
-    while not stopping_flag:
-        loop_counter += 1
-        f_x = f(x)
-        last_n_xs[np.mod(loop_counter, n)] = x
-        last_n_evaluations[np.mod(loop_counter, n)] = f_x
-        if loop_counter == max_f_eval and not np.isnan(borders_max):  # if it wasn't found but we know it's value
-            # approximately, then interpolate it:
-            x = (crossing_value - f_borders_min) / (f_borders_max - f_borders_min) * (
-                    borders_max - borders_min) + borders_min
-            # warnings.warn(
-            #     f"Did not find crossing value, interpolated it between ({borders_min:.8e}, {f_borders_min:.5e}) and ({borders_max:.8e}, {f_borders_max:.5e}) to be ({x:.8e}, {crossing_value:.5e})")
-            stopping_flag = True
-        elif not np.any(np.invert(
-                np.abs(last_n_evaluations - 1) < 1e-18)) or loop_counter > max_f_eval:  # if the function is not
-            # decreasing or we reached the max number of function evaluations:
-            x = np.nan
-            stopping_flag = True
-        elif f_x > crossing_value + accuracy:
-            borders_min = x
-            f_borders_min = f_x
-            if np.isnan(borders_max):
-                x *= increasing_ratio
-            else:
-                x = interval_parameterization(x, borders_max, 0.5)
-        elif f_x < crossing_value - accuracy:
-            increasing_ratio = 1.1
-            borders_max = x
-            f_borders_max = f_x
-            x = interval_parameterization(borders_min, x, 0.5)
-        elif not np.any(np.invert(np.isnan(last_n_evaluations))):  # If all the last n evaluations were nan:
-            borders_max = np.min(last_n_xs)  # Set borders_max to be the first value from which
-            # onwards it seems to always be nan.
-            x = interval_parameterization(borders_min, borders_max, 0.5)
-        elif np.isnan(f_x):
-            if np.isnan(borders_max):
-                increasing_ratio = 1.1
-                x *= increasing_ratio
-                f_borders_max = f_x
-            else:
-                # randomize new x with higher probability to be closer to borders_min (the pdf is p(x)=2(1-x)), the cdf
-                # is F(x)=2(x-x^2) and the inverse cdf is F^-1(y)=1-sqrt(1-y)
-                y = np.random.uniform()
-                x_normalized = 1 - np.sqrt(1 - y)
-                x = interval_parameterization(borders_min, borders_max, x_normalized)
-        elif crossing_value - accuracy < f_x < crossing_value + accuracy:
-            stopping_flag = True
-        else:
-            raise ValueError('This should not happen')
-    return x
 
 
 def functions_first_crossing_both_directions(f: Callable, initial_step: float, crossing_value: float = 0.9,
@@ -2892,10 +2620,10 @@ def compare_2_cylindrical_cavities(params_1: np.ndarray,
                                    generate_tolerance_of_NA_dict: dict = {},
                                    cavities_names: Tuple[str] = ('cavity 1', 'cavity 2'),
                                    elements_names: Tuple[str] = ('Long Arm Mirror', 'Lens', 'Short Arm Mirror')):
-    NAs_1, tolerance_matrix_1 = generate_tolerance_of_NA(params_1, **generate_tolerance_of_NA_dict,
-                                                         p_is_trivial=True, t_is_trivial=True)
-    NAs_2, tolerance_matrix_2 = generate_tolerance_of_NA(params_2, **generate_tolerance_of_NA_dict,
-                                                         p_is_trivial=True, t_is_trivial=True)
+    NAs_1, tolerance_matrix_1 = generate_tolerance_of_NA(params_1, t_is_trivial=True, p_is_trivial=True,
+                                                         **generate_tolerance_of_NA_dict)
+    NAs_2, tolerance_matrix_2 = generate_tolerance_of_NA(params_2, t_is_trivial=True, p_is_trivial=True,
+                                                         **generate_tolerance_of_NA_dict)
     fig, ax = plt.subplots(2, 2, figsize=(10, 10))
     plot_tolerance_of_NA_same_plot(params=params_1,
                                    names=[element_name + " " + cavities_names[0] for element_name in elements_names],
@@ -3030,21 +2758,6 @@ def generate_spot_size_lines(mode_parameters: ModeParameters,
 
     return spot_size_lines_separated
 
-
-def dT_c_of_a_lens(R, h):
-    dT_c = R * (1- np.sqrt(1 - h ** 2 / R ** 2))
-    return dT_c
-
-def thick_lens_focal_length(T_c: float, R_1: float, R_2: float, n: float) -> float:
-    f_inverse = (n - 1) * (1 / R_1 - 1 / R_2 + (n - 1) * T_c / (n * R_1 * R_2))
-    f = 1 / f_inverse
-    return f
-
-def working_distance_of_a_lens(R_1, R_2, n, T_c):
-    f = thick_lens_focal_length(T_c, R_1, R_2, n)
-    h_2 = -f * (n-1) * T_c / (n * R_1)
-    working_distance = f - h_2
-    return working_distance
 
 def find_equal_angles_surface(mode_before_lens: ModeParameters,
                               surface_0: CurvedRefractiveSurface,
@@ -3249,19 +2962,19 @@ def mirror_lens_mirror_cavity_general_generator(NA_left: float = 0.1,
         else:
             z_minus_z_0_right_mirror = z_minus_z_0_right_surface + right_arm_length
     mirror_right = match_a_mirror_to_mode(mode_right, z_minus_z_0_right_mirror, mirrors_material_properties)
-    mirror_left_params = mirror_left.to_params()
-    mirror_right_params = mirror_right.to_params()
+    mirror_left_params = mirror_left.to_params
+    mirror_right_params = mirror_right.to_params
 
-    params_lens = surface_right.to_params()
-    params_lens[INDICES_DICT['x']] = (surface_left.center[0] + surface_right.center[0]) / 2
-    params_lens[INDICES_DICT['r_1']] = surface_left.radius
-    params_lens[INDICES_DICT['r_2']] = surface_right.radius
-    params_lens[INDICES_DICT['T_c']] = T_c
-    params_lens[INDICES_DICT['n_1']] = n
-    params_lens[INDICES_DICT['n_2']] = 1
-    params_lens[INDICES_DICT['surface_type']] = SURFACE_TYPES_DICT['Thick Lens']
+    params_lens = surface_right.to_params
+    params_lens.x = (surface_left.center[0] + surface_right.center[0]) / 2
+    params_lens.r_1 = surface_left.radius
+    params_lens.r_2 = surface_right.radius
+    params_lens.T_c = T_c
+    params_lens.n_inside_or_after = n
+    params_lens.n_outside_or_before = 1
+    params_lens.surface_type = SURFACE_TYPES_DICT['Thick Lens']
 
-    params = np.stack([mirror_left_params, params_lens, mirror_right_params], axis=0)
+    params = [mirror_left_params, params_lens, mirror_right_params]
 
     cavity = Cavity.from_params(params,
                                 lambda_laser=lambda_laser,
