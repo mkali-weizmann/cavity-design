@@ -1947,7 +1947,7 @@ class Cavity:
                 # The condition inside is for the case it is a mirror and the parameter is n, and then we don't want
                 # to draw it.
                 if not(j == INDICES_DICT['n_inside_or_after'] and np.isnan(shifts[i, j])):
-                    overlaps[i, j, :], _ = self.calculated_shifted_cavity_overlap_integral(parameter_index=(i, j),
+                    overlaps[i, j, :], _ = self.calculated_shifted_cavity_overlap_integral(parameter_index=(i, self.perturbable_params_indices[j]),
                                                                                            shift=shift_series)
         return overlaps
 
