@@ -52,10 +52,9 @@ ax.set_title(
 plt.savefig('figures/systems/mirror-lens-mirror_high_NA_ratio.svg', dpi=300, bbox_inches='tight')
 plt.show()
 # %%
-NAs_2, tolerance_matrix_2 = generate_tolerance_of_NA(params, parameter_index_for_NA_control=(1, 0),
-                                                     arm_index_for_NA=2, parameter_values=x_2_values,
-                                                     t_is_trivial=True, p_is_trivial=True,
-                                                     return_cavities=False, lambda_laser=lambda_laser,
+NAs_2, tolerance_matrix_2 = generate_tolerance_of_NA(params, parameter_index_for_NA_control=(1, 0), arm_index_for_NA=2,
+                                                     parameter_values=x_2_values, lambda_laser=lambda_laser,
+                                                     t_is_trivial=True, p_is_trivial=True, return_cavities=False,
                                                      print_progress=True)
 tolerance_matrix_2 = np.abs(tolerance_matrix_2)
 # %%
@@ -106,9 +105,8 @@ ax.set_title(
 plt.savefig('figures/systems/Fabry-Perot_scaled_x.svg', dpi=300, bbox_inches='tight')
 plt.show()
 # %%
-NAs_1, tolerance_matrix_1 = generate_tolerance_of_NA(params, parameter_index_for_NA_control=(0, 0),
-                                                     arm_index_for_NA=0, parameter_values=x_1_values,
-                                                     t_is_trivial=True, p_is_trivial=True,
+NAs_1, tolerance_matrix_1 = generate_tolerance_of_NA(params, parameter_index_for_NA_control=(0, 0), arm_index_for_NA=0,
+                                                     parameter_values=x_1_values, t_is_trivial=True, p_is_trivial=True,
                                                      return_cavities=False, print_progress=True)
 tolerance_matrix_1 = np.abs(tolerance_matrix_1)
 # %%
@@ -127,7 +125,7 @@ ax.set_ylabel('Tolerance [rad]')
 ax.grid()
 ax.legend()
 plt.tight_layout()
-plt.savefig('figures/NA tolerance/comparison_tilt.svg', dpi=300, bbox_inches='tight')
+plt.savefig('figures/NA-tolerance/comparison_tilt.svg', dpi=300, bbox_inches='tight')
 plt.show()
 # %%
 fig, ax = plt.subplots(figsize=(10, 10))
@@ -143,7 +141,7 @@ ax.set_ylabel('Tolerance [m]')
 ax.grid()
 ax.legend()
 plt.tight_layout()
-plt.savefig('figures/NA tolerance/comparison_lateral.svg', dpi=300, bbox_inches='tight')
+plt.savefig('figures/NA-tolerance/comparison_lateral.svg', dpi=300, bbox_inches='tight')
 plt.show()
 # %%
 fig, ax = plt.subplots(figsize=(10, 10))
@@ -159,7 +157,7 @@ ax.set_ylabel('Tolerance [m]')
 ax.grid()
 ax.legend()
 plt.tight_layout()
-plt.savefig('figures/NA tolerance/comparison_transversal.svg', dpi=300, bbox_inches='tight')
+plt.savefig('figures/NA-tolerance/comparison_transversal.svg', dpi=300, bbox_inches='tight')
 plt.show()
 # %%
 fig, ax = plt.subplots(figsize=(10, 10))
@@ -175,5 +173,5 @@ ax.set_ylabel('Tolerance [m]')
 ax.grid()
 ax.legend()
 plt.tight_layout()
-plt.savefig('figures/NA tolerance/comparison_radius.svg', dpi=300, bbox_inches='tight')
+plt.savefig('figures/NA-tolerance/comparison_radius.svg', dpi=300, bbox_inches='tight')
 plt.show()

@@ -1,0 +1,8 @@
+﻿"T_edge" = "R" * 0.2
+"R" = "gloabl_scale" * 5mm
+"dT_c"= "R" * ( 1 - sqr ( 1 - "h" ^ 2 / "R" ^ 2 ) )
+"h" = 0.55 * "R"
+"gloabl_scale"= 1
+"x_sphere_origin"= "R" - "dT_c" - "T_edge" / 2
+"D1@Sketch1"="h"
+"T_c"= "T_edge" + 2 * "dT_c"

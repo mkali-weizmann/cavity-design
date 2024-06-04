@@ -36,23 +36,23 @@ for w in ['3mm', '4mm', '8mm']:
     cavity.generate_overlaps_graphs(overlaps_series=overlaps_series, tolerance_matrix=tolerance_matrix[:, :],
                                     arm_index_for_NA=2)
     plt.suptitle(title)
-    # plt.savefig(f'figures/NA tolerance/mirror-lens-mirror_high_NA_ratio_smart_choice_tolerance_NA_1_{cavity.arms[0].local_mode_parameters.NA[0]:.2e}_L_1_{np.linalg.norm(params[1, 0] - cavity.surfaces[0].center):.2e} w={w}.svg',
+    # plt.savefig(f'figures/NA-tolerance/mirror-lens-mirror_high_NA_ratio_smart_choice_tolerance_NA_1_{cavity.arms[0].local_mode_parameters.NA[0]:.2e}_L_1_{np.linalg.norm(params[1, 0] - cavity.surfaces[0].center):.2e} w={w}.svg',
     #     dpi=300, bbox_inches='tight')
     plt.show()
 # %% Calculate the minimal thickness of a lens:
 # params = params_dict[f'Sapphire, NA=0.2, L1=0.3, w=4.8mm - High NA axis']
 # params = np.insert(params, -1, 0, axis=1)
-params = np.array([[ 3.0695707324e-01+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  1.5001380651e-01+0.j,  0.0000000000e+00+0.j,
+params = np.array([[1.2912271191e-01+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  6.1129039910e-02+0.j,  0.0000000000e+00+0.j,
          0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  1.0000000000e+00+0.j,  7.5000000000e-08+0.j,  1.0000000000e-06+0.j,
-         1.3100000000e+00+0.j,  0.0000000000e+00+0.j,  1.7000000000e-01+0.j,  0.0000000000e+00+0.j,  9.9989900000e-01+0.j,  1.0000000000e-04+0.j,
+         1.3100000000e+00+0.j,  0.0000000000e+00+0.j,  1.7000000000e-01+0.j,  0.0000000000e+00+0.j,  9.9988900000e-01+0.j,  1.0000000000e-04+0.j,
                       np.nan+0.j,  0.0000000000e+00+0.j],
-       [ 4.0000000000e-03+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+1.j,  1.5166312489e-02+0.j,  1.7600000000e+00+0.j,
-         5.9000000000e-03+0.j,  1.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  5.5000000000e-06+0.j,  1.0000000000e-06+0.j,
-         4.6060000000e+01+0.j,  1.1700000000e-05+0.j,  3.0000000000e-01+0.j,  1.0000000000e-02+0.j,  1.0000000000e-04+0.j,  9.9989900000e-01+0.j,
+       [ 1.7347234760e-18+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+1.j,  9.6753569739e-03+0.j,  1.4550000000e+00+0.j,
+         1.3730000000e-02+0.j,  1.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  4.8000000000e-07+0.j,  1.0000000000e-06+0.j,
+         1.3800000000e+00+0.j,  1.2000000000e-05+0.j,  1.5000000000e-01+0.j,  1.0000000000e-03+0.j,  1.0000000000e-04+0.j,  9.9989900000e-01+0.j,
                       np.nan+0.j,  1.0000000000e+00+0.j],
-       [-1.7378000000e-02+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j, -0.0000000000e+00-1.j,  9.2140077806e-03+0.j,  0.0000000000e+00+0.j,
+       [-2.6865000000e-02+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j, -0.0000000000e+00-1.j,  1.0000007169e-02+0.j,  0.0000000000e+00+0.j,
          0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  1.0000000000e+00+0.j,  7.5000000000e-08+0.j,  1.0000000000e-06+0.j,
-         1.3100000000e+00+0.j,  0.0000000000e+00+0.j,  1.7000000000e-01+0.j,  0.0000000000e+00+0.j,  9.9989900000e-01+0.j,  1.0000000000e-04+0.j,
+         1.3100000000e+00+0.j,  0.0000000000e+00+0.j,  1.7000000000e-01+0.j,  0.0000000000e+00+0.j,  9.9988900000e-01+0.j,  1.0000000000e-04+0.j,
                       np.nan+0.j,  0.0000000000e+00+0.j]])
 lambda_laser = 1064e-9
 names = ['Right Mirror', 'lens', 'Left Mirror']
@@ -65,8 +65,6 @@ R = np.real(params[1, INDICES_DICT['r']])
 spot_size = cavity.arms[0].mode_parameters_on_surface_1.spot_size(cavity.lambda_laser)[0]
 h = 3 * spot_size
 d = R * (1 - np.sqrt(1- h**2 / R**2))
-alpha = np.arcsin(h / R)
-d_alternative = R * (1 - np.cos(alpha))
 print(f"minimal thickness when allowing sharp edges: {2 * d}\nminimal thickness when adding one milimeter of edge thickness: {2 * d + 1e-3}")
 
 

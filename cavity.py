@@ -2128,7 +2128,7 @@ class Cavity:
 
 
         if save_specs_name is not None:
-            whole_df.to_csv(f'data//cavities_specs//specs_{datetime.now().strftime("%Y-%m-%d %H-%M-%S-%f")}_{save_specs_name}.csv')
+            whole_df.to_csv(f'data//cavities-specs//specs_{datetime.now().strftime("%Y-%m-%d %H-%M-%S-%f")}_{save_specs_name}.csv')
 
         if print_specs:
             print(whole_df, end="\n\n")
