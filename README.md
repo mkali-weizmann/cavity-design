@@ -18,3 +18,6 @@ INDICES_DICT = {'x': 0, 'y': 1, 't': 2, 'p': 3, 'r': 4, 'n_1': 5, 'w': 6, 'n_2':
   - Where n_1 is the refractive index of the medium before the ray is crossing the surface, and n_2 is the refractive index of the medium after the ray is crossing the surface.
 
 
+Formatting: ```python -m black -l 120 cavity.py```
+
+

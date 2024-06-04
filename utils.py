@@ -34,6 +34,7 @@ INDICES_DICT_INVERSE = {v: k for k, v in INDICES_DICT.items()}
 # set numpy to raise an error on warnings:
 SURFACE_TYPES_DICT = {'CurvedMirror': 0, 'Thick Lens': 1, 'CurvedRefractiveSurface': 2, 'IdealLens': 3, 'FlatMirror': 4}
 
+
 with open('data/params_dict.pkl', 'rb') as f:
     params_dict = pkl.load(f)
 
