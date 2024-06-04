@@ -2242,32 +2242,38 @@ class Cavity:
     def generate_overlap_series(
         self,
         shifts: Union[np.ndarray, float],  # Float is interpreted as linspace's limits,
-        # np.ndarray means that the i'th j'th element of shifts is the linspace limits of
-        # the i'th j'th parameter.
+        # np.ndarray means that the element_index'th parameter_index'th element of shifts is the linspace limits of
+        # the element_index'th parameter_index'th parameter.
         shift_size: int = 30,
         print_progress: bool = False,
     ) -> np.ndarray:
         overlaps = np.zeros((len(self.params), len(self.perturbable_params_indices), shift_size))
-        for i in range(len(self.params)):  # Iterate over optical elements
+        for element_index in range(len(self.params)):  # Iterate over optical elements
             if print_progress:
-                print("  ", i)
-            for j in range(
+                print("  ", element_index)
+            for parameter_index in range(
                 len(self.perturbable_params_indices)
             ):  # iterate over element's features (radius, position, angle, etc.)
                 if print_progress:
-                    print("    ", j)
+                    print("    ", parameter_index)
                 if isinstance(shifts, (float, int)):
                     shift_series = np.linspace(-shifts, shifts, shift_size)
                 else:
-                    if np.isnan(shifts[i, j]):
+                    if np.isnan(shifts[element_index, parameter_index]):
                         shift_series = np.linspace(-1e-10, 1e-10, shift_size)
                     else:
-                        shift_series = np.linspace(-shifts[i, j], shifts[i, j], shift_size)
+                        shift_series = np.linspace(
+                            -shifts[element_index, parameter_index], shifts[element_index, parameter_index], shift_size
+                        )
                 # The condition inside is for the case it is a mirror and the parameter is n, and then we don't want
                 # to draw it.
-                if not (j == INDICES_DICT["n_inside_or_after"] and np.isnan(shifts[i, j])):
-                    overlaps[i, j, :], _ = self.calculated_shifted_cavity_overlap_integral(
-                        parameter_index=(i, self.perturbable_params_indices[j]), shift=shift_series
+                if not (
+                    parameter_index == INDICES_DICT["n_inside_or_after"]
+                    and np.isnan(shifts[element_index, parameter_index])
+                ):
+                    overlaps[element_index, parameter_index, :], _ = self.calculated_shifted_cavity_overlap_integral(
+                        parameter_index=(element_index, self.perturbable_params_indices[parameter_index]),
+                        shift=shift_series,
                     )
         return overlaps
 
