@@ -27,6 +27,10 @@ overlaps_series = cavity.generate_overlap_series(shifts=2 * np.abs(tolerance_mat
 # %%
 cavity.generate_overlaps_graphs(overlaps_series=overlaps_series, tolerance_matrix=tolerance_matrix[:, :],
                                 arm_index_for_NA=2)
-# plt.savefig(f'figures/NA-tolerance/mirror-lens-mirror_high_NA_ratio_smart_choice_tolerance_NA_1_{cavity.arms[0].local_mode_parameters.NA[0]:.2e}_L_1_{np.linalg.norm(params[1, 0] - cavity.surfaces[0].center):.2e} w={w}.svg',
-#     dpi=300, bbox_inches='tight')
+plt.savefig(f'figures/NA-tolerance/mirror-lens-mirror_high_NA_ratio_smart_choice_tolerance_NA_1_{cavity.arms[0].local_mode_parameters.NA[0]:.2e}_L_1_{np.linalg.norm(params[1, 0] - cavity.surfaces[0].center):.2e} w={w}.svg',
+    dpi=300, bbox_inches='tight')
 plt.show()
+# %%
+cavity.specs(print_specs=True)
+
+

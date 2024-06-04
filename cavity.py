@@ -1463,7 +1463,9 @@ class Arm:
                     angle_side = "_inside"
             else:
                 angle_side = ""
-            spot_size_on_surface = local_mode_parameters.spot_size
+            if local_mode_parameters.spot_size[0] != local_mode_parameters.spot_size[1]:
+                warnings.warn("Not yep implemented for astigmatic systems! using the spot size for one arbitrary axis")
+            spot_size_on_surface = local_mode_parameters.spot_size[0]
 
             ray_inclination = (
                 np.arctan(self.mode_parameters.w_0[0] / self.mode_parameters.z_R[0])
@@ -1476,8 +1478,8 @@ class Arm:
             surface_inclination = np.arcsin(spot_size_on_surface / surface.radius) * (-curvature_sign)
             # (np.arcsin((surface.radius + local_mode_parameters.z_minus_z_0[0]) * ray_inclination / surface.radius) - ray_inclination) * (-curvature_sign) * (1-2*i)
             # angle of incidence between the ray and the surface:
-            angle_of_incidenct = np.abs(ray_inclination - surface_inclination)
-            angle_of_incidenct_deg = np.degrees(angle_of_incidenct)
+            angle_of_incidence = np.abs(ray_inclination - surface_inclination)
+            angle_of_incidence_deg = np.degrees(angle_of_incidence)
 
             df = pd.DataFrame(
                 {
@@ -1492,7 +1494,7 @@ class Arm:
                         spot_size_on_surface * 2,
                         spot_size_on_surface * 2 * 3,
                         surface.material_properties.temperature - ROOM_TEMPERATURE,
-                        angle_of_incidenct_deg,
+                        angle_of_incidence_deg,
                     ],
                 },
             )
@@ -1608,7 +1610,7 @@ class Cavity:
 
     @property
     def id(self):
-        hashed_str = int(md5(self.to_params).hexdigest()[:5], 16)
+        hashed_str = int(md5(self.to_array).hexdigest()[:5], 16)
         return hashed_str
 
     @property
@@ -2420,7 +2422,9 @@ class Cavity:
         print_specs: bool = False,
         contraced: bool = True,
     ):
-        df_elements = pd.DataFrame(self.to_array.T, columns=self.names, index=list(PRETTY_INDICES_NAMES.values()))
+        elements_array = self.to_array.T.copy()
+        elements_array = np.real(elements_array) + np.pi * np.imag(elements_array)
+        df_elements = pd.DataFrame(elements_array, columns=self.names, index=list(PRETTY_INDICES_NAMES.values()))
 
         df_elements_stacked = stack_df_for_print(df_elements)
         NAs_list = []
