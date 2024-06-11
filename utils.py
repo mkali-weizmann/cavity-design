@@ -44,6 +44,7 @@ ROOM_TEMPERATURE = 293  # [K]
 
 
 def pretty_print_array(array: np.ndarray):
+    # Prints an array in a way that can be copy-pasted into the code.
     print(f"np.{array=}".replace('array=', "").replace("nan", "np.nan").replace("\n", "").replace("],", "],\n").replace(",        ", ", ").replace(",      ", ", ").replace("       [", "          ["))
 
 
