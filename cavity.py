@@ -3642,7 +3642,7 @@ def plot_mirror_lens_mirror_cavity_analysis(
         ax[1].set_xlim(ax[0].get_xlim())
         ax[1].set_ylim(ax[0].get_ylim())
         ax[1].set_title(
-            f"unheated_cavity, short arm NA={unheated_cavity.arms[2].mode_parameters.NA[0]:.2e}, Left spot size = {2 * unheated_cavity.arms[2].mode_parameters_on_surface_1.spot_size[0]:.2e}"
+            f"unheated_cavity, short arm NA={unheated_cavity.arms[0].mode_parameters.NA[0]:.2e}, Left spot size = {2 * unheated_cavity.arms[0].mode_parameters_on_surface_1.spot_size[0]:.2e}"
         )
     plt.subplots_adjust(hspace=0.35)
     fig.tight_layout()
