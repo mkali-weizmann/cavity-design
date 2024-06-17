@@ -3466,6 +3466,7 @@ def mirror_lens_mirror_cavity_general_generator(
         surface_right = find_equal_angles_surface(
             mode_before_lens=mode_left, surface_0=surface_left, T_edge=T_edge, h=h, lambda_laser=lambda_laser
         )
+        T_c = np.linalg.norm(surface_right.center - surface_left.center)
     else:
         if set_h_instead_of_w:
             # In case the user wants to set the height and the edge thickness of the lens instead of the thickness, then
