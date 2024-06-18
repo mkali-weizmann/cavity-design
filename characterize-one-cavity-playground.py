@@ -1,14 +1,19 @@
 import numpy as np
-
+import matplotlib
 from cavity import *
+
+lambda_laser = 1064e-9
+# params = np.array([[-5.00000000e-03+0.j,  0.00000000e+00+0.j,  0.00000000e+00+0.j, -0.00000000e+00-1.j,  5.00006326e-03+0.j, np.nan+0.j,  0.00000000e+00+0.j,  0.00000000e+00+0.j,  0.00000000e+00+0.j,  0.00000000e+00+0.j,  1.00000000e+00+0.j, np.nan+0.j,  7.50000000e-08+0.j,  1.00000000e-06+0.j,  1.31000000e+00+0.j,        np.nan+0.j,  1.70000000e-01+0.j,  0.00000000e+00+0.j,  9.99889000e-01+0.j,  1.00000000e-04+0.j, np.nan+0.j,  0.00000000e+00+0.j],
+#           [ 5.00000000e-03+0.j,  0.00000000e+00+0.j,  0.00000000e+00+0.j,  0.00000000e+00+1.j,  2.28050832e-02+0.j, np.nan+0.j,  1.00000000e+00+0.j,  0.00000000e+00+0.j,  1.76000000e+00+0.j,  0.00000000e+00+0.j, -1.00000000e+00+0.j,  1.76000000e+00+0.j,  5.50000000e-06+0.j,  1.00000000e-06+0.j,  4.60600000e+01+0.j,  1.17000000e-05+0.j,  3.00000000e-01+0.j,  1.00000000e-02+0.j,  1.00000000e-04+0.j,  9.99899000e-01+0.j, np.nan+0.j,  2.00000000e+00+0.j],
+#           [ 7.68128933e-03+0.j,  0.00000000e+00+0.j,  0.00000000e+00+0.j,  0.00000000e+00+0.j,  6.23756826e-03+0.j, np.nan+0.j,  1.76000000e+00+0.j,  0.00000000e+00+0.j,  1.00000000e+00+0.j,  0.00000000e+00+0.j,  1.00000000e+00+0.j,  1.76000000e+00+0.j,        np.nan+0.j, np.nan+0.j, np.nan+0.j,        np.nan+0.j, np.nan+0.j,  0.00000000e+00+0.j,  0.00000000e+00+0.j,  0.00000000e+00+0.j, np.nan+0.j,  2.00000000e+00+0.j],
+#           [ 3.07681289e-01+0.j,  0.00000000e+00+0.j,  0.00000000e+00+0.j,  0.00000000e+00+0.j,  1.50391711e-01+0.j, np.nan+0.j,  0.00000000e+00+0.j,  0.00000000e+00+0.j,  0.00000000e+00+0.j,  0.00000000e+00+0.j,  1.00000000e+00+0.j, np.nan+0.j,  7.50000000e-08+0.j,  1.00000000e-06+0.j,  1.31000000e+00+0.j,        np.nan+0.j,  1.70000000e-01+0.j,  0.00000000e+00+0.j,  9.99889000e-01+0.j,  1.00000000e-04+0.j, np.nan+0.j,  0.00000000e+00+0.j]])
 params = np.array([[-5.00000000e-03+0.j,  0.00000000e+00+0.j,  0.00000000e+00+0.j, -0.00000000e+00-1.j,  5.00006326e-03+0.j, np.nan+0.j,  0.00000000e+00+0.j,  0.00000000e+00+0.j,  0.00000000e+00+0.j,  0.00000000e+00+0.j,  1.00000000e+00+0.j, np.nan+0.j,  7.50000000e-08+0.j,  1.00000000e-06+0.j,  1.31000000e+00+0.j,        np.nan+0.j,  1.70000000e-01+0.j,  0.00000000e+00+0.j,  9.99889000e-01+0.j,  1.00000000e-04+0.j, np.nan+0.j,  0.00000000e+00+0.j],
           [ 5.00000000e-03+0.j,  0.00000000e+00+0.j,  0.00000000e+00+0.j,  0.00000000e+00+1.j,  2.28050832e-02+0.j, np.nan+0.j,  1.00000000e+00+0.j,  0.00000000e+00+0.j,  1.76000000e+00+0.j,  0.00000000e+00+0.j, -1.00000000e+00+0.j,  1.76000000e+00+0.j,  5.50000000e-06+0.j,  1.00000000e-06+0.j,  4.60600000e+01+0.j,  1.17000000e-05+0.j,  3.00000000e-01+0.j,  1.00000000e-02+0.j,  1.00000000e-04+0.j,  9.99899000e-01+0.j, np.nan+0.j,  2.00000000e+00+0.j],
           [ 7.68128933e-03+0.j,  0.00000000e+00+0.j,  0.00000000e+00+0.j,  0.00000000e+00+0.j,  6.23756826e-03+0.j, np.nan+0.j,  1.76000000e+00+0.j,  0.00000000e+00+0.j,  1.00000000e+00+0.j,  0.00000000e+00+0.j,  1.00000000e+00+0.j,  1.76000000e+00+0.j,        np.nan+0.j, np.nan+0.j, np.nan+0.j,        np.nan+0.j, np.nan+0.j,  0.00000000e+00+0.j,  0.00000000e+00+0.j,  0.00000000e+00+0.j, np.nan+0.j,  2.00000000e+00+0.j],
           [ 3.07681289e-01+0.j,  0.00000000e+00+0.j,  0.00000000e+00+0.j,  0.00000000e+00+0.j,  1.50391711e-01+0.j, np.nan+0.j,  0.00000000e+00+0.j,  0.00000000e+00+0.j,  0.00000000e+00+0.j,  0.00000000e+00+0.j,  1.00000000e+00+0.j, np.nan+0.j,  7.50000000e-08+0.j,  1.00000000e-06+0.j,  1.31000000e+00+0.j,        np.nan+0.j,  1.70000000e-01+0.j,  0.00000000e+00+0.j,  9.99889000e-01+0.j,  1.00000000e-04+0.j, np.nan+0.j,  0.00000000e+00+0.j]])
-
 cavity = Cavity.from_params(params=params,
                             standing_wave=True,
-                            lambda_laser=1064e-9,
+                            lambda_laser=lambda_laser,
                             names=['left mirror', 'lens-left', 'lens_right',  'right mirror'],
                             set_central_line=True,
                             set_mode_parameters=True,
@@ -18,20 +23,22 @@ cavity = Cavity.from_params(params=params,
                             power=2e4)
 plot_mirror_lens_mirror_cavity_analysis(cavity)
 plt.show()
+
+
+
 # %%
-# tolerance_matrix = cavity.generate_tolerance_matrix(print_progress=False)
-#
+tolerance_matrix = cavity.generate_tolerance_matrix(print_progress=False)
+
 # # %%
-# overlaps_series = cavity.generate_overlap_series(shifts=2 * np.abs(tolerance_matrix[:, :]),
-#                                                  shift_size=30,
-#                                                  print_progress=False)
-#
+overlaps_series = cavity.generate_overlap_series(shifts=2 * np.abs(tolerance_matrix[:, :]),
+                                                 shift_size=30,
+                                                 print_progress=False)
 # # %%
-# cavity.generate_overlaps_graphs(overlaps_series=overlaps_series, tolerance_matrix=tolerance_matrix[:, :],
-#                                 arm_index_for_NA=2)
+cavity.generate_overlaps_graphs(overlaps_series=overlaps_series, tolerance_matrix=tolerance_matrix[:, :],
+                                arm_index_for_NA=2)
 # # plt.savefig(f'figures/NA-tolerance/mirror-lens-mirror_high_NA_ratio_smart_choice_tolerance_NA_1_{cavity.arms[0].local_mode_parameters.NA[0]:.2e}_L_1_{np.linalg.norm(params[1, 0] - cavity.surfaces[0].center):.2e} w={w}.svg',
 # #     dpi=300, bbox_inches='tight')
-# plt.show()
+# # plt.show()
 # %%
 cavity.specs(print_specs=True, contracted=False)
 
