@@ -66,10 +66,7 @@ PHYSICAL_SIZES_DICT = {
         kappa_conductivity=1.31,
         nu_poisson_ratio=0.17,
         beta_surface_absorption=1e-6,  # DUMMY
-        intensity_reflectivity=1
-        - 100e-6
-        - 1e-6
-        - 10e-6,  # All - transmittance - absorption - scattering
+        intensity_reflectivity=1 - 100e-6 - 1e-6 - 10e-6,  # All - transmittance - absorption - scattering
         intensity_transmittance=100e-6,  # DUMMY - for mirrors
     ),
     "thermal_properties_fused_silica": MaterialProperties(
@@ -91,9 +88,7 @@ PHYSICAL_SIZES_DICT = {
         dn_dT=9e-6,  # https://pubmed.ncbi.nlm.nih.gov/18319922/
         nu_poisson_ratio=0.25,  #  https://www.crystran.co.uk/userfiles/files/yttrium-aluminium-garnet-yag-data-sheet.pdf, https://www.korth.de/en/materials/detail/YAG
     ),
-    "thermal_properties_bk7": MaterialProperties(
-        alpha_expansion=7.1e-6, kappa_conductivity=1.114
-    ),
+    "thermal_properties_bk7": MaterialProperties(alpha_expansion=7.1e-6, kappa_conductivity=1.114),
     "c_mirror_radius_expansion": 1,  # DUMMY temp - should be 4 according to Lidan's simulation
     # But we take it to be 1 as the other values are currently 1.
     "c_lens_focal_length_expansion": 1,  # DUMMY
@@ -111,18 +106,11 @@ def convert_material_to_mirror_or_lens(
     # The defaults are like so with the nvl because there are two defaults - for lenses and for mirrors.
     if convert_to_type.lower() == "lens":
         intensity_reflectivity = nvl(intensity_reflectivity, 100e-6)
-        intensity_transmittance = (
-            1 - material_properties.beta_surface_absorption - intensity_reflectivity
-        )
+        intensity_transmittance = 1 - material_properties.beta_surface_absorption - intensity_reflectivity
     elif convert_to_type.lower() == "mirror":
         scattering = nvl(scattering, 10e-6)
         intensity_transmittance = nvl(intensity_transmittance, 100e-6)
-        intensity_reflectivity = (
-            1
-            - scattering
-            - material_properties.beta_surface_absorption
-            - intensity_transmittance
-        )
+        intensity_reflectivity = 1 - scattering - material_properties.beta_surface_absorption - intensity_transmittance
     else:
         raise ValueError("convert_to_type argument must be either 'lens' or 'mirror'")
 
@@ -144,8 +132,12 @@ class OpticalElementParams:
     r_2: float  # nan if the optical object has only one face, or if the two faces are fixed to the same radius of curvature.
     curvature_sign: int  # 1 if the surface is convex, -1 if it is concave  # ATTENTION: ONCE CONCAVE ELEMENTS WILL BE USED, THERE WILL HAVE TO BE TWO CURVATURE SIGNS
     T_c: float  # center thickness of the element
-    n_inside_or_after: float  # refractive index inside the optical object (for a thick lens) or after it (for a refractive surface)
-    n_outside_or_before: float  # refractive index outside the optical object (for a thick lens) or before it (for a refractive surface)
+    n_inside_or_after: (
+        float  # refractive index inside the optical object (for a thick lens) or after it (for a refractive surface)
+    )
+    n_outside_or_before: (
+        float  # refractive index outside the optical object (for a thick lens) or before it (for a refractive surface)
+    )
     material_properties: MaterialProperties
 
     # def __post_init__(self):
@@ -288,13 +280,8 @@ class LocalModeParameters:
     def w_0(self):
         return w_0_of_z_R(z_R=self.z_R, lambda_0_laser=self.lambda_0_laser)
 
-    def to_mode_parameters(
-        self, location_of_local_mode_parameter: np.ndarray, k_vector: np.ndarray
-    ):
-        center = (
-            location_of_local_mode_parameter
-            - self.z_minus_z_0[:, np.newaxis] * k_vector
-        )
+    def to_mode_parameters(self, location_of_local_mode_parameter: np.ndarray, k_vector: np.ndarray):
+        center = location_of_local_mode_parameter - self.z_minus_z_0[:, np.newaxis] * k_vector
         z_hat = np.array([0, 0, 1])
         if np.linalg.norm(k_vector - z_hat) < 1e-10:
             z_hat = np.array([0, 1, 0])
@@ -315,9 +302,7 @@ class LocalModeParameters:
         if np.any(self.z_R == 0):
             w_z = np.array([np.nan, np.nan])
         else:
-            w_z = spot_size(
-                z=self.z_minus_z_0, z_R=self.z_R, lambda_0_laser=self.lambda_0_laser
-            )
+            w_z = spot_size(z=self.z_minus_z_0, z_R=self.z_R, lambda_0_laser=self.lambda_0_laser)
         return w_z
 
 
@@ -351,9 +336,7 @@ class ModeParameters:
                 return np.sqrt(self.lambda_0_laser / (np.pi * self.z_R))
 
     def local_mode_parameters(self, z_minus_z_0):
-        return LocalModeParameters(
-            z_minus_z_0=z_minus_z_0, z_R=self.z_R, lambda_0_laser=self.lambda_0_laser
-        )
+        return LocalModeParameters(z_minus_z_0=z_minus_z_0, z_R=self.z_R, lambda_0_laser=self.lambda_0_laser)
 
 
 def decompose_ABCD_matrix(
@@ -378,9 +361,7 @@ def propagate_local_mode_parameter_through_ABCD(
     A, B, C, D = decompose_ABCD_matrix(ABCD)
     # q_new = n_2 * (A * local_mode_parameters.q / n_1 + B) / (C * local_mode_parameters.q / n_1 + D)
     q_new = (A * local_mode_parameters.q + B) / (C * local_mode_parameters.q + D)
-    return LocalModeParameters(
-        q=q_new, lambda_0_laser=local_mode_parameters.lambda_0_laser
-    )
+    return LocalModeParameters(q=q_new, lambda_0_laser=local_mode_parameters.lambda_0_laser)
 
 
 def local_mode_parameters_of_round_trip_ABCD(
@@ -388,9 +369,7 @@ def local_mode_parameters_of_round_trip_ABCD(
 ) -> LocalModeParameters:
     A, B, C, D = decompose_ABCD_matrix(round_trip_ABCD)
     q_z = (A - D + np.sqrt(A**2 + 2 * C * B + D**2 - 2 + 0j)) / (2 * C)
-    q_z = np.real(q_z) + 1j * np.abs(
-        np.imag(q_z)
-    )  # ATTENTION - make sure this line is justified.
+    q_z = np.real(q_z) + 1j * np.abs(np.imag(q_z))  # ATTENTION - make sure this line is justified.
 
     return LocalModeParameters(
         q=q_z, lambda_0_laser=lambda_0_laser
@@ -412,9 +391,7 @@ class Ray:
 
         self.origin = origin  # m_rays | 3
         self.k_vector = normalize_vector(k_vector)  # m_rays | 3
-        if (
-            length is not None and isinstance(length, float) and origin.ndim > 1
-        ):  # If there is one length for many rays
+        if length is not None and isinstance(length, float) and origin.ndim > 1:  # If there is one length for many rays
             length = np.ones(origin.shape[0]) * length
         self.length = length  # m_rays or None
 
@@ -442,18 +419,15 @@ class Ray:
                 ax.plot(
                     [
                         ray_origin_reshaped[i, 0],
-                        ray_origin_reshaped[i, 0]
-                        + lengths_reshaped[i] * ray_k_vector_reshaped[i, 0],
+                        ray_origin_reshaped[i, 0] + lengths_reshaped[i] * ray_k_vector_reshaped[i, 0],
                     ],
                     [
                         ray_origin_reshaped[i, 1],
-                        ray_origin_reshaped[i, 1]
-                        + lengths_reshaped[i] * ray_k_vector_reshaped[i, 1],
+                        ray_origin_reshaped[i, 1] + lengths_reshaped[i] * ray_k_vector_reshaped[i, 1],
                     ],
                     [
                         ray_origin_reshaped[i, 2],
-                        ray_origin_reshaped[i, 2]
-                        + lengths_reshaped[i] * ray_k_vector_reshaped[i, 2],
+                        ray_origin_reshaped[i, 2] + lengths_reshaped[i] * ray_k_vector_reshaped[i, 2],
                     ],
                     **kwargs,
                 )
@@ -465,13 +439,11 @@ class Ray:
                 ax.plot(
                     [
                         ray_origin_reshaped[i, x_index],
-                        ray_origin_reshaped[i, x_index]
-                        + lengths_reshaped[i] * ray_k_vector_reshaped[i, x_index],
+                        ray_origin_reshaped[i, x_index] + lengths_reshaped[i] * ray_k_vector_reshaped[i, x_index],
                     ],
                     [
                         ray_origin_reshaped[i, y_index],
-                        ray_origin_reshaped[i, y_index]
-                        + lengths_reshaped[i] * ray_k_vector_reshaped[i, y_index],
+                        ray_origin_reshaped[i, y_index] + lengths_reshaped[i] * ray_k_vector_reshaped[i, y_index],
                     ],
                     **kwargs,
                 )
@@ -506,9 +478,7 @@ class Surface:
     def find_intersection_with_ray(self, ray: Ray) -> np.ndarray:
         raise NotImplementedError
 
-    def parameterization(
-        self, t: Union[np.ndarray, float], p: Union[np.ndarray, float]
-    ) -> np.ndarray:
+    def parameterization(self, t: Union[np.ndarray, float], p: Union[np.ndarray, float]) -> np.ndarray:
         # Take parameters and return points on the surface
         raise NotImplementedError
 
@@ -603,9 +573,7 @@ class Surface:
         #             [self.center[1], center_plus_normal[1]], 'g-')
         return ax
 
-    def generate_ray_from_parameters(
-        self, t: float, p: float, theta: float, phi: float
-    ) -> Ray:
+    def generate_ray_from_parameters(self, t: float, p: float, theta: float, phi: float) -> Ray:
         k_vector = unit_vector_of_angles(theta, phi)
         origin = self.parameterization(t, p)
         return Ray(origin=origin, k_vector=k_vector)
@@ -631,9 +599,7 @@ class Surface:
             )
         elif p.surface_type == SURFACE_TYPES_DICT["Thick Lens"]:  # Thick lens
             surface = generate_lens_from_params(p, name=name)
-        elif (
-            p.surface_type == SURFACE_TYPES_DICT["CurvedRefractiveSurface"]
-        ):  # Refractive surface (one side of a lens)
+        elif p.surface_type == SURFACE_TYPES_DICT["CurvedRefractiveSurface"]:  # Refractive surface (one side of a lens)
             surface = CurvedRefractiveSurface(
                 radius=p.r_1,
                 outwards_normal=outwards_normal,
@@ -738,9 +704,7 @@ class PhysicalSurface(Surface):
     def center(self):
         raise NotImplementedError
 
-    def parameterization(
-        self, t: Union[np.ndarray, float], p: Union[np.ndarray, float]
-    ) -> np.ndarray:
+    def parameterization(self, t: Union[np.ndarray, float], p: Union[np.ndarray, float]) -> np.ndarray:
         raise NotImplementedError
 
     def get_parameterization(self, points: np.ndarray):
@@ -755,9 +719,7 @@ class PhysicalSurface(Surface):
     def ABCD_matrix(self, cos_theta_incoming: Optional[float] = None) -> np.ndarray:
         raise NotImplementedError
 
-    def thermal_transformation(
-        self, P_laser_power: float, w_spot_size: float, **kwargs
-    ):
+    def thermal_transformation(self, P_laser_power: float, w_spot_size: float, **kwargs):
         raise NotImplementedError
 
 
@@ -770,15 +732,11 @@ class FlatSurface(Surface):
         name: Optional[str] = None,
         **kwargs,
     ):
-        super().__init__(
-            outwards_normal=outwards_normal, name=name, radius=np.inf, **kwargs
-        )
+        super().__init__(outwards_normal=outwards_normal, name=name, radius=np.inf, **kwargs)
         if distance_from_origin is None and center is None:
             raise ValueError("Either distance_from_origin or center must be specified")
         if distance_from_origin is not None and center is not None:
-            raise ValueError(
-                "Only one of distance_from_origin or center must be specified"
-            )
+            raise ValueError("Only one of distance_from_origin or center must be specified")
         if distance_from_origin is not None:
             self.distance_from_origin = distance_from_origin
             self.center_of_mirror_private = self.outwards_normal * distance_from_origin
@@ -801,17 +759,13 @@ class FlatSurface(Surface):
         # The reason for this property is that in other PhysicalSurface classes it is a property.
         return self.center_of_mirror_private
 
-    def parameterization(
-        self, t: Union[np.ndarray, float], p: Union[np.ndarray, float]
-    ):
+    def parameterization(self, t: Union[np.ndarray, float], p: Union[np.ndarray, float]):
         pseudo_z, pseudo_y = self.spanning_vectors()
         if isinstance(t, (float, int)):
             t = np.array(t)
         if isinstance(p, (float, int)):
             p = np.array(p)
-        points = (
-            self.center + t[..., np.newaxis] * pseudo_z + p[..., np.newaxis] * pseudo_y
-        )
+        points = self.center + t[..., np.newaxis] * pseudo_z + p[..., np.newaxis] * pseudo_y
         return points
 
     def get_parameterization(self, points: np.ndarray):
@@ -858,9 +812,7 @@ class FlatMirror(FlatSurface, PhysicalSurface):
     def get_parameterization(self, points: np.ndarray):
         return super().get_parameterization(points)
 
-    def parameterization(
-        self, t: Union[np.ndarray, float], p: Union[np.ndarray, float]
-    ) -> np.ndarray:
+    def parameterization(self, t: Union[np.ndarray, float], p: Union[np.ndarray, float]) -> np.ndarray:
         return super().parameterization(t, p)
 
     @property
@@ -926,9 +878,7 @@ class IdealLens(FlatSurface, PhysicalSurface):
     def get_parameterization(self, points: np.ndarray):
         return super().get_parameterization(points)
 
-    def parameterization(
-        self, t: Union[np.ndarray, float], p: Union[np.ndarray, float]
-    ) -> np.ndarray:
+    def parameterization(self, t: Union[np.ndarray, float], p: Union[np.ndarray, float]) -> np.ndarray:
         return super().parameterization(t, p)
 
     @property
@@ -944,18 +894,16 @@ class IdealLens(FlatSurface, PhysicalSurface):
         pseudo_z, pseudo_y = self.spanning_vectors()
         t, p = self.get_parameterization(intersection_point)
         t_projection, p_projection = ray.k_vector @ pseudo_z, ray.k_vector @ pseudo_y
-        theta, phi = np.pi / 2 - np.arccos(t_projection), np.pi / 2 - np.arccos(
-            p_projection
-        )
+        theta, phi = np.pi / 2 - np.arccos(t_projection), np.pi / 2 - np.arccos(p_projection)
         input_vector = np.array([t, theta, p, phi])
         if len(input_vector.shape) > 1:
             input_vector = np.swapaxes(input_vector, 0, 1)
         output_vector = self.ABCD_matrix(cos_theta_incoming=0) @ input_vector
         if len(input_vector.shape) > 1:
             output_vector = np.swapaxes(output_vector, 0, 1)
-        t_projection_out, p_projection_out = np.cos(
-            np.pi / 2 - output_vector[1, ...]
-        ), np.cos(np.pi / 2 - output_vector[3, ...])
+        t_projection_out, p_projection_out = np.cos(np.pi / 2 - output_vector[1, ...]), np.cos(
+            np.pi / 2 - output_vector[3, ...]
+        )
         # ABCD_MATRIX METHOD
         # Here I assume all rays come from the same direction to the lens
         if ray.k_vector.reshape(-1)[0:3] @ self.outwards_normal > 0:
@@ -964,9 +912,7 @@ class IdealLens(FlatSurface, PhysicalSurface):
             forwards_normal = -self.outwards_normal
         component_t = np.multiply.outer(t_projection_out, pseudo_z)
         component_p = np.multiply.outer(p_projection_out, pseudo_y)
-        component_n = np.multiply.outer(
-            (1 - t_projection_out**2 - p_projection_out**2) ** 0.5, forwards_normal
-        )
+        component_n = np.multiply.outer((1 - t_projection_out**2 - p_projection_out**2) ** 0.5, forwards_normal)
         output_direction_vector = component_t + component_p + component_n
 
         return output_direction_vector
@@ -996,9 +942,7 @@ class CurvedSurface(Surface):
         self,
         radius: float,
         outwards_normal: np.ndarray,  # Pointing from the origin of the sphere to the mirror's center.
-        center: Optional[
-            np.ndarray
-        ] = None,  # Not the center of the sphere but the center of
+        center: Optional[np.ndarray] = None,  # Not the center of the sphere but the center of
         # the plate.
         origin: Optional[np.ndarray] = None,  # The center of the sphere.
         curvature_sign: int = 1,
@@ -1008,9 +952,7 @@ class CurvedSurface(Surface):
         name: Optional[str] = None,
         **kwargs,
     ):
-        super().__init__(
-            outwards_normal=outwards_normal, name=name, radius=radius, **kwargs
-        )
+        super().__init__(outwards_normal=outwards_normal, name=name, radius=radius, **kwargs)
         self.curvature_sign = curvature_sign
         if origin is None and center is None:
             raise ValueError("Either origin or center must be provided.")
@@ -1034,11 +976,7 @@ class CurvedSurface(Surface):
             + self.curvature_sign
             * np.sqrt(
                 -4
-                * (
-                    ray.k_vector[..., 0] ** 2
-                    + ray.k_vector[..., 1] ** 2
-                    + ray.k_vector[..., 2] ** 2
-                )
+                * (ray.k_vector[..., 0] ** 2 + ray.k_vector[..., 1] ** 2 + ray.k_vector[..., 2] ** 2)
                 * (
                     -self.radius**2
                     + (ray.origin[..., 0] - self.origin[0]) ** 2
@@ -1054,25 +992,17 @@ class CurvedSurface(Surface):
                 ** 2
             )
             / 2
-        ) / (
-            ray.k_vector[..., 0] ** 2
-            + ray.k_vector[..., 1] ** 2
-            + ray.k_vector[..., 2] ** 2
-        )
+        ) / (ray.k_vector[..., 0] ** 2 + ray.k_vector[..., 1] ** 2 + ray.k_vector[..., 2] ** 2)
         ray.length = l
         return ray.parameterization(l)
 
     def parameterization(
         self,
-        t: Union[
-            np.ndarray, float
-        ],  # the length of arc to travel on the sphere from the center
+        t: Union[np.ndarray, float],  # the length of arc to travel on the sphere from the center
         # of the mirror to the point of interest, in the direction "pseudo_z". pseudo_z is
         # described in the get_spanning_vectors method. it is analogous to theta / R in the
         # classical parameterization.
-        p: Union[
-            np.ndarray, float
-        ],  # The same as t but in the direction of pseudo_y. It is analogous
+        p: Union[np.ndarray, float],  # The same as t but in the direction of pseudo_y. It is analogous
         # to phi / R in the classical parameterization.
     ) -> np.ndarray:
         # This parameterization treats the sphere as if as the center of the mirror was on the x-axis.
@@ -1082,9 +1012,7 @@ class CurvedSurface(Surface):
         # Notice how the order of rotations matters. First we rotate around the z axis, then around the y-axis.
         # Doing it the other way around would give parameterization that is not aligned with the conventional theta, phi
         # parameterization. This is important for the get_parameterization method.
-        rotation_matrix = rotation_matrix_around_n(
-            pseudo_y, -t / self.radius
-        ) @ rotation_matrix_around_n(
+        rotation_matrix = rotation_matrix_around_n(pseudo_y, -t / self.radius) @ rotation_matrix_around_n(
             pseudo_z, p / self.radius
         )  # The minus sign is because of the
         # orientation of the pseudo_y axis.
@@ -1095,12 +1023,7 @@ class CurvedSurface(Surface):
     def get_parameterization(self, points: np.ndarray):
         pseudo_y, pseudo_z = self.get_spanning_vectors()
         normalized_points = (points - self.origin) / self.radius
-        p = (
-            np.arctan2(
-                normalized_points @ pseudo_y, normalized_points @ self.outwards_normal
-            )
-            * self.radius
-        )
+        p = np.arctan2(normalized_points @ pseudo_y, normalized_points @ self.outwards_normal) * self.radius
         # Notice that t is like theta but instead of ranging in [0, pi] it ranges in [-pi/2, pi/2].
         t = np.arcsin(np.clip(normalized_points @ pseudo_z, -1, 1)) * self.radius
         return t, p
@@ -1113,9 +1036,7 @@ class CurvedSurface(Surface):
         # For the case of the sphere with normal on the x-axis, those will be the y and z axis.
         # For the case of the sphere with normal on the y-axis, those will be the x and z axis.
         pseudo_y = np.cross(np.array([0, 0, 1]), self.inwards_normal)
-        pseudo_z = np.cross(
-            self.inwards_normal, pseudo_y
-        )  # Should be approximately equal to \hat{z}, and exactly
+        pseudo_z = np.cross(self.inwards_normal, pseudo_y)  # Should be approximately equal to \hat{z}, and exactly
         # equal if the outwards_normal is in the x-y plane.
         return pseudo_y, pseudo_z
 
@@ -1124,9 +1045,7 @@ class CurvedSurface(Surface):
         reflected_direction_vector = self.reflect_direction(ray, intersection_point)
         return Ray(intersection_point, reflected_direction_vector)
 
-    def reflect_direction(
-        self, ray: Ray, intersection_point: Optional[np.ndarray] = None
-    ) -> np.ndarray:
+    def reflect_direction(self, ray: Ray, intersection_point: Optional[np.ndarray] = None) -> np.ndarray:
         raise NotImplementedError
 
     def plot(
@@ -1147,9 +1066,7 @@ class CurvedMirror(CurvedSurface, PhysicalSurface):
         self,
         radius: float,
         outwards_normal: np.ndarray,  # Pointing from the origin of the sphere to the mirror's center.
-        center: Optional[
-            np.ndarray
-        ] = None,  # Not the center of the sphere but the center of
+        center: Optional[np.ndarray] = None,  # Not the center of the sphere but the center of
         # the plate, where the beam should hit.
         origin: Optional[np.ndarray] = None,  # The center of the sphere.
         curvature_sign: int = 1,
@@ -1167,20 +1084,14 @@ class CurvedMirror(CurvedSurface, PhysicalSurface):
             curvature_sign=curvature_sign,
         )
 
-    def reflect_direction(
-        self, ray: Ray, intersection_point: Optional[np.ndarray] = None
-    ) -> np.ndarray:
+    def reflect_direction(self, ray: Ray, intersection_point: Optional[np.ndarray] = None) -> np.ndarray:
         # Notice that this function does not reflect along the normal of the mirror but along the normal projection
         # of the ray on the mirror.
         if intersection_point is None:
             intersection_point = self.find_intersection_with_ray(ray)
-        mirror_normal_vector = (
-            self.origin - intersection_point
-        ) * self.curvature_sign  # m_rays | 3
+        mirror_normal_vector = (self.origin - intersection_point) * self.curvature_sign  # m_rays | 3
         mirror_normal_vector = normalize_vector(mirror_normal_vector)
-        dot_product = np.sum(
-            ray.k_vector * mirror_normal_vector, axis=-1
-        )  # m_rays  # This dot product is written
+        dot_product = np.sum(ray.k_vector * mirror_normal_vector, axis=-1)  # m_rays  # This dot product is written
         # like so because both tensors have the same shape and the dot product is calculated along the last axis.
         # you could also perform this product by transposing the second tensor and then dot multiplying the two tensors,
         # but this it would be cumbersome to do so.
@@ -1247,18 +1158,11 @@ class CurvedMirror(CurvedSurface, PhysicalSurface):
                 / (self.material_properties.kappa_conductivity * w_spot_size)
             )
             delta_curvature = (
-                -delta_T
-                * self.material_properties.alpha_expansion
-                * poisson_ratio_factor
-                / w_spot_size
+                -delta_T * self.material_properties.alpha_expansion * poisson_ratio_factor / w_spot_size
             )  # The minus is because we are cooling it down.
             # delta_z = delta_curvature * w_spot_size ** 2  # Technically the curvature is calculated based on this delta_z, but I skip it in the code and calculate the curvature directly.
-            new_radius = (
-                self.radius**-1 + delta_curvature
-            ) ** -1  # ARBITRARY - TAKING ONLY THE T AXIS
-            self.material_properties.temperature = (
-                ROOM_TEMPERATURE - delta_T
-            )  # The delta_T is negative, and after
+            new_radius = (self.radius**-1 + delta_curvature) ** -1  # ARBITRARY - TAKING ONLY THE T AXIS
+            self.material_properties.temperature = ROOM_TEMPERATURE - delta_T  # The delta_T is negative, and after
             # cooling the mirror goes to room temperature. Therefore, the temperature is when heated is the room
             # temperature minus the delta_T.
 
@@ -1280,9 +1184,7 @@ class CurvedRefractiveSurface(CurvedSurface, PhysicalSurface):
         self,
         radius: float,
         outwards_normal: np.ndarray,  # Pointing from the origin of the sphere to the mirror's center.
-        center: Optional[
-            np.ndarray
-        ] = None,  # Not the center of the sphere but the center of the plate.
+        center: Optional[np.ndarray] = None,  # Not the center of the sphere but the center of the plate.
         origin: Optional[np.ndarray] = None,  # The center of the sphere.
         n_1: float = 1,
         n_2: float = 1.5,
@@ -1304,46 +1206,29 @@ class CurvedRefractiveSurface(CurvedSurface, PhysicalSurface):
         self.n_2 = n_2
         self.thickness = thickness
 
-    def reflect_direction(
-        self, ray: Ray, intersection_point: Optional[np.ndarray] = None
-    ) -> np.ndarray:
+    def reflect_direction(self, ray: Ray, intersection_point: Optional[np.ndarray] = None) -> np.ndarray:
         if intersection_point is None:
             intersection_point = self.find_intersection_with_ray(ray)
-        n_backwards = (
-            self.origin - intersection_point
-        ) * self.curvature_sign  # m_rays | 3
+        n_backwards = (self.origin - intersection_point) * self.curvature_sign  # m_rays | 3
         n_backwards = normalize_vector(n_backwards)
         n_forwards = -n_backwards
-        cos_theta_incoming = np.clip(
-            np.sum(ray.k_vector * n_forwards, axis=-1), a_min=-1, a_max=1
-        )  # m_rays
-        n_orthogonal = (
-            ray.k_vector - cos_theta_incoming[..., np.newaxis] * n_forwards
-        )  # m_rays | 3
+        cos_theta_incoming = np.clip(np.sum(ray.k_vector * n_forwards, axis=-1), a_min=-1, a_max=1)  # m_rays
+        n_orthogonal = ray.k_vector - cos_theta_incoming[..., np.newaxis] * n_forwards  # m_rays | 3
         if np.linalg.norm(n_orthogonal) < 1e-14:
             reflected_direction_vector = n_forwards
         else:
             n_orthogonal = normalize_vector(n_orthogonal)
-            sin_theta_outgoing = np.sqrt(
-                (self.n_1 / self.n_2) ** 2 * (1 - cos_theta_incoming**2)
-            )  # m_rays
+            sin_theta_outgoing = np.sqrt((self.n_1 / self.n_2) ** 2 * (1 - cos_theta_incoming**2))  # m_rays
             reflected_direction_vector = (
-                n_forwards * np.sqrt(1 - sin_theta_outgoing**2)
-                + n_orthogonal * sin_theta_outgoing
+                n_forwards * np.sqrt(1 - sin_theta_outgoing**2) + n_orthogonal * sin_theta_outgoing
             )
         return reflected_direction_vector
 
     def ABCD_matrix(self, cos_theta_incoming: float = None) -> np.ndarray:
-        cos_theta_outgoing = np.sqrt(
-            1 - (self.n_1 / self.n_2) ** 2 * (1 - cos_theta_incoming**2)
-        )
+        cos_theta_outgoing = np.sqrt(1 - (self.n_1 / self.n_2) ** 2 * (1 - cos_theta_incoming**2))
         R_signed = self.radius * self.curvature_sign
-        delta_n_e_out_of_plane = (
-            self.n_2 * cos_theta_outgoing - self.n_1 * cos_theta_incoming
-        )
-        delta_n_e_in_plane = delta_n_e_out_of_plane / (
-            cos_theta_incoming * cos_theta_outgoing
-        )
+        delta_n_e_out_of_plane = self.n_2 * cos_theta_outgoing - self.n_1 * cos_theta_incoming
+        delta_n_e_in_plane = delta_n_e_out_of_plane / (cos_theta_incoming * cos_theta_outgoing)
 
         # See the comment in the ABCD_matrix method of the CurvedSurface class for an explanation of the approximation.
         ABCD = np.array(
@@ -1397,9 +1282,7 @@ class CurvedRefractiveSurface(CurvedSurface, PhysicalSurface):
             / (self.material_properties.kappa_conductivity * w_spot_size**2)
         )
         delta_optical_length_curvature_n_surface = (
-            -PHYSICAL_SIZES_DICT["c_lens_focal_length_expansion"]
-            * common_coefficient
-            * self.material_properties.dn_dT
+            -PHYSICAL_SIZES_DICT["c_lens_focal_length_expansion"] * common_coefficient * self.material_properties.dn_dT
         )
         delta_optical_length_curvature_n_volumetric = (
             -PHYSICAL_SIZES_DICT["c_lens_volumetric_absorption"]
@@ -1433,16 +1316,10 @@ class CurvedRefractiveSurface(CurvedSurface, PhysicalSurface):
             n_new = n_inside - delta_optical_length_curvature * self.radius
 
         elif change_lens_by_changing_R:
-            radius_new = (
-                n_inside
-                * self.radius
-                / (n_inside - delta_optical_length_curvature * self.radius)
-            )
+            radius_new = n_inside * self.radius / (n_inside - delta_optical_length_curvature * self.radius)
             n_new = n_inside
         else:
-            raise ValueError(
-                "at least change_lens_by_changing_n or change_lens_by_changing_R has to be True"
-            )
+            raise ValueError("at least change_lens_by_changing_n or change_lens_by_changing_R has to be True")
 
         if self.n_1 == 1:
             n_1 = 1
@@ -1474,9 +1351,7 @@ class CurvedRefractiveSurface(CurvedSurface, PhysicalSurface):
         # return self
 
 
-def generate_lens_from_params(
-    params: OpticalElementParams, name: Optional[str] = "Lens"
-):
+def generate_lens_from_params(params: OpticalElementParams, name: Optional[str] = "Lens"):
     p = params
     # generates a convex-convex lens from the parameters
     center = np.array([p.x, p.y, p.z])
@@ -1544,9 +1419,7 @@ class Arm:
             self.n = surface_1.n_1
         else:
             self.n = 1
-        if isinstance(surface_0, CurvedRefractiveSurface) and isinstance(
-            surface_1, CurvedRefractiveSurface
-        ):
+        if isinstance(surface_0, CurvedRefractiveSurface) and isinstance(surface_1, CurvedRefractiveSurface):
             assert surface_0.n_2 == surface_1.n_1
 
     def propagate(self, ray: Ray):
@@ -1568,9 +1441,7 @@ class Arm:
     def ABCD_matrix_reflection(self):
         if self.central_line is None:
             raise ValueError("Central line not set")
-        cos_theta = np.abs(
-            self.central_line.k_vector @ self.surface_1.outwards_normal
-        )  # ABS because we want the
+        cos_theta = np.abs(self.central_line.k_vector @ self.surface_1.outwards_normal)  # ABS because we want the
         # angle between the ray and the normal to be positive
         if isinstance(self.surface_1, PhysicalSurface):
             matrix = self.surface_1.ABCD_matrix(cos_theta)
@@ -1609,8 +1480,7 @@ class Arm:
             return None
         center = (
             self.central_line.origin
-            - self.mode_parameters_on_surface_0.z_minus_z_0[..., np.newaxis]
-            * self.central_line.k_vector
+            - self.mode_parameters_on_surface_0.z_minus_z_0[..., np.newaxis] * self.central_line.k_vector
         )
         mode_parameters = ModeParameters(
             center=center,
@@ -1627,9 +1497,7 @@ class Arm:
         if self.mode_parameters_on_surface_0 is None:
             return None
 
-        point_plane_distance_from_surface_1 = (
-            point - self.central_line.origin
-        ) @ self.central_line.k_vector
+        point_plane_distance_from_surface_1 = (point - self.central_line.origin) @ self.central_line.k_vector
         propagation_ABCD = ABCD_free_space(point_plane_distance_from_surface_1)
         local_mode_parameters = propagate_local_mode_parameter_through_ABCD(
             self.mode_parameters_on_surface_0, propagation_ABCD
@@ -1665,13 +1533,9 @@ class Arm:
             else:
                 angle_side = ""
             if local_mode_parameters.spot_size[0] != local_mode_parameters.spot_size[1]:
-                warnings.warn(
-                    "Not yep implemented for astigmatic systems! using the spot size for one arbitrary axis"
-                )
+                warnings.warn("Not yep implemented for astigmatic systems! using the spot size for one arbitrary axis")
 
-            angle_of_incidence_deg = calculate_incidence_angle(
-                self.surfaces[i], self.mode_parameters
-            )
+            angle_of_incidence_deg = calculate_incidence_angle(self.surfaces[i], self.mode_parameters)
 
             df = pd.DataFrame(
                 {
@@ -1718,9 +1582,7 @@ class Cavity:
         self.arms: List[Arm] = [
             Arm(
                 self.physical_surfaces_ordered[i],
-                self.physical_surfaces_ordered[
-                    np.mod(i + 1, len(self.physical_surfaces_ordered))
-                ],
+                self.physical_surfaces_ordered[np.mod(i + 1, len(self.physical_surfaces_ordered))],
                 lambda_0_laser=lambda_0_laser,
             )
             for i in range(len(self.physical_surfaces_ordered))
@@ -1760,10 +1622,7 @@ class Cavity:
         initial_mode_parameters: Optional[ModeParameters] = None,
     ):
         if isinstance(params, np.ndarray):
-            p = [
-                OpticalElementParams.from_array(params[i, :])
-                for i in range(len(params))
-            ]
+            p = [OpticalElementParams.from_array(params[i, :]) for i in range(len(params))]
         else:
             p = params
         physical_surfaces = []
@@ -1862,9 +1721,7 @@ class Cavity:
         if self.central_line is not None and self.central_line_successfully_traced:
             initial_k_vector = self.central_line[0].k_vector
         else:
-            initial_k_vector = (
-                self.arms[0].surface_1.center - self.arms[0].surface_0.center
-            )
+            initial_k_vector = self.arms[0].surface_1.center - self.arms[0].surface_0.center
             initial_k_vector = normalize_vector(initial_k_vector)
         return initial_k_vector
 
@@ -1880,9 +1737,7 @@ class Cavity:
             return self.central_line[0]
         else:
             initial_k_vector = self.default_initial_k_vector
-            initial_ray = Ray(
-                origin=self.arms[0].surface_0.center, k_vector=initial_k_vector
-            )
+            initial_ray = Ray(origin=self.arms[0].surface_0.center, k_vector=initial_k_vector)
             return initial_ray
 
     @property
@@ -1909,17 +1764,11 @@ class Cavity:
         for arm in self.arms:
             first_surface = arm.surface_0
             if isinstance(first_surface, (CurvedMirror, FlatMirror)):
-                surface_unlost_portion = (
-                    first_surface.material_properties.intensity_reflectivity
-                )
+                surface_unlost_portion = first_surface.material_properties.intensity_reflectivity
             elif isinstance(first_surface, CurvedRefractiveSurface):
-                surface_unlost_portion = (
-                    first_surface.material_properties.intensity_transmittance
-                )
+                surface_unlost_portion = first_surface.material_properties.intensity_transmittance
             else:
-                raise ValueError(
-                    f"Surface type {type(first_surface)} not implemented in this function"
-                )
+                raise ValueError(f"Surface type {type(first_surface)} not implemented in this function")
             alpha = 0
             if hasattr(
                 first_surface, "n_2"
@@ -1927,15 +1776,11 @@ class Cavity:
                 if first_surface.n_2 != 1:
                     alpha = first_surface.material_properties.alpha_volume_absorption
             volume_absorption_unlost_portion_log = alpha * arm.central_line.length
-            volume_absorption_unlost_portion = np.exp(
-                -volume_absorption_unlost_portion_log
-            )
+            volume_absorption_unlost_portion = np.exp(-volume_absorption_unlost_portion_log)
             if isinstance(first_surface, (CurvedMirror, FlatMirror)):
                 starting_power *= surface_unlost_portion
             elif isinstance(first_surface, CurvedRefractiveSurface):
-                starting_power *= (
-                    surface_unlost_portion * volume_absorption_unlost_portion
-                )
+                starting_power *= surface_unlost_portion * volume_absorption_unlost_portion
             # losses += surface_coherent_loss + surface_absorption_loss + volume_absorption_loss_log
         return 1 - starting_power  # , losses
 
@@ -1991,18 +1836,14 @@ class Cavity:
             ray_history.append(ray)
         return ray_history
 
-    def trace_ray_parametric(
-        self, starting_position_and_angles: np.ndarray
-    ) -> Tuple[np.ndarray, List[Ray]]:
+    def trace_ray_parametric(self, starting_position_and_angles: np.ndarray) -> Tuple[np.ndarray, List[Ray]]:
         # Like trace ray, but works as a function of the starting position and angles as parameters on the starting
         # surface, instead of the starting position and angles as a vector in 3D space.
 
         initial_ray = self.ray_of_initial_parameters(starting_position_and_angles)
         ray_history = self.trace_ray(initial_ray)
         final_intersection_point = ray_history[-1].origin
-        t_o, p_o = self.arms[0].surface_0.get_parameterization(
-            final_intersection_point
-        )  # Here it is the initial
+        t_o, p_o = self.arms[0].surface_0.get_parameterization(final_intersection_point)  # Here it is the initial
         # surface on purpose.
         theta_o, phi_o = angles_of_unit_vector(ray_history[-1].k_vector)
         final_position_and_angles = np.array([t_o, theta_o, p_o, phi_o])
@@ -2011,14 +1852,9 @@ class Cavity:
     def f_roots(self, starting_position_and_angles: np.ndarray) -> np.ndarray:
         # The roots of this function are the initial parameters for the central line.
         try:
-            final_position_and_angles, _ = self.trace_ray_parametric(
-                starting_position_and_angles / STRETCH_FACTOR
-            )
+            final_position_and_angles, _ = self.trace_ray_parametric(starting_position_and_angles / STRETCH_FACTOR)
             diff = np.zeros_like(starting_position_and_angles)
-            diff[[0, 2]] = (
-                final_position_and_angles[[0, 2]]
-                - starting_position_and_angles[[0, 2]] / STRETCH_FACTOR
-            )
+            diff[[0, 2]] = final_position_and_angles[[0, 2]] - starting_position_and_angles[[0, 2]] / STRETCH_FACTOR
             diff[[1, 3]] = angles_difference(
                 starting_position_and_angles[[1, 3]] / STRETCH_FACTOR,
                 final_position_and_angles[[1, 3]],
@@ -2031,12 +1867,8 @@ class Cavity:
 
         if self.central_line_successfully_traced is not None and not override_existing:
             # I never debugged those two lines:
-            initial_theta, initial_phi = angles_of_unit_vector(
-                self.central_line[0].k_vector
-            )
-            initial_t, initial_p = self.arms[0].surface_0.get_parameterization(
-                self.central_line[0].origin
-            )
+            initial_theta, initial_phi = angles_of_unit_vector(self.central_line[0].k_vector)
+            initial_t, initial_p = self.arms[0].surface_0.get_parameterization(self.central_line[0].origin)
             return (
                 np.array([initial_t, initial_theta, initial_p, initial_phi]),
                 self.central_line_successfully_traced,
@@ -2044,39 +1876,31 @@ class Cavity:
 
         theta_initial_guess, phi_initial_guess = self.default_initial_angles
         # global I
-        initial_guess = (
-            np.array([0, theta_initial_guess, 0, phi_initial_guess]) * STRETCH_FACTOR
-        )
+        initial_guess = np.array([0, theta_initial_guess, 0, phi_initial_guess]) * STRETCH_FACTOR
 
         if self.t_is_trivial and self.p_is_trivial:
             central_line_initial_parameters = initial_guess
         else:
             if self.t_is_trivial and not self.p_is_trivial:
                 initial_guess_subspace = initial_guess[[2, 3]]
-                f_roots_subspace = lambda x: self.f_roots(
-                    np.array([initial_guess[0], initial_guess[1], x[0], x[1]])
-                )[[2, 3]]
-                central_line_initial_parameters: np.ndarray = optimize.fsolve(
-                    f_roots_subspace, initial_guess_subspace
-                )
+                f_roots_subspace = lambda x: self.f_roots(np.array([initial_guess[0], initial_guess[1], x[0], x[1]]))[
+                    [2, 3]
+                ]
+                central_line_initial_parameters: np.ndarray = optimize.fsolve(f_roots_subspace, initial_guess_subspace)
                 central_line_initial_parameters = np.concatenate(
                     (initial_guess[[0, 1]], central_line_initial_parameters)
                 )
             elif not self.t_is_trivial and self.p_is_trivial:
                 initial_guess_subspace = initial_guess[[0, 1]]
-                f_roots_subspace = lambda x: self.f_roots(
-                    np.array([x[0], x[1], initial_guess[2], initial_guess[3]])
-                )[[0, 1]]
-                central_line_initial_parameters: np.ndarray = optimize.fsolve(
-                    f_roots_subspace, initial_guess_subspace
-                )
+                f_roots_subspace = lambda x: self.f_roots(np.array([x[0], x[1], initial_guess[2], initial_guess[3]]))[
+                    [0, 1]
+                ]
+                central_line_initial_parameters: np.ndarray = optimize.fsolve(f_roots_subspace, initial_guess_subspace)
                 central_line_initial_parameters = np.concatenate(
                     (central_line_initial_parameters, initial_guess[[2, 3]])
                 )
             else:
-                central_line_initial_parameters: np.ndarray = optimize.fsolve(
-                    self.f_roots, initial_guess
-                )
+                central_line_initial_parameters: np.ndarray = optimize.fsolve(self.f_roots, initial_guess)
             # In the documentation it says optimize.fsolve returns a solution, together with some flags, and also this
             # is how pycharm suggests to use it. But in practice it returns only the solution, not sure why.
 
@@ -2159,36 +1983,24 @@ class Cavity:
             round_trip_ABCD=self.ABCD_round_trip, lambda_0_laser=self.lambda_0_laser
         )
         if (
-            local_mode_parameters_current.z_R[0] == 0
-            or local_mode_parameters_current.z_R[1] == 0
+            local_mode_parameters_current.z_R[0] == 0 or local_mode_parameters_current.z_R[1] == 0
         ):  # When there is no solution,
             # the z_R value comes out as zero.
             self.resonating_mode_successfully_traced = False
-            if (
-                local_mode_parameters_first_surface is not None
-                or mode_parameters_first_arm is not None
-            ):  # if there is
+            if local_mode_parameters_first_surface is not None or mode_parameters_first_arm is not None:  # if there is
                 # no wave solution, but the user gave an input wave to the cavity, then just propagate it throughout
                 # the cavity, even though it is not a wave solution.
                 if mode_parameters_first_arm is not None:
                     # If the user preferred to give ModeParameters instead of LocalModeParameters, then convert it to
                     # LocalModeParameters.
-                    local_mode_parameters_first_surface = (
-                        mode_parameters_first_arm.local_mode_parameters(
-                            (
-                                self.arms[0].surface_0.center
-                                - mode_parameters_first_arm.center[0]
-                            )
-                            @ mode_parameters_first_arm.k_vector
-                        )
+                    local_mode_parameters_first_surface = mode_parameters_first_arm.local_mode_parameters(
+                        (self.arms[0].surface_0.center - mode_parameters_first_arm.center[0])
+                        @ mode_parameters_first_arm.k_vector
                     )
                 local_mode_parameters_current = local_mode_parameters_first_surface
 
         # If there is a valid mode to start propagating, then propagate it through the cavity:
-        if (
-            local_mode_parameters_current.z_R[0] != 0
-            and local_mode_parameters_current.z_R[1] != 0
-        ):
+        if local_mode_parameters_current.z_R[0] != 0 and local_mode_parameters_current.z_R[1] != 0:
             for arm in self.arms:
                 arm.mode_parameters_on_surface_0 = local_mode_parameters_current
                 local_mode_parameters_current = arm.propagate_local_mode_parameters()
@@ -2207,27 +2019,19 @@ class Cavity:
             np.cross(self.central_line[0].k_vector, self.central_line[i].k_vector)
             for i in range(1, len(self.central_line))
         ]  # Points to the positive
-        biggest_psuedo_z = possible_pseudo_zs[
-            np.argmax([np.linalg.norm(pseudo_z) for pseudo_z in possible_pseudo_zs])
-        ]
+        biggest_psuedo_z = possible_pseudo_zs[np.argmax([np.linalg.norm(pseudo_z) for pseudo_z in possible_pseudo_zs])]
         # biggest_psuedo_z = np.cross(self.central_line[0].k_vector, self.central_line[1].k_vector)
         if np.linalg.norm(biggest_psuedo_z) < 1e-14:
             pseudo_z = np.array([0, 0, 1])
         else:
             pseudo_z = normalize_vector(biggest_psuedo_z)
         pseudo_x = np.cross(pseudo_z, k_vector)
-        principle_axes = np.stack(
-            [pseudo_z, pseudo_x], axis=-1
-        ).T  # [z_x, z_y, z_z], [x_x, x_y, x_z]
+        principle_axes = np.stack([pseudo_z, pseudo_x], axis=-1).T  # [z_x, z_y, z_z], [x_x, x_y, x_z]
         return principle_axes
 
     def ray_of_initial_parameters(self, initial_parameters: np.ndarray):
-        k_vector_i = unit_vector_of_angles(
-            theta=initial_parameters[1], phi=initial_parameters[3]
-        )
-        origin_i = self.arms[0].surface_0.parameterization(
-            t=initial_parameters[0], p=initial_parameters[2]
-        )
+        k_vector_i = unit_vector_of_angles(theta=initial_parameters[1], phi=initial_parameters[3])
+        origin_i = self.arms[0].surface_0.parameterization(t=initial_parameters[0], p=initial_parameters[2])
         input_ray = Ray(origin=origin_i, k_vector=k_vector_i)
         return input_ray
 
@@ -2240,8 +2044,7 @@ class Cavity:
                 spot_size_lines_separated = generate_spot_size_lines(
                     arm.mode_parameters,
                     first_point=arm.central_line.origin,
-                    last_point=arm.central_line.origin
-                    + arm.central_line.k_vector * arm.central_line.length,
+                    last_point=arm.central_line.origin + arm.central_line.k_vector * arm.central_line.length,
                     principle_axes=arm.mode_principle_axes,
                     dim=dim,
                     plane=plane,
@@ -2261,9 +2064,7 @@ class Cavity:
                 # warnings.warn("Could not find central line, so no initial surface could be set.")
                 return None
         middle_point = (self.central_line[0].origin + self.central_line[1].origin) / 2
-        initial_surface = FlatSurface(
-            outwards_normal=-self.central_line[0].k_vector, center=middle_point
-        )
+        initial_surface = FlatSurface(outwards_normal=-self.central_line[0].k_vector, center=middle_point)
 
         first_leg = self.arms[0]
         first_leg_first_sub_leg = Arm(first_leg.surface_0, initial_surface)
@@ -2282,9 +2083,7 @@ class Cavity:
                 ]
             )
         else:
-            legs_list = (
-                [first_leg_second_sub_leg] + self.arms[1:] + [first_leg_first_sub_leg]
-            )
+            legs_list = [first_leg_second_sub_leg] + self.arms[1:] + [first_leg_first_sub_leg]
         self.arms = legs_list
         # Now, after you found the initial_surface, we can retrace the central line, but now let it out from the
         # initial surface, instead of the first mirror.
@@ -2312,9 +2111,7 @@ class Cavity:
             parameters_final, _ = self.trace_ray_parametric(parameters_initial)
             return parameters_final
 
-        ABCD_matrix = optimize.approx_fprime(
-            central_line_initial_parameters, trace_ray_parametric_parameters_only, dr
-        )
+        ABCD_matrix = optimize.approx_fprime(central_line_initial_parameters, trace_ray_parametric_parameters_only, dr)
         return ABCD_matrix
 
     def plot(
@@ -2347,12 +2144,7 @@ class Cavity:
                     self.arms[0].mode_parameters is not None
                     and np.min(self.arms[0].mode_parameters_on_surface_0.z_R) > 0
                 ):
-                    maximal_spot_size = np.max(
-                        [
-                            arm.mode_parameters_on_surface_0.spot_size[0]
-                            for arm in self.arms
-                        ]
-                    )
+                    maximal_spot_size = np.max([arm.mode_parameters_on_surface_0.spot_size[0] for arm in self.arms])
                     axis_span = np.array([axes_range[0], 6 * maximal_spot_size])
                 else:
                     axis_span = np.array([axes_range[0], 0.01])
@@ -2393,8 +2185,7 @@ class Cavity:
             camera_center_int = int(np.floor(camera_center))
             if np.mod(camera_center, 1) == 0.5:
                 origin_camera = (
-                    self.arms[camera_center_int].surface_0.center
-                    + self.arms[camera_center_int].surface_1.center
+                    self.arms[camera_center_int].surface_0.center + self.arms[camera_center_int].surface_1.center
                 ) / 2
             else:
                 origin_camera = self.surfaces[camera_center_int].center
@@ -2423,9 +2214,7 @@ class Cavity:
 
         for i, surface in enumerate(self.surfaces):
             # If there is not information on the spot size of the element, plot it with default length:
-            if self.arms[0].mode_parameters is None or np.any(
-                self.arms[0].mode_parameters.z_R == 0
-            ):
+            if self.arms[0].mode_parameters is None or np.any(self.arms[0].mode_parameters.z_R == 0):
                 surface.plot(ax=ax, dim=dim, plane=plane)
             else:
                 # If there is information on the spot size of the element, plot it with the spot size length*2.5:
@@ -2437,11 +2226,7 @@ class Cavity:
                 length = spot_size * 5
                 surface.plot(ax=ax, dim=dim, plane=plane, length=length)
 
-        if (
-            self.lambda_0_laser is not None
-            and plot_mode_lines
-            and self.arms[0].central_line is not None
-        ):
+        if self.lambda_0_laser is not None and plot_mode_lines and self.arms[0].central_line is not None:
             try:
                 spot_size_lines = self.generate_spot_size_lines(dim=dim, plane=plane)
                 for line in spot_size_lines:
@@ -2488,9 +2273,7 @@ class Cavity:
         for i in range(n_shifts):
             new_cavity = perturb_cavity(self, parameter_index, shift[i])
             try:
-                overlap = calculate_cavities_overlap_matrices(
-                    cavity_1=self, cavity_2=new_cavity
-                )
+                overlap = calculate_cavities_overlap_matrices(cavity_1=self, cavity_2=new_cavity)
             except np.linalg.LinAlgError:
                 continue
             overlaps[i] = np.abs(overlap)
@@ -2512,9 +2295,7 @@ class Cavity:
             return np.nan
 
         def f(shift):
-            return self.calculated_shifted_cavity_overlap_integral(
-                parameter_index, shift
-            )[0]
+            return self.calculated_shifted_cavity_overlap_integral(parameter_index, shift)[0]
 
         tolerance = functions_first_crossing_both_directions(
             f=f,
@@ -2539,13 +2320,11 @@ class Cavity:
             for j_tolerance_matrix_index, j_param_matrix_index in enumerate(j_range):
                 if print_progress:
                     print("    ", j_tolerance_matrix_index)
-                tolerance_matrix[i, j_tolerance_matrix_index] = (
-                    self.calculate_parameter_tolerance(
-                        parameter_index=(i, j_param_matrix_index),
-                        initial_step=initial_step,
-                        overlap_threshold=overlap_threshold,
-                        accuracy=accuracy,
-                    )
+                tolerance_matrix[i, j_tolerance_matrix_index] = self.calculate_parameter_tolerance(
+                    parameter_index=(i, j_param_matrix_index),
+                    initial_step=initial_step,
+                    overlap_threshold=overlap_threshold,
+                    accuracy=accuracy,
                 )
         return tolerance_matrix
 
@@ -2557,9 +2336,7 @@ class Cavity:
         shift_size: int = 30,
         print_progress: bool = False,
     ) -> np.ndarray:
-        overlaps = np.zeros(
-            (len(self.params), len(self.perturbable_params_indices), shift_size)
-        )
+        overlaps = np.zeros((len(self.params), len(self.perturbable_params_indices), shift_size))
         for element_index in range(len(self.params)):  # Iterate over optical elements
             if print_progress:
                 print("  ", element_index)
@@ -2585,14 +2362,12 @@ class Cavity:
                     parameter_index == INDICES_DICT["n_inside_or_after"]
                     and np.isnan(shifts[element_index, parameter_index])
                 ):
-                    overlaps[element_index, parameter_index, :], _ = (
-                        self.calculated_shifted_cavity_overlap_integral(
-                            parameter_index=(
-                                element_index,
-                                self.perturbable_params_indices[parameter_index],
-                            ),
-                            shift=shift_series,
-                        )
+                    overlaps[element_index, parameter_index, :], _ = self.calculated_shifted_cavity_overlap_integral(
+                        parameter_index=(
+                            element_index,
+                            self.perturbable_params_indices[parameter_index],
+                        ),
+                        shift=shift_series,
                     )
         return overlaps
 
@@ -2637,17 +2412,13 @@ class Cavity:
             for j in range(len(parameters_indices)):
                 # The condition inside is for the case it is a mirror and the parameter is n, and then we don't want
                 # to draw it.
-                if parameters_indices[j] == INDICES_DICT[
-                    "n_inside_or_after"
-                ] and np.isnan(tolerance_matrix[i, j]):
+                if parameters_indices[j] == INDICES_DICT["n_inside_or_after"] and np.isnan(tolerance_matrix[i, j]):
                     continue
                 tolerance = tolerance_matrix[i, j]
                 if tolerance == 0 or np.isnan(tolerance):
                     tolerance = initial_step
                 tolerance_abs = np.abs(tolerance)
-                shifts = np.linspace(
-                    -2 * tolerance_abs, 2 * tolerance_abs, overlaps_series.shape[2]
-                )
+                shifts = np.linspace(-2 * tolerance_abs, 2 * tolerance_abs, overlaps_series.shape[2])
 
                 ax[i, j].plot(shifts, overlaps_series[i, j, :])
 
@@ -2689,9 +2460,7 @@ class Cavity:
             names = None
         else:
             names = copy.copy(self.names)
-            for i, surface_type in enumerate(
-                self.to_array[:, INDICES_DICT["surface_type"]]
-            ):
+            for i, surface_type in enumerate(self.to_array[:, INDICES_DICT["surface_type"]]):
                 if surface_type == SURFACE_TYPES_DICT["Thick Lens"]:
                     names.insert(i + 1, names[i] + "_2")
                     names[i] = names[i] + "_1"
@@ -2714,9 +2483,7 @@ class Cavity:
     def analyze_thermal_transformation(self, arm_index_for_NA: int):
         N = 5
         boolean_array = np.eye(N).astype(bool)
-        boolean_array = np.vstack(
-            (np.zeros((1, N), dtype=bool), np.ones((1, N), dtype=bool), boolean_array)
-        )
+        boolean_array = np.vstack((np.zeros((1, N), dtype=bool), np.ones((1, N), dtype=bool), boolean_array))
         cavities = []  # [self]
         NA_orgiginal = self.arms[arm_index_for_NA].mode_parameters.NA[0]
         NAs = np.zeros(N + 2)
@@ -2816,16 +2583,11 @@ class Cavity:
                 "Tolerance - refractive Index",
             ]
         else:
-            index = [
-                PRETTY_INDICES_NAMES[INDICES_DICT_INVERSE[j]]
-                for j in self.perturbable_params_indices
-            ]
+            index = [PRETTY_INDICES_NAMES[INDICES_DICT_INVERSE[j]] for j in self.perturbable_params_indices]
         df_tolerance = pd.DataFrame(tolerance_matrix.T, columns=self.names, index=index)
         df_tolerance_stacked = stack_df_for_print(df_tolerance)
 
-        whole_df = pd.concat(
-            [df_elements_stacked, df_cavity, df_arms, df_tolerance_stacked]
-        )
+        whole_df = pd.concat([df_elements_stacked, df_cavity, df_arms, df_tolerance_stacked])
         whole_df["Value"] = whole_df["Value"].apply(lambda x: signif(x, 6))
         whole_df.drop_duplicates(inplace=True)
 
@@ -2884,9 +2646,7 @@ def generate_tolerance_of_NA(
     tolerance_matrix = np.zeros(
         (
             params_array.shape[0],
-            params_to_perturbable_params_indices(
-                params_array, t_is_trivial and p_is_trivial
-            ),
+            params_to_perturbable_params_indices(params_array, t_is_trivial and p_is_trivial),
             parameter_values.shape[0],
         )
     )
@@ -2952,9 +2712,7 @@ def plot_tolerance_of_NA(
             standing_wave=standing_wave,
         )
     tolerance_matrix = np.abs(tolerance_matrix)
-    number_of_params = len(
-        params_to_perturbable_params_indices(params, t_is_trivial and p_is_trivial)
-    )
+    number_of_params = len(params_to_perturbable_params_indices(params, t_is_trivial and p_is_trivial))
     fig, ax = plt.subplots(
         tolerance_matrix.shape[0],
         number_of_params,
@@ -3036,10 +2794,7 @@ def plot_tolerance_of_NA_same_plot(
                 # to draw it.
                 if not (
                     j == INDICES_DICT["n_inside_or_after"]
-                    and (
-                        np.isnan(tolerance_matrix[i, j, 0])
-                        or tolerance_matrix[i, j, 0] == 0
-                    )
+                    and (np.isnan(tolerance_matrix[i, j, 0]) or tolerance_matrix[i, j, 0] == 0)
                 ):
                     linewidth = 1 + 0.2 * (n_elements - i - 1)
                     print(linewidth)
@@ -3061,9 +2816,7 @@ def plot_tolerance_of_NA_same_plot(
     return ax
 
 
-def calculate_gaussian_parameters_on_surface(
-    surface: FlatSurface, mode_parameters: ModeParameters
-):
+def calculate_gaussian_parameters_on_surface(surface: FlatSurface, mode_parameters: ModeParameters):
     intersection_point = surface.find_intersection_with_ray(mode_parameters.ray)
     intersection_point = intersection_point[0, :]
     z_minus_z_0 = np.linalg.norm(intersection_point - mode_parameters.center, axis=1)
@@ -3073,15 +2826,13 @@ def calculate_gaussian_parameters_on_surface(
     # Those are the vectors that define the mode and the surface: r_0 is the surface's center with respect to the mode's
     # center, t_hat and p_hat are the unit vectors that span the surface, k_hat is the mode's k vector,
     # u_hat and v_hat are the principle axes of the mode.
-    r_0 = (
-        surface.center - mode_parameters.center[0, :]
-    )  # Techinically there are two centers, but their difference is
+    r_0 = surface.center - mode_parameters.center[0, :]  # Techinically there are two centers, but their difference is
     # only in the k_hat direction, which doesn't make a difference on the projection on the two principle axes of the
     # mode, and for the projection of the k_hat vector we anyway need to set an arbitrary 0, so we can just take the
     # first center.
-    t_hat, p_hat = normalize_vector(
-        surface.parameterization(1, 0) - surface.parameterization(0, 0)
-    ), normalize_vector(surface.parameterization(0, 1) - surface.parameterization(0, 0))
+    t_hat, p_hat = normalize_vector(surface.parameterization(1, 0) - surface.parameterization(0, 0)), normalize_vector(
+        surface.parameterization(0, 1) - surface.parameterization(0, 0)
+    )
     k_hat = mode_parameters.k_vector
     u_hat_v_hat = mode_parameters.principle_axes
     u_hat = u_hat_v_hat[0, :]
@@ -3097,12 +2848,10 @@ def calculate_gaussian_parameters_on_surface(
             [
                 [
                     (t_hat @ u_hat) ** 2 / q_u + (t_hat @ v_hat) ** 2 / q_v,
-                    (t_hat @ u_hat) * (p_hat @ u_hat) / q_u
-                    + (t_hat @ v_hat) * (p_hat @ v_hat) / q_v,
+                    (t_hat @ u_hat) * (p_hat @ u_hat) / q_u + (t_hat @ v_hat) * (p_hat @ v_hat) / q_v,
                 ],
                 [
-                    (t_hat @ u_hat) * (p_hat @ u_hat) / q_u
-                    + (t_hat @ v_hat) * (p_hat @ v_hat) / q_v,
+                    (t_hat @ u_hat) * (p_hat @ u_hat) / q_u + (t_hat @ v_hat) * (p_hat @ v_hat) / q_v,
                     (p_hat @ u_hat) ** 2 / q_u + (p_hat @ v_hat) ** 2 / q_v,
                 ],
             ]
@@ -3114,21 +2863,12 @@ def calculate_gaussian_parameters_on_surface(
         * k
         * np.array(
             [
-                (k_hat @ t_hat)
-                + 2 * (r_0 @ u_hat) * (t_hat @ u_hat) / q_u
-                + 2 * (r_0 @ v_hat) * (t_hat @ v_hat) / q_v,
-                (k_hat @ p_hat)
-                + 2 * (r_0 @ u_hat) * (p_hat @ u_hat) / q_u
-                + 2 * (r_0 @ v_hat) * (p_hat @ v_hat) / q_v,
+                (k_hat @ t_hat) + 2 * (r_0 @ u_hat) * (t_hat @ u_hat) / q_u + 2 * (r_0 @ v_hat) * (t_hat @ v_hat) / q_v,
+                (k_hat @ p_hat) + 2 * (r_0 @ u_hat) * (p_hat @ u_hat) / q_u + 2 * (r_0 @ v_hat) * (p_hat @ v_hat) / q_v,
             ]
         )
     )
-    c = (
-        -(1 / 2)
-        * 1j
-        * k
-        * ((k_hat @ r_0) + (r_0 @ u_hat) ** 2 / q_u + (r_0 @ v_hat) ** 2 / q_v)
-    )
+    c = -(1 / 2) * 1j * k * ((k_hat @ r_0) + (r_0 @ u_hat) ** 2 / q_u + (r_0 @ v_hat) ** 2 / q_v)
 
     return A, b, c
 
@@ -3161,9 +2901,7 @@ def evaluate_cavities_modes_on_surface(cavity_1: Cavity, cavity_2: Cavity):
         return A_1, A_2, b_1, b_2, c_1, c_2, P1, correct_modes
 
     cavity_1_waist_pos = mode_parameters_1.center[0, :]
-    P1 = FlatSurface(
-        center=cavity_1_waist_pos, outwards_normal=mode_parameters_1.k_vector
-    )
+    P1 = FlatSurface(center=cavity_1_waist_pos, outwards_normal=mode_parameters_1.k_vector)
     try:
         A_1, b_1, c_1 = calculate_gaussian_parameters_on_surface(P1, mode_parameters_1)
         A_2, b_2, c_2 = calculate_gaussian_parameters_on_surface(P1, mode_parameters_2)
@@ -3173,18 +2911,14 @@ def evaluate_cavities_modes_on_surface(cavity_1: Cavity, cavity_2: Cavity):
 
 
 def calculate_cavities_overlap_matrices(cavity_1: Cavity, cavity_2: Cavity) -> float:
-    A_1, A_2, b_1, b_2, c_1, c_2, P1, correct_modes = (
-        evaluate_cavities_modes_on_surface(cavity_1, cavity_2)
-    )
+    A_1, A_2, b_1, b_2, c_1, c_2, P1, correct_modes = evaluate_cavities_modes_on_surface(cavity_1, cavity_2)
     if correct_modes is False:
         return np.nan
     else:
         return gaussians_overlap_integral(A_1, A_2, b_1, b_2, c_1, c_2)
 
 
-def evaluate_gaussian(
-    A: np.ndarray, b: np.ndarray, c: complex, axis_span: float, N: int = 100
-):
+def evaluate_gaussian(A: np.ndarray, b: np.ndarray, c: complex, axis_span: float, N: int = 100):
     x = np.linspace(-axis_span, axis_span, N)
     y = np.linspace(-axis_span, axis_span, N)
     X, Y = np.meshgrid(x, y)
@@ -3192,9 +2926,7 @@ def evaluate_gaussian(
     # mu = np.array([x_2, y_2])
     # R_shifted = R - mu[None, None, :]
     R_normed_squared = np.einsum("ijk,kl,ijl->ij", R, A, R)
-    functions_values = safe_exponent(
-        -(1 / 2) * R_normed_squared + np.einsum("k,ijk->ij", b, R) + c
-    )
+    functions_values = safe_exponent(-(1 / 2) * R_normed_squared + np.einsum("k,ijk->ij", b, R) + c)
     return functions_values
 
 
@@ -3214,12 +2946,8 @@ def perturb_cavity(
 
     # If the original cavity was symmetrical in the t axis or the p axis, and the perturbation does not disturb this
     # symmetry, then the new cavity is also symmetrical in the t axis or the p axis:
-    perturbance_in_z = [
-        1 for i in parameter_index_1_list if i in [INDICES_DICT["z"], INDICES_DICT["t"]]
-    ]
-    perturbance_in_y = [
-        1 for i in parameter_index_1_list if i in [INDICES_DICT["y"], INDICES_DICT["p"]]
-    ]
+    perturbance_in_z = [1 for i in parameter_index_1_list if i in [INDICES_DICT["z"], INDICES_DICT["t"]]]
+    perturbance_in_y = [1 for i in parameter_index_1_list if i in [INDICES_DICT["y"], INDICES_DICT["p"]]]
     perturbance_in_z = bool(len(perturbance_in_z))
     perturbance_in_y = bool(len(perturbance_in_y))
 
@@ -3293,16 +3021,10 @@ def plot_2_gaussians_colors(
         fig, ax = plt.subplots(1, 1, figsize=(10, 5))
     first_gaussian_values = evaluate_gaussian(A_1, b_1, c_1, axis_span)
     second_gaussian_values = evaluate_gaussian(A_2, b_2, c_2, axis_span)
-    first_gaussian_values = first_gaussian_values / np.max(
-        np.abs(first_gaussian_values)
-    )
-    second_gaussian_values = second_gaussian_values / np.max(
-        np.abs(second_gaussian_values)
-    )
+    first_gaussian_values = first_gaussian_values / np.max(np.abs(first_gaussian_values))
+    second_gaussian_values = second_gaussian_values / np.max(np.abs(second_gaussian_values))
     third_color_channel = np.zeros_like(first_gaussian_values)
-    rgb_image = np.stack(
-        [first_gaussian_values, second_gaussian_values, third_color_channel], axis=2
-    )
+    rgb_image = np.stack([first_gaussian_values, second_gaussian_values, third_color_channel], axis=2)
     if real_or_abs == "abs":
         rgb_image = np.clip(np.abs(rgb_image), 0, 1)
     else:
@@ -3322,9 +3044,7 @@ def plot_2_cavity_perturbation_overlap(
     if second_cavity is None:
         second_cavity = perturb_cavity(cavity, parameter_index, shift_value)
 
-    A_1, A_2, b_1, b_2, c_1, c_2, P1, correct_mode = evaluate_cavities_modes_on_surface(
-        cavity, second_cavity
-    )
+    A_1, A_2, b_1, b_2, c_1, c_2, P1, correct_mode = evaluate_cavities_modes_on_surface(cavity, second_cavity)
     if correct_mode:
         plot_2_gaussians_colors(
             A_1,
@@ -3353,9 +3073,7 @@ def evaluate_gaussian_3d(points: np.ndarray, mode_parameters: ModeParameters):
     q_u = q[:, :, 0]
     q_v = q[:, :, 1]
     k = 2 * np.pi / mode_parameters.lambda_0_laser
-    integrand = (
-        -1j * k / 2 * (u_projection**2 / q_u + v_projection**2 / q_v + k_projection)
-    )
+    integrand = -1j * k / 2 * (u_projection**2 / q_u + v_projection**2 / q_v + k_projection)
     gaussian = safe_exponent(integrand)
     return gaussian
 
@@ -3373,19 +3091,14 @@ def find_distance_to_first_crossing_positive_side(
                 shifts[first_overlap_crossing - 1],
                 shifts[first_overlap_crossing],
                 (crossing_value - overlaps[first_overlap_crossing - 1])
-                / (
-                    overlaps[first_overlap_crossing]
-                    - overlaps[first_overlap_crossing - 1]
-                ),
+                / (overlaps[first_overlap_crossing] - overlaps[first_overlap_crossing - 1]),
             )
     else:
         crossing_shift = np.nan
     return crossing_shift
 
 
-def find_distance_to_first_crossing(
-    shifts: np.ndarray, overlaps: np.ndarray, crossing_value: float = 0.9
-):
+def find_distance_to_first_crossing(shifts: np.ndarray, overlaps: np.ndarray, crossing_value: float = 0.9):
     # Assumes shifts is ascending and that overlaps[i] is the overlap of shift[i]
     positive_shifts = shifts[shifts >= 0]
     negative_shifts = -shifts[shifts <= 0]
@@ -3419,9 +3132,7 @@ def functions_first_crossing_both_directions(
     accuracy: float = 0.001,
 ) -> float:
     positive_step = functions_first_crossing(f, initial_step, crossing_value, accuracy)
-    negative_step = functions_first_crossing(
-        lambda x: f(-x), initial_step, crossing_value, accuracy
-    )
+    negative_step = functions_first_crossing(lambda x: f(-x), initial_step, crossing_value, accuracy)
     if positive_step < negative_step:
         return positive_step
     else:
@@ -3487,9 +3198,7 @@ def local_mode_2_of_lens_parameters(
     ABCD_between = ABCD_free_space(w)
     ABCD_second = surface_2.ABCD_matrix(cos_theta_incoming=1)
     ABCD_total = ABCD_second @ ABCD_between @ ABCD_first
-    propagated_mode = propagate_local_mode_parameter_through_ABCD(
-        local_mode_1, ABCD_total
-    )
+    propagated_mode = propagate_local_mode_parameter_through_ABCD(local_mode_1, ABCD_total)
     return propagated_mode
 
 
@@ -3501,14 +3210,10 @@ def match_a_lens_parameters_to_modes(
 ):
     def f_roots(lens_parameters: np.ndarray):
         if fixed_n_lens is not None:
-            lens_parameters = np.array(
-                [lens_parameters[0], lens_parameters[1], fixed_n_lens]
-            )
+            lens_parameters = np.array([lens_parameters[0], lens_parameters[1], fixed_n_lens])
         propagated_mode = local_mode_2_of_lens_parameters(lens_parameters, local_mode_1)
         q_error = propagated_mode.q[0] - local_mode_2.q[0]
-        if (
-            not fix_z_2
-        ):  # if we don't fix z_2, then the error in z_2 is set to 0, regardless of the actual value.
+        if not fix_z_2:  # if we don't fix z_2, then the error in z_2 is set to 0, regardless of the actual value.
             q_error = 1j * np.imag(q_error)
 
         if fixed_n_lens is not None:
@@ -3518,15 +3223,11 @@ def match_a_lens_parameters_to_modes(
 
     if fixed_n_lens is not None:
         lens_parameters = optimize.fsolve(f_roots, np.array([1e-2, 1e-3]))
-        lens_parameters = np.array(
-            [lens_parameters[0], lens_parameters[1], fixed_n_lens]
-        )
+        lens_parameters = np.array([lens_parameters[0], lens_parameters[1], fixed_n_lens])
     else:
         lens_parameters = optimize.fsolve(f_roots, np.array([1e-2, 1e-3, 1.6]))
 
-    resulted_mode_2_parameters = local_mode_2_of_lens_parameters(
-        lens_parameters, local_mode_1
-    )
+    resulted_mode_2_parameters = local_mode_2_of_lens_parameters(lens_parameters, local_mode_1)
     return lens_parameters, resulted_mode_2_parameters
 
 
@@ -3546,9 +3247,7 @@ def compare_2_cylindrical_cavities(
     fig, ax = plt.subplots(2, 2, figsize=(10, 10))
     plot_tolerance_of_NA_same_plot(
         params=params_1,
-        names=[
-            element_name + " " + cavities_names[0] for element_name in elements_names
-        ],
+        names=[element_name + " " + cavities_names[0] for element_name in elements_names],
         NAs=NAs_1,
         tolerance_matrix=np.abs(tolerance_matrix_1),
         ax=ax,
@@ -3556,9 +3255,7 @@ def compare_2_cylindrical_cavities(
     )
     plot_tolerance_of_NA_same_plot(
         params=params_2,
-        names=[
-            element_name + " " + cavities_names[1] for element_name in elements_names
-        ],
+        names=[element_name + " " + cavities_names[1] for element_name in elements_names],
         NAs=NAs_1,
         tolerance_matrix=np.abs(tolerance_matrix_2),
         ax=ax,
@@ -3574,12 +3271,8 @@ def maximize_overlap(
     control_parameters_indices: Tuple[List[int], List[int]],
     print_progress: bool = False,
 ):
-    perturbed_cavity = perturb_cavity(
-        cavity, perturbed_parameter_index, perturbation_value
-    )
-    original_overlap = np.abs(
-        calculate_cavities_overlap_matrices(cavity_1=cavity, cavity_2=perturbed_cavity)
-    )
+    perturbed_cavity = perturb_cavity(cavity, perturbed_parameter_index, perturbation_value)
+    original_overlap = np.abs(calculate_cavities_overlap_matrices(cavity_1=cavity, cavity_2=perturbed_cavity))
     if print_progress:
         print("Original overlap:", original_overlap)
         I = 0
@@ -3588,9 +3281,7 @@ def maximize_overlap(
         corrected_cavity = perturb_cavity(
             perturbed_cavity, control_parameters_indices, control_parameters_values
         )  #  * 1e-3
-        overlap = calculate_cavities_overlap_matrices(
-            cavity_1=cavity, cavity_2=corrected_cavity
-        )
+        overlap = calculate_cavities_overlap_matrices(cavity_1=cavity, cavity_2=corrected_cavity)
         overlap_abs_minus = np.nan_to_num(-np.abs(overlap), nan=2)
         if print_progress:
             nonlocal I
@@ -3605,9 +3296,7 @@ def maximize_overlap(
             )
         return overlap_abs_minus
 
-    best_overlap = optimize.minimize(
-        controlled_overlap, x0=np.zeros(len(control_parameters_indices[0])), tol=1e-6
-    )
+    best_overlap = optimize.minimize(controlled_overlap, x0=np.zeros(len(control_parameters_indices[0])), tol=1e-6)
     # best_overlap.x *= 1e-3
     if print_progress:
         print("Number of iterations:", I)
@@ -3616,9 +3305,7 @@ def maximize_overlap(
     return best_overlap, original_overlap
 
 
-def find_minimal_width_for_spot_size_and_radius(
-    radius, spot_size_radius, T_edge=1e-3, h_divided_by_spot_size=2.8
-):
+def find_minimal_width_for_spot_size_and_radius(radius, spot_size_radius, T_edge=1e-3, h_divided_by_spot_size=2.8):
     # relies on the derivation in figures/lens thickness calculation.jpg
     h = h_divided_by_spot_size * spot_size_radius
     try:
@@ -3632,27 +3319,18 @@ def find_minimal_width_for_spot_size_and_radius(
         return np.nan
 
 
-def calculate_incidence_angle(
-    surface: Surface, mode_parameters: ModeParameters
-) -> float:
+def calculate_incidence_angle(surface: Surface, mode_parameters: ModeParameters) -> float:
     # Calculates the incidence angle betweer the beam at the E=E_0e^-1 lateral_position (one spot size away from it's optical axis)
     # and the surface of an optical element
     if isinstance(surface, FlatSurface):
         raise NotImplementedError("The function is not implemented for flat surfaces")
 
-    surface_center_to_waist_position_vector = (
-        mode_parameters.center[0, :] - surface.center
-    )
-    from_the_convex_side = np.sign(
-        surface.outwards_normal @ surface_center_to_waist_position_vector
-    )
-    surface_to_waist_distance_signed = (
-        np.linalg.norm(surface_center_to_waist_position_vector) * from_the_convex_side
-    )
+    surface_center_to_waist_position_vector = mode_parameters.center[0, :] - surface.center
+    from_the_convex_side = np.sign(surface.outwards_normal @ surface_center_to_waist_position_vector)
+    surface_to_waist_distance_signed = np.linalg.norm(surface_center_to_waist_position_vector) * from_the_convex_side
 
     angle_of_incidence = np.arcsin(
-        ((surface.radius + surface_to_waist_distance_signed) * mode_parameters.NA[0])
-        / surface.radius
+        ((surface.radius + surface_to_waist_distance_signed) * mode_parameters.NA[0]) / surface.radius
     )
 
     angle_of_incidence_deg = np.degrees(angle_of_incidence)
@@ -3678,15 +3356,11 @@ def generate_spot_size_lines(
     )
     t = np.linspace(0, central_line.length, 100)
     ray_points = central_line.parameterization(t=t)
-    z_minus_z_0 = np.linalg.norm(
-        ray_points[:, np.newaxis, :] - mode_parameters.center, axis=2
-    )  # Before
+    z_minus_z_0 = np.linalg.norm(ray_points[:, np.newaxis, :] - mode_parameters.center, axis=2)  # Before
     # the norm the size is 100 | 2 | 3 and after it is 100 | 2 (100 points for in_plane and out_of_plane
     # dimensions)
     sign = np.array([1, -1])
-    spot_size_value = spot_size(
-        z_minus_z_0, mode_parameters.z_R, mode_parameters.lambda_0_laser
-    )
+    spot_size_value = spot_size(z_minus_z_0, mode_parameters.z_R, mode_parameters.lambda_0_laser)
     spot_size_lines = (
         ray_points[:, np.newaxis, np.newaxis, :]
         + spot_size_value[:, :, np.newaxis, np.newaxis]
@@ -3703,9 +3377,7 @@ def generate_spot_size_lines(
         else:
             relevant_axis_index = 0
             relevant_diminsions = [1, 2]
-        spot_size_lines = spot_size_lines[
-            :, relevant_axis_index, :, relevant_diminsions
-        ]  # Drop the z axis,
+        spot_size_lines = spot_size_lines[:, relevant_axis_index, :, relevant_diminsions]  # Drop the z axis,
         # and drop the lines of the transverse axis the size is:
         # 2 (selected spatial axes) | 100 (n_points) | 2 (sign, [1, -1]
         spot_size_lines_separated = [spot_size_lines[:, :, 0], spot_size_lines[:, :, 1]]
@@ -3768,13 +3440,9 @@ def find_equal_angles_surface(
             ),
             mode_parameters_on_surface_0=mode_parameters_right_after_surface_0,
         )
-        local_mode_parameters_right_after_surface_2 = (
-            arm.propagate_local_mode_parameters()
-        )
+        local_mode_parameters_right_after_surface_2 = arm.propagate_local_mode_parameters()
         mode_parameters_after_surface_2 = local_mode_parameters_right_after_surface_2.to_mode_parameters(
-            location_of_local_mode_parameter=arm.central_line.parameterization(
-                t=arm.central_line.length
-            ),
+            location_of_local_mode_parameter=arm.central_line.parameterization(t=arm.central_line.length),
             k_vector=arm.central_line.k_vector,  # ARBITRARY - ASSUMES CENTREAL LINE IS PERPENDICULAR TO SURFACE_2 - SHOULD BE CHANGED TO
             # THE NEXT CENTRAL LINE, AFTER REFRACTION
         )
@@ -3785,9 +3453,7 @@ def find_equal_angles_surface(
         diff = first_angle_of_incidence - second_angle_of_incidence
         return diff
 
-    R_1 = optimize.brentq(
-        f=f_for_root, a=h, b=1000 * surface_0.radius
-    )  # surface_0.radius
+    R_1 = optimize.brentq(f=f_for_root, a=h, b=1000 * surface_0.radius)  # surface_0.radius
 
     second_surface = match_surface_to_radius(R_1)
 
@@ -3829,9 +3495,7 @@ def find_required_perturbation_for_desired_change(
     def cavity_generator(perturbation_value: float):
         return perturb_cavity(cavity, parameter_index_to_change, perturbation_value)
 
-    return find_required_value_for_desired_change(
-        cavity_generator, desired_parameter, desired_value
-    )
+    return find_required_value_for_desired_change(cavity_generator, desired_parameter, desired_value)
 
 
 def mirror_lens_mirror_cavity_general_generator(
@@ -3888,9 +3552,7 @@ def mirror_lens_mirror_cavity_general_generator(
         principle_axes=np.array([[0, 0, 1], [0, 1, 0]]),
         lambda_0_laser=lambda_0_laser,
     )
-    mirror_left = match_a_mirror_to_mode(
-        mode_left, x_left - mode_left.center[0, 0], mirrors_material_properties
-    )
+    mirror_left = match_a_mirror_to_mode(mode_left, x_left - mode_left.center[0, 0], mirrors_material_properties)
     # Generate lens:
     # if lens_material_properties_override:
     (
@@ -3956,11 +3618,9 @@ def mirror_lens_mirror_cavity_general_generator(
         np.linalg.norm(surface_left.center - mode_left.center[0])
     )
 
-    mode_parameters_right_after_surface_left = (
-        propagate_local_mode_parameter_through_ABCD(
-            mode_parameters_just_before_surface_left,
-            surface_left.ABCD_matrix(cos_theta_incoming=1),
-        )
+    mode_parameters_right_after_surface_left = propagate_local_mode_parameter_through_ABCD(
+        mode_parameters_just_before_surface_left,
+        surface_left.ABCD_matrix(cos_theta_incoming=1),
     )
 
     arm = Arm(
@@ -3993,9 +3653,7 @@ def mirror_lens_mirror_cavity_general_generator(
             z_minus_z_0_right_mirror = 0
         else:
             z_minus_z_0_right_mirror = z_minus_z_0_right_surface + right_arm_length
-    mirror_right = match_a_mirror_to_mode(
-        mode_right, z_minus_z_0_right_mirror, mirrors_material_properties
-    )
+    mirror_right = match_a_mirror_to_mode(mode_right, z_minus_z_0_right_mirror, mirrors_material_properties)
     mirror_left_params = mirror_left.to_params
     mirror_right_params = mirror_right.to_params
 
@@ -4050,18 +3708,10 @@ def plot_mirror_lens_mirror_cavity_analysis(
     CA_divided_by_2spot_size = CA / (2 * spot_size_lens_right)
     short_arm_NA = cavity.arms[0].mode_parameters.NA[0]
     long_arm_NA = cavity.arms[2].mode_parameters.NA[0]
-    short_arm_length = np.linalg.norm(
-        cavity.surfaces[1].center - cavity.surfaces[0].center
-    )
-    long_arm_length = np.linalg.norm(
-        cavity.surfaces[3].center - cavity.surfaces[2].center
-    )
-    waist_to_lens_short_arm = (
-        cavity.surfaces[1].center[0] - cavity.mode_parameters[0].center[0, 0]
-    )
-    waist_to_lens_long_arm = (
-        cavity.mode_parameters[2].center[0, 0] - cavity.surfaces[2].center[0]
-    )
+    short_arm_length = np.linalg.norm(cavity.surfaces[1].center - cavity.surfaces[0].center)
+    long_arm_length = np.linalg.norm(cavity.surfaces[3].center - cavity.surfaces[2].center)
+    waist_to_lens_short_arm = cavity.surfaces[1].center[0] - cavity.mode_parameters[0].center[0, 0]
+    waist_to_lens_long_arm = cavity.mode_parameters[2].center[0, 0] - cavity.surfaces[2].center[0]
     spot_size_left_mirror = cavity.arms[0].mode_parameters_on_surfaces[0].spot_size[0]
     spot_size_right_mirror = cavity.arms[2].mode_parameters_on_surfaces[1].spot_size[0]
 
@@ -4103,9 +3753,7 @@ def plot_mirror_lens_mirror_cavity_analysis(
     if auto_set_x:
         # cavity_length = cavity.surfaces[3].center[0] - cavity.surfaces[0].center[0]
         # ax[0].set_xlim(cavity.surfaces[0].center[0] - 0.01 * cavity_length, cavity.surfaces[3].center[0] + 0.01 * cavity_length)
-        ax[0].set_xlim(
-            cavity.surfaces[0].center[0] - 0.01, cavity.surfaces[2].center[0] + 0.4
-        )
+        ax[0].set_xlim(cavity.surfaces[0].center[0] - 0.01, cavity.surfaces[2].center[0] + 0.4)
     if auto_set_y:
         y_lim = maximal_lens_height(R_left, T_c) * 1.1
     else:
