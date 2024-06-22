@@ -157,18 +157,18 @@ def radius_of_f_and_n(f: float, n: float) -> float:
     return 2 * f * (n - 1)
 
 
-def w_0_of_z_R(z_R: np.ndarray, lambda_laser: float) -> np.ndarray:
-    return np.sqrt(z_R * lambda_laser / np.pi)
+def w_0_of_z_R(z_R: np.ndarray, lambda_0_laser: float) -> np.ndarray:
+    return np.sqrt(z_R * lambda_0_laser / np.pi)
 
 
-def w_of_z_R(z: np.ndarray, z_R: np.ndarray, lambda_laser) -> np.ndarray:
-    w_0 = w_0_of_z_R(z_R, lambda_laser)
+def w_of_z_R(z: np.ndarray, z_R: np.ndarray, lambda_0_laser) -> np.ndarray:
+    w_0 = w_0_of_z_R(z_R, lambda_0_laser)
     w_z = w_0 * np.sqrt(1 + (z / z_R) ** 2)
     return w_z
 
 
-def spot_size(z: np.ndarray, z_R: np.ndarray, lambda_laser) -> np.ndarray:
-    w_0 = w_0_of_z_R(z_R, lambda_laser)
+def spot_size(z: np.ndarray, z_R: np.ndarray, lambda_0_laser) -> np.ndarray:
+    w_0 = w_0_of_z_R(z_R, lambda_0_laser)
     w_z = w_0 * np.sqrt(1 + (z / z_R) ** 2)
     return w_z
 

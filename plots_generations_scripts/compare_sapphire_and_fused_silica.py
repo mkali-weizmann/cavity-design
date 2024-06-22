@@ -15,11 +15,11 @@ for i, params_name in enumerate(['Sapphire, NA=0.2, L1=0.3, w=3mm - High NA axis
     auto_set_axes = 1.0000000000e+00
     axis_span = None
     camera_center = -1
-    lambda_laser = 1064e-9
+    lambda_0_laser = 1064e-9
     names = ['Right Mirror', 'lens', 'Left Mirror']
 
     cavity = Cavity.from_params(params=params, standing_wave=True,
-                                lambda_laser=lambda_laser, names=names, t_is_trivial=True, p_is_trivial=True)
+                                lambda_0_laser=lambda_0_laser, names=names, t_is_trivial=True, p_is_trivial=True)
 
     # fig, ax = plt.subplots(figsize=(13, 5))
     # cavity.plot(axis_span=axis_span, camera_center=camera_center, ax=ax, plane='xz')  #
@@ -90,11 +90,11 @@ for i, params in enumerate(params_list):
     auto_set_axes = 1.0000000000e+00
     axis_span = None
     camera_center = -1
-    lambda_laser = 1064e-9
+    lambda_0_laser = 1064e-9
     names = ['Right Mirror', 'lens', 'Left Mirror']
 
     cavity = Cavity.from_params(params=params, standing_wave=True,
-                                lambda_laser=lambda_laser, names=names, t_is_trivial=True, p_is_trivial=True)
+                                lambda_0_laser=lambda_0_laser, names=names, t_is_trivial=True, p_is_trivial=True)
 
     # fig, ax = plt.subplots(figsize=(13, 5))
     # cavity.plot(axis_span=axis_span, camera_center=camera_center, ax=ax, plane='xz')  #

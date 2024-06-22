@@ -7,7 +7,7 @@ from matplotlib.lines import Line2D
 FONT_SIZE_AXIS_LABELS = 14
 FONT_SIZE_TITLES = 14
 FONT_SIZE_TICKS = 12
-lambda_laser = 1064e-9
+lambda_0_laser = 1064e-9
 save_figs = False
 
 powers_100kW = np.logspace(0, 5, 40)
@@ -155,7 +155,7 @@ cavity_mirror_lens_mirror = Cavity.from_params(
     params=params,
     set_initial_surface=False,
     standing_wave=True,
-    lambda_laser=lambda_laser,
+    lambda_0_laser=lambda_0_laser,
     power=power_laser,
     p_is_trivial=True,
     t_is_trivial=True,
@@ -190,7 +190,7 @@ new_unheated_cavity = Cavity.from_params(
     params=new_params,
     set_initial_surface=False,
     standing_wave=True,
-    lambda_laser=lambda_laser,
+    lambda_0_laser=lambda_0_laser,
     power=0,
     p_is_trivial=True,
     t_is_trivial=True,
@@ -245,7 +245,7 @@ plot_high_power_and_low_power_cavity(
 # y_3 = 0.0000000000e00
 # t_3 = 0.0000000000e00
 # p_3 = 0.0000000000e00
-# lambda_laser = 1064e-09
+# lambda_0_laser = 1064e-09
 # r_3 = r_1
 # p_3 += np.pi
 # names = ["Right Mirror", "Left Mirror"]
@@ -285,7 +285,7 @@ plot_high_power_and_low_power_cavity(
 # cavity_fabry_perot = Cavity.from_params(
 #     params=params,
 #     standing_wave=True,
-#     lambda_laser=lambda_laser,
+#     lambda_0_laser=lambda_0_laser,
 #     power=3.5e3,
 #     names=names,
 #     t_is_trivial=True,
@@ -329,7 +329,7 @@ plot_high_power_and_low_power_cavity(
 # y_3 = 0.0000000000e00
 # t_3 = 0.0000000000e00
 # p_3 = 0.0000000000e00
-# lambda_laser = 1064e-09
+# lambda_0_laser = 1064e-09
 # r_3 = r_1
 # p_3 += np.pi
 # names = ["Right Mirror", "Left Mirror"]
@@ -371,7 +371,7 @@ plot_high_power_and_low_power_cavity(
 # cavity_fabry_perot_thermally_inverted = Cavity.from_params(
 #     params=params,
 #     standing_wave=True,
-#     lambda_laser=lambda_laser,
+#     lambda_0_laser=lambda_0_laser,
 #     power=4.9e3,
 #     names=names,
 #     t_is_trivial=True,

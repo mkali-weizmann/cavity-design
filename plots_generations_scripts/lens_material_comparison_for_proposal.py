@@ -36,7 +36,7 @@ with open('data/params_dict.pkl', 'rb') as f:
 
 font = {'size'   : 10}
 rc('font', **font)
-lambda_laser = 1.064e-6
+lambda_0_laser = 1.064e-6
 
 
 power = 5.0000000000e+04
@@ -85,7 +85,7 @@ mode_3_center += mode_3_center_fine
 if print_input_parameters:
     print_parameters_func(locals())
 # Generate left arm's mirror:
-z_R_3 = lambda_laser / (np.pi * NA_3 ** 2)
+w_0_3 = lambda_0_laser / (np.pi * NA_3)
 if symmetric_left_arm:
     half_length = (x_2 - w/2) - mode_3_center
     x_3 = mode_3_center - half_length
@@ -94,8 +94,8 @@ else:
 mode_3_center = np.array([mode_3_center, 0, 0])
 mode_3_k_vector = np.array([1, 0, 0])
 mode_3 = ModeParameters(center=np.stack([mode_3_center, mode_3_center], axis=0), k_vector=mode_3_k_vector,
-                        z_R=np.array([z_R_3, z_R_3]),
-                        principle_axes=np.array([[0, 0, 1], [0, 1, 0]]), lambda_laser=lambda_laser)
+                        w_0=np.array([w_0_3, w_0_3]),
+                        principle_axes=np.array([[0, 0, 1], [0, 1, 0]]), lambda_0_laser=lambda_0_laser)
 mirror_3 = match_a_mirror_to_mode(mode_3, x_3 - mode_3.center[0, 0], PHYSICAL_SIZES_DICT['thermal_properties_ULE'])
 
 # Generate lens:
@@ -110,7 +110,7 @@ surface_3, surface_1 = generate_lens_from_params(lens_params, names=['lens_left'
 local_mode_3 = mode_3.local_mode_parameters(np.linalg.norm(surface_3.center - mode_3.center[0]))
 local_mode_1 = local_mode_2_of_lens_parameters(np.array([R, w, n]), local_mode_3)
 mode_1 = local_mode_1.to_mode_parameters(location_of_local_mode_parameter=surface_1.center,
-                                         k_vector=mode_3_k_vector, lambda_laser=lambda_laser)
+                                         k_vector=mode_3_k_vector, lambda_0_laser=lambda_0_laser)
 
 if auto_set_right_arm_length:
     z_minus_z_0 = - local_mode_1.z_minus_z_0[0]
@@ -130,7 +130,7 @@ params = np.stack([mirror_1_params, lens_params, mirror_3_params], axis=0)
 params[1, 0] += x_2_perturbation
 
 cavity = Cavity.from_params(params,
-                            lambda_laser=lambda_laser,
+                            lambda_0_laser=lambda_0_laser,
                             standing_wave=True,
                             p_is_trivial=True,
                             t_is_trivial=True,
@@ -211,7 +211,7 @@ mode_3_center += mode_3_center_fine
 if print_input_parameters:
     print_parameters_func(locals())
 # Generate left arm's mirror:
-z_R_3 = lambda_laser / (np.pi * NA_3 ** 2)
+w_0_3 = lambda_0_laser / (np.pi * NA_3 ** 2)
 if symmetric_left_arm:
     half_length = (x_2 - w/2) - mode_3_center
     x_3 = mode_3_center - half_length
@@ -220,8 +220,8 @@ else:
 mode_3_center = np.array([mode_3_center, 0, 0])
 mode_3_k_vector = np.array([1, 0, 0])
 mode_3 = ModeParameters(center=np.stack([mode_3_center, mode_3_center], axis=0), k_vector=mode_3_k_vector,
-                        z_R=np.array([z_R_3, z_R_3]),
-                        principle_axes=np.array([[0, 0, 1], [0, 1, 0]]), lambda_laser=lambda_laser)
+                        w_0=np.array([w_0_3, w_0_3]),
+                        principle_axes=np.array([[0, 0, 1], [0, 1, 0]]), lambda_0_laser=lambda_0_laser)
 mirror_3 = match_a_mirror_to_mode(mode_3, x_3 - mode_3.center[0, 0], PHYSICAL_SIZES_DICT['thermal_properties_ULE'])
 
 # Generate lens:
@@ -236,7 +236,7 @@ surface_3, surface_1 = generate_lens_from_params(lens_params, names=['lens_left'
 local_mode_3 = mode_3.local_mode_parameters(np.linalg.norm(surface_3.center - mode_3.center[0]))
 local_mode_1 = local_mode_2_of_lens_parameters(np.array([R, w, n]), local_mode_3)
 mode_1 = local_mode_1.to_mode_parameters(location_of_local_mode_parameter=surface_1.center,
-                                         k_vector=mode_3_k_vector, lambda_laser=lambda_laser)
+                                         k_vector=mode_3_k_vector, lambda_0_laser=lambda_0_laser)
 
 if auto_set_right_arm_length:
     z_minus_z_0 = - local_mode_1.z_minus_z_0[0]
@@ -256,7 +256,7 @@ params = np.stack([mirror_1_params, lens_params, mirror_3_params], axis=0)
 params[1, 0] += x_2_perturbation
 
 cavity = Cavity.from_params(params,
-                            lambda_laser=lambda_laser,
+                            lambda_0_laser=lambda_0_laser,
                             standing_wave=True,
                             p_is_trivial=True,
                             t_is_trivial=True,
@@ -336,7 +336,7 @@ mode_3_center += mode_3_center_fine
 if print_input_parameters:
     print_parameters_func(locals())
 # Generate left arm's mirror:
-z_R_3 = lambda_laser / (np.pi * NA_3 ** 2)
+w_0_3 = lambda_0_laser / (np.pi * NA_3 ** 2)
 if symmetric_left_arm:
     half_length = (x_2 - w/2) - mode_3_center
     x_3 = mode_3_center - half_length
@@ -345,8 +345,8 @@ else:
 mode_3_center = np.array([mode_3_center, 0, 0])
 mode_3_k_vector = np.array([1, 0, 0])
 mode_3 = ModeParameters(center=np.stack([mode_3_center, mode_3_center], axis=0), k_vector=mode_3_k_vector,
-                        z_R=np.array([z_R_3, z_R_3]),
-                        principle_axes=np.array([[0, 0, 1], [0, 1, 0]]), lambda_laser=lambda_laser)
+                        z_R=np.array([w_0_3, w_0_3]),
+                        principle_axes=np.array([[0, 0, 1], [0, 1, 0]]), lambda_0_laser=lambda_0_laser)
 mirror_3 = match_a_mirror_to_mode(mode_3, x_3 - mode_3.center[0, 0], PHYSICAL_SIZES_DICT['thermal_properties_ULE'])
 
 # Generate lens:
@@ -361,7 +361,7 @@ surface_3, surface_1 = generate_lens_from_params(lens_params, names=['lens_left'
 local_mode_3 = mode_3.local_mode_parameters(np.linalg.norm(surface_3.center - mode_3.center[0]))
 local_mode_1 = local_mode_2_of_lens_parameters(np.array([R, w, n]), local_mode_3)
 mode_1 = local_mode_1.to_mode_parameters(location_of_local_mode_parameter=surface_1.center,
-                                         k_vector=mode_3_k_vector, lambda_laser=lambda_laser)
+                                         k_vector=mode_3_k_vector, lambda_0_laser=lambda_0_laser)
 
 if auto_set_right_arm_length:
     z_minus_z_0 = - local_mode_1.z_minus_z_0[0]
@@ -381,7 +381,7 @@ params = np.stack([mirror_1_params, lens_params, mirror_3_params], axis=0)
 params[1, 0] += x_2_perturbation
 
 cavity = Cavity.from_params(params,
-                            lambda_laser=lambda_laser,
+                            lambda_0_laser=lambda_0_laser,
                             standing_wave=True,
                             p_is_trivial=True,
                             t_is_trivial=True,

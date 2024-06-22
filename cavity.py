@@ -8,9 +8,7 @@ from dataclasses import dataclass
 import copy
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import pandas as pd
-from matplotlib import rc
 from datetime import datetime
-from scipy.optimize import fsolve
 from hashlib import md5
 
 pd.set_option("display.max_rows", 500)
@@ -252,7 +250,7 @@ class LocalModeParameters:
         z_minus_z_0: Optional[Union[np.ndarray, float]] = None,
         z_R: Optional[Union[np.ndarray, float]] = None,
         q: Optional[Union[np.ndarray, float]] = None,
-        lambda_laser: Optional[float] = None,
+        lambda_0_laser: Optional[float] = None,
     ):
         if q is not None:
             if isinstance(q, float):
@@ -266,7 +264,7 @@ class LocalModeParameters:
             self.q: np.ndarray = z_minus_z_0 + 1j * z_R
         else:
             raise ValueError("Either q or z_minus_z_0 and z_R must be provided")
-        self.lambda_laser = lambda_laser
+        self.lambda_0_laser = lambda_0_laser
 
     @property
     def z_minus_z_0(self):
@@ -278,7 +276,7 @@ class LocalModeParameters:
 
     @property
     def w_0(self):
-        return w_0_of_z_R(z_R=self.z_R, lambda_laser=self.lambda_laser)
+        return w_0_of_z_R(z_R=self.z_R, lambda_0_laser=self.lambda_0_laser)
 
     def to_mode_parameters(self, location_of_local_mode_parameter: np.ndarray, k_vector: np.ndarray):
         center = location_of_local_mode_parameter - self.z_minus_z_0[:, np.newaxis] * k_vector
@@ -292,9 +290,9 @@ class LocalModeParameters:
         return ModeParameters(
             center=center,
             k_vector=k_vector,
-            z_R=self.z_R,
+            w_0=self.w_0,
             principle_axes=principle_axes,
-            lambda_laser=self.lambda_laser,
+            lambda_0_laser=self.lambda_0_laser,
         )
 
     @property
@@ -302,7 +300,7 @@ class LocalModeParameters:
         if np.any(self.z_R == 0):
             w_z = np.array([np.nan, np.nan])
         else:
-            w_z = spot_size(z=self.z_minus_z_0, z_R=self.z_R, lambda_laser=self.lambda_laser)
+            w_z = spot_size(z=self.z_minus_z_0, z_R=self.z_R, lambda_0_laser=self.lambda_0_laser)
         return w_z
 
 
@@ -310,33 +308,33 @@ class LocalModeParameters:
 class ModeParameters:
     center: np.ndarray  # First dimension is t or p, second dimension is x, y, z
     k_vector: np.ndarray
-    z_R: np.ndarray
+    w_0: np.ndarray
     principle_axes: np.ndarray  # First dimension is t or p, second dimension is x, y, z
-    lambda_laser: Optional[float]
+    lambda_0_laser: Optional[float]
 
     @property
     def ray(self):
         return Ray(self.center, self.k_vector)
 
     @property
-    def w_0(self):
-        if self.lambda_laser is None:
+    def z_R(self):
+        if self.lambda_0_laser is None:
             return None
         else:
-            return np.sqrt(self.lambda_laser * self.z_R / np.pi)
+            return np.pi * self.w_0 ** 2 / self.lambda_0_laser
 
     @property
     def NA(self):
-        if self.lambda_laser is None:
+        if self.lambda_0_laser is None:
             return None
         else:
             if self.z_R[0] == 0 or self.z_R[1] == 0:
                 return np.array([np.nan, np.nan])
             else:
-                return np.sqrt(self.lambda_laser / (np.pi * self.z_R))
+                return np.sqrt(self.lambda_0_laser / (np.pi * self.z_R))
 
     def local_mode_parameters(self, z_minus_z_0):
-        return LocalModeParameters(z_minus_z_0=z_minus_z_0, z_R=self.z_R, lambda_laser=self.lambda_laser)
+        return LocalModeParameters(z_minus_z_0=z_minus_z_0, z_R=self.z_R, lambda_0_laser=self.lambda_0_laser)
 
 
 def decompose_ABCD_matrix(ABCD: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
@@ -348,22 +346,23 @@ def decompose_ABCD_matrix(ABCD: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.
 
 
 def propagate_local_mode_parameter_through_ABCD(
-    local_mode_parameters: LocalModeParameters, ABCD: np.ndarray
+    local_mode_parameters: LocalModeParameters, ABCD: np.ndarray,# n_1: float = 1, n_2: float = 1
 ) -> LocalModeParameters:
     A, B, C, D = decompose_ABCD_matrix(ABCD)
+    # q_new = n_2 * (A * local_mode_parameters.q / n_1 + B) / (C * local_mode_parameters.q / n_1 + D)
     q_new = (A * local_mode_parameters.q + B) / (C * local_mode_parameters.q + D)
-    return LocalModeParameters(q=q_new, lambda_laser=local_mode_parameters.lambda_laser)
+    return LocalModeParameters(q=q_new, lambda_0_laser=local_mode_parameters.lambda_0_laser)
 
 
 def local_mode_parameters_of_round_trip_ABCD(
-    round_trip_ABCD: np.ndarray, lambda_laser: Optional[float] = None
+    round_trip_ABCD: np.ndarray, lambda_0_laser: Optional[float] = None
 ) -> LocalModeParameters:
     A, B, C, D = decompose_ABCD_matrix(round_trip_ABCD)
     q_z = (A - D + np.sqrt(A**2 + 2 * C * B + D**2 - 2 + 0j)) / (2 * C)
     q_z = np.real(q_z) + 1j * np.abs(np.imag(q_z))  # ATTENTION - make sure this line is justified.
 
     return LocalModeParameters(
-        q=q_z, lambda_laser=lambda_laser
+        q=q_z, lambda_0_laser=lambda_0_laser
     )  # First dimension is theta or phi,second dimension is z_minus_z_0 or
     # z_R.
 
@@ -440,10 +439,14 @@ class Ray:
 
 
 class Surface:
-    def __init__(self, outwards_normal: np.ndarray, radius: float, name: Optional[str] = None, **kwargs):
+    def __init__(self, outwards_normal: np.ndarray, radius: float, name: Optional[str] = None,
+                 material_properties: MaterialProperties = None,
+                 **kwargs):
         self.outwards_normal = normalize_vector(outwards_normal)
         self.name = name
         self.radius = radius
+        self.material_properties = material_properties
+
 
     @property
     def center(self):
@@ -600,41 +603,6 @@ class Surface:
             raise ValueError(f"Unknown surface type {p.surface_type}")
         return surface
 
-
-class PhysicalSurface(Surface):
-    def __init__(
-        self,
-        outwards_normal: np.ndarray,
-        radius: float,
-        name: Optional[str] = None,
-        material_properties: Optional[MaterialProperties] = None,
-        **kwargs,
-    ):
-
-        self.material_properties = material_properties
-
-        super().__init__(outwards_normal=outwards_normal, name=name, radius=radius, **kwargs)
-
-    @property
-    def center(self):
-        raise NotImplementedError
-
-    def parameterization(self, t: Union[np.ndarray, float], p: Union[np.ndarray, float]) -> np.ndarray:
-        raise NotImplementedError
-
-    def get_parameterization(self, points: np.ndarray):
-        raise NotImplementedError
-
-    def find_intersection_with_ray(self, ray: Ray) -> np.ndarray:
-        raise NotImplementedError
-
-    def reflect_ray(self, ray: Ray) -> Ray:
-        raise NotImplementedError
-
-    def ABCD_matrix(self, cos_theta_incoming: Optional[float] = None) -> np.ndarray:
-        raise NotImplementedError
-
-    # This could be a @property, but the Cavity's to_param can not be a @property and I want them to be the same
     @property
     def to_params(self) -> OpticalElementParams:
         x, y, z = self.center
@@ -648,8 +616,8 @@ class PhysicalSurface(Surface):
             r_1 = 0
             r_2 = 0
         t, p = angles_of_unit_vector(self.outwards_normal)
-        n_1 = 0
-        n_2 = 0
+        n_1 = 1
+        n_2 = 1
         if isinstance(self, CurvedMirror):
             surface_type = 0
             curvature_sign = self.curvature_sign
@@ -685,6 +653,39 @@ class PhysicalSurface(Surface):
             material_properties=self.material_properties,
         )
         return params
+
+
+class PhysicalSurface(Surface):
+    def __init__(
+        self,
+        outwards_normal: np.ndarray,
+        radius: float,
+        name: Optional[str] = None,
+        material_properties: Optional[MaterialProperties] = None,
+        **kwargs,
+    ):
+
+        super().__init__(outwards_normal=outwards_normal, name=name, radius=radius,
+                         material_properties=material_properties, **kwargs)
+
+    @property
+    def center(self):
+        raise NotImplementedError
+
+    def parameterization(self, t: Union[np.ndarray, float], p: Union[np.ndarray, float]) -> np.ndarray:
+        raise NotImplementedError
+
+    def get_parameterization(self, points: np.ndarray):
+        raise NotImplementedError
+
+    def find_intersection_with_ray(self, ray: Ray) -> np.ndarray:
+        raise NotImplementedError
+
+    def reflect_ray(self, ray: Ray) -> Ray:
+        raise NotImplementedError
+
+    def ABCD_matrix(self, cos_theta_incoming: Optional[float] = None) -> np.ndarray:
+        raise NotImplementedError
 
     def thermal_transformation(self, P_laser_power: float, w_spot_size: float, **kwargs):
         raise NotImplementedError
@@ -1335,7 +1336,7 @@ class Arm:
         mode_parameters_on_surface_0: Optional[LocalModeParameters] = None,
         mode_parameters_on_surface_1: Optional[LocalModeParameters] = None,
         mode_principle_axes: Optional[np.ndarray] = None,
-        lambda_laser: Optional[float] = None,
+        lambda_0_laser: Optional[float] = None,
     ):
         self.surface_0 = surface_0
         self.surface_1 = surface_1
@@ -1343,7 +1344,15 @@ class Arm:
         self.mode_parameters_on_surface_1 = mode_parameters_on_surface_1
         self.central_line = central_line
         self.mode_principle_axes = mode_principle_axes
-        self.lambda_laser = lambda_laser
+        self.lambda_0_laser = lambda_0_laser
+        if isinstance(surface_0, CurvedRefractiveSurface):
+            self.n = surface_0.n_2
+        elif isinstance(surface_1, CurvedRefractiveSurface):
+            self.n = surface_1.n_1
+        else:
+            self.n = 1
+        if isinstance(surface_0, CurvedRefractiveSurface) and isinstance(surface_1, CurvedRefractiveSurface):
+            assert surface_0.n_2 == surface_1.n_1
 
     def propagate(self, ray: Ray):
         if isinstance(self.surface_1, PhysicalSurface):
@@ -1381,11 +1390,9 @@ class Arm:
         if self.mode_parameters_on_surface_0 is None:
             raise ValueError("Mode parameters on surface 1 not set")
         self.mode_parameters_on_surface_1 = propagate_local_mode_parameter_through_ABCD(
-            self.mode_parameters_on_surface_0, self.ABCD_matrix_free_space
-        )
-        next_mode_parameters = propagate_local_mode_parameter_through_ABCD(
-            self.mode_parameters_on_surface_1, self.ABCD_matrix_reflection
-        )
+            self.mode_parameters_on_surface_0, self.ABCD_matrix_free_space)
+        next_mode_parameters = propagate_local_mode_parameter_through_ABCD(self.mode_parameters_on_surface_1,
+                                                                           self.ABCD_matrix_reflection)
         return next_mode_parameters
 
     # @property
@@ -1408,9 +1415,9 @@ class Arm:
         mode_parameters = ModeParameters(
             center=center,
             k_vector=self.central_line.k_vector,
-            z_R=self.mode_parameters_on_surface_0.z_R,
+            w_0=self.mode_parameters_on_surface_0.w_0,
             principle_axes=self.mode_principle_axes,
-            lambda_laser=self.lambda_laser,
+            lambda_0_laser=self.lambda_0_laser,
         )
         return mode_parameters
 
@@ -1422,9 +1429,8 @@ class Arm:
 
         point_plane_distance_from_surface_1 = (point - self.central_line.origin) @ self.central_line.k_vector
         propagation_ABCD = ABCD_free_space(point_plane_distance_from_surface_1)
-        local_mode_parameters = propagate_local_mode_parameter_through_ABCD(
-            self.mode_parameters_on_surface_0, propagation_ABCD
-        )
+        local_mode_parameters = propagate_local_mode_parameter_through_ABCD(self.mode_parameters_on_surface_0,
+                                                                            propagation_ABCD)
         return local_mode_parameters
 
     @property
@@ -1488,7 +1494,7 @@ class Cavity:
         self,
         physical_surfaces: List[PhysicalSurface],
         standing_wave: bool = False,
-        lambda_laser: Optional[float] = None,
+        lambda_0_laser: Optional[float] = None,
         params: Optional[List[OpticalElementParams]] = None,
         names: Optional[List[str]] = None,
         set_central_line: bool = True,
@@ -1506,13 +1512,13 @@ class Cavity:
             Arm(
                 self.physical_surfaces_ordered[i],
                 self.physical_surfaces_ordered[np.mod(i + 1, len(self.physical_surfaces_ordered))],
-                lambda_laser=lambda_laser,
+                lambda_0_laser=lambda_0_laser,
             )
             for i in range(len(self.physical_surfaces_ordered))
         ]
         self.central_line_successfully_traced: Optional[bool] = None
         self.resonating_mode_successfully_traced: Optional[bool] = None
-        self.lambda_laser: Optional[float] = lambda_laser
+        self.lambda_0_laser: Optional[float] = lambda_0_laser
         self.params = params
         self.names_memory = names
         self.t_is_trivial = t_is_trivial
@@ -1533,7 +1539,7 @@ class Cavity:
     def from_params(
         params: Union[np.ndarray, List[OpticalElementParams]],
         standing_wave: bool = True,
-        lambda_laser: Optional[float] = None,
+        lambda_0_laser: Optional[float] = None,
         names: Optional[List[str]] = None,
         set_central_line: bool = True,
         set_mode_parameters: bool = True,
@@ -1560,7 +1566,7 @@ class Cavity:
         cavity = Cavity(
             physical_surfaces,
             standing_wave,
-            lambda_laser,
+            lambda_0_laser,
             params=p,
             names=names,
             set_central_line=set_central_line,
@@ -1899,7 +1905,7 @@ class Cavity:
             return None
 
         local_mode_parameters_current = local_mode_parameters_of_round_trip_ABCD(
-            round_trip_ABCD=self.ABCD_round_trip, lambda_laser=self.lambda_laser
+            round_trip_ABCD=self.ABCD_round_trip, lambda_0_laser=self.lambda_0_laser
         )
         if (
             local_mode_parameters_current.z_R[0] == 0 or local_mode_parameters_current.z_R[1] == 0
@@ -2128,7 +2134,7 @@ class Cavity:
                 length = spot_size * 5
                 surface.plot(ax=ax, dim=dim, plane=plane, length=length)
 
-        if self.lambda_laser is not None and plot_mode_lines and self.arms[0].central_line is not None:
+        if self.lambda_0_laser is not None and plot_mode_lines and self.arms[0].central_line is not None:
             try:
                 spot_size_lines = self.generate_spot_size_lines(dim=dim, plane=plane)
                 for line in spot_size_lines:
@@ -2345,7 +2351,7 @@ class Cavity:
         unheated_cavity = Cavity(
             physical_surfaces=unheated_surfaces,
             standing_wave=self.standing_wave,
-            lambda_laser=self.lambda_laser,
+            lambda_0_laser=self.lambda_0_laser,
             names=names,
             set_central_line=True,
             set_mode_parameters=True,
@@ -2509,7 +2515,7 @@ def generate_tolerance_of_NA(
     initial_step: float = 1e-6,
     overlap_threshold: float = 0.9,
     accuracy: float = 1e-3,
-    lambda_laser: float = 1064e-9,
+    lambda_0_laser: float = 1064e-9,
     standing_wave: bool = True,
     t_is_trivial: bool = False,
     p_is_trivial: bool = True,
@@ -2533,7 +2539,7 @@ def generate_tolerance_of_NA(
         cavity = Cavity.from_params(
             params=params_temp,
             set_mode_parameters=True,
-            lambda_laser=lambda_laser,
+            lambda_0_laser=lambda_0_laser,
             standing_wave=standing_wave,
             t_is_trivial=t_is_trivial,
             p_is_trivial=p_is_trivial,
@@ -2565,7 +2571,7 @@ def plot_tolerance_of_NA(
     overlap_threshold: Optional[float] = 0.9,
     accuracy: Optional[float] = 1e-3,
     names: Optional[List[str]] = None,
-    lambda_laser: Optional[float] = 1064e-9,
+    lambda_0_laser: Optional[float] = 1064e-9,
     standing_wave: Optional[bool] = True,
     t_is_trivial: bool = False,
     p_is_trivial: bool = True,
@@ -2581,7 +2587,7 @@ def plot_tolerance_of_NA(
             initial_step=initial_step,
             overlap_threshold=overlap_threshold,
             accuracy=accuracy,
-            lambda_laser=lambda_laser,
+            lambda_0_laser=lambda_0_laser,
             standing_wave=standing_wave,
         )
     tolerance_matrix = np.abs(tolerance_matrix)
@@ -2615,7 +2621,7 @@ def plot_tolerance_of_NA_same_plot(
     overlap_threshold: Optional[float] = 0.9,
     accuracy: Optional[float] = 1e-3,
     names: Optional[List[str]] = None,
-    lambda_laser: Optional[float] = 1064e-9,
+    lambda_0_laser: Optional[float] = 1064e-9,
     standing_wave: Optional[bool] = True,
     NAs: Optional[np.ndarray] = None,
     tolerance_matrix: Optional[np.ndarray] = None,
@@ -2631,7 +2637,7 @@ def plot_tolerance_of_NA_same_plot(
             initial_step=initial_step,
             overlap_threshold=overlap_threshold,
             accuracy=accuracy,
-            lambda_laser=lambda_laser,
+            lambda_0_laser=lambda_0_laser,
             standing_wave=standing_wave,
         )
     tolerance_matrix = np.abs(tolerance_matrix)
@@ -2687,7 +2693,7 @@ def calculate_gaussian_parameters_on_surface(surface: FlatSurface, mode_paramete
     intersection_point = intersection_point[0, :]
     z_minus_z_0 = np.linalg.norm(intersection_point - mode_parameters.center, axis=1)
     q_u, q_v = z_minus_z_0 + 1j * mode_parameters.z_R
-    k = 2 * np.pi / mode_parameters.lambda_laser
+    k = 2 * np.pi / mode_parameters.lambda_0_laser
 
     # Those are the vectors that define the mode and the surface: r_0 is the surface's center with respect to the mode's
     # center, t_hat and p_hat are the unit vectors that span the surface, k_hat is the mode's k vector,
@@ -2823,7 +2829,7 @@ def perturb_cavity(
     new_cavity = Cavity.from_params(
         params=new_params,
         standing_wave=cavity.standing_wave,
-        lambda_laser=cavity.lambda_laser,
+        lambda_0_laser=cavity.lambda_0_laser,
         t_is_trivial=t_is_trivial,
         p_is_trivial=p_is_trivial,
     )
@@ -2938,7 +2944,7 @@ def evaluate_gaussian_3d(points: np.ndarray, mode_parameters: ModeParameters):
     q = k_projection[:, :, None] + 1j * mode_parameters.z_R[None, None, :]
     q_u = q[:, :, 0]
     q_v = q[:, :, 1]
-    k = 2 * np.pi / mode_parameters.lambda_laser
+    k = 2 * np.pi / mode_parameters.lambda_0_laser
     integrand = -1j * k / 2 * (u_projection**2 / q_u + v_projection**2 / q_v + k_projection)
     gaussian = safe_exponent(integrand)
     return gaussian
@@ -3214,7 +3220,7 @@ def generate_spot_size_lines(
     # the norm the size is 100 | 2 | 3 and after it is 100 | 2 (100 points for in_plane and out_of_plane
     # dimensions)
     sign = np.array([1, -1])
-    spot_size_value = spot_size(z_minus_z_0, mode_parameters.z_R, mode_parameters.lambda_laser)
+    spot_size_value = spot_size(z_minus_z_0, mode_parameters.z_R, mode_parameters.lambda_0_laser)
     spot_size_lines = (
         ray_points[:, np.newaxis, np.newaxis, :]
         + spot_size_value[:, :, np.newaxis, np.newaxis]
@@ -3252,7 +3258,7 @@ def find_equal_angles_surface(
     surface_0: CurvedRefractiveSurface,
     T_edge: float = 1e-3,
     h: float = 3.875e-3,
-    lambda_laser: float = 1064e-9,
+    lambda_0_laser: float = 1064e-9,
 ) -> CurvedRefractiveSurface:
     mode_parameters_just_before_surface_0 = mode_before_lens.local_mode_parameters(
         np.linalg.norm(surface_0.center - mode_before_lens.center[0])
@@ -3263,8 +3269,7 @@ def find_equal_angles_surface(
     )
     dT_c_0 = dT_c_of_a_lens(R=surface_0.radius, h=h)
     mode_parameters_right_after_surface_0 = propagate_local_mode_parameter_through_ABCD(
-        mode_parameters_just_before_surface_0, surface_0.ABCD_matrix(cos_theta_incoming=1)
-    )
+        mode_parameters_just_before_surface_0, surface_0.ABCD_matrix(cos_theta_incoming=1))
 
     def match_surface_to_radius(R_1: float) -> CurvedRefractiveSurface:
         T_c = dT_c_0 + T_edge + dT_c_of_a_lens(R=R_1, h=h)
@@ -3361,7 +3366,7 @@ def mirror_lens_mirror_cavity_general_generator(
     mirrors_fixed_properties="fused_silica",
     symmetric_left_arm: bool = True,
     waist_to_left_mirror: float = 5e-3,
-    lambda_laser=1064e-9,
+    lambda_0_laser=1064e-9,
     power: float = 2e4,
     set_h_instead_of_w: bool = True,
     right_mirror_on_waist: bool = False,
@@ -3386,7 +3391,7 @@ def mirror_lens_mirror_cavity_general_generator(
     )
 
     # Generate left arm's mirror:
-    z_R_left = lambda_laser / (np.pi * NA_left**2)
+    w_0_left = lambda_0_laser / (np.pi * NA_left)
     left_waist_x = 0
     if symmetric_left_arm:
         x_left = left_waist_x - waist_to_lens
@@ -3398,9 +3403,9 @@ def mirror_lens_mirror_cavity_general_generator(
     mode_left = ModeParameters(
         center=np.stack([mode_left_center, mode_left_center], axis=0),
         k_vector=mode_left_k_vector,
-        z_R=np.array([z_R_left, z_R_left]),
+        w_0=np.array([w_0_left, w_0_left]),
         principle_axes=np.array([[0, 0, 1], [0, 1, 0]]),
-        lambda_laser=lambda_laser,
+        lambda_0_laser=lambda_0_laser,
     )
     mirror_left = match_a_mirror_to_mode(mode_left, x_left - mode_left.center[0, 0], mirrors_material_properties)
     # Generate lens:
@@ -3430,7 +3435,7 @@ def mirror_lens_mirror_cavity_general_generator(
     )
     if set_R_right_to_equalize_angles:
         surface_right = find_equal_angles_surface(
-            mode_before_lens=mode_left, surface_0=surface_left, T_edge=T_edge, h=h, lambda_laser=lambda_laser
+            mode_before_lens=mode_left, surface_0=surface_left, T_edge=T_edge, h=h, lambda_0_laser=lambda_0_laser
         )
         T_c = np.linalg.norm(surface_right.center - surface_left.center)
     else:
@@ -3465,8 +3470,7 @@ def mirror_lens_mirror_cavity_general_generator(
     )
 
     mode_parameters_right_after_surface_left = propagate_local_mode_parameter_through_ABCD(
-        mode_parameters_just_before_surface_left, surface_left.ABCD_matrix(cos_theta_incoming=1)
-    )
+        mode_parameters_just_before_surface_left, surface_left.ABCD_matrix(cos_theta_incoming=1))
 
     arm = Arm(
         surface_0=surface_left,
@@ -3514,7 +3518,7 @@ def mirror_lens_mirror_cavity_general_generator(
 
     cavity = Cavity.from_params(
         params,
-        lambda_laser=lambda_laser,
+        lambda_0_laser=lambda_0_laser,
         standing_wave=True,
         p_is_trivial=True,
         t_is_trivial=True,
