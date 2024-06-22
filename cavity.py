@@ -311,6 +311,8 @@ class ModeParameters:
     w_0: np.ndarray
     principle_axes: np.ndarray  # First dimension is t or p, second dimension is x, y, z
     lambda_0_laser: Optional[float]
+    z_minus_z_0: Optional[np.ndarray] = None  # The distance of a point of interest from the center of the
+    # mode
 
     @property
     def ray(self):
@@ -324,6 +326,18 @@ class ModeParameters:
             return np.pi * self.w_0 ** 2 / self.lambda_0_laser
 
     @property
+    def q(self):
+        return self.q_of_z()
+
+    def q_of_z(self, z_minus_z_0=None):
+        if (self.z_minus_z_0 is None and z_minus_z_0 is None) or self.z_R is None:
+            raise ValueError("z_minus_z_0 and z_R must be provided to calculate q")
+        else:
+            if z_minus_z_0 is None:
+                z_minus_z_0 = self.z_minus_z_0
+            return z_minus_z_0 + 1j * self.z_R
+
+    @property
     def NA(self):
         if self.lambda_0_laser is None:
             return None
@@ -333,8 +347,57 @@ class ModeParameters:
             else:
                 return np.sqrt(self.lambda_0_laser / (np.pi * self.z_R))
 
+    def propagate_in_space(self, z: float, absolute_z=True, inplace=False):
+        if self.z_minus_z_0 is None and not absolute_z:
+            raise ValueError("z_minus_z_0 must be defined to propagate in space with relative z")
+        if absolute_z:
+            new_z = z
+        else:
+            new_z = self.z_minus_z_0 + z
+        if inplace:
+            self.z_minus_z_0 = new_z
+        else:
+            mode_parameters_copy = copy.deepcopy(self)
+            mode_parameters_copy.z_minus_z_0 = new_z
+            return mode_parameters_copy
+
+    @property
+    def spot_size(self):
+        if np.any(self.z_R == 0):
+            w_z = np.array([np.nan, np.nan])
+        else:
+            w_z = spot_size(z=self.z_minus_z_0, z_R=self.z_R, lambda_0_laser=self.lambda_0_laser)
+        return w_z
+
+
     def local_mode_parameters(self, z_minus_z_0):
         return LocalModeParameters(z_minus_z_0=z_minus_z_0, z_R=self.z_R, lambda_0_laser=self.lambda_0_laser)
+    
+    @staticmethod
+    def from_local_mode_parameters(q,
+               lambda_0_laser,
+               location_of_local_mode_parameter,
+               k_vector,
+               principle_axes: Optional[np.ndarray] = None):
+        z_minus_z_0 = q.real
+        center = location_of_local_mode_parameter - z_minus_z_0[:, np.newaxis] * k_vector
+        w_0 = w_0_of_z_R(q.imag, lambda_0_laser)  # ATTENSTION - WHEN INTRODUCING THE INDEX OF REFRACTION - TAKE IT INTO ACCOUNT HERE
+        if principle_axes is None:
+            z_hat = np.array([0, 0, 1])
+            if np.linalg.norm(k_vector - z_hat) < 1e-10:
+                z_hat = np.array([0, 1, 0])
+            pseudo_y = normalize_vector(np.cross(z_hat, k_vector))
+            pseudo_z = normalize_vector(np.cross(k_vector, pseudo_y))
+            principle_axes = np.stack([pseudo_z, pseudo_y], axis=0)
+
+
+        return ModeParameters(
+            center=center,
+            k_vector=k_vector,
+            w_0=w_0,
+            principle_axes=principle_axes,
+            lambda_0_laser=lambda_0_laser,
+        ) 
 
 
 def decompose_ABCD_matrix(ABCD: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
@@ -345,25 +408,23 @@ def decompose_ABCD_matrix(ABCD: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.
     return A, B, C, D
 
 
-def propagate_local_mode_parameter_through_ABCD(
-    local_mode_parameters: LocalModeParameters, ABCD: np.ndarray,# n_1: float = 1, n_2: float = 1
-) -> LocalModeParameters:
+def propagate_mode_parameter_through_ABCD(
+    mode_parameters: ModeParameters, ABCD: np.ndarray,# n_1: float = 1, n_2: float = 1
+) -> np.ndarray:
     A, B, C, D = decompose_ABCD_matrix(ABCD)
     # q_new = n_2 * (A * local_mode_parameters.q / n_1 + B) / (C * local_mode_parameters.q / n_1 + D)
-    q_new = (A * local_mode_parameters.q + B) / (C * local_mode_parameters.q + D)
-    return LocalModeParameters(q=q_new, lambda_0_laser=local_mode_parameters.lambda_0_laser)
+    q_new = (A * mode_parameters.q + B) / (C * mode_parameters.q + D)
+    return q_new
 
 
 def local_mode_parameters_of_round_trip_ABCD(
-    round_trip_ABCD: np.ndarray, lambda_0_laser: Optional[float] = None
-) -> LocalModeParameters:
+    round_trip_ABCD: np.ndarray
+) -> np.ndarray:
     A, B, C, D = decompose_ABCD_matrix(round_trip_ABCD)
-    q_z = (A - D + np.sqrt(A**2 + 2 * C * B + D**2 - 2 + 0j)) / (2 * C)
-    q_z = np.real(q_z) + 1j * np.abs(np.imag(q_z))  # ATTENTION - make sure this line is justified.
+    q = (A - D + np.sqrt(A ** 2 + 2 * C * B + D ** 2 - 2 + 0j)) / (2 * C)
+    q = np.real(q) + 1j * np.abs(np.imag(q))  # ATTENTION - make sure this line is justified.
 
-    return LocalModeParameters(
-        q=q_z, lambda_0_laser=lambda_0_laser
-    )  # First dimension is theta or phi,second dimension is z_minus_z_0 or
+    return q  # First dimension is theta or phi,second dimension is z_minus_z_0 or
     # z_R.
 
 
@@ -379,6 +440,10 @@ class Ray:
         if length is not None and isinstance(length, float) and origin.ndim > 1:  # If there is one length for many rays
             length = np.ones(origin.shape[0]) * length
         self.length = length  # m_rays or None
+
+    @property
+    def end_point(self):
+        return self.origin + self.length[..., np.newaxis] * self.k_vector
 
     def parameterization(self, t: Union[np.ndarray, float]) -> np.ndarray:
         # Currently this function allows only one t per ray. if needed it can be extended to allow multiple t per ray.
@@ -1333,15 +1398,13 @@ class Arm:
         surface_0: Surface,
         surface_1: Surface,
         central_line: Optional[Ray] = None,
-        mode_parameters_on_surface_0: Optional[LocalModeParameters] = None,
-        mode_parameters_on_surface_1: Optional[LocalModeParameters] = None,
+        mode_parameters: Optional[ModeParameters] = None,
+        local_mode_parameters_on_surface_0: Optional[np.ndarray] = None,
         mode_principle_axes: Optional[np.ndarray] = None,
         lambda_0_laser: Optional[float] = None,
     ):
         self.surface_0 = surface_0
         self.surface_1 = surface_1
-        self.mode_parameters_on_surface_0 = mode_parameters_on_surface_0
-        self.mode_parameters_on_surface_1 = mode_parameters_on_surface_1
         self.central_line = central_line
         self.mode_principle_axes = mode_principle_axes
         self.lambda_0_laser = lambda_0_laser
@@ -1352,7 +1415,14 @@ class Arm:
         else:
             self.n = 1
         if isinstance(surface_0, CurvedRefractiveSurface) and isinstance(surface_1, CurvedRefractiveSurface):
-            assert surface_0.n_2 == surface_1.n_1
+            assert surface_0.n_2 == surface_1.n_1, ("refractive surface before and after the arm do not agree on the"
+                                                    "refractive index inside the arm")
+        if mode_parameters is not None:
+            self.mode_parameters = mode_parameters
+        elif local_mode_parameters_on_surface_0 is not None:
+            self.set_mode_parameters_from_q(q=local_mode_parameters_on_surface_0, principle_axes=mode_principle_axes)
+        else:
+            self.mode_parameters = None
 
     def propagate(self, ray: Ray):
         if isinstance(self.surface_1, PhysicalSurface):
@@ -1386,14 +1456,33 @@ class Arm:
         matrix = self.ABCD_matrix_reflection @ self.ABCD_matrix_free_space
         return matrix
 
-    def propagate_local_mode_parameters(self):
-        if self.mode_parameters_on_surface_0 is None:
-            raise ValueError("Mode parameters on surface 1 not set")
-        self.mode_parameters_on_surface_1 = propagate_local_mode_parameter_through_ABCD(
-            self.mode_parameters_on_surface_0, self.ABCD_matrix_free_space)
-        next_mode_parameters = propagate_local_mode_parameter_through_ABCD(self.mode_parameters_on_surface_1,
+    def propagate_mode_parameters(self):
+        if self.mode_parameters is None:
+            raise ValueError("Mode parameters is None")
+        next_local_mode_parameters = propagate_mode_parameter_through_ABCD(self.mode_parameters_on_surfaces[1],
                                                                            self.ABCD_matrix_reflection)
-        return next_mode_parameters
+        return next_local_mode_parameters
+
+    @property
+    def mode_parameters_on_surfaces(self):
+        if self.central_line is None or self.mode_parameters is None:
+            raise ValueError('Central line or mode parameters not set')
+        mode_parameters_0 = self.mode_parameters.propagate_in_space((self.central_line.origin - self.mode_parameters.center) @ self.mode_parameters.k_vector,
+                                                                    absolute_z=True,
+                                                                    inplace=False)
+        mode_parameters_1 = self.mode_parameters.propagate_in_space((self.central_line.end_point - self.mode_parameters.center) @ self.mode_parameters.k_vector,
+                                                                    absolute_z=True,
+                                                                    inplace=False,)
+        return mode_parameters_0, mode_parameters_1
+
+    def set_mode_parameters_from_q(self, q: np.ndarray, principle_axes: Optional[np.ndarray] = None):
+        mode_parameters = ModeParameters.from_local_mode_parameters(q=q,
+                                                                    lambda_0_laser=self.lambda_0_laser,
+                                                                    location_of_local_mode_parameter=
+                                                                    self.central_line.origin,
+                                                                    k_vector=self.central_line.k_vector,
+                                                                    principle_axes=principle_axes)
+        self.mode_parameters = mode_parameters
 
     # @property
     # def mode_principle_axes(self):
@@ -1404,42 +1493,38 @@ class Arm:
     #     mode_principle_axes = np.stack([z_hat, pseudo_x], axis=-1).T  # [z_x, z_y, z_z], [x_x, x_y, x_z]
     #     return mode_principle_axes
 
-    @property
-    def mode_parameters(self):
-        if self.mode_parameters_on_surface_0 is None:
-            return None
-        center = (
-            self.central_line.origin
-            - self.mode_parameters_on_surface_0.z_minus_z_0[..., np.newaxis] * self.central_line.k_vector
-        )
-        mode_parameters = ModeParameters(
-            center=center,
-            k_vector=self.central_line.k_vector,
-            w_0=self.mode_parameters_on_surface_0.w_0,
-            principle_axes=self.mode_principle_axes,
-            lambda_0_laser=self.lambda_0_laser,
-        )
-        return mode_parameters
+    # @property
+    # def mode_parameters(self):
+    #     if self.mode_parameters_on_surfaces[0] is None:
+    #         return None
+    #     center = (
+    #         self.central_line.origin
+    #         - self.mode_parameters_on_surfaces[0].z_minus_z_0[..., np.newaxis] * self.central_line.k_vector
+    #     )
+    #     mode_parameters = ModeParameters(
+    #         center=center,
+    #         k_vector=self.central_line.k_vector,
+    #         w_0=self.mode_parameters_on_surfaces[0].w_0,
+    #         principle_axes=self.mode_principle_axes,
+    #         lambda_0_laser=self.lambda_0_laser,
+    #     )
+    #     return mode_parameters
 
     def local_mode_parameters_on_a_point(self, point: np.ndarray):
         if self.central_line is None:
             raise ValueError("Central line not set")
-        if self.mode_parameters_on_surface_0 is None:
+        if self.mode_parameters_on_surfaces[0] is None:
             return None
 
         point_plane_distance_from_surface_1 = (point - self.central_line.origin) @ self.central_line.k_vector
         propagation_ABCD = ABCD_free_space(point_plane_distance_from_surface_1)
-        local_mode_parameters = propagate_local_mode_parameter_through_ABCD(self.mode_parameters_on_surface_0,
-                                                                            propagation_ABCD)
+        local_mode_parameters = propagate_mode_parameter_through_ABCD(self.mode_parameters_on_surfaces[0],
+                                                                      propagation_ABCD)
         return local_mode_parameters
 
     @property
     def surfaces(self):
         return [self.surface_0, self.surface_1]
-
-    @property
-    def mode_parameters_on_surfaces(self):
-        return [self.mode_parameters_on_surface_0, self.mode_parameters_on_surface_1]
 
     def calculate_incidence_angle(self, surface_index: int) -> float:
 
@@ -1503,7 +1588,6 @@ class Cavity:
         t_is_trivial: bool = False,
         p_is_trivial: bool = False,
         power: Optional[float] = None,
-        initial_local_mode_parameters: Optional[LocalModeParameters] = None,
         initial_mode_parameters: Optional[ModeParameters] = None,
     ):
         self.standing_wave = standing_wave
@@ -1530,7 +1614,6 @@ class Cavity:
         if set_mode_parameters:
             self.set_mode_parameters(
                 mode_parameters_first_arm=initial_mode_parameters,
-                local_mode_parameters_first_surface=initial_local_mode_parameters,
             )
         if set_initial_surface:
             self.set_initial_surface()
@@ -1575,7 +1658,6 @@ class Cavity:
             t_is_trivial=t_is_trivial,
             p_is_trivial=p_is_trivial,
             power=power,
-            initial_local_mode_parameters=initial_local_mode_parameters,
             initial_mode_parameters=initial_mode_parameters,
         )
         return cavity
@@ -1893,7 +1975,6 @@ class Cavity:
     def set_mode_parameters(
         self,
         mode_parameters_first_arm: Optional[ModeParameters] = None,
-        local_mode_parameters_first_surface: Optional[LocalModeParameters] = None,
     ):
         # Sets the mode parameters sequentially in all arms of the cavity. tries to find a mode solution for the cavity,
         # if it fails, it will set the resonating_mode_successfully_traced to False, and will use the input
@@ -1904,31 +1985,22 @@ class Cavity:
             self.resonating_mode_successfully_traced = False
             return None
 
-        local_mode_parameters_current = local_mode_parameters_of_round_trip_ABCD(
-            round_trip_ABCD=self.ABCD_round_trip, lambda_0_laser=self.lambda_0_laser
-        )
+        local_mode_parameters_current = local_mode_parameters_of_round_trip_ABCD(round_trip_ABCD=self.ABCD_round_trip)
+
         if (
-            local_mode_parameters_current.z_R[0] == 0 or local_mode_parameters_current.z_R[1] == 0
-        ):  # When there is no solution,
-            # the z_R value comes out as zero.
+            local_mode_parameters_current[0].imag == 0 or local_mode_parameters_current[1].imag == 0
+        ):  # When there is no solution the z_R value comes out as zero.
             self.resonating_mode_successfully_traced = False
-            if local_mode_parameters_first_surface is not None or mode_parameters_first_arm is not None:  # if there is
+            if mode_parameters_first_arm is not None:  # if there is
                 # no wave solution, but the user gave an input wave to the cavity, then just propagate it throughout
                 # the cavity, even though it is not a wave solution.
-                if mode_parameters_first_arm is not None:
-                    # If the user preferred to give ModeParameters instead of LocalModeParameters, then convert it to
-                    # LocalModeParameters.
-                    local_mode_parameters_first_surface = mode_parameters_first_arm.local_mode_parameters(
-                        (self.arms[0].surface_0.center - mode_parameters_first_arm.center[0])
-                        @ mode_parameters_first_arm.k_vector
-                    )
-                local_mode_parameters_current = local_mode_parameters_first_surface
+                local_mode_parameters_current = mode_parameters_first_arm.q_of_z((self.central_line[0].origin - mode_parameters_first_arm.center) @ mode_parameters_first_arm.k_vector)  # ATTENTION - MAKE SURE DIMENSIONS MAKE SENSE
 
         # If there is a valid mode to start propagating, then propagate it through the cavity:
-        if local_mode_parameters_current.z_R[0] != 0 and local_mode_parameters_current.z_R[1] != 0:
+        if local_mode_parameters_current[0].imag != 0 and local_mode_parameters_current[1].imag != 0:
             for arm in self.arms:
-                arm.mode_parameters_on_surface_0 = local_mode_parameters_current
-                local_mode_parameters_current = arm.propagate_local_mode_parameters()
+                arm.set_mode_parameters_from_q(q=local_mode_parameters_current, principle_axes=arm.mode_principle_axes)
+                local_mode_parameters_current = arm.propagate_mode_parameters()
                 arm.mode_principle_axes = self.principle_axes(arm.central_line.k_vector)
             self.resonating_mode_successfully_traced = True
 
@@ -2063,9 +2135,9 @@ class Cavity:
             if self.t_is_trivial and self.p_is_trivial and dim == 2:
                 if (
                     self.arms[0].mode_parameters is not None
-                    and np.min(self.arms[0].mode_parameters_on_surface_0.z_R) > 0
+                    and np.min(self.arms[0].mode_parameters_on_surfaces[0].z_R) > 0
                 ):
-                    maximal_spot_size = np.max([arm.mode_parameters_on_surface_0.spot_size[0] for arm in self.arms])
+                    maximal_spot_size = np.max([arm.mode_parameters_on_surfaces[0].spot_size[0] for arm in self.arms])
                     axis_span = np.array([axes_range[0], 6 * maximal_spot_size])
                 else:
                     axis_span = np.array([axes_range[0], 0.01])
@@ -2126,7 +2198,7 @@ class Cavity:
                 surface.plot(ax=ax, dim=dim, plane=plane)
             else:
                 # If there is information on the spot size of the element, plot it with the spot size length*2.5:
-                spot_size = self.arms[i].mode_parameters_on_surface_0.spot_size
+                spot_size = self.arms[i].mode_parameters_on_surfaces[0].spot_size
                 if plane == "xy":
                     spot_size = spot_size[1]
                 else:
@@ -2334,7 +2406,7 @@ class Cavity:
         unheated_surfaces = []
         for i, surface in enumerate(self.physical_surfaces):
             unheated_surface = surface.thermal_transformation(
-                P_laser_power=-self.power, w_spot_size=self.arms[i].mode_parameters_on_surface_0.spot_size[0], **kwargs
+                P_laser_power=-self.power, w_spot_size=self.arms[i].mode_parameters_on_surfaces[0].spot_size[0], **kwargs
             )
             unheated_surfaces.append(unheated_surface)
 
@@ -3065,7 +3137,7 @@ def local_mode_2_of_lens_parameters(
     ABCD_between = ABCD_free_space(w)
     ABCD_second = surface_2.ABCD_matrix(cos_theta_incoming=1)
     ABCD_total = ABCD_second @ ABCD_between @ ABCD_first
-    propagated_mode = propagate_local_mode_parameter_through_ABCD(local_mode_1, ABCD_total)
+    propagated_mode = propagate_mode_parameter_through_ABCD(local_mode_1, ABCD_total)
     return propagated_mode
 
 
@@ -3268,8 +3340,13 @@ def find_equal_angles_surface(
         mode_parameters=mode_before_lens,
     )
     dT_c_0 = dT_c_of_a_lens(R=surface_0.radius, h=h)
-    mode_parameters_right_after_surface_0 = propagate_local_mode_parameter_through_ABCD(
-        mode_parameters_just_before_surface_0, surface_0.ABCD_matrix(cos_theta_incoming=1))
+    local_mode_parameters_right_after_surface_0 = propagate_mode_parameter_through_ABCD(mode_parameters_just_before_surface_0,
+                                                                                  surface_0.ABCD_matrix(
+                                                                                      cos_theta_incoming=1))
+    mode_parameters_in_lens_arm = ModeParameters.from_local_mode_parameters(q=local_mode_parameters_right_after_surface_0,
+                                                                            lambda_0_laser=lambda_0_laser,
+                                                                            location_of_local_mode_parameter=surface_0.center,
+                                                                            k_vector=surface_0.outwards_normal)
 
     def match_surface_to_radius(R_1: float) -> CurvedRefractiveSurface:
         T_c = dT_c_0 + T_edge + dT_c_of_a_lens(R=R_1, h=h)
@@ -3296,9 +3373,10 @@ def find_equal_angles_surface(
                 k_vector=normalize_vector(second_surface.center - surface_0.center),
                 length=np.linalg.norm(second_surface.center - surface_0.center),
             ),
-            mode_parameters_on_surface_0=mode_parameters_right_after_surface_0,
+            mode_parameters=mode_parameters_in_lens_arm,
+
         )
-        local_mode_parameters_right_after_surface_2 = arm.propagate_local_mode_parameters()
+        local_mode_parameters_right_after_surface_2 = arm.propagate_mode_parameters()
         mode_parameters_after_surface_2 = local_mode_parameters_right_after_surface_2.to_mode_parameters(
             location_of_local_mode_parameter=arm.central_line.parameterization(t=arm.central_line.length),
             k_vector=arm.central_line.k_vector  # ARBITRARY - ASSUMES CENTREAL LINE IS PERPENDICULAR TO SURFACE_2 - SHOULD BE CHANGED TO
@@ -3469,26 +3547,27 @@ def mirror_lens_mirror_cavity_general_generator(
         np.linalg.norm(surface_left.center - mode_left.center[0])
     )
 
-    mode_parameters_right_after_surface_left = propagate_local_mode_parameter_through_ABCD(
+    mode_parameters_right_after_surface_left = propagate_mode_parameter_through_ABCD(
         mode_parameters_just_before_surface_left, surface_left.ABCD_matrix(cos_theta_incoming=1))
 
     arm = Arm(
         surface_0=surface_left,
         surface_1=surface_right,
+        lambda_0_laser=lambda_0_laser,
         central_line=Ray(
             origin=surface_left.center,
             k_vector=normalize_vector(surface_right.center - surface_left.center),
             length=np.linalg.norm(surface_right.center - surface_left.center),
         ),
-        mode_parameters_on_surface_0=mode_parameters_right_after_surface_left,
+        local_mode_parameters_on_surface_0=mode_parameters_right_after_surface_left,
     )
-    mode_parameters_right_after_surface_right = arm.propagate_local_mode_parameters()
+    mode_parameters_right_after_surface_right = arm.propagate_mode_parameters()
 
-    mode_right = mode_parameters_right_after_surface_right.to_mode_parameters(
+    mode_right = ModeParameters.from_local_mode_parameters(q=mode_parameters_right_after_surface_right, lambda_0_laser=lambda_0_laser,
         location_of_local_mode_parameter=surface_right.center, k_vector=np.array([1, 0, 0])
     )
 
-    z_minus_z_0_right_surface = mode_parameters_right_after_surface_right.z_minus_z_0[0]
+    z_minus_z_0_right_surface = mode_parameters_right_after_surface_right.real[0]
 
     if z_minus_z_0_right_surface > 0:
         z_minus_z_0_right_mirror = (
@@ -3613,7 +3692,7 @@ def plot_mirror_lens_mirror_cavity_analysis(
         ax[1].set_xlim(ax[0].get_xlim())
         ax[1].set_ylim(ax[0].get_ylim())
         ax[1].set_title(
-            f"unheated_cavity, short arm NA={unheated_cavity.arms[0].mode_parameters.NA[0]:.2e}, Left spot size = {2 * unheated_cavity.arms[0].mode_parameters_on_surface_1.spot_size[0]:.2e}"
+            f"unheated_cavity, short arm NA={unheated_cavity.arms[0].mode_parameters.NA[0]:.2e}, Left spot size = {2 * unheated_cavity.arms[0].mode_parameters_on_surfaces[1].spot_size[0]:.2e}"
         )
     plt.subplots_adjust(hspace=0.35)
     fig.tight_layout()
