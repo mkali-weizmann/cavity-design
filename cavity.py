@@ -249,10 +249,11 @@ class OpticalElementParams:
 class LocalModeParameters:
     def __init__(
         self,
-        z_minus_z_0: Optional[Union[np.ndarray, float]] = None,
-        z_R: Optional[Union[np.ndarray, float]] = None,
+        z_minus_z_0: Optional[Union[np.ndarray, float]] = None,  # this is the reduced z, the actual is z * n
+        z_R: Optional[Union[np.ndarray, float]] = None,  # the reduced Rayleigh range, the actual is z_R * n
         q: Optional[Union[np.ndarray, float]] = None,
-        lambda_0_laser: Optional[float] = None,
+        lambda_0_laser: Optional[float] = None,  # the laser's wavelength in vacuum
+        n: float = 1  # refractive index
     ):
         if q is not None:
             if isinstance(q, float):
@@ -267,18 +268,29 @@ class LocalModeParameters:
         else:
             raise ValueError("Either q or z_minus_z_0 and z_R must be provided")
         self.lambda_0_laser = lambda_0_laser
+        self.n = n
 
     @property
     def z_minus_z_0(self):
+        # The reduced z, the actual is z * n
         return self.q.real
 
     @property
     def z_R(self):
+        # The reduced Rayleigh range, the actual is z_R * n
         return self.q.imag
 
     @property
+    def z_R_actual(self):
+        return self.z_R * self.n
+
+    @property
     def w_0(self):
-        return w_0_of_z_R(z_R=self.z_R, lambda_0_laser=self.lambda_0_laser)
+        return w_0_of_z_R(z_R=self.z_R_actual, lambda_laser=self.lambda_0_laser)
+
+    @property
+    def lambda_laser(self):
+        return self.lambda_0_laser / self.n
 
     def to_mode_parameters(self, location_of_local_mode_parameter: np.ndarray, k_vector: np.ndarray):
         center = location_of_local_mode_parameter - self.z_minus_z_0[:, np.newaxis] * k_vector
@@ -302,7 +314,7 @@ class LocalModeParameters:
         if np.any(self.z_R == 0):
             w_z = np.array([np.nan, np.nan])
         else:
-            w_z = spot_size(z=self.z_minus_z_0, z_R=self.z_R, lambda_0_laser=self.lambda_0_laser)
+            w_z = spot_size(z=self.z_minus_z_0, z_R=self.z_R, lambda_laser=self.lambda_laser)  # spot_size
         return w_z
 
 
@@ -313,17 +325,26 @@ class ModeParameters:
     w_0: np.ndarray
     principle_axes: np.ndarray  # First dimension is t or p, second dimension is x, y, z
     lambda_0_laser: Optional[float]
+    n: float = 1  # refractive index
 
     @property
     def ray(self):
         return Ray(self.center, self.k_vector)
 
     @property
-    def z_R(self):
+    def z_R(self):  # The Rayleigh range in vacuum
         if self.lambda_0_laser is None:
             return None
         else:
-            return np.pi * self.w_0**2 / self.lambda_0_laser
+            return np.pi * self.w_0**2 / (self.lambda_0_laser)
+
+    @property
+    def z_R_reduced(self):  # the imaginary part of q / n
+        return self.z_R / self.n
+
+    @property
+    def lambda_laser(self):
+        return self.lambda_0_laser / self.n
 
     @property
     def NA(self):
@@ -336,7 +357,7 @@ class ModeParameters:
                 return np.sqrt(self.lambda_0_laser / (np.pi * self.z_R))
 
     def local_mode_parameters(self, z_minus_z_0):
-        return LocalModeParameters(z_minus_z_0=z_minus_z_0, z_R=self.z_R, lambda_0_laser=self.lambda_0_laser)
+        return LocalModeParameters(z_minus_z_0=z_minus_z_0, z_R=self.z_R, lambda_0_laser=self.lambda_0_laser, n=self.n)
 
 
 def decompose_ABCD_matrix(
@@ -355,25 +376,27 @@ def decompose_ABCD_matrix(
 
 
 def propagate_local_mode_parameter_through_ABCD(
-    local_mode_parameters: LocalModeParameters,
-    ABCD: np.ndarray,  # n_1: float = 1, n_2: float = 1
+        local_mode_parameters: LocalModeParameters,
+        ABCD: np.ndarray,
+        n_after: float = 1
 ) -> LocalModeParameters:
     A, B, C, D = decompose_ABCD_matrix(ABCD)
     # q_new = n_2 * (A * local_mode_parameters.q / n_1 + B) / (C * local_mode_parameters.q / n_1 + D)
     q_new = (A * local_mode_parameters.q + B) / (C * local_mode_parameters.q + D)
-    return LocalModeParameters(q=q_new, lambda_0_laser=local_mode_parameters.lambda_0_laser)
+    return LocalModeParameters(q=q_new, lambda_0_laser=local_mode_parameters.lambda_0_laser, n=n_after)
 
 
 def local_mode_parameters_of_round_trip_ABCD(
-    round_trip_ABCD: np.ndarray, lambda_0_laser: Optional[float] = None
+        round_trip_ABCD: np.ndarray,
+        n: float,  # refractive_index
+        lambda_0_laser: Optional[float] = None,
 ) -> LocalModeParameters:
     A, B, C, D = decompose_ABCD_matrix(round_trip_ABCD)
     q_z = (A - D + np.sqrt(A**2 + 2 * C * B + D**2 - 2 + 0j)) / (2 * C)
     q_z = np.real(q_z) + 1j * np.abs(np.imag(q_z))  # ATTENTION - make sure this line is justified.
 
-    return LocalModeParameters(
-        q=q_z, lambda_0_laser=lambda_0_laser
-    )  # First dimension is theta or phi,second dimension is z_minus_z_0 or
+    return LocalModeParameters(q=q_z, lambda_0_laser=lambda_0_laser,
+                               n=n)  # First dimension is theta or phi,second dimension is z_minus_z_0 or
     # z_R.
 
 
@@ -1233,15 +1256,11 @@ class CurvedRefractiveSurface(CurvedSurface, PhysicalSurface):
         # See the comment in the ABCD_matrix method of the CurvedSurface class for an explanation of the approximation.
         ABCD = np.array(
             [
-                [1, 0, 0, 0],  # t
-                [delta_n_e_out_of_plane / R_signed, 1, 0, 0],  # theta
+                [1, 0,                                              0, 0],  # t
+                [delta_n_e_out_of_plane / (R_signed * self.n_2), self.n_1 / self.n_2, 0, 0],  # theta
                 [0, 0, cos_theta_outgoing / cos_theta_incoming, 0],  # p
-                [
-                    0,
-                    0,
-                    delta_n_e_in_plane / R_signed,
-                    cos_theta_incoming / cos_theta_outgoing,
-                ],
+                [0, 0, delta_n_e_in_plane / (R_signed * self.n_2),
+                       cos_theta_incoming * self.n_1 / (cos_theta_outgoing * self.n_2)],
             ]
         )  # phi
         return ABCD
@@ -1458,10 +1477,11 @@ class Arm:
         if self.mode_parameters_on_surface_0 is None:
             raise ValueError("Mode parameters on surface 1 not set")
         self.mode_parameters_on_surface_1 = propagate_local_mode_parameter_through_ABCD(
-            self.mode_parameters_on_surface_0, self.ABCD_matrix_free_space
+            self.mode_parameters_on_surface_0, self.ABCD_matrix_free_space, n_after=self.n
         )
         next_mode_parameters = propagate_local_mode_parameter_through_ABCD(
-            self.mode_parameters_on_surface_1, self.ABCD_matrix_reflection
+            self.mode_parameters_on_surface_1, self.ABCD_matrix_reflection,
+            n_after=self.surface_1.to_params.n_inside_or_after
         )
         return next_mode_parameters
 
@@ -1488,6 +1508,7 @@ class Arm:
             w_0=self.mode_parameters_on_surface_0.w_0,
             principle_axes=self.mode_principle_axes,
             lambda_0_laser=self.lambda_0_laser,
+            n=self.n
         )
         return mode_parameters
 
@@ -1980,7 +2001,7 @@ class Cavity:
             return None
 
         local_mode_parameters_current = local_mode_parameters_of_round_trip_ABCD(
-            round_trip_ABCD=self.ABCD_round_trip, lambda_0_laser=self.lambda_0_laser
+            round_trip_ABCD=self.ABCD_round_trip, lambda_0_laser=self.lambda_0_laser, n=self.arms[0].n
         )
         if (
             local_mode_parameters_current.z_R[0] == 0 or local_mode_parameters_current.z_R[1] == 0
@@ -3149,7 +3170,7 @@ def match_a_mirror_to_mode(
             thermal_properties=thermal_properties,
         )
     else:
-        R_z_inverse = np.abs(z / (z**2 + mode.z_R[0] ** 2))
+        R_z_inverse = np.abs(z / (z ** 2 + mode.z_R[0] ** 2))
         center = mode.center[0, :] + mode.k_vector * z
         outwards_normal = mode.k_vector * np.sign(z)
         mirror = CurvedMirror(
@@ -3354,13 +3375,13 @@ def generate_spot_size_lines(
         k_vector=mode_parameters.k_vector,
         length=np.linalg.norm(last_point - first_point),
     )
-    t = np.linspace(0, central_line.length, 100)
+    t = np.linspace(0, central_line.length, 100)  # 100 is always enough
     ray_points = central_line.parameterization(t=t)
     z_minus_z_0 = np.linalg.norm(ray_points[:, np.newaxis, :] - mode_parameters.center, axis=2)  # Before
     # the norm the size is 100 | 2 | 3 and after it is 100 | 2 (100 points for in_plane and out_of_plane
     # dimensions)
     sign = np.array([1, -1])
-    spot_size_value = spot_size(z_minus_z_0, mode_parameters.z_R, mode_parameters.lambda_0_laser)
+    spot_size_value = spot_size(z_minus_z_0, mode_parameters.z_R_reduced, mode_parameters.lambda_laser)
     spot_size_lines = (
         ray_points[:, np.newaxis, np.newaxis, :]
         + spot_size_value[:, :, np.newaxis, np.newaxis]
