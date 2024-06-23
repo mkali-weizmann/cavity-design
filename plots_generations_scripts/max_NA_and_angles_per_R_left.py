@@ -11,13 +11,9 @@ waist_to_lens_fine = 0.0000000000e+00
 T_edge = 1.0000000000e-03
 h = 3.8750000000e-03
 set_R_left_to_collimate = False
-R_left = 5.0000000000e-03
-R_left_fine = -1.3552527156e-20
 set_R_right_to_collimate = True
 set_R_right_to_equalize_angles = False
 set_R_right_to_R_left = False
-R_right = 8.8207330000e-03
-R_right_fine = -1.3552527156e-20
 auto_set_right_arm_length = False
 right_arm_length = 3.0000000000e-01
 lens_fixed_properties = 'sapphire'
@@ -32,15 +28,14 @@ print_input_parameters = True
 print_cavity_parameters = False
 
 waist_to_lens += waist_to_lens_fine
-R_left += R_left_fine
-R_right += R_right_fine
 x_span = 10 ** x_span
 y_span = 10 ** y_span
 
 import time
 
 N = 50
-Rs = np.linspace(5e-3, 20e-3, N)
+
+Rs = np.linspace(5e-3, 24.22e-3, N)
 NAs = np.zeros_like(Rs)
 angels_left = np.zeros_like(Rs)
 angels_right = np.zeros_like(Rs)
@@ -67,7 +62,7 @@ for i, R_left in enumerate(Rs):
                                                         desired_parameter=lambda cavity: 1 / cavity.arms[
                                                             2].mode_parameters_on_surface_0.z_minus_z_0[0],
                                                         desired_value=-2 / right_arm_length,
-                                                        x0=8.8e-3)
+                                                        x0=7e-3)
         return cavity
 
     cavity = find_required_value_for_desired_change(cavity_generator=cavity_generator_outer,
@@ -90,8 +85,11 @@ for i, R_left in enumerate(Rs):
     #                                         add_unheated_cavity=add_unheated_cavity)
     # plt.ylim(-0.005, 0.005)
     # plt.show()
-# %%
+
 # Plot NAs, angles right and left on the same plt.axes:
+
+import matplotlib.ticker as ticker
+
 fig, ax1 = plt.subplots(2, 1, figsize=(10, 11.5))
 color = 'tab:red'
 ax1[0].set_xlabel('R_left [mm]')
@@ -99,6 +97,8 @@ ax1[0].set_ylabel('NA', color=color)
 line1, = ax1[0].plot(Rs*1e3, NAs, color=color, label='NA')
 ax1[0].tick_params(axis='y', labelcolor=color)
 ax1[0].set_ylim(0, 0.2)
+ax1[0].yaxis.set_major_locator(ticker.LinearLocator(15))
+
 
 ax2 = ax1[0].twinx()
 color = 'tab:blue'
@@ -107,9 +107,19 @@ line2, = ax2.plot(Rs*1e3, angels_left, color=color, label='Angle Left')
 line3, = ax2.plot(Rs*1e3, angels_right, color='green', label='Angle Right')
 ax2.tick_params(axis='y', labelcolor=color)
 ax2.set_ylim(0, 22)
+ax2.yaxis.set_major_locator(ticker.LinearLocator(15))
 ax1[0].grid()
 # Add legend
 plt.legend(handles=[line1, line2, line3], loc='lower right')
+
+ax2.annotate('Equal angles config.', xy=(Rs[-1]*1e3, angels_left[-1]), xytext=(-120, -50), textcoords='offset points',
+             bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="black", lw=1),
+             arrowprops=dict(facecolor='black', shrink=0.05))
+
+ax1[0].annotate('Max NA config..', xy=(Rs[0]*1e3, NAs[0]), xytext=(0, -50), textcoords='offset points',
+             bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="black", lw=1),
+             arrowprops=dict(facecolor='black', shrink=0.05))
+
 
 ax1[1].set_xlabel('R_left [mm]')
 ax1[1].set_ylabel('R_right [mm]')

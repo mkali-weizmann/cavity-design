@@ -3766,7 +3766,7 @@ def plot_mirror_lens_mirror_cavity_analysis(
     if auto_set_x:
         # cavity_length = cavity.surfaces[3].center[0] - cavity.surfaces[0].center[0]
         # ax[0].set_xlim(cavity.surfaces[0].center[0] - 0.01 * cavity_length, cavity.surfaces[3].center[0] + 0.01 * cavity_length)
-        ax[0].set_xlim(cavity.surfaces[0].center[0] - 0.01, cavity.surfaces[2].center[0] + 0.4)
+        ax[0].set_xlim(cavity.surfaces[0].center[0] - 0.01, cavity.surfaces[2].center[0] + 0.35)
     if auto_set_y:
         y_lim = maximal_lens_height(R_left, T_c) * 1.1
     else:
