@@ -22,6 +22,10 @@ cavity = Cavity.from_params(params=params,
                             t_is_trivial=True,
                             p_is_trivial=True,
                             power=2e4)
+
+cavity.arms[0].mode_parameters_on_surface_1.spot_size
+cavity.arms[1].mode_parameters_on_surface_0.spot_size
+
 plot_mirror_lens_mirror_cavity_analysis(cavity)
 
 NA = 0.05461415  # 0.138

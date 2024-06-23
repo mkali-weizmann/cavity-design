@@ -249,8 +249,8 @@ class OpticalElementParams:
 class LocalModeParameters:
     def __init__(
         self,
-        z_minus_z_0: Optional[Union[np.ndarray, float]] = None,  # this is the reduced z, the actual is z * n
-        z_R: Optional[Union[np.ndarray, float]] = None,  # the reduced Rayleigh range, the actual is z_R * n
+        z_minus_z_0: Optional[Union[np.ndarray, float]] = None,  # The actual distance should be multiplied by n
+        z_R: Optional[Union[np.ndarray, float]] = None,
         q: Optional[Union[np.ndarray, float]] = None,
         lambda_0_laser: Optional[float] = None,  # the laser's wavelength in vacuum
         n: float = 1  # refractive index
@@ -272,21 +272,15 @@ class LocalModeParameters:
 
     @property
     def z_minus_z_0(self):
-        # The reduced z, the actual is z * n
         return self.q.real
 
     @property
     def z_R(self):
-        # The reduced Rayleigh range, the actual is z_R * n
         return self.q.imag
 
     @property
-    def z_R_actual(self):
-        return self.z_R * self.n
-
-    @property
     def w_0(self):
-        return w_0_of_z_R(z_R=self.z_R_actual, lambda_laser=self.lambda_0_laser)
+        return w_0_of_z_R(z_R=self.z_R, lambda_0_laser=self.lambda_0_laser, n=self.n)
 
     @property
     def lambda_laser(self):
@@ -314,7 +308,7 @@ class LocalModeParameters:
         if np.any(self.z_R == 0):
             w_z = np.array([np.nan, np.nan])
         else:
-            w_z = spot_size(z=self.z_minus_z_0, z_R=self.z_R, lambda_laser=self.lambda_laser)  # spot_size
+            w_z = spot_size(z=self.z_minus_z_0, z_R=self.z_R, lambda_0_laser=self.lambda_0_laser, n=self.n)  # spot_size
         return w_z
 
 
@@ -336,11 +330,7 @@ class ModeParameters:
         if self.lambda_0_laser is None:
             return None
         else:
-            return np.pi * self.w_0**2 / (self.lambda_0_laser)
-
-    @property
-    def z_R_reduced(self):  # the imaginary part of q / n
-        return self.z_R / self.n
+            return np.pi * self.w_0**2 / self.lambda_0_laser
 
     @property
     def lambda_laser(self):
@@ -378,17 +368,18 @@ def decompose_ABCD_matrix(
 def propagate_local_mode_parameter_through_ABCD(
         local_mode_parameters: LocalModeParameters,
         ABCD: np.ndarray,
-        n_after: float = 1
+        n_1: float = 1,
+        n_2: float = 1
 ) -> LocalModeParameters:
     A, B, C, D = decompose_ABCD_matrix(ABCD)
-    # q_new = n_2 * (A * local_mode_parameters.q / n_1 + B) / (C * local_mode_parameters.q / n_1 + D)
-    q_new = (A * local_mode_parameters.q + B) / (C * local_mode_parameters.q + D)
-    return LocalModeParameters(q=q_new, lambda_0_laser=local_mode_parameters.lambda_0_laser, n=n_after)
+    q_new = n_2 * (A * local_mode_parameters.q / n_1 + B) / (C * local_mode_parameters.q / n_1 + D)
+    # q_new = (A * local_mode_parameters.q + B) / (C * local_mode_parameters.q + D)
+    return LocalModeParameters(q=q_new, lambda_0_laser=local_mode_parameters.lambda_0_laser, n=n_2)
 
 
 def local_mode_parameters_of_round_trip_ABCD(
         round_trip_ABCD: np.ndarray,
-        n: float,  # refractive_index
+        n: float,  # refractive_index at the begining of the roundtrip
         lambda_0_laser: Optional[float] = None,
 ) -> LocalModeParameters:
     A, B, C, D = decompose_ABCD_matrix(round_trip_ABCD)
@@ -1477,11 +1468,12 @@ class Arm:
         if self.mode_parameters_on_surface_0 is None:
             raise ValueError("Mode parameters on surface 1 not set")
         self.mode_parameters_on_surface_1 = propagate_local_mode_parameter_through_ABCD(
-            self.mode_parameters_on_surface_0, self.ABCD_matrix_free_space, n_after=self.n
+            self.mode_parameters_on_surface_0, self.ABCD_matrix_free_space, n_1=self.n, n_2=self.n
         )
         next_mode_parameters = propagate_local_mode_parameter_through_ABCD(
             self.mode_parameters_on_surface_1, self.ABCD_matrix_reflection,
-            n_after=self.surface_1.to_params.n_inside_or_after
+            n_1=self.surface_1.to_params.n_outside_or_before,
+            n_2=self.surface_1.to_params.n_inside_or_after
         )
         return next_mode_parameters
 
@@ -1500,7 +1492,7 @@ class Arm:
             return None
         center = (
             self.central_line.origin
-            - self.mode_parameters_on_surface_0.z_minus_z_0[..., np.newaxis] * self.central_line.k_vector
+            - self.mode_parameters_on_surface_0.z_minus_z_0[..., np.newaxis] / self.n * self.central_line.k_vector
         )
         mode_parameters = ModeParameters(
             center=center,
@@ -1521,7 +1513,7 @@ class Arm:
         point_plane_distance_from_surface_1 = (point - self.central_line.origin) @ self.central_line.k_vector
         propagation_ABCD = ABCD_free_space(point_plane_distance_from_surface_1)
         local_mode_parameters = propagate_local_mode_parameter_through_ABCD(
-            self.mode_parameters_on_surface_0, propagation_ABCD
+            self.mode_parameters_on_surface_0, propagation_ABCD, n_1=self.n, n_2=self.n
         )
         return local_mode_parameters
 
@@ -3219,7 +3211,7 @@ def local_mode_2_of_lens_parameters(
     ABCD_between = ABCD_free_space(w)
     ABCD_second = surface_2.ABCD_matrix(cos_theta_incoming=1)
     ABCD_total = ABCD_second @ ABCD_between @ ABCD_first
-    propagated_mode = propagate_local_mode_parameter_through_ABCD(local_mode_1, ABCD_total)
+    propagated_mode = propagate_local_mode_parameter_through_ABCD(local_mode_1, ABCD_total, n_1=1, n_2=1)
     return propagated_mode
 
 
@@ -3381,7 +3373,7 @@ def generate_spot_size_lines(
     # the norm the size is 100 | 2 | 3 and after it is 100 | 2 (100 points for in_plane and out_of_plane
     # dimensions)
     sign = np.array([1, -1])
-    spot_size_value = spot_size(z_minus_z_0, mode_parameters.z_R_reduced, mode_parameters.lambda_laser)
+    spot_size_value = spot_size(z_minus_z_0, mode_parameters.z_R, mode_parameters.lambda_0_laser, mode_parameters.n)
     spot_size_lines = (
         ray_points[:, np.newaxis, np.newaxis, :]
         + spot_size_value[:, :, np.newaxis, np.newaxis]
@@ -3431,7 +3423,7 @@ def find_equal_angles_surface(
     dT_c_0 = dT_c_of_a_lens(R=surface_0.radius, h=h)
     mode_parameters_right_after_surface_0 = propagate_local_mode_parameter_through_ABCD(
         mode_parameters_just_before_surface_0,
-        surface_0.ABCD_matrix(cos_theta_incoming=1),
+        surface_0.ABCD_matrix(cos_theta_incoming=1), n_1=surface_0.n_1, n_2=surface_0.n_2,
     )
 
     def match_surface_to_radius(R_1: float) -> CurvedRefractiveSurface:
@@ -3641,7 +3633,7 @@ def mirror_lens_mirror_cavity_general_generator(
 
     mode_parameters_right_after_surface_left = propagate_local_mode_parameter_through_ABCD(
         mode_parameters_just_before_surface_left,
-        surface_left.ABCD_matrix(cos_theta_incoming=1),
+        surface_left.ABCD_matrix(cos_theta_incoming=1), n_1=1, n_2=n,
     )
 
     arm = Arm(

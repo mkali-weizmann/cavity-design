@@ -157,9 +157,9 @@ def radius_of_f_and_n(f: float, n: float) -> float:
     return 2 * f * (n - 1)
 
 
-def w_0_of_z_R(z_R: np.ndarray, lambda_laser: float) -> np.ndarray:
+def w_0_of_z_R(z_R: np.ndarray, lambda_0_laser: float, n: float) -> np.ndarray:
     # z_R_reduced is an array because of two transverse dimensions
-    return np.sqrt(z_R * lambda_laser / np.pi)
+    return np.sqrt(z_R * lambda_0_laser / (np.pi * n ** 2))
 
 
 def z_R_of_w_0(w_0: np.ndarray, lambda_laser: float) -> np.ndarray:
@@ -167,9 +167,9 @@ def z_R_of_w_0(w_0: np.ndarray, lambda_laser: float) -> np.ndarray:
     return np.pi * w_0 ** 2 / lambda_laser
 
 
-def spot_size(z: np.ndarray, z_R: np.ndarray, lambda_laser) -> np.ndarray:  # AKA w(z)
+def spot_size(z: np.ndarray, z_R: np.ndarray, lambda_0_laser: float, n: float) -> np.ndarray:  # AKA w(z)
     # lambda_laser is the wavelength of the laser in the medium = lambda_0 / n
-    w_0 = w_0_of_z_R(z_R, lambda_laser)
+    w_0 = w_0_of_z_R(z_R, lambda_0_laser, n)
     w_z = w_0 * np.sqrt(1 + (z / z_R) ** 2)
     return w_z
 
