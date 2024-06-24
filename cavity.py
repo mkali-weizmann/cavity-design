@@ -253,7 +253,7 @@ class LocalModeParameters:
         z_R: Optional[Union[np.ndarray, float]] = None,
         q: Optional[Union[np.ndarray, float]] = None,
         lambda_0_laser: Optional[float] = None,  # the laser's wavelength in vacuum
-        n: float = 1  # refractive index
+        n: float = 1,  # refractive index
     ):
         if q is not None:
             if isinstance(q, float):
@@ -366,10 +366,7 @@ def decompose_ABCD_matrix(
 
 
 def propagate_local_mode_parameter_through_ABCD(
-        local_mode_parameters: LocalModeParameters,
-        ABCD: np.ndarray,
-        n_1: float = 1,
-        n_2: float = 1
+    local_mode_parameters: LocalModeParameters, ABCD: np.ndarray, n_1: float = 1, n_2: float = 1
 ) -> LocalModeParameters:
     A, B, C, D = decompose_ABCD_matrix(ABCD)
     q_new = n_2 * (A * local_mode_parameters.q / n_1 + B) / (C * local_mode_parameters.q / n_1 + D)
@@ -378,16 +375,17 @@ def propagate_local_mode_parameter_through_ABCD(
 
 
 def local_mode_parameters_of_round_trip_ABCD(
-        round_trip_ABCD: np.ndarray,
-        n: float,  # refractive_index at the begining of the roundtrip
-        lambda_0_laser: Optional[float] = None,
+    round_trip_ABCD: np.ndarray,
+    n: float,  # refractive_index at the begining of the roundtrip
+    lambda_0_laser: Optional[float] = None,
 ) -> LocalModeParameters:
     A, B, C, D = decompose_ABCD_matrix(round_trip_ABCD)
     q_z = (A - D + np.sqrt(A**2 + 2 * C * B + D**2 - 2 + 0j)) / (2 * C)
     q_z = np.real(q_z) + 1j * np.abs(np.imag(q_z))  # ATTENTION - make sure this line is justified.
 
-    return LocalModeParameters(q=q_z, lambda_0_laser=lambda_0_laser,
-                               n=n)  # First dimension is theta or phi,second dimension is z_minus_z_0 or
+    return LocalModeParameters(
+        q=q_z, lambda_0_laser=lambda_0_laser, n=n
+    )  # First dimension is theta or phi,second dimension is z_minus_z_0 or
     # z_R.
 
 
@@ -1247,11 +1245,15 @@ class CurvedRefractiveSurface(CurvedSurface, PhysicalSurface):
         # See the comment in the ABCD_matrix method of the CurvedSurface class for an explanation of the approximation.
         ABCD = np.array(
             [
-                [1, 0,                                              0, 0],  # t
+                [1, 0, 0, 0],  # t
                 [delta_n_e_out_of_plane / (R_signed * self.n_2), self.n_1 / self.n_2, 0, 0],  # theta
                 [0, 0, cos_theta_outgoing / cos_theta_incoming, 0],  # p
-                [0, 0, delta_n_e_in_plane / (R_signed * self.n_2),
-                       cos_theta_incoming * self.n_1 / (cos_theta_outgoing * self.n_2)],
+                [
+                    0,
+                    0,
+                    delta_n_e_in_plane / (R_signed * self.n_2),
+                    cos_theta_incoming * self.n_1 / (cos_theta_outgoing * self.n_2),
+                ],
             ]
         )  # phi
         return ABCD
@@ -1471,9 +1473,10 @@ class Arm:
             self.mode_parameters_on_surface_0, self.ABCD_matrix_free_space, n_1=self.n, n_2=self.n
         )
         next_mode_parameters = propagate_local_mode_parameter_through_ABCD(
-            self.mode_parameters_on_surface_1, self.ABCD_matrix_reflection,
+            self.mode_parameters_on_surface_1,
+            self.ABCD_matrix_reflection,
             n_1=self.surface_1.to_params.n_outside_or_before,
-            n_2=self.surface_1.to_params.n_inside_or_after
+            n_2=self.surface_1.to_params.n_inside_or_after,
         )
         return next_mode_parameters
 
@@ -1500,7 +1503,7 @@ class Arm:
             w_0=self.mode_parameters_on_surface_0.w_0,
             principle_axes=self.mode_principle_axes,
             lambda_0_laser=self.lambda_0_laser,
-            n=self.n
+            n=self.n,
         )
         return mode_parameters
 
@@ -1610,7 +1613,7 @@ class Cavity:
         self.power = power
 
         if set_central_line:
-            self.find_central_line()
+            self.set_central_line()
         if set_mode_parameters:
             self.set_mode_parameters(
                 mode_parameters_first_arm=initial_mode_parameters,
@@ -1876,7 +1879,7 @@ class Cavity:
             diff = np.array([np.nan, np.nan, np.nan, np.nan])
         return diff * STRETCH_FACTOR
 
-    def find_central_line(self, override_existing=False) -> Tuple[np.ndarray, bool]:
+    def set_central_line(self, override_existing=False) -> Tuple[np.ndarray, bool]:
 
         if self.central_line_successfully_traced is not None and not override_existing:
             # I never debugged those two lines:
@@ -1987,7 +1990,7 @@ class Cavity:
         # if it fails, it will set the resonating_mode_successfully_traced to False, and will use the input
         # local_mode_parameters_first_surface instead.
         if self.central_line_successfully_traced is None:
-            self.find_central_line()
+            self.set_central_line()
         if self.central_line_successfully_traced is False:
             self.resonating_mode_successfully_traced = False
             return None
@@ -2024,7 +2027,7 @@ class Cavity:
         # Returns two vectors that are orthogonal to k_vector and each other, one lives in the central line plane,
         # the other is perpendicular to the central line plane.
         if self.central_line_successfully_traced is None:
-            self.find_central_line()
+            self.set_central_line()
         # ATTENTION! THIS ASSUMES THAT ALL THE CENTRAL LINE arms ARE IN THE SAME PLANE.
         # I find the biggest psuedo z because if the first two k_vector are parallel, the cross product is zero and the
         # result of the cross product will be determined by arbitrary numerical errors.
@@ -2072,7 +2075,7 @@ class Cavity:
             return self.arms[0].surface_0
         # gets a surface that sits between the first two physical_surfaces, centered and perpendicular to the central line.
         if self.central_line is None:
-            final_position_and_angles, success = self.find_central_line()
+            final_position_and_angles, success = self.set_central_line()
             if not success:
                 # warnings.warn("Could not find central line, so no initial surface could be set.")
                 return None
@@ -2100,14 +2103,14 @@ class Cavity:
         self.arms = legs_list
         # Now, after you found the initial_surface, we can retrace the central line, but now let it out from the
         # initial surface, instead of the first mirror.
-        self.find_central_line(override_existing=True)
+        self.set_central_line(override_existing=True)
         return initial_surface
 
     def ABCD_round_trip_matrix_numeric(
         self, central_line_initial_parameters: Optional[np.ndarray] = None
     ) -> np.ndarray:
         if central_line_initial_parameters is None:
-            central_line_initial_parameters, success = self.find_central_line()
+            central_line_initial_parameters, success = self.set_central_line()
             if not success:
                 raise ValueError("Could not find central line")
 
@@ -3162,7 +3165,7 @@ def match_a_mirror_to_mode(
             thermal_properties=thermal_properties,
         )
     else:
-        R_z_inverse = np.abs(z / (z ** 2 + mode.z_R[0] ** 2))
+        R_z_inverse = np.abs(z / (z**2 + mode.z_R[0] ** 2))
         center = mode.center[0, :] + mode.k_vector * z
         outwards_normal = mode.k_vector * np.sign(z)
         mirror = CurvedMirror(
@@ -3423,7 +3426,9 @@ def find_equal_angles_surface(
     dT_c_0 = dT_c_of_a_lens(R=surface_0.radius, h=h)
     mode_parameters_right_after_surface_0 = propagate_local_mode_parameter_through_ABCD(
         mode_parameters_just_before_surface_0,
-        surface_0.ABCD_matrix(cos_theta_incoming=1), n_1=surface_0.n_1, n_2=surface_0.n_2,
+        surface_0.ABCD_matrix(cos_theta_incoming=1),
+        n_1=surface_0.n_1,
+        n_2=surface_0.n_2,
     )
 
     def match_surface_to_radius(R_1: float) -> CurvedRefractiveSurface:
@@ -3633,7 +3638,9 @@ def mirror_lens_mirror_cavity_general_generator(
 
     mode_parameters_right_after_surface_left = propagate_local_mode_parameter_through_ABCD(
         mode_parameters_just_before_surface_left,
-        surface_left.ABCD_matrix(cos_theta_incoming=1), n_1=1, n_2=n,
+        surface_left.ABCD_matrix(cos_theta_incoming=1),
+        n_1=1,
+        n_2=n,
     )
 
     arm = Arm(
