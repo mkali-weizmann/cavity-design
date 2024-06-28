@@ -314,7 +314,7 @@ class LocalModeParameters:
 
 @dataclass
 class ModeParameters:
-    center: np.ndarray  # First dimension is t or p, second dimension is x, y, z
+    center: np.ndarray  # First dimension is t or p (the two transversal axes of the mode), second dimension is x, y, z
     k_vector: np.ndarray
     w_0: np.ndarray
     principle_axes: np.ndarray  # First dimension is t or p, second dimension is x, y, z
@@ -2289,7 +2289,7 @@ class Cavity:
         for i in range(n_shifts):
             new_cavity = perturb_cavity(self, parameter_index, shift[i])
             try:
-                overlap = calculate_cavities_overlap_matrices(cavity_1=self, cavity_2=new_cavity)
+                overlap = calculate_cavities_overlap(cavity_1=self, cavity_2=new_cavity)
             except np.linalg.LinAlgError:
                 continue
             overlaps[i] = np.abs(overlap)
@@ -2833,6 +2833,7 @@ def plot_tolerance_of_NA_same_plot(
 
 
 def calculate_gaussian_parameters_on_surface(surface: FlatSurface, mode_parameters: ModeParameters):
+    # Derivations to all this mathematical s**t is the LabArchives: https://mynotebook.labarchives.com/MTM3NjE3My41fDEwNTg1OTUvMTA1ODU5NS9Ob3RlYm9vay8zMjQzMzA0MzY1fDM0OTMzNjMuNQ==/page/11290221-13
     intersection_point = surface.find_intersection_with_ray(mode_parameters.ray)
     intersection_point = intersection_point[0, :]
     z_minus_z_0 = np.linalg.norm(intersection_point - mode_parameters.center, axis=1)
@@ -2842,7 +2843,7 @@ def calculate_gaussian_parameters_on_surface(surface: FlatSurface, mode_paramete
     # Those are the vectors that define the mode and the surface: r_0 is the surface's center with respect to the mode's
     # center, t_hat and p_hat are the unit vectors that span the surface, k_hat is the mode's k vector,
     # u_hat and v_hat are the principle axes of the mode.
-    r_0 = surface.center - mode_parameters.center[0, :]  # Techinically there are two centers, but their difference is
+    r_0 = surface.center - mode_parameters.center[0, :]  # Technically there are two centers, but their difference is
     # only in the k_hat direction, which doesn't make a difference on the projection on the two principle axes of the
     # mode, and for the projection of the k_hat vector we anyway need to set an arbitrary 0, so we can just take the
     # first center.
@@ -2890,6 +2891,8 @@ def calculate_gaussian_parameters_on_surface(surface: FlatSurface, mode_paramete
 
 
 def evaluate_cavities_modes_on_surface(cavity_1: Cavity, cavity_2: Cavity):
+    # Chooses a plane on which to evaluate the modes, and calculate the gaussian coefficients of the modes on that plane
+    # for both cavities.
     correct_modes = True
     for cavity in [cavity_1, cavity_2]:
         if cavity.arms[0].mode_parameters is None:
@@ -2916,7 +2919,8 @@ def evaluate_cavities_modes_on_surface(cavity_1: Cavity, cavity_2: Cavity):
         A_1, A_2, b_1, b_2, c_1, c_2, P1, correct_modes = 0, 0, 0, 0, 0, 0, 0, False
         return A_1, A_2, b_1, b_2, c_1, c_2, P1, correct_modes
 
-    cavity_1_waist_pos = mode_parameters_1.center[0, :]
+    # Note that the waist migh be outside the arm, but even if it is, the mode is still valid.
+    cavity_1_waist_pos = mode_parameters_1.center[0, :]#  we take the waist of the first transversal direction
     P1 = FlatSurface(center=cavity_1_waist_pos, outwards_normal=mode_parameters_1.k_vector)
     try:
         A_1, b_1, c_1 = calculate_gaussian_parameters_on_surface(P1, mode_parameters_1)
@@ -2926,7 +2930,7 @@ def evaluate_cavities_modes_on_surface(cavity_1: Cavity, cavity_2: Cavity):
     return A_1, A_2, b_1, b_2, c_1, c_2, P1, correct_modes
 
 
-def calculate_cavities_overlap_matrices(cavity_1: Cavity, cavity_2: Cavity) -> float:
+def calculate_cavities_overlap(cavity_1: Cavity, cavity_2: Cavity) -> float:
     A_1, A_2, b_1, b_2, c_1, c_2, P1, correct_modes = evaluate_cavities_modes_on_surface(cavity_1, cavity_2)
     if correct_modes is False:
         return np.nan
@@ -3288,7 +3292,7 @@ def maximize_overlap(
     print_progress: bool = False,
 ):
     perturbed_cavity = perturb_cavity(cavity, perturbed_parameter_index, perturbation_value)
-    original_overlap = np.abs(calculate_cavities_overlap_matrices(cavity_1=cavity, cavity_2=perturbed_cavity))
+    original_overlap = np.abs(calculate_cavities_overlap(cavity_1=cavity, cavity_2=perturbed_cavity))
     if print_progress:
         print("Original overlap:", original_overlap)
         I = 0
@@ -3297,7 +3301,7 @@ def maximize_overlap(
         corrected_cavity = perturb_cavity(
             perturbed_cavity, control_parameters_indices, control_parameters_values
         )  #  * 1e-3
-        overlap = calculate_cavities_overlap_matrices(cavity_1=cavity, cavity_2=corrected_cavity)
+        overlap = calculate_cavities_overlap(cavity_1=cavity, cavity_2=corrected_cavity)
         overlap_abs_minus = np.nan_to_num(-np.abs(overlap), nan=2)
         if print_progress:
             nonlocal I
@@ -3509,11 +3513,12 @@ def find_required_perturbation_for_desired_change(
     parameter_index_to_change: Tuple[int, int],
     desired_parameter: Callable,
     desired_value: float,
+    **kwargs
 ) -> Cavity:
     def cavity_generator(perturbation_value: float):
         return perturb_cavity(cavity, parameter_index_to_change, perturbation_value)
 
-    return find_required_value_for_desired_change(cavity_generator, desired_parameter, desired_value)
+    return find_required_value_for_desired_change(cavity_generator, desired_parameter, desired_value, **kwargs)
 
 
 def mirror_lens_mirror_cavity_general_generator(
@@ -3718,7 +3723,7 @@ def plot_mirror_lens_mirror_cavity_analysis(
     set_h_instead_of_w: bool = True,
 ):
     # Assumes: surfaces[0] is the left mirror, surfaces[1] is the lens_left side, surfaces[2] is the lens_right side,
-    # surfaces[3] is the right mirror
+    # surfaces[3] is the right mirror.
     R_left = cavity.surfaces[1].radius
     R_right = cavity.surfaces[2].radius
     T_c = np.linalg.norm(cavity.surfaces[2].center - cavity.surfaces[1].center)
@@ -3734,6 +3739,9 @@ def plot_mirror_lens_mirror_cavity_analysis(
     waist_to_lens_long_arm = cavity.mode_parameters[2].center[0, 0] - cavity.surfaces[2].center[0]
     spot_size_left_mirror = cavity.arms[0].mode_parameters_on_surfaces[0].spot_size[0]
     spot_size_right_mirror = cavity.arms[2].mode_parameters_on_surfaces[1].spot_size[0]
+    R_left_mirror = cavity.surfaces[0].radius
+    x_left_mirror = cavity.surfaces[0].center[0]
+    x_lens_right = cavity.surfaces[2].center[0]
 
     if add_unheated_cavity:
         fig, ax = plt.subplots(2, 1, figsize=(16, 12))
@@ -3743,8 +3751,8 @@ def plot_mirror_lens_mirror_cavity_analysis(
     cavity.plot(axis_span=x_span, camera_center=camera_center, ax=ax[0])
 
     minimal_width_lens = find_minimal_width_for_spot_size_and_radius(
-        radius=cavity.surfaces[1].radius,
-        spot_size_radius=cavity.arms[1].mode_parameters_on_surfaces[1].spot_size[0],
+        radius=R_left,
+        spot_size_radius=spot_size_lens_right,
         T_edge=T_edge,
         h_divided_by_spot_size=minimal_h_divided_by_spot_size,
     )
@@ -3767,13 +3775,13 @@ def plot_mirror_lens_mirror_cavity_analysis(
         f"Short Arm: NA = {short_arm_NA:.3e},  length = {short_arm_length:.3e} [m], waist to lens = {waist_to_lens_short_arm:.3e}\n"  #
         f" Long Arm NA = {long_arm_NA:.3e},  length = {long_arm_length:.3e} [m], waist to lens = {waist_to_lens_long_arm:.3e}\n"  #
         f"{lens_specs_string}, \n"
-        f"R_left_mirror = {cavity.surfaces[0].radius:.3e}, spot diameters left mirror = {2 * spot_size_left_mirror:.2e}, R_right = {cavity.surfaces[3].radius:.3e}, spot diameters right mirror = {2 * spot_size_right_mirror:.2e}"
+        f"R_left_mirror = {R_left_mirror:.3e}, spot diameters left mirror = {2 * spot_size_left_mirror:.2e}, R_right = {cavity.surfaces[3].radius:.3e}, spot diameters right mirror = {2 * spot_size_right_mirror:.2e}"
     )
 
     if auto_set_x:
         # cavity_length = cavity.surfaces[3].center[0] - cavity.surfaces[0].center[0]
         # ax[0].set_xlim(cavity.surfaces[0].center[0] - 0.01 * cavity_length, cavity.surfaces[3].center[0] + 0.01 * cavity_length)
-        ax[0].set_xlim(cavity.surfaces[0].center[0] - 0.01, cavity.surfaces[2].center[0] + 0.35)
+        ax[0].set_xlim(x_left_mirror - 0.01, x_lens_right + 0.35)
     if auto_set_y:
         y_lim = maximal_lens_height(R_left, T_c) * 1.1
     else:
@@ -3785,7 +3793,7 @@ def plot_mirror_lens_mirror_cavity_analysis(
         ax[1].set_xlim(ax[0].get_xlim())
         ax[1].set_ylim(ax[0].get_ylim())
         ax[1].set_title(
-            f"unheated_cavity, short arm NA={unheated_cavity.arms[0].mode_parameters.NA[0]:.2e}, Left spot size = {2 * unheated_cavity.arms[0].mode_parameters_on_surface_1.spot_size[0]:.2e}"
+            f"unheated_cavity, short arm NA={short_arm_NA:.2e}, Left mirror 2*spot size = {2 * spot_size_left_mirror:.2e}"
         )
     plt.subplots_adjust(hspace=0.35)
     fig.tight_layout()
