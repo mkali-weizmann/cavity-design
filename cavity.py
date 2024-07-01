@@ -10,6 +10,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 import pandas as pd
 from datetime import datetime
 from hashlib import md5
+from tqdm import tqdm
 
 pd.set_option("display.max_rows", 500)
 pd.options.display.float_format = "{:.3e}".format
@@ -289,7 +290,8 @@ class LocalModeParameters:
     def to_mode_parameters(self, location_of_local_mode_parameter: np.ndarray, k_vector: np.ndarray):
         center = location_of_local_mode_parameter - self.z_minus_z_0[:, np.newaxis] * k_vector
         z_hat = np.array([0, 0, 1])
-        if np.linalg.norm(k_vector - z_hat) < 1e-10:
+        if np.linalg.norm(k_vector - z_hat) < 1e-10:  # if the k_vector is almost parallel to z_hat, better take another
+            # vector as z_hat to avoid numerical instability
             z_hat = np.array([0, 1, 0])
         pseudo_y = normalize_vector(np.cross(z_hat, k_vector))
         pseudo_z = normalize_vector(np.cross(k_vector, pseudo_y))
@@ -392,9 +394,9 @@ def local_mode_parameters_of_round_trip_ABCD(
 class Ray:
     def __init__(
         self,
-        origin: np.ndarray,
-        k_vector: np.ndarray,
-        length: Optional[Union[np.ndarray, float]] = None,
+        origin: np.ndarray,  # [m_rays..., 3]
+        k_vector: np.ndarray,  # [m_rays..., 3]
+        length: Optional[Union[np.ndarray, float]] = None,  # [m_rays..., 3]
     ):
         if k_vector.ndim == 1 and origin.shape[0] > 1:
             k_vector = np.tile(k_vector, (*origin.shape[:-1], 1))
@@ -406,6 +408,12 @@ class Ray:
         if length is not None and isinstance(length, float) and origin.ndim > 1:  # If there is one length for many rays
             length = np.ones(origin.shape[0]) * length
         self.length = length  # m_rays or None
+
+    def __getitem__(self, key):
+        subscripted_ray = Ray(
+            self.origin[key], self.k_vector[key], self.length[key] if self.length is not None else None
+        )
+        return subscripted_ray
 
     def parameterization(self, t: Union[np.ndarray, float]) -> np.ndarray:
         # Currently this function allows only one t per ray. if needed it can be extended to allow multiple t per ray.
@@ -976,7 +984,7 @@ class CurvedSurface(Surface):
             self.origin = origin
 
     def find_intersection_with_ray(self, ray: Ray) -> np.ndarray:
-        # Result of the next line of mathematica to find the intersection:
+        # The following lines is the result of the next line of mathematica to find the intersection:
         # Solve[(x0 + kx * t - xc) ^ 2 + (y0 + ky * t - yc) ^ 2 + (z0 + kz * t - zc) ^ 2 == R ^ 2, t]
         l = (
             -ray.k_vector[..., 0] * ray.origin[..., 0]
@@ -986,7 +994,8 @@ class CurvedSurface(Surface):
             - ray.k_vector[..., 2] * ray.origin[..., 2]
             + ray.k_vector[..., 2] * self.origin[2]
             + self.curvature_sign
-            * np.sqrt(
+            * stable_sqrt(  # The stable_sqrt is to avoid numerical instability when the argument is negative.
+                # it returns nans on negative values instead of throwing an error.
                 -4
                 * (ray.k_vector[..., 0] ** 2 + ray.k_vector[..., 1] ** 2 + ray.k_vector[..., 2] ** 2)
                 * (
@@ -1005,8 +1014,9 @@ class CurvedSurface(Surface):
             )
             / 2
         ) / (ray.k_vector[..., 0] ** 2 + ray.k_vector[..., 1] ** 2 + ray.k_vector[..., 2] ** 2)
+        intersection_point = ray.parameterization(l)
         ray.length = l
-        return ray.parameterization(l)
+        return intersection_point
 
     def parameterization(
         self,
@@ -1219,21 +1229,35 @@ class CurvedRefractiveSurface(CurvedSurface, PhysicalSurface):
         self.thickness = thickness
 
     def reflect_direction(self, ray: Ray, intersection_point: Optional[np.ndarray] = None) -> np.ndarray:
+        # explanable derivation of the calculation in lab archives: https://mynotebook.labarchives.com/MTM3NjE3My41fDEwNTg1OTUvMTA1ODU5NS9Ob3RlYm9vay8zMjQzMzA0MzY1fDM0OTMzNjMuNQ==/page/11290221-33
         if intersection_point is None:
             intersection_point = self.find_intersection_with_ray(ray)
-        n_backwards = (self.origin - intersection_point) * self.curvature_sign  # m_rays | 3
+        n_backwards = (
+            self.origin - intersection_point
+        ) * self.curvature_sign  # m_rays | 3  # The normal to the surface
         n_backwards = normalize_vector(n_backwards)
         n_forwards = -n_backwards
         cos_theta_incoming = np.clip(np.sum(ray.k_vector * n_forwards, axis=-1), a_min=-1, a_max=1)  # m_rays
-        n_orthogonal = ray.k_vector - cos_theta_incoming[..., np.newaxis] * n_forwards  # m_rays | 3
-        if np.linalg.norm(n_orthogonal) < 1e-14:
+        n_orthogonal = (
+            ray.k_vector - cos_theta_incoming[..., np.newaxis] * n_forwards
+        )  # m_rays | 3  # This is the vector that is orthogonal to the normal to the surface and lives in the plane spanned by the ray and the normal to the surface (grahm-schmidt process).
+        n_orthogonal_norm = np.linalg.norm(n_orthogonal, axis=-1)  # m_rays
+        if isinstance(n_orthogonal_norm, float) and n_orthogonal_norm < 1e-14:
             reflected_direction_vector = n_forwards
         else:
+            preactically_normal_incidences = n_orthogonal_norm < 1e-15
+            n_orthogonal[preactically_normal_incidences] = (
+                np.nan
+            )  # This is done so that the normalization does not throw an error.
             n_orthogonal = normalize_vector(n_orthogonal)
             sin_theta_outgoing = np.sqrt((self.n_1 / self.n_2) ** 2 * (1 - cos_theta_incoming**2))  # m_rays
             reflected_direction_vector = (
-                n_forwards * np.sqrt(1 - sin_theta_outgoing**2) + n_orthogonal * sin_theta_outgoing
-            )
+                n_forwards * stable_sqrt(1 - sin_theta_outgoing[..., np.newaxis] ** 2)
+                + n_orthogonal * sin_theta_outgoing[..., np.newaxis]
+            )  # m_rays | 3
+            reflected_direction_vector[preactically_normal_incidences] = n_forwards[
+                preactically_normal_incidences
+            ]  # For the nans we initiated before, we just want the normal to the surface to be the new direction of the ray
         return reflected_direction_vector
 
     def ABCD_matrix(self, cos_theta_incoming: float = None) -> np.ndarray:
@@ -1860,38 +1884,28 @@ class Cavity:
         ray_history = self.trace_ray(initial_ray)
         final_intersection_point = ray_history[-1].origin
         t_o, p_o = self.arms[0].surface_0.get_parameterization(final_intersection_point)  # Here it is the initial
-        # surface on purpose.
+        # surface on purpose: the final ray's origin should be on the initial surface, after one round trip.
         theta_o, phi_o = angles_of_unit_vector(ray_history[-1].k_vector)
-        final_position_and_angles = np.array([t_o, theta_o, p_o, phi_o])
+        final_position_and_angles = np.stack([t_o, theta_o, p_o, phi_o], axis=-1)
         return final_position_and_angles, ray_history
 
     def f_roots(self, starting_position_and_angles: np.ndarray) -> np.ndarray:
         # The roots of this function are the initial parameters for the central line.
-        try:
-            final_position_and_angles, _ = self.trace_ray_parametric(starting_position_and_angles / STRETCH_FACTOR)
-            diff = np.zeros_like(starting_position_and_angles)
-            diff[[0, 2]] = final_position_and_angles[[0, 2]] - starting_position_and_angles[[0, 2]] / STRETCH_FACTOR
-            diff[[1, 3]] = angles_difference(
-                starting_position_and_angles[[1, 3]] / STRETCH_FACTOR,
-                final_position_and_angles[[1, 3]],
-            )
-        except FloatingPointError:
-            diff = np.array([np.nan, np.nan, np.nan, np.nan])
+        # try:
+        final_position_and_angles, _ = self.trace_ray_parametric(starting_position_and_angles / STRETCH_FACTOR)
+        diff = np.zeros_like(starting_position_and_angles)
+        diff[..., [0, 2]] = (
+            final_position_and_angles[..., [0, 2]] - starting_position_and_angles[..., [0, 2]] / STRETCH_FACTOR
+        )
+        diff[..., [1, 3]] = angles_difference(
+            starting_position_and_angles[..., [1, 3]] / STRETCH_FACTOR,
+            final_position_and_angles[..., [1, 3]],
+        )
+        diff[np.isnan(diff)] = np.inf
         return diff * STRETCH_FACTOR
 
-    def set_central_line(self, override_existing=False) -> Tuple[np.ndarray, bool]:
-
-        if self.central_line_successfully_traced is not None and not override_existing:
-            # I never debugged those two lines:
-            initial_theta, initial_phi = angles_of_unit_vector(self.central_line[0].k_vector)
-            initial_t, initial_p = self.arms[0].surface_0.get_parameterization(self.central_line[0].origin)
-            return (
-                np.array([initial_t, initial_theta, initial_p, initial_phi]),
-                self.central_line_successfully_traced,
-            )
-
+    def find_central_line_solver(self):
         theta_initial_guess, phi_initial_guess = self.default_initial_angles
-        # global I
         initial_guess = np.array([0, theta_initial_guess, 0, phi_initial_guess]) * STRETCH_FACTOR
 
         if self.t_is_trivial and self.p_is_trivial:
@@ -1923,47 +1937,75 @@ class Cavity:
         root_error = np.linalg.norm(self.f_roots(central_line_initial_parameters))
         central_line_initial_parameters /= STRETCH_FACTOR
 
-        # # Debugging code for convergense:
-        # global I, ROOT_ERRORS
-        # ROOT_ERRORS[I] = root_error
-        # I += 1
-        # shift = np.linspace(0, 3e-8, N)
-        # overlaps, _ = cavity.calculated_shifted_cavity_overlap_integral(parameter_index=(1, 1), shift=shift)
-        # fig, ax = plt.subplots(2, 1)
-        # ax[0].plot(shift, overlaps)
-        # ax[1].plot(shift, ROOT_ERRORS)
-        # plt.show()
-        # N = 100
-        # positions = np.linspace(-5e-5, 5e-5, N)
-        # angles = np.linspace(-5e-5, 5e-5, N)
-        # POSITIONS, ANGLES = np.meshgrid(positions, angles)
-        #
-        # final_positions = np.zeros((N, N, 2))
-        # diffs = np.zeros((N, N, 2))
-        # for i, pos in enumerate(positions):
-        #     for j, ang in enumerate(angles):
-        #         starting_position_and_angles = np.array([pos, ang, initial_guess[2], initial_guess[3]])
-        #         final_position_and_angles, _ = self.trace_ray_parametric(starting_position_and_angles / STRETCH_FACTOR)
-        #         diff = self.f_roots(starting_position_and_angles)
-        #         final_positions[i, j, :] = final_position_and_angles[[0, 1]]
-        #         diffs[i, j, :] = diff[[0, 1]]
-        #
-        # fig, ax = plt.subplots(2, 2, figsize=(10, 10))
-        # im = ax[0, 0].imshow(final_positions[:, :, 0], extent=(positions[0], positions[-1], angles[0], angles[-1]))
-        # ax[0, 0].set_title("location final")
-        # divider = make_axes_locatable(ax[0, 0])
-        # cax = divider.append_axes('right', size='5%', pad=0.05)
-        # fig.colorbar(im, cax=cax, orientation='vertical')
-        # ax[0, 1].imshow(final_positions[:, :, 1], extent=(positions[0], positions[-1], angles[0], angles[-1]))
-        # ax[0, 1].set_title("angle final")
-        # ax[1, 0].imshow(diffs[:, :, 0], extent=(positions[0], positions[-1], angles[0], angles[-1]))
-        # ax[1, 0].set_title("location diff")
-        # ax[1, 1].imshow(diffs[:, :, 1], extent=(positions[0], positions[-1], angles[0], angles[-1]))
-        # ax[1, 1].set_title("angle diff")
-        # plt.show()
+        central_line_successfully_traced = root_error < 1e-9 * STRETCH_FACTOR
 
-        if root_error < 1e-9 * STRETCH_FACTOR:
-            central_line_successfully_traced = True
+        return central_line_initial_parameters, central_line_successfully_traced
+
+    def find_central_line_brute_force(
+        self, N_resolution: int = 5,
+            range_limit: float = 1e-4,
+            zoom_factor: float = 1.5,
+            N_iterations: int = 50,
+            print_progress: bool = False,
+    ) -> Tuple[np.ndarray, bool]:
+        theta_initial_guess, phi_initial_guess = self.default_initial_angles
+        central_line_initial_parameters = np.array([0, theta_initial_guess, 0, phi_initial_guess])
+
+        if self.t_is_trivial and self.p_is_trivial:
+            return central_line_initial_parameters, True
+
+        if print_progress:
+            fig, ax = plt.subplots(N_iterations, 3, figsize=(24, N_iterations * 3))
+
+        for i in range(N_iterations):
+            initial_parameters = generate_initial_parameters_grid(
+                central_line_initial_parameters,
+                range_limit,
+                N_resolution,
+                p_is_trivial=self.p_is_trivial,
+                t_is_trivial=self.t_is_trivial,
+            )
+            diff = self.f_roots(initial_parameters)
+            diff_norm = np.linalg.norm(diff, axis=-1)
+
+            smallest_elements_index = np.unravel_index(np.argmin(diff_norm), diff.shape[:-1])
+            central_line_initial_parameters = initial_parameters[smallest_elements_index]
+            range_limit /= zoom_factor
+
+            central_line_successfully_traced = diff_norm[smallest_elements_index] < 1e-9
+            if print_progress:
+                print(f"iteration {i}, error: {diff_norm[smallest_elements_index]}")
+                print(f"iteration {i}, center: {central_line_initial_parameters}\n")
+                print(f"iteration {i+1}, range_limit: {range_limit:.3e}")
+                ax[i, 0].imshow(diff_norm)
+                # plt.colorbar()
+                # Add a dot at the minimum:
+                ax[i, 0].scatter(smallest_elements_index[1], smallest_elements_index[0], color='r')
+                if self.p_is_trivial:
+                    parameters_indices = [0, 1]
+                else:
+                    parameters_indices = [2, 3]
+                diff_position = diff_norm[:, smallest_elements_index[1]]
+                ax[i, 1].plot(initial_parameters[:, 0, parameters_indices[0]], diff_position)
+                ax[i, 1].axvline(initial_parameters[smallest_elements_index[0], 0, parameters_indices[0]], color='r')
+                ax[i, 1].set_title(f'{i}: position')
+
+                diff_angle = diff_norm[smallest_elements_index[0], :]
+                ax[i, 2].plot(initial_parameters[0, :, parameters_indices[1]], diff_angle)
+                ax[i, 2].axvline(initial_parameters[0, smallest_elements_index[1], parameters_indices[1]], color='r')
+                ax[i, 2].set_title(f'{i}: angle')
+
+        plt.show()
+        return central_line_initial_parameters, central_line_successfully_traced
+
+    def set_central_line(self, brute_force=True, **kwargs) -> Tuple[np.ndarray, bool]:
+        if brute_force:
+            central_line_initial_parameters, central_line_successfully_traced = self.find_central_line_brute_force(**kwargs)
+        else:
+            central_line_initial_parameters, central_line_successfully_traced = self.find_central_line_solver()
+
+        if central_line_successfully_traced:
+            self.central_line_successfully_traced = central_line_successfully_traced
             origin_solution = self.arms[0].surface_0.parameterization(
                 central_line_initial_parameters[0], central_line_initial_parameters[2]
             )  # t, p
@@ -1978,8 +2020,7 @@ class Cavity:
             self.central_line_successfully_traced = central_line_successfully_traced
         else:
             self.central_line_successfully_traced = False
-
-        return central_line_initial_parameters, self.central_line_successfully_traced
+            return central_line_initial_parameters, self.central_line_successfully_traced
 
     def set_mode_parameters(
         self,
@@ -2046,10 +2087,13 @@ class Cavity:
         return principle_axes
 
     def ray_of_initial_parameters(self, initial_parameters: np.ndarray):
-        k_vector_i = unit_vector_of_angles(theta=initial_parameters[1], phi=initial_parameters[3])
-        origin_i = self.arms[0].surface_0.parameterization(t=initial_parameters[0], p=initial_parameters[2])
+        # Assumes initial_parameters is of the shape [..., 4] where the last axis of size for represents t, theta,
+        # (two numbers to represent the location and angle on the first surface) and theta, phi (two angles of the k_vector).
+        k_vector_i = unit_vector_of_angles(theta=initial_parameters[..., 1], phi=initial_parameters[..., 3])
+        origin_i = self.arms[0].surface_0.parameterization(t=initial_parameters[..., 0], p=initial_parameters[..., 2])
         input_ray = Ray(origin=origin_i, k_vector=k_vector_i)
-        return input_ray
+        return input_ray  # input_ray.origin and input_ray.k_vector are of shape [..., 3] where the ... is the same as
+        # the first axis of initial_parameters.
 
     def generate_spot_size_lines(self, dim=2, plane="xy"):
         if self.arms[0].mode_parameters is None:
@@ -2302,7 +2346,7 @@ class Cavity:
     def calculate_parameter_tolerance(
         self,
         parameter_index: Tuple[int, int],
-        initial_step: float = 1e-6,
+        initial_step: float = 1e-7,
         overlap_threshold: float = 0.9,
         accuracy: float = 1e-3,
     ) -> float:
@@ -2323,19 +2367,18 @@ class Cavity:
 
     def generate_tolerance_matrix(
         self,
-        initial_step: float = 1e-6,
+        initial_step: float = 1e-7,
         overlap_threshold: float = 0.9,
         accuracy: float = 1e-3,
         print_progress: bool = False,
     ) -> np.ndarray:
         j_range = self.perturbable_params_indices
         tolerance_matrix = np.zeros((len(self.params), len(j_range)))
-        for i in range(len(self.params)):
-            if print_progress:
-                print("  ", i)
-            for j_tolerance_matrix_index, j_param_matrix_index in enumerate(j_range):
-                if print_progress:
-                    print("    ", j_tolerance_matrix_index)
+        for i in tqdm(range(len(self.params)), desc="Tolerance Matrix - element index: ", disable=not print_progress):
+            for j_tolerance_matrix_index, j_param_matrix_index in (pbar := tqdm(
+                enumerate(j_range), disable=not print_progress
+            )):
+                pbar.set_description(f"Tolerance Matrix - parameter index:  {INDICES_DICT_INVERSE[j_param_matrix_index]}")
                 tolerance_matrix[i, j_tolerance_matrix_index] = self.calculate_parameter_tolerance(
                     parameter_index=(i, j_param_matrix_index),
                     initial_step=initial_step,
@@ -2353,14 +2396,14 @@ class Cavity:
         print_progress: bool = False,
     ) -> np.ndarray:
         overlaps = np.zeros((len(self.params), len(self.perturbable_params_indices), shift_size))
-        for element_index in range(len(self.params)):  # Iterate over optical elements
-            if print_progress:
-                print("  ", element_index)
-            for parameter_index in range(
-                len(self.perturbable_params_indices)
-            ):  # iterate over element's features (radius, position, angle, etc.)
-                if print_progress:
-                    print("    ", parameter_index)
+        for element_index in tqdm(
+            range(len(self.params)), desc="Overlap Series - element_index", disable=not print_progress
+        ):
+            for parameter_index in tqdm(
+                range(len(self.perturbable_params_indices)),
+                desc="Overlap Series - parameter_index",
+                disable=not print_progress,
+            ):
                 if isinstance(shifts, (float, int)):
                     shift_series = np.linspace(-shifts, shifts, shift_size)
                 else:
@@ -2668,9 +2711,9 @@ def generate_tolerance_of_NA(
     )
     NAs = np.zeros(parameter_values.shape[0])
     cavities = []
-    for k, parameter_value in enumerate(parameter_values):
-        if print_progress:
-            print(k)
+    for k, parameter_value in tqdm(
+        enumerate(parameter_values), desc="tolerance_of_NA: parameter_value", disable=not print_progress
+    ):
         params_temp = params_array.copy()
         params_temp[parameter_index_for_NA_control] = parameter_value
         cavity = Cavity.from_params(
@@ -2920,7 +2963,7 @@ def evaluate_cavities_modes_on_surface(cavity_1: Cavity, cavity_2: Cavity):
         return A_1, A_2, b_1, b_2, c_1, c_2, P1, correct_modes
 
     # Note that the waist migh be outside the arm, but even if it is, the mode is still valid.
-    cavity_1_waist_pos = mode_parameters_1.center[0, :]#  we take the waist of the first transversal direction
+    cavity_1_waist_pos = mode_parameters_1.center[0, :]  #  we take the waist of the first transversal direction
     P1 = FlatSurface(center=cavity_1_waist_pos, outwards_normal=mode_parameters_1.k_vector)
     try:
         A_1, b_1, c_1 = calculate_gaussian_parameters_on_surface(P1, mode_parameters_1)
@@ -3513,7 +3556,7 @@ def find_required_perturbation_for_desired_change(
     parameter_index_to_change: Tuple[int, int],
     desired_parameter: Callable,
     desired_value: float,
-    **kwargs
+    **kwargs,
 ) -> Cavity:
     def cavity_generator(perturbation_value: float):
         return perturb_cavity(cavity, parameter_index_to_change, perturbation_value)

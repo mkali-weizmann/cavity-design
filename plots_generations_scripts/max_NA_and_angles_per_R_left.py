@@ -35,7 +35,7 @@ import time
 
 N = 50
 
-Rs = np.linspace(5e-3, 24.22e-3, N)
+Rs = np.linspace(5e-3, 25e-3, N)
 NAs = np.zeros_like(Rs)
 angels_left = np.zeros_like(Rs)
 angels_right = np.zeros_like(Rs)

@@ -312,3 +312,42 @@ def working_distance_of_a_lens(R_1, R_2, n, T_c):
     h_2 = -f * (n-1) * T_c / (n * R_1)
     working_distance = f - h_2
     return working_distance
+
+
+def stable_sqrt(x: Union[np.ndarray, float]) -> Union[np.ndarray, float]:
+    # like square root, but returns nan if the parts of the input is negative, instead of throwing a FloatingPointError.
+    if isinstance(x, np.ndarray):
+        x[np.isnan(x)] = -1  # If it is already nan, then it will stay nan.
+        s = np.sqrt(x + 0j)
+        s[np.imag(s) != 0] = np.nan
+        s = np.real(s)
+        return s
+    else:
+        if np.isnan(x) or x < 0:
+            return np.nan
+        else:
+            return np.sqrt(x)
+
+def generate_initial_parameters_grid(center: np.ndarray,
+                                     range_limit: float,
+                                     N_resolution: int,
+                                     p_is_trivial: bool,
+                                     t_is_trivial: bool):
+    base_grid = np.linspace(-range_limit, range_limit, N_resolution)
+    angle_factor = 100
+    if p_is_trivial or t_is_trivial:
+        if p_is_trivial:
+            POS, ANGLE = np.meshgrid(base_grid + center[0], base_grid * angle_factor + center[1], indexing='ij')
+            TRIVIAL_GRID = np.zeros_like(POS)
+            initial_parameters = np.stack([POS, ANGLE, TRIVIAL_GRID, TRIVIAL_GRID], axis=-1)
+        else:  # (if t is trivial)
+            POS, ANGLE = np.meshgrid(base_grid + center[2], base_grid * angle_factor + center[3], indexing='ij')
+            TRIVIAL_GRID = np.zeros_like(POS)
+            initial_parameters = np.stack([TRIVIAL_GRID, TRIVIAL_GRID, POS, ANGLE], axis=-1)
+    else:
+        X, T, Y, P = np.meshgrid(base_grid + center[0],
+                                 base_grid * angle_factor + center[1],
+                                 base_grid + center[2],
+                                 base_grid * angle_factor + center[3], indexing='ij')
+        initial_parameters = np.stack([X, T, Y, P], axis=-1)
+    return initial_parameters
