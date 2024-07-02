@@ -1616,6 +1616,7 @@ class Cavity:
         power: Optional[float] = None,
         initial_local_mode_parameters: Optional[LocalModeParameters] = None,
         initial_mode_parameters: Optional[ModeParameters] = None,
+        use_brute_force_for_central_line: bool = False,  # remove it once we know it works
     ):
         self.standing_wave = standing_wave
         self.physical_surfaces = physical_surfaces
@@ -1635,6 +1636,7 @@ class Cavity:
         self.t_is_trivial = t_is_trivial
         self.p_is_trivial = p_is_trivial
         self.power = power
+        self.use_brute_force_for_central_line = use_brute_force_for_central_line
 
         if set_central_line:
             self.set_central_line()
@@ -1649,17 +1651,8 @@ class Cavity:
     @staticmethod
     def from_params(
         params: Union[np.ndarray, List[OpticalElementParams]],
-        standing_wave: bool = True,
-        lambda_0_laser: Optional[float] = None,
         names: Optional[List[str]] = None,
-        set_central_line: bool = True,
-        set_mode_parameters: bool = True,
-        set_initial_surface: bool = False,
-        t_is_trivial: bool = False,
-        p_is_trivial: bool = False,
-        power: Optional[float] = None,
-        initial_local_mode_parameters: Optional[LocalModeParameters] = None,
-        initial_mode_parameters: Optional[ModeParameters] = None,
+        **kwargs,
     ):
         if isinstance(params, np.ndarray):
             p = [OpticalElementParams.from_array(params[i, :]) for i in range(len(params))]
@@ -1676,18 +1669,9 @@ class Cavity:
                 physical_surfaces.append(surface_temp)
         cavity = Cavity(
             physical_surfaces,
-            standing_wave,
-            lambda_0_laser,
             params=p,
             names=names,
-            set_central_line=set_central_line,
-            set_mode_parameters=set_mode_parameters,
-            set_initial_surface=set_initial_surface,
-            t_is_trivial=t_is_trivial,
-            p_is_trivial=p_is_trivial,
-            power=power,
-            initial_local_mode_parameters=initial_local_mode_parameters,
-            initial_mode_parameters=initial_mode_parameters,
+            **kwargs,
         )
         return cavity
 
@@ -1937,7 +1921,7 @@ class Cavity:
         root_error = np.linalg.norm(self.f_roots(central_line_initial_parameters))
         central_line_initial_parameters /= STRETCH_FACTOR
 
-        central_line_successfully_traced = root_error < 1e-9 * STRETCH_FACTOR
+        central_line_successfully_traced = root_error < CENTRAL_LINE_TOLERANCE * STRETCH_FACTOR
 
         return central_line_initial_parameters, central_line_successfully_traced
 
@@ -1972,7 +1956,7 @@ class Cavity:
             central_line_initial_parameters = initial_parameters[smallest_elements_index]
             range_limit /= zoom_factor
 
-            central_line_successfully_traced = diff_norm[smallest_elements_index] < 1e-9
+            central_line_successfully_traced = diff_norm[smallest_elements_index] < CENTRAL_LINE_TOLERANCE
             if print_progress:
                 print(f"iteration {i}, error: {diff_norm[smallest_elements_index]}")
                 print(f"iteration {i}, center: {central_line_initial_parameters}\n")
@@ -1998,8 +1982,8 @@ class Cavity:
         plt.show()
         return central_line_initial_parameters, central_line_successfully_traced
 
-    def set_central_line(self, brute_force=True, **kwargs) -> Tuple[np.ndarray, bool]:
-        if brute_force:
+    def set_central_line(self, **kwargs) -> Tuple[np.ndarray, bool]:
+        if self.use_brute_force_for_central_line:
             central_line_initial_parameters, central_line_successfully_traced = self.find_central_line_brute_force(**kwargs)
         else:
             central_line_initial_parameters, central_line_successfully_traced = self.find_central_line_solver()
@@ -3023,6 +3007,7 @@ def perturb_cavity(
         lambda_0_laser=cavity.lambda_0_laser,
         t_is_trivial=t_is_trivial,
         p_is_trivial=p_is_trivial,
+        use_brute_force_for_central_line=cavity.use_brute_force_for_central_line
     )
     return new_cavity
 
