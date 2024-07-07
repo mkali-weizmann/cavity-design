@@ -38,7 +38,8 @@ SURFACE_TYPES_DICT = {'CurvedMirror': 0, 'Thick Lens': 1, 'CurvedRefractiveSurfa
 with open('data/params_dict.pkl', 'rb') as f:
     params_dict = pkl.load(f)
 
-STRETCH_FACTOR = 0.01  # 0.001
+CENTRAL_LINE_TOLERANCE = 1
+STRETCH_FACTOR = 1  # 0.001
 C_LIGHT_SPEED = 299792458  # [m/s]
 ROOM_TEMPERATURE = 293  # [K]
 
@@ -337,13 +338,13 @@ def generate_initial_parameters_grid(center: np.ndarray,
     angle_factor = 100
     if p_is_trivial or t_is_trivial:
         if p_is_trivial:
-            POS, ANGLE = np.meshgrid(base_grid + center[0], base_grid * angle_factor + center[1], indexing='ij')
+            POS, ANGLE = np.meshgrid(base_grid, base_grid * angle_factor + center[1], indexing='ij')
             TRIVIAL_GRID = np.zeros_like(POS)
-            initial_parameters = np.stack([POS, ANGLE, TRIVIAL_GRID, TRIVIAL_GRID], axis=-1)
+            initial_parameters = np.stack([POS + center[0], ANGLE + center[1], TRIVIAL_GRID + center[2], TRIVIAL_GRID + center[3]], axis=-1)
         else:  # (if t is trivial)
-            POS, ANGLE = np.meshgrid(base_grid + center[2], base_grid * angle_factor + center[3], indexing='ij')
+            POS, ANGLE = np.meshgrid(base_grid, base_grid * angle_factor, indexing='ij')
             TRIVIAL_GRID = np.zeros_like(POS)
-            initial_parameters = np.stack([TRIVIAL_GRID, TRIVIAL_GRID, POS, ANGLE], axis=-1)
+            initial_parameters = np.stack([TRIVIAL_GRID + center[0], TRIVIAL_GRID + center[1], POS + center[2], ANGLE + center[3]], axis=-1)
     else:
         X, T, Y, P = np.meshgrid(base_grid + center[0],
                                  base_grid * angle_factor + center[1],
@@ -351,3 +352,11 @@ def generate_initial_parameters_grid(center: np.ndarray,
                                  base_grid * angle_factor + center[3], indexing='ij')
         initial_parameters = np.stack([X, T, Y, P], axis=-1)
     return initial_parameters
+
+
+def reverse_elements_order_of_mirror_lens_mirror(params: np.ndarray) -> np.ndarray:
+    # swap first and third rows of params:
+    params[[0, 2]] = params[[2, 0]]
+    params[1, [4, 5]] = params[1, [5, 4]]
+    params[1, 3] += 1j
+    return params
