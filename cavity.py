@@ -798,6 +798,7 @@ class FlatSurface(Surface):
         p = (points - self.center) @ pseudo_y
         return t, p
 
+
 class FlatMirror(FlatSurface, PhysicalSurface):
 
     def __init__(
@@ -1901,7 +1902,9 @@ class Cavity:
         ray_history = self.trace_ray(ray)
         last_arms_ray = ray_history[last_ray_index]  # -2
 
-        origins_plane = FlatSurface(outwards_normal=self.physical_surfaces[-1].outwards_normal, center=self.physical_surfaces[-1].origin)
+        origins_plane = FlatSurface(
+            outwards_normal=self.physical_surfaces[-1].outwards_normal, center=self.physical_surfaces[-1].origin
+        )
         intersection_point = origins_plane.find_intersection_with_ray(last_arms_ray)
         t, p = origins_plane.get_parameterization(intersection_point)
 
@@ -1956,11 +1959,11 @@ class Cavity:
         return central_line_initial_parameters, central_line_successfully_traced
 
     def find_central_line_brute_force(
-        self, N_resolution: int = 11,
-            range_limit: float = 1e-4,
-            zoom_factor: float = 1.4,
-            N_iterations: int = 50,
-
+        self,
+        N_resolution: int = 11,
+        range_limit: float = 1e-4,
+        zoom_factor: float = 1.4,
+        N_iterations: int = 50,
     ) -> Tuple[np.ndarray, bool]:
         theta_initial_guess, phi_initial_guess = self.default_initial_angles
         central_line_initial_parameters = np.array([0, theta_initial_guess, 0, phi_initial_guess])
@@ -1994,20 +1997,20 @@ class Cavity:
                 ax[i, 0].imshow(diff_norm)
                 # plt.colorbar()
                 # Add a dot at the minimum:
-                ax[i, 0].scatter(smallest_elements_index[1], smallest_elements_index[0], color='r')
+                ax[i, 0].scatter(smallest_elements_index[1], smallest_elements_index[0], color="r")
                 if self.p_is_trivial:
                     parameters_indices = [0, 1]
                 else:
                     parameters_indices = [2, 3]
                 diff_position = diff_norm[:, smallest_elements_index[1]]
                 ax[i, 1].plot(initial_parameters[:, 0, parameters_indices[0]], diff_position)
-                ax[i, 1].axvline(initial_parameters[smallest_elements_index[0], 0, parameters_indices[0]], color='r')
-                ax[i, 1].set_title(f'{i}: position')
+                ax[i, 1].axvline(initial_parameters[smallest_elements_index[0], 0, parameters_indices[0]], color="r")
+                ax[i, 1].set_title(f"{i}: position")
 
                 diff_angle = diff_norm[smallest_elements_index[0], :]
                 ax[i, 2].plot(initial_parameters[0, :, parameters_indices[1]], diff_angle)
-                ax[i, 2].axvline(initial_parameters[0, smallest_elements_index[1], parameters_indices[1]], color='r')
-                ax[i, 2].set_title(f'{i}: angle')
+                ax[i, 2].axvline(initial_parameters[0, smallest_elements_index[1], parameters_indices[1]], color="r")
+                ax[i, 2].set_title(f"{i}: angle")
 
         if self.debug_printing_level >= 2:
             plt.show()
@@ -2020,33 +2023,52 @@ class Cavity:
     def find_central_line_standing_wave(self):
         # This function assumes the centers of the origins (sphere's center) of the first and last mirrors are withing
         # their arms, which will not be for the case of the astigmatic cavity with the extra mirror, but for now it should work.
-        if not isinstance(self.physical_surfaces[0], CurvedMirror) and isinstance(self.physical_surfaces[-1], CurvedMirror):
-            warnings.warn("For this method to work the first and last surfaces should be mirrors, using regular solver instead")
+        if not isinstance(self.physical_surfaces[0], CurvedMirror) and isinstance(
+            self.physical_surfaces[-1], CurvedMirror
+        ):
+            warnings.warn(
+                "For this method to work the first and last surfaces should be mirrors, using regular solver instead"
+            )
             central_line_initial_parameters, central_line_successfully_traced = self.find_central_line_solver()
 
         else:
             theta_default, phi_default = self.default_initial_angles
             if self.t_is_trivial and self.p_is_trivial:
                 solution_angles = np.array([theta_default, phi_default])
-            elif not self.t_is_trivial and self.p_is_trivial:  # This syntax is for the case when we know the perturbation is only in
-            # one dimensions, and the function can be reduced to one dimension as well. however, I think that the choice
-            # of the one dimensions on which to solve the problem will not be consistent for different orientations of the
-            # cavity, and so it might cause problems in the future
-            # has a non-consistent entry in the
+            elif (
+                not self.t_is_trivial and self.p_is_trivial
+            ):  # This syntax is for the case when we know the perturbation is only in
+                # one dimensions, and the function can be reduced to one dimension as well. however, I think that the choice
+                # of the one dimensions on which to solve the problem will not be consistent for different orientations of the
+                # cavity, and so it might cause problems in the future
+                # has a non-consistent entry in the
                 def f_reduced(theta):
                     z, y = self.f_roots_standing_wave(np.array([theta, phi_default]))
                     if np.isnan(z):
                         z = np.inf * np.sign(theta)
                     return z
-                solution = optimize.brenth(f_reduced, a=self.default_initial_angles[0]-1e-2, b=self.default_initial_angles[0]+1e-2, xtol=1e-12)
+
+                solution = optimize.brenth(
+                    f_reduced,
+                    a=self.default_initial_angles[0] - 1e-2,
+                    b=self.default_initial_angles[0] + 1e-2,
+                    xtol=1e-12,
+                )
                 solution_angles = np.array([solution.root, phi_default])
             elif self.t_is_trivial and not self.p_is_trivial:
+
                 def f_reduced(phi):
                     z, y = self.f_roots_standing_wave(np.array([theta_default, phi]))
                     if np.isnan(y):
                         y = np.inf * np.sign(phi)
                     return y
-                solution = optimize.brenth(f_reduced, a=self.default_initial_angles[1]-1e-2, b=self.default_initial_angles[1]+1e-2, xtol=1e-12)  # x0=np.array([self.default_initial_angles[1]])
+
+                solution = optimize.brenth(
+                    f_reduced,
+                    a=self.default_initial_angles[1] - 1e-2,
+                    b=self.default_initial_angles[1] + 1e-2,
+                    xtol=1e-12,
+                )  # x0=np.array([self.default_initial_angles[1]])
                 solution_angles = np.array([theta_default, solution])
             else:
                 solution = optimize.root(self.f_roots_standing_wave, x0=np.array([*self.default_initial_angles]))
@@ -2057,10 +2079,9 @@ class Cavity:
             # Retrive the parameterization of the ray with respect to the first surface:
             ray_origin_on_first_surface = self.physical_surfaces[0].find_intersection_with_ray(solution_ray)
             solution_parameterization = self.physical_surfaces[0].get_parameterization(ray_origin_on_first_surface)
-            central_line_initial_parameters = np.array([solution_parameterization[0],
-                                                        solution_angles[0],
-                                                        solution_parameterization[1],
-                                                        solution_angles[1]])
+            central_line_initial_parameters = np.array(
+                [solution_parameterization[0], solution_angles[0], solution_parameterization[1], solution_angles[1]]
+            )
             central_line_successfully_traced = True
         return central_line_initial_parameters, central_line_successfully_traced
 
@@ -2068,7 +2089,9 @@ class Cavity:
         if self.standing_wave:
             central_line_initial_parameters, central_line_successfully_traced = self.find_central_line_standing_wave()
         elif self.use_brute_force_for_central_line:
-            central_line_initial_parameters, central_line_successfully_traced = self.find_central_line_brute_force(**kwargs)
+            central_line_initial_parameters, central_line_successfully_traced = self.find_central_line_brute_force(
+                **kwargs
+            )
         else:
             central_line_initial_parameters, central_line_successfully_traced = self.find_central_line_solver()
 
@@ -2442,11 +2465,15 @@ class Cavity:
     ) -> np.ndarray:
         j_range = self.perturbable_params_indices
         tolerance_matrix = np.zeros((len(self.params), len(j_range)))
-        for i in tqdm(range(len(self.params)), desc="Tolerance Matrix - element index: ", disable=self.debug_printing_level < 1):
-            for j_tolerance_matrix_index, j_param_matrix_index in (pbar := tqdm(
-                enumerate(j_range), disable=self.debug_printing_level < 1
-            )):
-                pbar.set_description(f"Tolerance Matrix - parameter index:  {INDICES_DICT_INVERSE[j_param_matrix_index]}")
+        for i in tqdm(
+            range(len(self.params)), desc="Tolerance Matrix - element index: ", disable=self.debug_printing_level < 1
+        ):
+            for j_tolerance_matrix_index, j_param_matrix_index in (
+                pbar := tqdm(enumerate(j_range), disable=self.debug_printing_level < 1)
+            ):
+                pbar.set_description(
+                    f"Tolerance Matrix - parameter index:  {INDICES_DICT_INVERSE[j_param_matrix_index]}"
+                )
                 tolerance_matrix[i, j_tolerance_matrix_index] = self.calculate_parameter_tolerance(
                     parameter_index=(i, j_param_matrix_index),
                     initial_step=initial_step,
@@ -2527,9 +2554,7 @@ class Cavity:
                 accuracy=accuracy,
             )
         if overlaps_series is None:
-            overlaps_series = self.generate_overlap_series(
-                shifts=2 * np.abs(tolerance_matrix), shift_size=30
-            )
+            overlaps_series = self.generate_overlap_series(shifts=2 * np.abs(tolerance_matrix), shift_size=30)
         plt.suptitle(f"NA={self.arms[arm_index_for_NA].mode_parameters.NA[0]:.3e}")
 
         for i in range(len(self.params)):
@@ -3062,7 +3087,7 @@ def perturb_cavity(
     cavity: Cavity,
     parameter_index: Union[Tuple[int, int], Tuple[List[int], List[int]]],
     shift_value: Union[float, np.ndarray],
-    **kwargs  # For the initialization of the new cavity
+    **kwargs,  # For the initialization of the new cavity
 ):
     params = cavity.to_array
     new_params = copy.copy(params)
@@ -3091,7 +3116,7 @@ def perturb_cavity(
         p_is_trivial=p_is_trivial,
         use_brute_force_for_central_line=cavity.use_brute_force_for_central_line,
         debug_printing_level=cavity.debug_printing_level,
-        **kwargs
+        **kwargs,
     )
     return new_cavity
 
