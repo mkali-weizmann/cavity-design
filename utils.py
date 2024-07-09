@@ -2,9 +2,10 @@ import numpy as np
 from typing import List, Tuple, Optional, Union, Callable, Any
 import pickle as pkl
 import warnings
+# import dataclass:
+from dataclasses import dataclass
 
-
-#  Every optical element has a np.ndarray representation, and those two dictionaries defines the order and meaning of
+# Every optical element has a np.ndarray representation, and those two dictionaries defines the order and meaning of
 # the array columns.
 PRETTY_INDICES_NAMES = {'x': 'x [m]',
                         'y': 'y [m]',
@@ -32,7 +33,22 @@ INDICES_DICT = {name: i for i, name in enumerate(PRETTY_INDICES_NAMES.keys())}
 
 INDICES_DICT_INVERSE = {v: k for k, v in INDICES_DICT.items()}
 # set numpy to raise an error on warnings:
-SURFACE_TYPES_DICT = {'CurvedMirror': 0, 'Thick Lens': 1, 'CurvedRefractiveSurface': 2, 'IdealLens': 3, 'FlatMirror': 4}
+SURFACE_TYPES_DICT = {'curved_mirror': 0, 'thick_lens': 1, 'curved_refractive_surface': 2, 'ideal_lens': 3,
+                      'flat_mirror': 4, 'ideal_thick_lens': 5}
+SURFACE_TYPES_DICT_INVERSE = {v: k for k, v in SURFACE_TYPES_DICT.items()}
+
+@dataclass
+class SurfacesTypes:
+    thick_lens = 'thick_lens'
+    curved_mirror = 'curved_mirror'
+    curved_refractive_surface = 'curved_refractive_surface'
+    ideal_lens = 'ideal_lens'
+    flat_mirror = 'flat_mirror'
+    ideal_thick_lens = 'ideal_thick_lens'
+
+    @staticmethod
+    def from_integer_representation(integer_representation: int) -> str:
+        return SurfacesTypes.__dict__[SURFACE_TYPES_DICT_INVERSE[integer_representation]]
 
 
 with open('data/params_dict.pkl', 'rb') as f:
@@ -47,6 +63,27 @@ ROOM_TEMPERATURE = 293  # [K]
 def pretty_print_array(array: np.ndarray):
     # Prints an array in a way that can be copy-pasted into the code.
     print(f"np.{array=}".replace('array=', "").replace("nan", "np.nan").replace("\n", "").replace("],", "],\n").replace(",        ", ", ").replace(",      ", ", ").replace("       [", "          ["))
+
+
+def pretty_print_number(number: Optional[float], represents_angle: bool = False):
+    if number is None:
+        pre_padded = 'None'
+    elif np.isnan(number):
+        pre_padded = 'np.nan'
+    elif number == 0:
+        pre_padded = '0'
+    else:
+        if represents_angle:
+            number /= np.pi
+        formatted = f"{number:.15e}"
+        # Remove trailing zeros and the decimal point if not necessary
+        parts = formatted.split('e')
+        parts[0] = parts[0].rstrip('0').rstrip('.')
+        pre_padded = 'e'.join(parts)
+        if represents_angle:
+            pre_padded += ' * np.pi'
+    final_string = pre_padded.ljust(21, ' ')
+    return final_string
 
 
 def nvl(var, val: Any = np.nan):
@@ -74,7 +111,7 @@ def params_to_perturbable_params_indices(params_array: np.ndarray, remove_one_of
     # Associates the cavity parameters with the number of parameters needed to describe the cavity.
     # If there is a lens, then the number of parameters is 7 (x, y, t, p, r, n_2):
     if (np.any(params_array[:, INDICES_DICT['surface_type']] == SURFACE_TYPES_DICT['CurvedRefractiveSurface'])
-     or np.any(params_array[:, INDICES_DICT['surface_type']] == SURFACE_TYPES_DICT['Thick Lens'])):
+     or np.any(params_array[:, INDICES_DICT['surface_type']] == SURFACE_TYPES_DICT['thick lens'])):
         params_indices = [INDICES_DICT['x'], INDICES_DICT['y'], INDICES_DICT['t'], INDICES_DICT['p'],
                           INDICES_DICT['r_1'], INDICES_DICT['n_inside_or_after']]
     # If there is no lens but there is a curved mirror: (x, y, t, p, r)
@@ -240,7 +277,9 @@ def functions_first_crossing(f: Callable, initial_step: float, crossing_value: f
     loop_counter = 0
     f_0 = f(0)
     if np.isnan(f_0):
-        warnings.warn('Function has no value at x_input=0, returning nan')
+        # warnings.warn('Function has no value at x_input=0, returning nan')
+        f(0)
+        raise ValueError('Function has no value at x_input=0, returning nan')
         return np.nan
     f_borders_min = f_0
     f_borders_max = np.nan

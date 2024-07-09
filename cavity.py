@@ -34,6 +34,21 @@ class MaterialProperties:
     intensity_transmittance: Optional[float] = None
     temperature: Optional[float] = np.nan
 
+    def __repr__(self):
+        return (
+            f"MaterialProperties("
+            f"refractive_index={pretty_print_number(self.refractive_index)}, "
+            f"alpha_expansion={pretty_print_number(self.alpha_expansion)}, "
+            f"beta_surface_absorption={pretty_print_number(self.beta_surface_absorption)}, "
+            f"kappa_conductivity={pretty_print_number(self.kappa_conductivity)}, "
+            f"dn_dT={pretty_print_number(self.dn_dT)}, "
+            f"nu_poisson_ratio={pretty_print_number(self.nu_poisson_ratio)}, "
+            f"alpha_volume_absorption={pretty_print_number(self.alpha_volume_absorption)}, "
+            f"intensity_reflectivity={pretty_print_number(self.intensity_reflectivity)}, "
+            f"intensity_transmittance={pretty_print_number(self.intensity_transmittance)}, "
+            f"temperature={pretty_print_number(self.temperature)})"
+        )
+
     @property
     def to_array(self) -> np.ndarray:
         return np.array(
@@ -50,6 +65,7 @@ class MaterialProperties:
                 nvl(self.temperature, np.nan),
             ]
         )  # Note: When changing the order or adding this list - the order or added items should be also updated in the from_array method of OpticalElementParams
+
 
 
 PHYSICAL_SIZES_DICT = {
@@ -126,7 +142,7 @@ def convert_material_to_mirror_or_lens(
 
 @dataclass
 class OpticalElementParams:
-    surface_type: Union[int, type]
+    surface_type: Union[str]
     x: float  # Of the center of the surface (the estimated point of intersection with the central line of the beam)
     y: float
     z: float
@@ -137,22 +153,42 @@ class OpticalElementParams:
     curvature_sign: int  # 1 if the surface is convex, -1 if it is concave  # ATTENTION: ONCE CONCAVE ELEMENTS WILL BE USED, THERE WILL HAVE TO BE TWO CURVATURE SIGNS
     T_c: float  # center thickness of the element
     n_inside_or_after: (
-        float  # refractive index inside the optical object (for a thick lens) or after it (for a refractive surface)
+        float  # refractive index inside the optical object (for a ThickLens) or after it (for a refractive surface)
     )
     n_outside_or_before: (
-        float  # refractive index outside the optical object (for a thick lens) or before it (for a refractive surface)
+        float  # refractive index outside the optical object (for a ThickLens) or before it (for a refractive surface)
     )
     material_properties: MaterialProperties
 
     # def __post_init__(self):
     #     assert self.material_properties.refractive_index == self.n_inside_or_after or self.material_properties.refractive_index == self.n_outside_or_before or np.isnan(self.material_properties.refractive_index), "The refractive index of the material properties is neither of the refractive indices of the optical element!"
 
+    def __repr__(self):
+        surface_type_string = f"'{self.surface_type}'"
+        surface_type_string = surface_type_string.ljust(27)
+        return (
+            f"OpticalElementParams("
+            f"surface_type={surface_type_string}, "
+            f"x={pretty_print_number(self.x)}, "
+            f"y={pretty_print_number(self.y)}, "
+            f"z={pretty_print_number(self.z)}, "
+            f"t={pretty_print_number(self.t, represents_angle=True)}, "
+            f"p={pretty_print_number(self.p, represents_angle=True)}, "
+            f"r_1={pretty_print_number(self.r_1)}, "
+            f"r_2={pretty_print_number(self.r_2)}, "
+            f"curvature_sign={self.curvature_sign}, "
+            f"T_c={pretty_print_number(self.T_c)}, "
+            f"n_inside_or_after={pretty_print_number(self.n_inside_or_after)}, "
+            f"n_outside_or_before={pretty_print_number(self.n_outside_or_before)}, "
+            f"material_properties={self.material_properties})"
+        )
+
     @property
     def to_array(self) -> np.ndarray:
-        if isinstance(self.surface_type, type):
-            surface_type = SURFACE_TYPES_DICT[self.surface_type.__name__]
+        if isinstance(self.surface_type, str):
+            surface_type = SURFACE_TYPES_DICT[self.surface_type]
         else:
-            surface_type = self.surface_type
+            surface_type = self.surface_type  # This should not happen
         array = np.zeros(len(INDICES_DICT.keys())).astype(np.complex128)
         array[
             [
@@ -217,7 +253,7 @@ class OpticalElementParams:
             temperature=params[INDICES_DICT["temperature"]],
         )
         return OpticalElementParams(
-            surface_type=params[INDICES_DICT["surface_type"]],
+            surface_type=SurfacesTypes.from_integer_representation(params[INDICES_DICT["surface_type"]]),
             x=params[INDICES_DICT["x"]],
             y=params[INDICES_DICT["y"]],
             z=params[INDICES_DICT["z"]],
@@ -386,7 +422,9 @@ def local_mode_parameters_of_round_trip_ABCD(
 ) -> LocalModeParameters:
     A, B, C, D = decompose_ABCD_matrix(round_trip_ABCD)
     q_z = (A - D + np.sqrt(A**2 + 2 * C * B + D**2 - 2 + 0j)) / (2 * C)
-    q_z = np.real(q_z) + 1j * np.abs(np.imag(q_z))  # ATTENTION - make sure this line is justified.
+    q_z = np.real(q_z) + 1j * np.abs(np.imag(q_z))  # For the beam amplitude to decay with transverse radius and not
+    # to grow, the term -ik * i*im(1/q_z) has to be negative. since in the simulation k is always positive, we take the
+    # imaginary part of q_z to be positive (and the the imaginary part of it's inverse is negative).
 
     return LocalModeParameters(
         q=q_z, lambda_0_laser=lambda_0_laser, n=n
@@ -612,7 +650,7 @@ class Surface:
         p = params
         center = np.array([p.x, p.y, p.z])
         outwards_normal = unit_vector_of_angles(p.t, p.p)
-        if p.surface_type == SURFACE_TYPES_DICT["CurvedMirror"]:  # Mirror
+        if p.surface_type == SurfacesTypes.curved_mirror:  # Mirror
             surface = CurvedMirror(
                 radius=p.r_1,
                 outwards_normal=outwards_normal,
@@ -621,9 +659,11 @@ class Surface:
                 name=name,
                 thermal_properties=p.material_properties,
             )
-        elif p.surface_type == SURFACE_TYPES_DICT["Thick Lens"]:  # Thick lens
+        elif p.surface_type == SurfacesTypes.thick_lens:  # ThickLens
             surface = generate_lens_from_params(p, name=name)
-        elif p.surface_type == SURFACE_TYPES_DICT["CurvedRefractiveSurface"]:  # Refractive surface (one side of a lens)
+        elif p.surface_type == SurfacesTypes.ideal_thick_lens:  # IdealThickLens
+            surface = generate_thick_ideal_lens_from_params(p, name=name)
+        elif p.surface_type == SurfacesTypes.curved_refractive_surface:  # Refractive surface (one side of a lens)
             surface = CurvedRefractiveSurface(
                 radius=p.r_1,
                 outwards_normal=outwards_normal,
@@ -635,7 +675,7 @@ class Surface:
                 thermal_properties=p.material_properties,
                 thickness=p.T_c,
             )
-        elif p.surface_type == SURFACE_TYPES_DICT["IdealLens"]:  # Ideal lens
+        elif p.surface_type == SurfacesTypes.ideal_lens:  # Ideal lens
             surface = IdealLens(
                 outwards_normal=outwards_normal,
                 center=center,
@@ -643,7 +683,7 @@ class Surface:
                 name=name,
                 thermal_properties=p.material_properties,
             )
-        elif p.surface_type == SURFACE_TYPES_DICT["FlatMirror"]:  # Ideal lens
+        elif p.surface_type == SurfacesTypes.flat_mirror:  # Flat mirror
             surface = FlatMirror(
                 outwards_normal=outwards_normal,
                 center=center,
@@ -1433,6 +1473,25 @@ def generate_lens_from_params(params: OpticalElementParams, name: Optional[str] 
     return surface_1, surface_2
 
 
+def convert_curved_refractive_surface_to_ideal_lens(surface: CurvedRefractiveSurface):
+    focal_length = 1 / (surface.n_2 - surface.n_1) * surface.radius * (-1*surface.curvature_sign)
+    ideal_lens = IdealLens(
+        outwards_normal=surface.outwards_normal,
+        center=surface.center,
+        focal_length=focal_length,
+        name=surface.name,
+        thermal_properties=surface.material_properties
+    )
+    return ideal_lens
+
+
+def generate_thick_ideal_lens_from_params(params: OpticalElementParams, name: Optional[str] = "Lens"):
+    surface_1, surface_2 = generate_lens_from_params(params, name)
+    ideal_lens_1 = convert_curved_refractive_surface_to_ideal_lens(surface_1)
+    ideal_lens_2 = convert_curved_refractive_surface_to_ideal_lens(surface_2)
+    return ideal_lens_1, ideal_lens_2
+
+
 class Arm:
     def __init__(
         self,
@@ -2054,7 +2113,7 @@ class Cavity:
                     b=self.default_initial_angles[0] + 1e-2,
                     xtol=1e-12,
                 )
-                solution_angles = np.array([solution.root, phi_default])
+                solution_angles = np.array([solution, phi_default])
             elif self.t_is_trivial and not self.p_is_trivial:
 
                 def f_reduced(phi):
@@ -2610,7 +2669,7 @@ class Cavity:
         else:
             names = copy.copy(self.names)
             for i, surface_type in enumerate(self.to_array[:, INDICES_DICT["surface_type"]]):
-                if surface_type == SURFACE_TYPES_DICT["Thick Lens"]:
+                if surface_type == SURFACE_TYPES_DICT["ThickLens"]:
                     names.insert(i + 1, names[i] + "_2")
                     names[i] = names[i] + "_1"
 
@@ -3826,7 +3885,7 @@ def mirror_lens_mirror_cavity_general_generator(
     params_lens.T_c = T_c
     params_lens.n_inside_or_after = n
     params_lens.n_outside_or_before = 1
-    params_lens.surface_type = SURFACE_TYPES_DICT["Thick Lens"]
+    params_lens.surface_type = SURFACE_TYPES_DICT["ThickLens"]
 
     params = [mirror_left_params, params_lens, mirror_right_params]
 
