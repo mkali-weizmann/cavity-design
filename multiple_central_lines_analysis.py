@@ -254,3 +254,44 @@ plt.grid()
 plt.title(f"overlap: {np.abs(overlap):.2f} between the two modes")
 plt.savefig('figures/astigmatism_overlap.svg', dpi=300, bbox_inches='tight')
 plt.show()
+
+# %% Repeating the same for an ideal thick lens:
+
+params = [OpticalElementParams(surface_type=SurfacesTypes.curved_mirror,x=3.080114516e-01      , y=0                    , z=0                    , t=0                    , p=0                    , r_1=1.5039504639e-01     , r_2=np.nan               , curvature_sign=1.0, T_c=np.nan               , n_inside_or_after=1e+00                , n_outside_or_before=1e+00                , material_properties=MaterialProperties(refractive_index=np.nan               , alpha_expansion=7.5e-08              , beta_surface_absorption=1e-06                , kappa_conductivity=1.31e+00             , dn_dT=np.nan               , nu_poisson_ratio=1.7e-01              , alpha_volume_absorption=np.nan               , intensity_reflectivity=9.99889e-01          , intensity_transmittance=1e-04                , temperature=np.nan               )),
+          OpticalElementParams(surface_type=SurfacesTypes.thick_lens,   x=6.5057257992e-03     , y=0                    , z=0                    , t=0                    , p=1e+00 * np.pi        , r_1=7.967931913299999e-03, r_2=7.967931913299999e-03, curvature_sign=1.0, T_c=3.0114515984e-03     , n_inside_or_after=1.76e+00             , n_outside_or_before=1e+00                , material_properties=MaterialProperties(refractive_index=1.76e+00             , alpha_expansion=5.5e-06              , beta_surface_absorption=1e-06                , kappa_conductivity=4.606e+01            , dn_dT=1.17e-05             , nu_poisson_ratio=3e-01                , alpha_volume_absorption=1e-02                , intensity_reflectivity=1e-04                , intensity_transmittance=9.99899e-01          , temperature=np.nan               )),
+          OpticalElementParams(surface_type=SurfacesTypes.curved_mirror,x=-5e-03               , y=0                    , z=0                    , t=0                    , p=-1e+00 * np.pi       , r_1=5.0000281233e-03     , r_2=np.nan               , curvature_sign=1.0, T_c=np.nan               , n_inside_or_after=1e+00                , n_outside_or_before=1e+00                , material_properties=MaterialProperties(refractive_index=np.nan               , alpha_expansion=7.5e-08              , beta_surface_absorption=1e-06                , kappa_conductivity=1.31e+00             , dn_dT=np.nan               , nu_poisson_ratio=1.7e-01              , alpha_volume_absorption=np.nan               , intensity_reflectivity=9.99889e-01          , intensity_transmittance=1e-04                , temperature=np.nan               ))]
+params
+
+cavity = Cavity.from_params(params=params,
+                            standing_wave=True,
+                            lambda_0_laser=lambda_0_laser,
+                            names=['Right mirror', 'Lens', 'Left Mirror'],
+                            set_central_line=True,
+                            set_mode_parameters=True,
+                            set_initial_surface=False,
+                            t_is_trivial=True,
+                            p_is_trivial=True,
+                            power=2e4, use_brute_force_for_central_line=True)
+
+# Show that there are multiple solutions (the 0 crossings):
+color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
+fig, ax = plt.subplots(figsize=(15, 10))
+for j, shift_value in enumerate(np.logspace(-8, -5, 3)):
+    perturbed_cavity = perturb_cavity(cavity, (0, 3), shift_value, set_mode_parameters=False)
+    default_phi = perturbed_cavity.default_initial_angles[1]
+    phis = np.linspace(-1.1e-3, 1.1e-3, 1000)
+    distances = np.zeros_like(phis)
+    for i, phi in enumerate(phis):
+        d = perturbed_cavity.f_roots_standing_wave(np.array([0, np.pi+phi]))
+        distances[i] = d[1]
+    plt.plot(phis, distances, label=f"big mirrors tilt: {shift_value:.1e} [rad]", color=color_cycle[j])
+    plt.axvline(x=default_phi - np.pi, color=color_cycle[j])
+plt.axhline(0, label='0 crossing', color='k')
+plt.xlabel('central line tilt [rad]')
+plt.ylabel("distance to the sphere's center of the small mirror [m]")
+plt.grid()
+plt.legend()
+plt.title('distance between central line and the origin of the end sphere\nfor central line that starts at the origin'
+          'of the first sphere - for multiple tilts')
+plt.savefig('figures/astigmatism_0_crossings.svg', dpi=300, bbox_inches='tight')
+plt.show()

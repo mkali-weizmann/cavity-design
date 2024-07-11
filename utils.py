@@ -50,6 +50,20 @@ class SurfacesTypes:
     def from_integer_representation(integer_representation: int) -> str:
         return SurfacesTypes.__dict__[SURFACE_TYPES_DICT_INVERSE[integer_representation]]
 
+@dataclass
+class CurvatureSigns:
+    convex = -1
+    concave = 1
+
+    @staticmethod
+    def from_integer_representation(integer_representation: int) -> int:
+        if integer_representation == 1:
+            return CurvatureSigns.convex
+        elif integer_representation == -1:
+            return CurvatureSigns.concave
+        else:
+            raise ValueError("Curvature sign must be either 1 or -1")
+
 
 with open('data/params_dict.pkl', 'rb') as f:
     params_dict = pkl.load(f)

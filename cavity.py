@@ -150,7 +150,7 @@ class OpticalElementParams:
     p: float  # the in-plane angle normal vector to the surface. when the plane is x,y, this is the phi angle.
     r_1: float  # radius of curvature. np.inf for flat surfaces.
     r_2: float  # nan if the optical object has only one face, or if the two faces are fixed to the same radius of curvature.
-    curvature_sign: int  # 1 if the surface is convex, -1 if it is concave  # ATTENTION: ONCE CONCAVE ELEMENTS WILL BE USED, THERE WILL HAVE TO BE TWO CURVATURE SIGNS
+    curvature_sign: int  # 1 if the surface is concave, -1 if it is convex  # ATTENTION: ONCE CONCAVE ELEMENTS WILL BE USED, THERE WILL HAVE TO BE TWO CURVATURE SIGNS
     T_c: float  # center thickness of the element
     n_inside_or_after: (
         float  # refractive index inside the optical object (for a ThickLens) or after it (for a refractive surface)
@@ -166,6 +166,7 @@ class OpticalElementParams:
     def __repr__(self):
         surface_type_string = f"'{self.surface_type}'"
         surface_type_string = surface_type_string.ljust(27)
+        curvature_sign_string = "CurvatureSigns.concave" if self.curvature_sign == -1 else "CurvatureSigns.convex"
         return (
             f"OpticalElementParams("
             f"surface_type={surface_type_string}, "
@@ -176,7 +177,7 @@ class OpticalElementParams:
             f"p={pretty_print_number(self.p, represents_angle=True)}, "
             f"r_1={pretty_print_number(self.r_1)}, "
             f"r_2={pretty_print_number(self.r_2)}, "
-            f"curvature_sign={self.curvature_sign}, "
+            f"curvature_sign={curvature_sign_string}, "
             f"T_c={pretty_print_number(self.T_c)}, "
             f"n_inside_or_after={pretty_print_number(self.n_inside_or_after)}, "
             f"n_outside_or_before={pretty_print_number(self.n_outside_or_before)}, "
@@ -904,6 +905,82 @@ class FlatMirror(FlatSurface, PhysicalSurface):
         raise NotImplementedError
 
 
+class FlatRefractiveSurface(FlatSurface, PhysicalSurface):
+
+    def __init__(
+        self,
+        outwards_normal: np.ndarray,
+        distance_from_origin: Optional[float] = None,
+        center: Optional[np.ndarray] = None,
+        n_1: float = 1,
+        n_2: float = 1,
+        name: Optional[str] = None,
+        thermal_properties: Optional[MaterialProperties] = None,
+    ):
+        super().__init__(
+            outwards_normal=outwards_normal,
+            name=name,
+            material_properties=thermal_properties,
+            distance_from_origin=distance_from_origin,
+            center=center,
+            radius=np.inf,
+        )
+        self.n_1 = n_1
+        self.n_2 = n_2
+
+    def plot(
+        self,
+        ax: Optional[plt.Axes] = None,
+        name: Optional[str] = None,
+        dim: int = 3,
+        length=0.6,
+        plane: str = "xy",
+    ):
+        return super().plot(ax, name, dim, length, plane)
+
+    def reflect_direction(self, ray: Ray) -> np.ndarray:
+        # Assumes self.outwards_normal is pointing towards the medium with n_2.
+        # This uses the same derivation as in https://mynotebook.labarchives.com/MTM3NjE3My41fDEwNTg1OTUvMTA1ODU5NS9Ob3RlYm9vay8zMjQzMzA0MzY1fDM0OTMzNjMuNQ==/page/11290221-33
+        # except that here n_forwards and n_backwards are constants.
+        cos_theta_incoming = np.clip(np.sum(ray.k_vector * self.outwards_normal, axis=-1), a_min=-1, a_max=1)  # m_rays
+        n_orthogonal = (  # This is the vector that is orthogonal to the normal to the surface and lives in the plane spanned by the ray and the normal to the surface (Grahm-Schmidt process).
+                ray.k_vector - cos_theta_incoming[..., np.newaxis] * self.outwards_normal
+        )  # m_rays | 3
+        n_orthogonal_norm = np.linalg.norm(n_orthogonal, axis=-1)  # m_rays
+        if isinstance(n_orthogonal_norm, float) and n_orthogonal_norm < 1e-15:
+            reflected_direction_vector = self.outwards_normal
+        else:
+            practically_normal_incidences = n_orthogonal_norm < 1e-15
+            n_orthogonal[practically_normal_incidences] = (
+                np.nan
+            )  # This is done so that the normalization does not throw an error. those values will later be filled with
+            # the trivial solution, so no nans in the output.
+            n_orthogonal = normalize_vector(n_orthogonal)
+            sin_theta_incoming = np.sqrt(1 - cos_theta_incoming ** 2)
+            sin_theta_outgoing = (self.n_1 / self.n_2) * sin_theta_incoming  # m_rays  # Snell's law
+            cos_theta_outgoing = stable_sqrt(1 - sin_theta_outgoing ** 2)  # m_rays
+            reflected_direction_vector = (self.outwards_normal * cos_theta_outgoing[..., np.newaxis]   # outward_normal * cos(theta_o) + n_orthogonal * sin(theta_o)
+                                        + n_orthogonal * sin_theta_outgoing[..., np.newaxis])  # m_rays | 3
+
+
+            reflected_direction_vector[practically_normal_incidences] = self.outwards_normal[
+                practically_normal_incidences
+            ]  # For the nans we initiated before, we just want the normal to the surface to be the new direction of the ray
+        return reflected_direction_vector
+
+    def ABCD_matrix(self, cos_theta_incoming: float = None) -> np.ndarray:
+        # Note ! this code assumes the ray is in the x-y plane! Until it is fixed, the only perturbations in x,y,phi should be calculated!
+        sin_theta_incoming = np.sqrt(1 - cos_theta_incoming ** 2)
+        sin_theta_outgoing = (self.n_1 / self.n_2) * sin_theta_incoming
+        cos_theta_outgoing = stable_sqrt(1 - sin_theta_outgoing ** 2)
+        return np.array([[1, 0, 0, 0],
+                         [0, self.n_1 / self.n_2, 0],
+                         [0, 0, cos_theta_outgoing / cos_theta_incoming, 0],
+                         [0, 0, 0, (self.n_2 * cos_theta_incoming) / (self.n_1 * cos_theta_outgoing)]])
+
+
+
+
 class IdealLens(FlatSurface, PhysicalSurface):
 
     def __init__(
@@ -981,7 +1058,7 @@ class IdealLens(FlatSurface, PhysicalSurface):
 
     def ABCD_matrix(self, cos_theta_incoming: float = None) -> np.ndarray:
         # THIS CURRENTLY DOES NOT HOLD FOR THE CASE WHERE THE RAY IS NOT PERPENDICULAR TO THE LENS!
-        return np.array(
+        ABCD = np.array(
             [
                 [1, 0, 0, 0],
                 [-1 / self.focal_length, 1, 0, 0],
@@ -989,6 +1066,7 @@ class IdealLens(FlatSurface, PhysicalSurface):
                 [0, 0, -1 / self.focal_length, 1],
             ]
         )
+        return ABCD
 
     def reflect_ray(self, ray: Ray) -> Ray:
         intersection_point = self.find_intersection_with_ray(ray)
