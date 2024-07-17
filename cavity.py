@@ -543,10 +543,10 @@ class Surface:
         else:
             return self.find_intersection_with_ray_exact(ray)
 
-    def find_intersection_with_ray_exact(self, ray: Ray) -> np.ndarray:
+    def find_intersection_with_ray_paraxial(self, ray: Ray) -> np.ndarray:
         raise NotImplementedError
 
-    def find_intersection_with_ray_paraxial(self, ray: Ray) -> np.ndarray:
+    def find_intersection_with_ray_exact(self, ray: Ray) -> np.ndarray:
         raise NotImplementedError
 
     def parameterization(self, t: Union[np.ndarray, float], p: Union[np.ndarray, float]) -> np.ndarray:
@@ -784,24 +784,18 @@ class PhysicalSurface(Surface):
     def get_parameterization(self, points: np.ndarray):
         raise NotImplementedError
 
-    def find_intersection_with_ray(self, ray: Ray, paraxial: bool = False) -> np.ndarray:
-        raise NotImplementedError
-
     def reflect_ray(self, ray: Ray, paraxial: bool = False) -> Ray:
-        if paraxial:
-            return self.reflect_ray_paraxial(ray)
-        else:
-            return self.reflect_ray_exact(ray)
-
-    def reflect_ray_exact(self, ray: Ray) -> Ray:
-        intersection_point = self.find_intersection_with_ray(ray, paraxial=False)
-        reflected_direction_vector = self.reflect_direction(ray)
+        intersection_point = self.find_intersection_with_ray(ray, paraxial=paraxial)
+        reflected_direction_vector = self.reflect_direction(ray, paraxial=paraxial)
         return Ray(intersection_point, reflected_direction_vector)
 
-    def reflect_ray_paraxial(self, ray: Ray) -> Ray:
-        # This reflect_direction method uses tha ABCD matrix, and the intersection point is determined by the
-        # plane that is tangent to the curved refractive surface at it's middle, rather than the actual sphere.
+    def reflect_direction(self, ray: Ray, paraxial: bool = False) -> np.ndarray:
+        if paraxial:
+            return self.reflect_direction_paraxial(ray)
+        else:
+            return self.reflect_direction_exact(ray)
 
+    def reflect_direction_paraxial(self, ray: Ray) -> np.ndarray:
         if ray.k_vector.reshape(-1)[0:3] @ self.outwards_normal > 0:
             forwards_normal = self.outwards_normal
         else:
@@ -825,7 +819,7 @@ class PhysicalSurface(Surface):
         # that was even not calculate yet. therefore, the cos_theta_incoming used here is the trivial one.
         if len(input_vector.shape) > 1:
             output_vector = np.swapaxes(output_vector, 0, 1)
-        t_projection_out, p_projection_out = np.cos(np.pi / 2 - output_vector[1, ...]), np.cos(
+        t_projection_out, p_projection_out = cos_without_trailing_epsilon(np.pi / 2 - output_vector[1, ...]), cos_without_trailing_epsilon(
             np.pi / 2 - output_vector[3, ...]
         )
         # Those are the components of the output direction vector in the pseudo_z and pseudo_y and
@@ -834,12 +828,9 @@ class PhysicalSurface(Surface):
         component_p = np.multiply.outer(p_projection_out, pseudo_y)
         component_n = np.multiply.outer((1 - t_projection_out ** 2 - p_projection_out ** 2) ** 0.5, forwards_normal)
         output_direction_vector = component_t + component_p + component_n
+        return output_direction_vector
 
-        output_ray = Ray(origin=intersection_point, k_vector=output_direction_vector)
-
-        return output_ray
-
-    def reflect_direction(self, ray: Ray) -> np.ndarray:
+    def reflect_direction_exact(self, ray: Ray) -> np.ndarray:
         raise NotImplementedError
 
     def ABCD_matrix(self, cos_theta_incoming: Optional[float] = None) -> np.ndarray:
@@ -881,11 +872,9 @@ class FlatSurface(Surface):
         return intersection_point
 
     def find_intersection_with_ray_paraxial(self, ray: Ray) -> np.ndarray:
-        # This function is used for the case where the ray is almost parallel to the optical axis, and the intersection
-        # point is calculated by the intersection of the plane that is perpendicular to the optical axis and passes
-        # through the center of the mirror.
+        # Notes are available here: https://mynotebook.labarchives.com/MTM3NjE3My41fDEwNTg1OTUvMTA1ODU5NS9Ob3RlYm9vay8zMjQzMzA0MzY1fDM0OTMzNjMuNQ==/page/11290221-36
         cos_theta = self.outwards_normal @ ray.k_vector
-        theta = np.arccos(cos_theta)
+        theta = np.arccos(np.abs(np.clip(cos_theta, -1, 1)))
 
         closest_point_in_plane_to_global_origin = self.distance_from_origin * self.outwards_normal  # v in notes
 
@@ -896,10 +885,11 @@ class FlatSurface(Surface):
         distance_between_origin_and_plane = self.distance_from_origin - (self.outwards_normal @ ray.origin)  # h in notes
 
         vector_in_plane_in_k_n_plane = ray.k_vector - (self.outwards_normal @ ray.k_vector) * self.outwards_normal  # u in notes
-        vector_in_plane_in_k_n_plane = normalize_vector(vector_in_plane_in_k_n_plane)
-
-        intersection_point = ray_origin_projected_onto_plane + theta * distance_between_origin_and_plane * vector_in_plane_in_k_n_plane
-
+        if np.linalg.norm(vector_in_plane_in_k_n_plane) < 1e-20:
+            return ray_origin_projected_onto_plane
+        else:
+            vector_in_plane_in_k_n_plane = normalize_vector(vector_in_plane_in_k_n_plane)
+            intersection_point = ray_origin_projected_onto_plane + theta * distance_between_origin_and_plane * vector_in_plane_in_k_n_plane
         return intersection_point
 
     @property
@@ -952,9 +942,6 @@ class FlatMirror(FlatSurface, PhysicalSurface):
     ):
         return super().plot(ax, name, dim, length, plane)
 
-    def find_intersection_with_ray(self, ray: Ray) -> np.ndarray:
-        return super().find_intersection_with_ray(ray)
-
     def get_parameterization(self, points: np.ndarray):
         return super().get_parameterization(points)
 
@@ -965,7 +952,7 @@ class FlatMirror(FlatSurface, PhysicalSurface):
     def center(self):
         return super().center
 
-    def reflect_direction(self, ray: Ray) -> np.ndarray:
+    def reflect_direction_exact(self, ray: Ray) -> np.ndarray:
         dot_product = ray.k_vector @ self.outwards_normal  # m_rays
         k_projection_on_normal = dot_product[..., np.newaxis] * self.outwards_normal
         reflected_direction_test = ray.k_vector - 2 * k_projection_on_normal
@@ -1016,7 +1003,7 @@ class FlatRefractiveSurface(FlatSurface, PhysicalSurface):
     ):
         return super().plot(ax, name, dim, length, plane)
 
-    def reflect_direction(self, ray: Ray) -> np.ndarray:
+    def reflect_direction_exact(self, ray: Ray) -> np.ndarray:
         # Assumes self.outwards_normal is pointing towards the medium with n_2.
         # This uses the same derivation as in https://mynotebook.labarchives.com/MTM3NjE3My41fDEwNTg1OTUvMTA1ODU5NS9Ob3RlYm9vay8zMjQzMzA0MzY1fDM0OTMzNjMuNQ==/page/11290221-33
         # except that here n_forwards and n_backwards are constants.
@@ -1087,9 +1074,6 @@ class IdealLens(FlatSurface, PhysicalSurface):
     ):
         return super().plot(ax, name, dim, length, plane)
 
-    def find_intersection_with_ray(self, ray: Ray) -> np.ndarray:
-        return super().find_intersection_with_ray(ray)
-
     def get_parameterization(self, points: np.ndarray):
         return super().get_parameterization(points)
 
@@ -1104,7 +1088,7 @@ class IdealLens(FlatSurface, PhysicalSurface):
     def to_params(self) -> OpticalElementParams:
         raise NotImplementedError
 
-    def reflect_direction(self, ray: Ray) -> np.ndarray:
+    def reflect_direction_exact(self, ray: Ray) -> np.ndarray:
         intersection_point = self.find_intersection_with_ray(ray)
         pseudo_z, pseudo_y = self.spanning_vectors()
         t, p = self.get_parameterization(intersection_point)  # Those are the coordinates of pseudo_z and pseudo_y
@@ -1212,6 +1196,7 @@ class CurvedSurface(Surface):
     def find_intersection_with_ray_paraxial(self, ray: Ray) -> np.ndarray:
         flat_surface = FlatSurface(center=self.center, outwards_normal=self.outwards_normal)
         intersection_point = flat_surface.find_intersection_with_ray_paraxial(ray)
+        ray.length = np.linalg.norm(intersection_point - ray.origin, axis=-1)
         return intersection_point
 
     def parameterization(
@@ -1258,9 +1243,6 @@ class CurvedSurface(Surface):
         # equal if the outwards_normal is in the x-y plane.
         return pseudo_y, pseudo_z
 
-    def reflect_direction(self, ray: Ray, intersection_point: Optional[np.ndarray] = None) -> np.ndarray:
-        raise NotImplementedError
-
     def plot(
         self,
         ax: Optional[plt.Axes] = None,
@@ -1297,7 +1279,7 @@ class CurvedMirror(CurvedSurface, PhysicalSurface):
             curvature_sign=curvature_sign,
         )
 
-    def reflect_direction(self, ray: Ray, intersection_point: Optional[np.ndarray] = None) -> np.ndarray:
+    def reflect_direction_exact(self, ray: Ray, intersection_point: Optional[np.ndarray] = None) -> np.ndarray:
         # Notice that this function does not reflect along the normal of the mirror but along the normal projection
         # of the ray on the mirror.
         if intersection_point is None:
@@ -1331,11 +1313,6 @@ class CurvedMirror(CurvedSurface, PhysicalSurface):
             ]
         )
         return ABCD
-
-    # for mirrors, use the actual reflection as the paraxial one. This is not very elegant, but actually it anyway
-    # does not matter, because their reflection function does not play a role in the central line finding
-    def reflect_ray_paraxial(self, ray: Ray) -> Ray:
-        return self.reflect_ray(ray)
 
     def plot_2d(self, ax: Optional[plt.Axes] = None, name: Optional[str] = None):
         if ax is None:
@@ -1424,7 +1401,7 @@ class CurvedRefractiveSurface(CurvedSurface, PhysicalSurface):
         self.n_2 = n_2
         self.thickness = thickness
 
-    def reflect_direction(self, ray: Ray, intersection_point: Optional[np.ndarray] = None) -> np.ndarray:
+    def reflect_direction_exact(self, ray: Ray, intersection_point: Optional[np.ndarray] = None) -> np.ndarray:
         # explanable derivation of the calculation in lab archives: https://mynotebook.labarchives.com/MTM3NjE3My41fDEwNTg1OTUvMTA1ODU5NS9Ob3RlYm9vay8zMjQzMzA0MzY1fDM0OTMzNjMuNQ==/page/11290221-33
         if intersection_point is None:
             intersection_point = self.find_intersection_with_ray(ray)
@@ -2527,6 +2504,7 @@ class Cavity:
                 else:
                     axis_span = np.array([axes_range[0], 0.01])
             else:
+                axes_range[axes_range == 0] = 1e-5
                 axis_span = axes_range
         else:
             axis_span = np.array([axis_span, axis_span, axis_span])

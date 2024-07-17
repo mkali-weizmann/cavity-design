@@ -180,9 +180,7 @@ def focal_length_of_lens(R_1, R_2, n, width):
     return 1 / one_over_f
 
 
-def unit_vector_of_angles(theta: Union[np.ndarray, float], phi: Union[np.ndarray, float]) -> np.ndarray:
-    # Those are the angles of the unit vector in spherical coordinates, with respect to the global system of coordinates
-    # theta and phi are assumed to be in radians
+def sin_without_trailing_epsilon(phi: Union[np.ndarray, float]) -> Union[np.ndarray, float]:
     pi_multiplications = np.mod(phi, np.pi)  # This is to avoid numerical trailing epsilon.
     sin_phi = np.sin(phi)
     if isinstance(sin_phi, (float, int)):
@@ -190,7 +188,29 @@ def unit_vector_of_angles(theta: Union[np.ndarray, float], phi: Union[np.ndarray
             sin_phi = 0
     else:
         sin_phi[pi_multiplications == 0] = 0
-    return np.stack([np.cos(theta) * np.cos(phi), np.cos(theta) * sin_phi, np.sin(theta)], axis=-1)
+    return sin_phi
+
+
+def cos_without_trailing_epsilon(phi: Union[np.ndarray, float]) -> Union[np.ndarray, float]:
+    pi_half_multiplications = np.mod(phi - np.pi / 2, np.pi)  # This is to avoid numerical trailing epsilon.
+    cos_phi = np.cos(phi)
+    if isinstance(cos_phi, (float, int)):
+        if pi_half_multiplications == 0:
+            cos_phi = 0
+    else:
+        cos_phi[pi_half_multiplications == 0] = 0
+    return cos_phi
+
+
+def unit_vector_of_angles(theta: Union[np.ndarray, float], phi: Union[np.ndarray, float]) -> np.ndarray:
+    # Those are the angles of the unit vector in spherical coordinates, with respect to the global system of coordinates
+    # theta and phi are assumed to be in radians
+    sin_phi = sin_without_trailing_epsilon(phi)
+    cos_phi = cos_without_trailing_epsilon(phi)
+    sin_theta = sin_without_trailing_epsilon(theta)
+    cos_theta = cos_without_trailing_epsilon(theta)
+
+    return np.stack([cos_theta * cos_phi, cos_theta * sin_phi, sin_theta], axis=-1)
 
 
 def angles_of_unit_vector(unit_vector: Union[np.ndarray, float]) -> Union[Tuple[np.ndarray, np.ndarray],

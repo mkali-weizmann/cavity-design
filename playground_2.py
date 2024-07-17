@@ -13,7 +13,7 @@ y_fine = 1.3234889801e-23
 p_coarse = -0.00025
 p = 0.0000000000e+00
 p_fine = 4.2127962662e-24
-use_paraxial_ray_tracing = False
+use_paraxial_ray_tracing = True
 x_lim = -5.0000000000e+00
 y_lim = -5.0000000000e+00
 center_around_second_center = False
@@ -71,7 +71,7 @@ print(
 color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
 fig, ax = plt.subplots(figsize=(15, 10))
 default_phi = cavity.default_initial_angles[1]
-phis = np.array([0, 2.8e-4, 5.785e-4])
+phis = np.linspace(-1e-3, 1e-3, 100)# np.array([0, 2.8e-4, 5.785e-4])
 distances = np.zeros_like(phis)
 for i, phi in enumerate(phis):
     d = cavity.f_roots_standing_wave(np.array([0, np.pi+phi]))
