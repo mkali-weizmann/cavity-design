@@ -65,8 +65,8 @@ class CurvatureSigns:
             raise ValueError("Curvature sign must be either 1 or -1")
 
 
-with open('data/params_dict.pkl', 'rb') as f:
-    params_dict = pkl.load(f)
+# with open('data/params_dict.pkl', 'rb') as f:
+#     params_dict = pkl.load(f)
 
 CENTRAL_LINE_TOLERANCE = 1
 STRETCH_FACTOR = 1  # 0.001
@@ -181,8 +181,16 @@ def focal_length_of_lens(R_1, R_2, n, width):
 
 
 def unit_vector_of_angles(theta: Union[np.ndarray, float], phi: Union[np.ndarray, float]) -> np.ndarray:
+    # Those are the angles of the unit vector in spherical coordinates, with respect to the global system of coordinates
     # theta and phi are assumed to be in radians
-    return np.stack([np.cos(theta) * np.cos(phi), np.cos(theta) * np.sin(phi), np.sin(theta)], axis=-1)
+    pi_multiplications = np.mod(phi, np.pi)  # This is to avoid numerical trailing epsilon.
+    sin_phi = np.sin(phi)
+    if isinstance(sin_phi, (float, int)):
+        if pi_multiplications == 0:
+            sin_phi = 0
+    else:
+        sin_phi[pi_multiplications == 0] = 0
+    return np.stack([np.cos(theta) * np.cos(phi), np.cos(theta) * sin_phi, np.sin(theta)], axis=-1)
 
 
 def angles_of_unit_vector(unit_vector: Union[np.ndarray, float]) -> Union[Tuple[np.ndarray, np.ndarray],

@@ -537,7 +537,16 @@ class Surface:
     def inwards_normal(self):
         return -self.outwards_normal
 
-    def find_intersection_with_ray(self, ray: Ray) -> np.ndarray:
+    def find_intersection_with_ray(self, ray: Ray, paraxial: bool = False) -> np.ndarray:
+        if paraxial:
+            return self.find_intersection_with_ray_paraxial(ray)
+        else:
+            return self.find_intersection_with_ray_exact(ray)
+
+    def find_intersection_with_ray_exact(self, ray: Ray) -> np.ndarray:
+        raise NotImplementedError
+
+    def find_intersection_with_ray_paraxial(self, ray: Ray) -> np.ndarray:
         raise NotImplementedError
 
     def parameterization(self, t: Union[np.ndarray, float], p: Union[np.ndarray, float]) -> np.ndarray:
@@ -775,10 +784,62 @@ class PhysicalSurface(Surface):
     def get_parameterization(self, points: np.ndarray):
         raise NotImplementedError
 
-    def find_intersection_with_ray(self, ray: Ray) -> np.ndarray:
+    def find_intersection_with_ray(self, ray: Ray, paraxial: bool = False) -> np.ndarray:
         raise NotImplementedError
 
-    def reflect_ray(self, ray: Ray) -> Ray:
+    def reflect_ray(self, ray: Ray, paraxial: bool = False) -> Ray:
+        if paraxial:
+            return self.reflect_ray_paraxial(ray)
+        else:
+            return self.reflect_ray_exact(ray)
+
+    def reflect_ray_exact(self, ray: Ray) -> Ray:
+        intersection_point = self.find_intersection_with_ray(ray, paraxial=False)
+        reflected_direction_vector = self.reflect_direction(ray)
+        return Ray(intersection_point, reflected_direction_vector)
+
+    def reflect_ray_paraxial(self, ray: Ray) -> Ray:
+        # This reflect_direction method uses tha ABCD matrix, and the intersection point is determined by the
+        # plane that is tangent to the curved refractive surface at it's middle, rather than the actual sphere.
+
+        if ray.k_vector.reshape(-1)[0:3] @ self.outwards_normal > 0:
+            forwards_normal = self.outwards_normal
+        else:
+            forwards_normal = -self.outwards_normal
+
+        flat_surface = FlatSurface(
+            outwards_normal=forwards_normal,
+            center=self.center,
+        )
+        intersection_point = flat_surface.find_intersection_with_ray(ray, paraxial=True)
+        pseudo_z, pseudo_y = flat_surface.spanning_vectors()
+        t, p = flat_surface.get_parameterization(
+            intersection_point)  # Those are the coordinates of pseudo_z and pseudo_y
+        t_projection, p_projection = ray.k_vector @ pseudo_z, ray.k_vector @ pseudo_y
+        theta, phi = np.pi / 2 - np.arccos(t_projection), np.pi / 2 - np.arccos(p_projection)
+        input_vector = np.array([t, theta, p, phi])
+        if len(input_vector.shape) > 1:
+            input_vector = np.swapaxes(input_vector, 0, 1)
+        output_vector = self.ABCD_matrix(cos_theta_incoming=1) @ input_vector  # For the sake of ray tracing, we
+        # reflect the ray with respect to the optical element's optical axis, and not with respect to the central line
+        # that was even not calculate yet. therefore, the cos_theta_incoming used here is the trivial one.
+        if len(input_vector.shape) > 1:
+            output_vector = np.swapaxes(output_vector, 0, 1)
+        t_projection_out, p_projection_out = np.cos(np.pi / 2 - output_vector[1, ...]), np.cos(
+            np.pi / 2 - output_vector[3, ...]
+        )
+        # Those are the components of the output direction vector in the pseudo_z and pseudo_y and
+        # surface_normal directions:
+        component_t = np.multiply.outer(t_projection_out, pseudo_z)
+        component_p = np.multiply.outer(p_projection_out, pseudo_y)
+        component_n = np.multiply.outer((1 - t_projection_out ** 2 - p_projection_out ** 2) ** 0.5, forwards_normal)
+        output_direction_vector = component_t + component_p + component_n
+
+        output_ray = Ray(origin=intersection_point, k_vector=output_direction_vector)
+
+        return output_ray
+
+    def reflect_direction(self, ray: Ray) -> np.ndarray:
         raise NotImplementedError
 
     def ABCD_matrix(self, cos_theta_incoming: Optional[float] = None) -> np.ndarray:
@@ -809,7 +870,7 @@ class FlatSurface(Surface):
             self.center_of_mirror_private = center
             self.distance_from_origin = center @ self.outwards_normal
 
-    def find_intersection_with_ray(self, ray: Ray) -> np.ndarray:
+    def find_intersection_with_ray_exact(self, ray: Ray) -> np.ndarray:
         A_vec = self.outwards_normal * self.distance_from_origin
         BA_vec = A_vec - ray.origin
         BC = BA_vec @ self.outwards_normal
@@ -817,6 +878,28 @@ class FlatSurface(Surface):
         t = BC / cos_theta
         intersection_point = ray.parameterization(t)
         ray.length = np.linalg.norm(intersection_point - ray.origin, axis=-1)
+        return intersection_point
+
+    def find_intersection_with_ray_paraxial(self, ray: Ray) -> np.ndarray:
+        # This function is used for the case where the ray is almost parallel to the optical axis, and the intersection
+        # point is calculated by the intersection of the plane that is perpendicular to the optical axis and passes
+        # through the center of the mirror.
+        cos_theta = self.outwards_normal @ ray.k_vector
+        theta = np.arccos(cos_theta)
+
+        closest_point_in_plane_to_global_origin = self.distance_from_origin * self.outwards_normal  # v in notes
+
+        displacement_in_plane = ray.origin - (self.outwards_normal @ ray.origin) * self.outwards_normal
+
+        ray_origin_projected_onto_plane = closest_point_in_plane_to_global_origin + displacement_in_plane  # p_r in notes
+
+        distance_between_origin_and_plane = self.distance_from_origin - (self.outwards_normal @ ray.origin)  # h in notes
+
+        vector_in_plane_in_k_n_plane = ray.k_vector - (self.outwards_normal @ ray.k_vector) * self.outwards_normal  # u in notes
+        vector_in_plane_in_k_n_plane = normalize_vector(vector_in_plane_in_k_n_plane)
+
+        intersection_point = ray_origin_projected_onto_plane + theta * distance_between_origin_and_plane * vector_in_plane_in_k_n_plane
+
         return intersection_point
 
     @property
@@ -891,11 +974,6 @@ class FlatMirror(FlatSurface, PhysicalSurface):
     def ABCD_matrix(self, cos_theta_incoming: float = None) -> np.ndarray:
         # Assumes the ray is in the x-y plane, and the mirror is in the z-x plane
         return np.array([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, -1, 0], [0, 0, 0, -1]])
-
-    def reflect_ray(self, ray: Ray) -> Ray:
-        intersection_point = self.find_intersection_with_ray(ray)
-        reflected_direction_vector = self.reflect_direction(ray)
-        return Ray(intersection_point, reflected_direction_vector)
 
     @property
     def radius(self):
@@ -979,10 +1057,7 @@ class FlatRefractiveSurface(FlatSurface, PhysicalSurface):
                          [0, 0, 0, (self.n_2 * cos_theta_incoming) / (self.n_1 * cos_theta_outgoing)]])
 
 
-
-
 class IdealLens(FlatSurface, PhysicalSurface):
-
     def __init__(
         self,
         outwards_normal: np.ndarray,
@@ -991,6 +1066,7 @@ class IdealLens(FlatSurface, PhysicalSurface):
         focal_length: Optional[float] = None,
         name: Optional[str] = None,
         thermal_properties: Optional[MaterialProperties] = None,
+        actual_radius: Optional[float] = None,
     ):
         super().__init__(
             outwards_normal=outwards_normal,
@@ -1031,13 +1107,13 @@ class IdealLens(FlatSurface, PhysicalSurface):
     def reflect_direction(self, ray: Ray) -> np.ndarray:
         intersection_point = self.find_intersection_with_ray(ray)
         pseudo_z, pseudo_y = self.spanning_vectors()
-        t, p = self.get_parameterization(intersection_point)
+        t, p = self.get_parameterization(intersection_point)  # Those are the coordinates of pseudo_z and pseudo_y
         t_projection, p_projection = ray.k_vector @ pseudo_z, ray.k_vector @ pseudo_y
         theta, phi = np.pi / 2 - np.arccos(t_projection), np.pi / 2 - np.arccos(p_projection)
         input_vector = np.array([t, theta, p, phi])
         if len(input_vector.shape) > 1:
             input_vector = np.swapaxes(input_vector, 0, 1)
-        output_vector = self.ABCD_matrix(cos_theta_incoming=0) @ input_vector
+        output_vector = self.ABCD_matrix(cos_theta_incoming=1) @ input_vector
         if len(input_vector.shape) > 1:
             output_vector = np.swapaxes(output_vector, 0, 1)
         t_projection_out, p_projection_out = np.cos(np.pi / 2 - output_vector[1, ...]), np.cos(
@@ -1067,11 +1143,6 @@ class IdealLens(FlatSurface, PhysicalSurface):
             ]
         )
         return ABCD
-
-    def reflect_ray(self, ray: Ray) -> Ray:
-        intersection_point = self.find_intersection_with_ray(ray)
-        reflected_direction_vector = self.reflect_direction(ray)
-        return Ray(intersection_point, reflected_direction_vector)
 
     def thermal_transformation(self, P_laser_power: float, w_spot_size: float):
         raise NotImplementedError
@@ -1103,7 +1174,7 @@ class CurvedSurface(Surface):
         else:
             self.origin = origin
 
-    def find_intersection_with_ray(self, ray: Ray) -> np.ndarray:
+    def find_intersection_with_ray_exact(self, ray: Ray) -> np.ndarray:
         # The following lines is the result of the next line of mathematica to find the intersection:
         # Solve[(x0 + kx * t - xc) ^ 2 + (y0 + ky * t - yc) ^ 2 + (z0 + kz * t - zc) ^ 2 == R ^ 2, t]
         l = (
@@ -1136,6 +1207,11 @@ class CurvedSurface(Surface):
         ) / (ray.k_vector[..., 0] ** 2 + ray.k_vector[..., 1] ** 2 + ray.k_vector[..., 2] ** 2)
         intersection_point = ray.parameterization(l)
         ray.length = l
+        return intersection_point
+
+    def find_intersection_with_ray_paraxial(self, ray: Ray) -> np.ndarray:
+        flat_surface = FlatSurface(center=self.center, outwards_normal=self.outwards_normal)
+        intersection_point = flat_surface.find_intersection_with_ray_paraxial(ray)
         return intersection_point
 
     def parameterization(
@@ -1181,11 +1257,6 @@ class CurvedSurface(Surface):
         pseudo_z = np.cross(self.inwards_normal, pseudo_y)  # Should be approximately equal to \hat{z}, and exactly
         # equal if the outwards_normal is in the x-y plane.
         return pseudo_y, pseudo_z
-
-    def reflect_ray(self, ray: Ray) -> Ray:
-        intersection_point = self.find_intersection_with_ray(ray)
-        reflected_direction_vector = self.reflect_direction(ray, intersection_point)
-        return Ray(intersection_point, reflected_direction_vector)
 
     def reflect_direction(self, ray: Ray, intersection_point: Optional[np.ndarray] = None) -> np.ndarray:
         raise NotImplementedError
@@ -1260,6 +1331,11 @@ class CurvedMirror(CurvedSurface, PhysicalSurface):
             ]
         )
         return ABCD
+
+    # for mirrors, use the actual reflection as the paraxial one. This is not very elegant, but actually it anyway
+    # does not matter, because their reflection function does not play a role in the central line finding
+    def reflect_ray_paraxial(self, ray: Ray) -> Ray:
+        return self.reflect_ray(ray)
 
     def plot_2d(self, ax: Optional[plt.Axes] = None, name: Optional[str] = None):
         if ax is None:
@@ -1560,13 +1636,23 @@ def convert_curved_refractive_surface_to_ideal_lens(surface: CurvedRefractiveSur
         name=surface.name,
         thermal_properties=surface.material_properties
     )
-    return ideal_lens
+
+    flat_refractive_surface = FlatRefractiveSurface(
+        outwards_normal=surface.outwards_normal,
+        center=surface.center,
+        n_1=surface.n_1,
+        n_2=surface.n_2,
+        name=surface.name + "_refractive_surface",
+        thermal_properties=surface.material_properties
+    )
+
+    return ideal_lens, flat_refractive_surface
 
 
 def generate_thick_ideal_lens_from_params(params: OpticalElementParams, name: Optional[str] = "Lens"):
-    surface_1, surface_2 = generate_lens_from_params(params, name)
+    surface_1, surface_4 = generate_lens_from_params(params, name)
     ideal_lens_1 = convert_curved_refractive_surface_to_ideal_lens(surface_1)
-    ideal_lens_2 = convert_curved_refractive_surface_to_ideal_lens(surface_2)
+    ideal_lens_2 = convert_curved_refractive_surface_to_ideal_lens(surface_4)
     return ideal_lens_1, ideal_lens_2
 
 
@@ -1597,11 +1683,12 @@ class Arm:
         if isinstance(surface_0, CurvedRefractiveSurface) and isinstance(surface_1, CurvedRefractiveSurface):
             assert surface_0.n_2 == surface_1.n_1
 
-    def propagate(self, ray: Ray):
+    def propagate(self, ray: Ray, use_paraxial_ray_tracing: bool = False):
+
         if isinstance(self.surface_1, PhysicalSurface):
-            ray = self.surface_1.reflect_ray(ray)
+            ray = self.surface_1.reflect_ray(ray, paraxial=use_paraxial_ray_tracing)
         else:
-            new_position = self.surface_1.find_intersection_with_ray(ray)
+            new_position = self.surface_1.find_intersection_with_ray(ray, paraxial=use_paraxial_ray_tracing)
             ray = Ray(new_position, ray.k_vector)
         return ray
 
@@ -1757,6 +1844,7 @@ class Cavity:
         initial_mode_parameters: Optional[ModeParameters] = None,
         use_brute_force_for_central_line: bool = False,  # remove it once we know it works
         debug_printing_level: int = 0,  # 0 for no prints, 1 for main prints, 2 for all prints
+        use_paraxial_ray_tracing: bool = False,
     ):
         self.standing_wave = standing_wave
         self.physical_surfaces = physical_surfaces
@@ -1778,6 +1866,7 @@ class Cavity:
         self.power = power
         self.use_brute_force_for_central_line = use_brute_force_for_central_line
         self.debug_printing_level = debug_printing_level
+        self.use_paraxial_ray_tracing = use_paraxial_ray_tracing
 
         if set_central_line:
             self.set_central_line()
@@ -1997,7 +2086,7 @@ class Cavity:
     def trace_ray(self, ray: Ray) -> List[Ray]:
         ray_history = [ray]
         for arm in self.arms:
-            ray = arm.propagate(ray)
+            ray = arm.propagate(ray, use_paraxial_ray_tracing=self.use_paraxial_ray_tracing)
             ray_history.append(ray)
         return ray_history
 
@@ -3253,6 +3342,7 @@ def perturb_cavity(
         p_is_trivial=p_is_trivial,
         use_brute_force_for_central_line=cavity.use_brute_force_for_central_line,
         debug_printing_level=cavity.debug_printing_level,
+        use_paraxial_ray_tracing=cavity.use_paraxial_ray_tracing,
         **kwargs,
     )
     return new_cavity
