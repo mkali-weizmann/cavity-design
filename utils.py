@@ -124,8 +124,8 @@ def plane_name_to_xy_indices(plane: str) -> Tuple[int, int]:
 def params_to_perturbable_params_indices(params_array: np.ndarray, remove_one_of_the_angles: bool = False) -> List[int]:
     # Associates the cavity parameters with the number of parameters needed to describe the cavity.
     # If there is a lens, then the number of parameters is 7 (x, y, t, p, r, n_2):
-    if (np.any(params_array[:, INDICES_DICT['surface_type']] == SURFACE_TYPES_DICT['CurvedRefractiveSurface'])
-     or np.any(params_array[:, INDICES_DICT['surface_type']] == SURFACE_TYPES_DICT['thick lens'])):
+    if (np.any(params_array[:, INDICES_DICT['surface_type']] == SURFACE_TYPES_DICT['curved_refractive_surface'])
+     or np.any(params_array[:, INDICES_DICT['surface_type']] == SURFACE_TYPES_DICT['thick_lens'])):
         params_indices = [INDICES_DICT['x'], INDICES_DICT['y'], INDICES_DICT['t'], INDICES_DICT['p'],
                           INDICES_DICT['r_1'], INDICES_DICT['n_inside_or_after']]
     # If there is no lens but there is a curved mirror: (x, y, t, p, r)

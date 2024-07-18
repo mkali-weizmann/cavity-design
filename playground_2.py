@@ -1,27 +1,36 @@
 from cavity import *
 
-lambda_0_laser = 1064e-9
 x_coarse = 0.0000000000e+00
 x = 0.0000000000e+00
 x_fine = 1.3234889801e-23
 t_coarse = 0.0000000000e+00
 t = 0.0000000000e+00
-t_fine = 4.2127962662e-24
+t_fine = 1.3234889801e-23
 y_coarse = 0.0000000000e+00
 y = 0.0000000000e+00
 y_fine = 1.3234889801e-23
-p_coarse = -0.00025
+p_coarse = 0.0000000000e+00
 p = 0.0000000000e+00
-p_fine = 4.2127962662e-24
+p_fine = 1.3234889801e-23
 use_paraxial_ray_tracing = True
 x_lim = -5.0000000000e+00
-y_lim = -5.0000000000e+00
-center_around_second_center = False
+y_lim_0 = -7.9240000000e+00
+y_lim_1 = -5.0000000000e+00
+y_lim_2 = -2.0000000000e+00
 print_input_parameters = True
+true_for_mirror_false_for_origin = False
 
-params = [OpticalElementParams(surface_type=SurfacesTypes.curved_mirror, x=3.080114516e-01      , y=0                    , z=0                    , t=0                    , p=0                    , r_1=1.5039504639e-01     , r_2=np.nan               , curvature_sign=1.0, T_c=np.nan               , n_inside_or_after=1e+00                , n_outside_or_before=1e+00                , material_properties=MaterialProperties(refractive_index=np.nan               , alpha_expansion=7.5e-08              , beta_surface_absorption=1e-06                , kappa_conductivity=1.31e+00             , dn_dT=np.nan               , nu_poisson_ratio=1.7e-01              , alpha_volume_absorption=np.nan               , intensity_reflectivity=9.99889e-01          , intensity_transmittance=1e-04                , temperature=np.nan               )),
-          OpticalElementParams(surface_type=SurfacesTypes.thick_lens,    x=6.5057257992e-03     , y=0                    , z=0                    , t=0                    , p=1e+00 * np.pi        , r_1=7.967931913299999e-03, r_2=7.967931913299999e-03, curvature_sign=1.0, T_c=3.0114515984e-03     , n_inside_or_after=1.76e+00             , n_outside_or_before=1e+00                , material_properties=MaterialProperties(refractive_index=1.76e+00             , alpha_expansion=5.5e-06              , beta_surface_absorption=1e-06                , kappa_conductivity=4.606e+01            , dn_dT=1.17e-05             , nu_poisson_ratio=3e-01                , alpha_volume_absorption=1e-02                , intensity_reflectivity=1e-04                , intensity_transmittance=9.99899e-01          , temperature=np.nan               )),
-          OpticalElementParams(surface_type=SurfacesTypes.curved_mirror, x=-5e-03               , y=0                    , z=0                    , t=0                    , p=-1e+00 * np.pi       , r_1=5.0000281233e-03     , r_2=np.nan               , curvature_sign=1.0, T_c=np.nan               , n_inside_or_after=1e+00                , n_outside_or_before=1e+00                , material_properties=MaterialProperties(refractive_index=np.nan               , alpha_expansion=7.5e-08              , beta_surface_absorption=1e-06                , kappa_conductivity=1.31e+00             , dn_dT=np.nan               , nu_poisson_ratio=1.7e-01              , alpha_volume_absorption=np.nan               , intensity_reflectivity=9.99889e-01          , intensity_transmittance=1e-04                , temperature=np.nan               ))]
+lambda_0_laser = 1064e-9
+
+# New cavity params:
+params = np.array([[-5.0000000000e-03+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j, -0.0000000000e+00-1.j,  5.0000281233e-03+0.j,   np.nan+0.j,  1.0000000000e+00+0.j,   np.nan+0.j,  1.0000000000e+00+0.j,  0.0000000000e+00+0.j,  1.0000000000e+00+0.j,   np.nan+0.j,  7.5000000000e-08+0.j,  1.0000000000e-06+0.j,  1.3100000000e+00+0.j,   np.nan+0.j,  1.7000000000e-01+0.j,   np.nan+0.j,  9.9988900000e-01+0.j,  1.0000000000e-04+0.j,   np.nan+0.j,  0.0000000000e+00+0.j],
+                   [ 6.5057257992e-03+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  7.9679319133e-03+0.j,  7.9679319133e-03+0.j,  1.0000000000e+00+0.j,  3.0114515984e-03+0.j,  1.7600000000e+00+0.j,  0.0000000000e+00+0.j,  1.0000000000e+00+0.j,  1.7600000000e+00+0.j,  5.5000000000e-06+0.j,  1.0000000000e-06+0.j,  4.6060000000e+01+0.j,  1.1700000000e-05+0.j,  3.0000000000e-01+0.j,  1.0000000000e-02+0.j,  1.0000000000e-04+0.j,  9.9989900000e-01+0.j,   np.nan+0.j,  1.0000000000e+00+0.j],
+                   [ 3.0801145160e-01+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  1.5039504639e-01+0.j,   np.nan+0.j,  1.0000000000e+00+0.j,   np.nan+0.j,  1.0000000000e+00+0.j,  0.0000000000e+00+0.j,  1.0000000000e+00+0.j,   np.nan+0.j,  7.5000000000e-08+0.j,  1.0000000000e-06+0.j,  1.3100000000e+00+0.j,   np.nan+0.j,  1.7000000000e-01+0.j,   np.nan+0.j,  9.9988900000e-01+0.j,  1.0000000000e-04+0.j,   np.nan+0.j,  0.0000000000e+00+0.j]])
+
+# # swap first and third rows of params:
+params[[0, 2]] = params[[2, 0]]
+params[1, [4, 5]] = params[1, [5, 4]]
+params[1, 3] += 1j
 
 cavity = Cavity.from_params(params=params,
                             standing_wave=True,
@@ -36,34 +45,53 @@ cavity = Cavity.from_params(params=params,
                             use_paraxial_ray_tracing=use_paraxial_ray_tracing)
 # cavity.plot()
 # plt.show()
+
+# assert not(center_around_second_center and center_between_two_origins), "can not center both around second center and between two centers"
+
 perturbed_cavity = perturb_cavity(cavity, (0, 3), 0)
-
-# theta_initial_guess, phi_initial_guess = perturbed_cavity.default_initial_angles
 phi_initial_guess = np.pi
-y_initial_guess = 0
 theta_initial_guess = 0
-initial_parameters = np.array(
-    [x_coarse + x + x_fine, t_coarse + t + t_fine + theta_initial_guess, y_coarse + y + y_fine + y_initial_guess,
-     p_coarse + p + p_fine + phi_initial_guess])
-_, ray_history = perturbed_cavity.trace_ray_parametric(initial_parameters)
-diff = perturbed_cavity.f_roots(initial_parameters)
-fig, ax = plt.subplots()
-perturbed_cavity.plot(ax=ax, plot_central_line=False)
+y_initial_guess = 0
 
-for i, ray in enumerate(ray_history):
-    ray.plot(ax=ax, label=i)
+x_total = x_coarse + x + x_fine
+t_total = t_coarse + t + t_fine + theta_initial_guess
+y_total = y_coarse + y + y_fine + y_initial_guess
+p_total = p_coarse + p + p_fine + phi_initial_guess
 
-ax.scatter(perturbed_cavity.surfaces[0].origin[0], perturbed_cavity.surfaces[0].origin[1])
-ax.scatter(perturbed_cavity.surfaces[3].origin[0], perturbed_cavity.surfaces[3].origin[1])
-if center_around_second_center:
-    center_x = perturbed_cavity.surfaces[3].origin[0]
-    x_lim = 10 ** x_lim
-    ax.set_xlim(center_x - x_lim, center_x + x_lim)
-ax.set_ylim(-10 ** y_lim, 10 ** y_lim)
-ax.legend()
+if true_for_mirror_false_for_origin:
+
+    initial_parameters = np.array([x_total, t_total, y_total, p_total])
+    _, ray_history = perturbed_cavity.trace_ray_parametric(initial_parameters)
+    # diff = perturbed_cavity.f_roots(initial_parameters)
+
+else:
+    k_vector = unit_vector_of_angles(t_total, p_total)
+    ray = Ray(perturbed_cavity.physical_surfaces[0].origin, k_vector)
+    ray_history = perturbed_cavity.trace_ray(ray)
+    # diff = perturbed_cavity.f_roots_standing_wave(angles=(t_total, p_total))
+
+fig, axes = plt.subplots(1, 3, figsize=(21, 5))
+for ax in axes:
+    perturbed_cavity.plot(ax=ax, plot_central_line=False)
+
+    for i, ray in enumerate(ray_history):
+        ray.plot(ax=ax, label=i)
+    ax.scatter(perturbed_cavity.surfaces[0].origin[0], perturbed_cavity.surfaces[0].origin[1])
+    ax.scatter(perturbed_cavity.surfaces[3].origin[0], perturbed_cavity.surfaces[3].origin[1])
+    ax.legend()
+
+center_x = perturbed_cavity.surfaces[3].origin[0]
+x_lim = 10 ** x_lim
+axes[0].set_xlim(center_x - x_lim, center_x + x_lim)
+axes[0].set_ylim(-10 ** y_lim_0, 10 ** y_lim_0)
+
+axes[1].set_xlim(perturbed_cavity.surfaces[3].origin[0] - 0.001, perturbed_cavity.surfaces[1].center[0] + 0.001)
+axes[1].set_ylim(-10 ** y_lim_1, 10 ** y_lim_1)
+
+axes[2].set_xlim(perturbed_cavity.surfaces[3].origin[0] - 0.001, perturbed_cavity.surfaces[0].origin[0] + 0.01)
+axes[2].set_ylim(-10 ** y_lim_2, 10 ** y_lim_2)
+
 plt.show()
-print(
-    f"diff = {diff}\ndiff_norm = {np.linalg.norm(diff)}\ninitial_parameters = {initial_parameters[2]:.10e}, {initial_parameters[3]:.10e}")
 
 
 # %%
@@ -71,7 +99,7 @@ print(
 color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
 fig, ax = plt.subplots(figsize=(15, 10))
 default_phi = cavity.default_initial_angles[1]
-phis = np.linspace(-1e-3, 1e-3, 100)# np.array([0, 2.8e-4, 5.785e-4])
+phis = np.linspace(-1e-3, 1e-3, 5)# np.array([0, 2.8e-4, 5.785e-4])
 distances = np.zeros_like(phis)
 for i, phi in enumerate(phis):
     d = cavity.f_roots_standing_wave(np.array([0, np.pi+phi]))

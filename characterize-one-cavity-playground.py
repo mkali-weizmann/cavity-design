@@ -31,44 +31,13 @@ cavity = Cavity.from_params(params=params,
                             t_is_trivial=True,
                             p_is_trivial=True,
                             power=2e4,
-                            use_brute_force_for_central_line=True,
-                            use_paraxial_ray_tracing=False)
+                            use_paraxial_ray_tracing=True,
+                            )
 
 
 cavity.plot()
 # plot_mirror_lens_mirror_cavity_analysis(cavity)
 plt.show()
-# %%
-for shift_value in np.logspace(-6, -6, 1):
-    print(f"\nshift_value: {shift_value:.2e}")
-    perturbed_cavity = perturb_cavity(cavity, (0, 3), shift_value)
-
-
-#
-# ax = plt.gca()
-# ax.set_xlim(-0.05, 0.35)
-#
-# for NA in np.logspace(-3, np.log10(0.01), 5):
-#     beginning_ray = Ray(origin=np.array([0, 0, 0]), k_vector=np.array([np.cos(np.arcsin(NA)), NA, 0]))
-#     second_ray = cavity.physical_surfaces[1].reflect_ray(beginning_ray)
-#     third_ray = cavity.physical_surfaces[2].reflect_ray(second_ray)
-#     fourth_ray = cavity.physical_surfaces[3].reflect_ray(third_ray)
-#     fifth_ray = cavity.physical_surfaces_ordered[4].reflect_ray(fourth_ray)
-#     sixth_ray = cavity.physical_surfaces_ordered[5].reflect_ray(fifth_ray)
-#
-#     beginning_ray.plot(ax=ax, color='r')
-#     second_ray.plot(ax=ax, color='g')
-#     third_ray.plot(ax=ax, color='b')
-#     fourth_ray.plot(ax=ax, color='k')
-#     fifth_ray.plot(ax=ax, color='b')
-#     sixth_ray.plot(ax=ax, color='b')
-#
-# # plt.xlim(0.05, 0.25)
-# plt.ylim(-1e-4, 1e-4)
-#
-plt.show()
-
-# plt.show()
 
 # %%
 tolerance_matrix = cavity.generate_tolerance_matrix()

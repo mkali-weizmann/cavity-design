@@ -874,22 +874,27 @@ class FlatSurface(Surface):
     def find_intersection_with_ray_paraxial(self, ray: Ray) -> np.ndarray:
         # Notes are available here: https://mynotebook.labarchives.com/MTM3NjE3My41fDEwNTg1OTUvMTA1ODU5NS9Ob3RlYm9vay8zMjQzMzA0MzY1fDM0OTMzNjMuNQ==/page/11290221-36
         cos_theta = self.outwards_normal @ ray.k_vector
-        theta = np.arccos(np.abs(np.clip(cos_theta, -1, 1)))
+        if cos_theta > 0:
+            forwards_normal = self.outwards_normal
+        else:
+            forwards_normal = self.inwards_normal
+            cos_theta = np.abs(cos_theta)
+        theta = np.arccos(np.clip(cos_theta, -1, 1))
 
         closest_point_in_plane_to_global_origin = self.distance_from_origin * self.outwards_normal  # v in notes
 
-        displacement_in_plane = ray.origin - (self.outwards_normal @ ray.origin) * self.outwards_normal
+        displacement_in_plane = ray.origin - (forwards_normal @ ray.origin) * forwards_normal
 
         ray_origin_projected_onto_plane = closest_point_in_plane_to_global_origin + displacement_in_plane  # p_r in notes
 
-        distance_between_origin_and_plane = self.distance_from_origin - (self.outwards_normal @ ray.origin)  # h in notes
+        distance_between_rays_origin_and_plane = np.abs(self.distance_from_origin - (self.outwards_normal @ ray.origin))  # h in notes
 
-        vector_in_plane_in_k_n_plane = ray.k_vector - (self.outwards_normal @ ray.k_vector) * self.outwards_normal  # u in notes
+        vector_in_plane_in_k_n_plane = ray.k_vector - cos_theta * forwards_normal  # u in notes
         if np.linalg.norm(vector_in_plane_in_k_n_plane) < 1e-20:
             return ray_origin_projected_onto_plane
         else:
             vector_in_plane_in_k_n_plane = normalize_vector(vector_in_plane_in_k_n_plane)
-            intersection_point = ray_origin_projected_onto_plane + theta * distance_between_origin_and_plane * vector_in_plane_in_k_n_plane
+            intersection_point = ray_origin_projected_onto_plane + theta * distance_between_rays_origin_and_plane * vector_in_plane_in_k_n_plane
         return intersection_point
 
     @property
@@ -1294,6 +1299,11 @@ class CurvedMirror(CurvedSurface, PhysicalSurface):
             ray.k_vector - 2 * dot_product[..., np.newaxis] * mirror_normal_vector
         )  # m_rays | 3
         return reflected_direction_vector
+
+    def reflect_direction_paraxial(self, ray: Ray) -> np.ndarray:
+        # This is maybe wrong but does not matter too much because anyway they are not used for the central line finding
+        intersection_point = self.find_intersection_with_ray(ray, paraxial=True)
+        return self.reflect_direction_exact(ray, intersection_point=intersection_point)
 
     def ABCD_matrix(self, cos_theta_incoming: float = None):
         # order of rows/columns elements is [t, theta, p, phi]
