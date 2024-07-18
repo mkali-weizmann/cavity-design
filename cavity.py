@@ -146,8 +146,8 @@ class OpticalElementParams:
     x: float  # Of the center of the surface (the estimated point of intersection with the central line of the beam)
     y: float
     z: float
-    t: float  # the out-of-plane angle normal vector to the surface. when the plane is x,y, this is the theta angle.
-    p: float  # the in-plane angle normal vector to the surface. when the plane is x,y, this is the phi angle.
+    theta: float  # the out-of-plane angle normal vector to the surface. when the plane is x,y, this is the theta angle.
+    phi: float  # the in-plane angle normal vector to the surface. when the plane is x,y, this is the phi angle.
     r_1: float  # radius of curvature. np.inf for flat surfaces.
     r_2: float  # nan if the optical object has only one face, or if the two faces are fixed to the same radius of curvature.
     curvature_sign: int  # 1 if the surface is concave, -1 if it is convex  # ATTENTION: ONCE CONCAVE ELEMENTS WILL BE USED, THERE WILL HAVE TO BE TWO CURVATURE SIGNS
@@ -173,8 +173,8 @@ class OpticalElementParams:
             f"x={pretty_print_number(self.x)}, "
             f"y={pretty_print_number(self.y)}, "
             f"z={pretty_print_number(self.z)}, "
-            f"t={pretty_print_number(self.t, represents_angle=True)}, "
-            f"p={pretty_print_number(self.p, represents_angle=True)}, "
+            f"theta={pretty_print_number(self.theta, represents_angle=True)}, "
+            f"phi={pretty_print_number(self.phi, represents_angle=True)}, "
             f"r_1={pretty_print_number(self.r_1)}, "
             f"r_2={pretty_print_number(self.r_2)}, "
             f"curvature_sign={curvature_sign_string}, "
@@ -197,8 +197,8 @@ class OpticalElementParams:
                 INDICES_DICT["x"],
                 INDICES_DICT["y"],
                 INDICES_DICT["z"],
-                INDICES_DICT["t"],
-                INDICES_DICT["p"],
+                INDICES_DICT["theta"],
+                INDICES_DICT["phi"],
                 INDICES_DICT["r_1"],
                 INDICES_DICT["r_2"],
                 INDICES_DICT["curvature_sign"],
@@ -221,8 +221,8 @@ class OpticalElementParams:
             self.x,
             self.y,
             self.z,
-            self.t,
-            self.p,
+            self.theta,
+            self.phi,
             self.r_1,
             self.r_2,
             self.curvature_sign,
@@ -231,8 +231,8 @@ class OpticalElementParams:
             self.n_outside_or_before,
             *self.material_properties.to_array,
         ]
-        array[INDICES_DICT["t"]] = 1j * array[INDICES_DICT["t"]] / np.pi
-        array[INDICES_DICT["p"]] = 1j * array[INDICES_DICT["p"]] / np.pi
+        array[INDICES_DICT["theta"]] = 1j * array[INDICES_DICT["theta"]] / np.pi
+        array[INDICES_DICT["phi"]] = 1j * array[INDICES_DICT["phi"]] / np.pi
         return array
 
     @staticmethod
@@ -258,8 +258,8 @@ class OpticalElementParams:
             x=params[INDICES_DICT["x"]],
             y=params[INDICES_DICT["y"]],
             z=params[INDICES_DICT["z"]],
-            t=params[INDICES_DICT["t"]],
-            p=params[INDICES_DICT["p"]],
+            theta=params[INDICES_DICT["theta"]],
+            phi=params[INDICES_DICT["phi"]],
             r_1=params[INDICES_DICT["r_1"]],
             r_2=params[INDICES_DICT["r_2"]],
             curvature_sign=params[INDICES_DICT["curvature_sign"]],
@@ -281,10 +281,10 @@ class OpticalElementParams:
 # physical_surfaces is calculated, then the ray starts at cavity.surfaces[-1].center (which is that plane) and hits first the
 # cavity.surfaces[0] which is the first mirror.
 
-# As a convention, the locations (parameterized usually by t and p) always appear before the angles (parameterized by
-# theta and phi). also, t and theta appear before p and phi.
-# If for example there is a parameter q both for t axis and p axis, then the first element of q will be the q of t,
-# and the second element of q will be the q of p.
+# As a convention, the locations (parameterized usually by theta and phi) always appear before the angles (parameterized by
+# theta and phi). also, theta and theta appear before phi and phi.
+# If for example there is a parameter q both for theta axis and phi axis, then the first element of q will be the q of theta,
+# and the second element of q will be the q of phi.
 
 
 class LocalModeParameters:
@@ -356,10 +356,10 @@ class LocalModeParameters:
 
 @dataclass
 class ModeParameters:
-    center: np.ndarray  # First dimension is t or p (the two transversal axes of the mode), second dimension is x, y, z
+    center: np.ndarray  # First dimension is theta or phi (the two transversal axes of the mode), second dimension is x, y, z
     k_vector: np.ndarray
     w_0: np.ndarray
-    principle_axes: np.ndarray  # First dimension is t or p, second dimension is x, y, z
+    principle_axes: np.ndarray  # First dimension is theta or phi, second dimension is x, y, z
     lambda_0_laser: Optional[float]
     n: float = 1  # refractive index
 
@@ -458,8 +458,8 @@ class Ray:
         return subscripted_ray
 
     def parameterization(self, t: Union[np.ndarray, float]) -> np.ndarray:
-        # Currently this function allows only one t per ray. if needed it can be extended to allow multiple t per ray.
-        # t needs to be either a float or a numpy array with dimensions m_rays
+        # Currently this function allows only one theta per ray. if needed it can be extended to allow multiple theta per ray.
+        # theta needs to be either a float or a numpy array with dimensions m_rays
         return self.origin + t[..., np.newaxis] * self.k_vector
 
     def plot(self, ax: Optional[plt.Axes] = None, dim=2, plane: str = "xy", **kwargs):
@@ -659,7 +659,7 @@ class Surface:
     def from_params(params: OpticalElementParams, name: Optional[str] = None):
         p = params
         center = np.array([p.x, p.y, p.z])
-        outwards_normal = unit_vector_of_angles(p.t, p.p)
+        outwards_normal = unit_vector_of_angles(p.theta, p.phi)
         if p.surface_type == SurfacesTypes.curved_mirror:  # Mirror
             surface = CurvedMirror(
                 radius=p.r_1,
@@ -716,22 +716,22 @@ class Surface:
         else:
             r_1 = 0
             r_2 = 0
-        t, p = angles_of_unit_vector(self.outwards_normal)
+        theta, phi = angles_of_unit_vector(self.outwards_normal)
         n_1 = 1
         n_2 = 1
         if isinstance(self, CurvedMirror):
-            surface_type = 0
+            surface_type = SurfacesTypes.curved_mirror
             curvature_sign = self.curvature_sign
         elif isinstance(self, CurvedRefractiveSurface):
-            surface_type = 2
+            surface_type = SurfacesTypes.curved_refractive_surface
             n_1 = self.n_1
             n_2 = self.n_2
             curvature_sign = self.curvature_sign
         elif isinstance(self, IdealLens):
-            surface_type = 3
+            surface_type = SurfacesTypes.ideal_lens
             curvature_sign = 0
         elif isinstance(self, FlatMirror):
-            surface_type = 4
+            surface_type = SurfacesTypes.flat_mirror
             curvature_sign = 0
         else:
             raise ValueError(f"Unknown surface type {type(self)}")
@@ -743,8 +743,8 @@ class Surface:
             x=x,
             y=y,
             z=z,
-            t=t,
-            p=p,
+            theta=theta,
+            phi=phi,
             r_1=r_1,
             r_2=r_2,
             curvature_sign=curvature_sign,
@@ -1165,7 +1165,7 @@ class CurvedSurface(Surface):
 
     def find_intersection_with_ray_exact(self, ray: Ray) -> np.ndarray:
         # The following lines is the result of the next line of mathematica to find the intersection:
-        # Solve[(x0 + kx * t - xc) ^ 2 + (y0 + ky * t - yc) ^ 2 + (z0 + kz * t - zc) ^ 2 == R ^ 2, t]
+        # Solve[(x0 + kx * theta - xc) ^ 2 + (y0 + ky * theta - yc) ^ 2 + (z0 + kz * theta - zc) ^ 2 == R ^ 2, theta]
         l = (
             -ray.k_vector[..., 0] * ray.origin[..., 0]
             + ray.k_vector[..., 0] * self.origin[0]
@@ -1210,7 +1210,7 @@ class CurvedSurface(Surface):
         # of the mirror to the point of interest, in the direction "pseudo_z". pseudo_z is
         # described in the get_spanning_vectors method. it is analogous to theta / R in the
         # classical parameterization.
-        p: Union[np.ndarray, float],  # The same as t but in the direction of pseudo_y. It is analogous
+        p: Union[np.ndarray, float],  # The same as theta but in the direction of pseudo_y. It is analogous
         # to phi / R in the classical parameterization.
     ) -> np.ndarray:
         # This parameterization treats the sphere as if as the center of the mirror was on the x-axis.
@@ -1232,7 +1232,7 @@ class CurvedSurface(Surface):
         pseudo_y, pseudo_z = self.get_spanning_vectors()
         normalized_points = (points - self.origin) / self.radius
         p = np.arctan2(normalized_points @ pseudo_y, normalized_points @ self.outwards_normal) * self.radius
-        # Notice that t is like theta but instead of ranging in [0, pi] it ranges in [-pi/2, pi/2].
+        # Notice that theta is like theta but instead of ranging in [0, pi] it ranges in [-pi/2, pi/2].
         t = np.arcsin(np.clip(normalized_points @ pseudo_z, -1, 1)) * self.radius
         return t, p
 
@@ -1306,10 +1306,10 @@ class CurvedMirror(CurvedSurface, PhysicalSurface):
         return self.reflect_direction_exact(ray, intersection_point=intersection_point)
 
     def ABCD_matrix(self, cos_theta_incoming: float = None):
-        # order of rows/columns elements is [t, theta, p, phi]
+        # order of rows/columns elements is [theta, theta, phi, phi]
         # An approximation is done here (beyond the small angles' approximation) by assuming that the central line
-        # lives in the x,y plane, such that the plane of incidence is the x,y plane (parameterized by p and phi)
-        # and the sagittal plane is its transverse (parameterized by t and theta).
+        # lives in the x,y plane, such that the plane of incidence is the x,y plane (parameterized by phi and phi)
+        # and the sagittal plane is its transverse (parameterized by theta and theta).
         # This is justified for small perturbations of a cavity whose central line actually lives in the x,y plane.
         # It is not really justified for bigger perturbations and should be corrected.
         # It should be corrected by first finding the real axes, # And then apply a rotation matrix to this matrix on
@@ -1452,9 +1452,9 @@ class CurvedRefractiveSurface(CurvedSurface, PhysicalSurface):
         # See the comment in the ABCD_matrix method of the CurvedSurface class for an explanation of the approximation.
         ABCD = np.array(
             [
-                [1, 0, 0, 0],  # t
+                [1, 0, 0, 0],  # theta
                 [delta_n_e_out_of_plane / (R_signed * self.n_2), self.n_1 / self.n_2, 0, 0],  # theta
-                [0, 0, cos_theta_outgoing / cos_theta_incoming, 0],  # p
+                [0, 0, cos_theta_outgoing / cos_theta_incoming, 0],  # phi
                 [
                     0,
                     0,
@@ -1574,7 +1574,7 @@ def generate_lens_from_params(params: OpticalElementParams, name: Optional[str] 
     p = params
     # generates a convex-convex lens from the parameters
     center = np.array([p.x, p.y, p.z])
-    forward_direction = unit_vector_of_angles(p.t, p.p)
+    forward_direction = unit_vector_of_angles(p.theta, p.phi)
 
     # Generate names according to the direction the lens is pointing to
     main_axis = np.argmax(np.abs(forward_direction))
@@ -2127,7 +2127,7 @@ class Cavity:
         # d_1 = d @ transverse_spanning_vector_1
         # d_2 = d @ transverse_spanning_vector_2
         # is good for the solver.
-        # print(angles[1] - np.pi, p)
+        # print(angles[1] - np.pi, phi)
         result_array = np.array([t, p])
         return result_array
 
@@ -2312,7 +2312,7 @@ class Cavity:
             self.central_line_successfully_traced = central_line_successfully_traced
             origin_solution = self.arms[0].surface_0.parameterization(
                 central_line_initial_parameters[0], central_line_initial_parameters[2]
-            )  # t, p
+            )  # theta, phi
             k_vector_solution = unit_vector_of_angles(
                 central_line_initial_parameters[1], central_line_initial_parameters[3]
             )  # theta, phi
@@ -2391,7 +2391,7 @@ class Cavity:
         return principle_axes
 
     def ray_of_initial_parameters(self, initial_parameters: np.ndarray):
-        # Assumes initial_parameters is of the shape [..., 4] where the last axis of size for represents t, theta,
+        # Assumes initial_parameters is of the shape [..., 4] where the last axis of size for represents theta, theta,
         # (two numbers to represent the location and angle on the first surface) and theta, phi (two angles of the k_vector).
         k_vector_i = unit_vector_of_angles(theta=initial_parameters[..., 1], phi=initial_parameters[..., 3])
         origin_i = self.arms[0].surface_0.parameterization(t=initial_parameters[..., 0], p=initial_parameters[..., 2])
@@ -2723,7 +2723,7 @@ class Cavity:
                             shifts[element_index, parameter_index],
                             shift_size,
                         )
-                # The condition inside is for the case it is a mirror and the parameter is n, and then we don't want
+                # The condition inside is for the case it is a mirror and the parameter is n, and then we don'theta want
                 # to draw it.
                 if not (
                     parameter_index == INDICES_DICT["n_inside_or_after"]
@@ -2773,7 +2773,7 @@ class Cavity:
 
         for i in range(len(self.params)):
             for j in range(len(parameters_indices)):
-                # The condition inside is for the case it is a mirror and the parameter is n, and then we don't want
+                # The condition inside is for the case it is a mirror and the parameter is n, and then we don'theta want
                 # to draw it.
                 if parameters_indices[j] == INDICES_DICT["n_inside_or_after"] and np.isnan(tolerance_matrix[i, j]):
                     continue
@@ -3136,7 +3136,7 @@ def plot_tolerance_of_NA_same_plot(
     j_ranges = [
         [INDICES_DICT["x"]],
         [INDICES_DICT["y"], INDICES_DICT["z"]],
-        [INDICES_DICT["t"], INDICES_DICT["p"]],
+        [INDICES_DICT["theta"], INDICES_DICT["phi"]],
         [INDICES_DICT["r_1"], INDICES_DICT["n_inside_or_after"]],
     ]
     titles = [
@@ -3148,12 +3148,12 @@ def plot_tolerance_of_NA_same_plot(
 
     if t_and_p_are_trivial:
         j_ranges[1].remove(INDICES_DICT["z"])
-        j_ranges[2].remove(INDICES_DICT["t"])
+        j_ranges[2].remove(INDICES_DICT["theta"])
 
     for l, a in enumerate(ax.ravel()):
         for i in range(n_elements):
             for j in j_ranges[l]:
-                # The condition inside is for the case it is a mirror and the parameter is n, and then we don't want
+                # The condition inside is for the case it is a mirror and the parameter is n, and then we don'theta want
                 # to draw it.
                 if not (
                     j == INDICES_DICT["n_inside_or_after"]
@@ -3180,7 +3180,7 @@ def plot_tolerance_of_NA_same_plot(
 
 
 def calculate_gaussian_parameters_on_surface(surface: FlatSurface, mode_parameters: ModeParameters):
-    # Derivations to all this mathematical s**t is the LabArchives: https://mynotebook.labarchives.com/MTM3NjE3My41fDEwNTg1OTUvMTA1ODU5NS9Ob3RlYm9vay8zMjQzMzA0MzY1fDM0OTMzNjMuNQ==/page/11290221-13
+    # Derivations to all this mathematical s**theta is the LabArchives: https://mynotebook.labarchives.com/MTM3NjE3My41fDEwNTg1OTUvMTA1ODU5NS9Ob3RlYm9vay8zMjQzMzA0MzY1fDM0OTMzNjMuNQ==/page/11290221-13
     intersection_point = surface.find_intersection_with_ray(mode_parameters.ray)
     intersection_point = intersection_point[0, :]
     z_minus_z_0 = np.linalg.norm(intersection_point - mode_parameters.center, axis=1)
@@ -3191,7 +3191,7 @@ def calculate_gaussian_parameters_on_surface(surface: FlatSurface, mode_paramete
     # center, t_hat and p_hat are the unit vectors that span the surface, k_hat is the mode's k vector,
     # u_hat and v_hat are the principle axes of the mode.
     r_0 = surface.center - mode_parameters.center[0, :]  # Technically there are two centers, but their difference is
-    # only in the k_hat direction, which doesn't make a difference on the projection on the two principle axes of the
+    # only in the k_hat direction, which doesn'theta make a difference on the projection on the two principle axes of the
     # mode, and for the projection of the k_hat vector we anyway need to set an arbitrary 0, so we can just take the
     # first center.
     t_hat, p_hat = normalize_vector(surface.parameterization(1, 0) - surface.parameterization(0, 0)), normalize_vector(
@@ -3203,7 +3203,7 @@ def calculate_gaussian_parameters_on_surface(surface: FlatSurface, mode_paramete
     v_hat = u_hat_v_hat[1, :]
 
     # The mode as a function of the surface's parameterization:
-    # exp([t,p] @ A_2 @ [t,p] + b @ [t,p] + c
+    # exp([theta,phi] @ A_2 @ [theta,phi] + b @ [theta,phi] + c
 
     A = (
         1j
@@ -3312,10 +3312,10 @@ def perturb_cavity(
         new_params[parameter_index[0], parameter_index[1]] += shift_value
         parameter_index_1_list = parameter_index[1]
 
-    # If the original cavity was symmetrical in the t axis or the p axis, and the perturbation does not disturb this
-    # symmetry, then the new cavity is also symmetrical in the t axis or the p axis:
-    perturbance_in_z = [1 for i in parameter_index_1_list if i in [INDICES_DICT["z"], INDICES_DICT["t"]]]
-    perturbance_in_y = [1 for i in parameter_index_1_list if i in [INDICES_DICT["y"], INDICES_DICT["p"]]]
+    # If the original cavity was symmetrical in the theta axis or the phi axis, and the perturbation does not disturb this
+    # symmetry, then the new cavity is also symmetrical in the theta axis or the phi axis:
+    perturbance_in_z = [1 for i in parameter_index_1_list if i in [INDICES_DICT["z"], INDICES_DICT["theta"]]]
+    perturbance_in_y = [1 for i in parameter_index_1_list if i in [INDICES_DICT["y"], INDICES_DICT["phi"]]]
     perturbance_in_z = bool(len(perturbance_in_z))
     perturbance_in_y = bool(len(perturbance_in_y))
 
@@ -3359,7 +3359,7 @@ def plot_gaussian_subplot(
 def plot_2_gaussians_subplots(
     A_1: np.ndarray,
     A_2: np.ndarray,
-    # mu_1: np.ndarray, mu_2: np.ndarray, # Seems like I don't need the mus.
+    # mu_1: np.ndarray, mu_2: np.ndarray, # Seems like I don'theta need the mus.
     b_1: np.ndarray,
     b_2: np.ndarray,
     c_1: float,
@@ -3585,7 +3585,7 @@ def match_a_lens_parameters_to_modes(
             lens_parameters = np.array([lens_parameters[0], lens_parameters[1], fixed_n_lens])
         propagated_mode = local_mode_2_of_lens_parameters(lens_parameters, local_mode_1)
         q_error = propagated_mode.q[0] - local_mode_2.q[0]
-        if not fix_z_2:  # if we don't fix z_2, then the error in z_2 is set to 0, regardless of the actual value.
+        if not fix_z_2:  # if we don'theta fix z_2, then the error in z_2 is set to 0, regardless of the actual value.
             q_error = 1j * np.imag(q_error)
 
         if fixed_n_lens is not None:
@@ -3893,6 +3893,7 @@ def mirror_lens_mirror_cavity_general_generator(
     auto_set_right_arm_length: bool = True,
     set_R_right_to_equalize_angles: bool = False,
     set_R_right_to_R_left: bool = False,
+    **kwargs
 ):
     # This function receives many parameters that can define a cavity of mirror-lens-mirror and creates a Cavity object
     # out of them.
@@ -4041,7 +4042,7 @@ def mirror_lens_mirror_cavity_general_generator(
     params_lens.T_c = T_c
     params_lens.n_inside_or_after = n
     params_lens.n_outside_or_before = 1
-    params_lens.surface_type = SURFACE_TYPES_DICT["ThickLens"]
+    params_lens.surface_type = SurfacesTypes.thick_lens
 
     params = [mirror_left_params, params_lens, mirror_right_params]
 
@@ -4055,6 +4056,7 @@ def mirror_lens_mirror_cavity_general_generator(
         names=["Left mirror", "lens_left", "lens_right", "Right mirror"],
         power=power,
         initial_mode_parameters=mode_left,
+        **kwargs
     )
 
     return cavity

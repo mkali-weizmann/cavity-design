@@ -21,8 +21,8 @@ cavity_0 = Cavity.from_params(params=params,
 
 PERTURBATION_ELEMENT_INDEX = 2  # 2 for the left mirror, 1 for lens
 PERTURBATION_VALUE = 1e-6
-PERTURBATION_PARAMETER = 't'
-CORRECTION_PARAMETER = 't'
+PERTURBATION_PARAMETER = 'theta'
+CORRECTION_PARAMETER = 'theta'
 
 perturbed_params = params.copy()
 perturbed_params[PERTURBATION_ELEMENT_INDEX, INDICES_DICT[PERTURBATION_PARAMETER]] += PERTURBATION_VALUE

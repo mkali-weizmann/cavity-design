@@ -9,8 +9,8 @@ from dataclasses import dataclass
 # the array columns.
 PRETTY_INDICES_NAMES = {'x': 'x [m]',
                         'y': 'y [m]',
-                        't': 'Elevation angle [rads]',
-                        'p': 'Azimuthal angle [rads]',
+                        'theta': 'Elevation angle [rads]',
+                        'phi': 'Azimuthal angle [rads]',
                         'r_1': 'Radius of curvature 1 [m]',
                         'r_2': 'Radius of curvature 2 [m]',
                         'n_outside_or_before': 'Index of refraction (before the surface)',
@@ -123,17 +123,17 @@ def plane_name_to_xy_indices(plane: str) -> Tuple[int, int]:
 
 def params_to_perturbable_params_indices(params_array: np.ndarray, remove_one_of_the_angles: bool = False) -> List[int]:
     # Associates the cavity parameters with the number of parameters needed to describe the cavity.
-    # If there is a lens, then the number of parameters is 7 (x, y, t, p, r, n_2):
+    # If there is a lens, then the number of parameters is 7 (x, y, theta, phi, r, n_2):
     if (np.any(params_array[:, INDICES_DICT['surface_type']] == SURFACE_TYPES_DICT['curved_refractive_surface'])
      or np.any(params_array[:, INDICES_DICT['surface_type']] == SURFACE_TYPES_DICT['thick_lens'])):
-        params_indices = [INDICES_DICT['x'], INDICES_DICT['y'], INDICES_DICT['t'], INDICES_DICT['p'],
+        params_indices = [INDICES_DICT['x'], INDICES_DICT['y'], INDICES_DICT['theta'], INDICES_DICT['phi'],
                           INDICES_DICT['r_1'], INDICES_DICT['n_inside_or_after']]
-    # If there is no lens but there is a curved mirror: (x, y, t, p, r)
+    # If there is no lens but there is a curved mirror: (x, y, theta, phi, r)
     else:
-        params_indices = [INDICES_DICT['x'], INDICES_DICT['y'], INDICES_DICT['t'], INDICES_DICT['p'],
+        params_indices = [INDICES_DICT['x'], INDICES_DICT['y'], INDICES_DICT['theta'], INDICES_DICT['phi'],
                           INDICES_DICT['r_1']]
     if remove_one_of_the_angles:
-        params_indices.remove(INDICES_DICT['t'])
+        params_indices.remove(INDICES_DICT['theta'])
     return params_indices
 
 
@@ -285,7 +285,7 @@ def gaussian_norm_log(A: np.ndarray, b: np.ndarray, c: float):
 
 
 def gaussians_overlap_integral(A_1: np.ndarray, A_2: np.ndarray,
-                               # mu_1: np.ndarray, mu_2: np.ndarray, # Seems like I don't need the mus.
+                               # mu_1: np.ndarray, mu_2: np.ndarray, # Seems like I don'theta need the mus.
                                b_1: np.ndarray, b_2: np.ndarray,
                                c_1: float, c_2: float) -> float:
     A_1_conjugate = np.conjugate(A_1)
@@ -332,7 +332,7 @@ def functions_first_crossing(f: Callable, initial_step: float, crossing_value: f
         f_x = f(x)
         last_n_xs[np.mod(loop_counter, n)] = x
         last_n_evaluations[np.mod(loop_counter, n)] = f_x
-        if loop_counter == max_f_eval and not np.isnan(borders_max):  # if it wasn't found but we know it's value
+        if loop_counter == max_f_eval and not np.isnan(borders_max):  # if it wasn'theta found but we know it's value
             # approximately, then interpolate it:
             x = (crossing_value - f_borders_min) / (f_borders_max - f_borders_min) * (
                     borders_max - borders_min) + borders_min
@@ -366,7 +366,7 @@ def functions_first_crossing(f: Callable, initial_step: float, crossing_value: f
                 x *= increasing_ratio
                 f_borders_max = f_x
             else:
-                # randomize new x with higher probability to be closer to borders_min (the pdf is p(x)=2(1-x)), the cdf
+                # randomize new x with higher probability to be closer to borders_min (the pdf is phi(x)=2(1-x)), the cdf
                 # is F(x)=2(x-x^2) and the inverse cdf is F^-1(y)=1-sqrt(1-y)
                 y = np.random.uniform()
                 x_normalized = 1 - np.sqrt(1 - y)
@@ -422,7 +422,7 @@ def generate_initial_parameters_grid(center: np.ndarray,
             POS, ANGLE = np.meshgrid(base_grid, base_grid * angle_factor + center[1], indexing='ij')
             TRIVIAL_GRID = np.zeros_like(POS)
             initial_parameters = np.stack([POS + center[0], ANGLE + center[1], TRIVIAL_GRID + center[2], TRIVIAL_GRID + center[3]], axis=-1)
-        else:  # (if t is trivial)
+        else:  # (if theta is trivial)
             POS, ANGLE = np.meshgrid(base_grid, base_grid * angle_factor, indexing='ij')
             TRIVIAL_GRID = np.zeros_like(POS)
             initial_parameters = np.stack([TRIVIAL_GRID + center[0], TRIVIAL_GRID + center[1], POS + center[2], ANGLE + center[3]], axis=-1)

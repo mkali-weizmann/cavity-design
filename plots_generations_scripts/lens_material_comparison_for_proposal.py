@@ -21,7 +21,7 @@ def cm_format(value, tick_number):
 
 def print_parameters_func(local_parameters):
     for key, value in local_parameters.items():
-        if key.startswith("t_") or key.startswith("p_") or key in ["t", "p"]:
+        if key.startswith("t_") or key.startswith("p_") or key in ["theta", "phi"]:
             print(f"{key} = 1j*{value / np.pi:.10e}")
         elif isinstance(value, float):
             print(f"{key} = {value:.10e}")

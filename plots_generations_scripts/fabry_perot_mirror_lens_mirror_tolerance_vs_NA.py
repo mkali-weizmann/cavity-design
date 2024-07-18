@@ -71,7 +71,7 @@ lambda_0_laser = 1064e-09
 r_3 = r_1
 p_3 += np.pi
 names = ['Right Mirror', 'Left Mirror']
-# INDICES_DICT = {'x': 0, 'y': 1, 't': 2, 'p': 3, 'r': 4, 'n_1': 5, 'w': 6, 'n_2': 7, 'z': 8, 'curvature_sign': 9,
+# INDICES_DICT = {'x': 0, 'y': 1, 'theta': 2, 'phi': 3, 'r': 4, 'n_1': 5, 'w': 6, 'n_2': 7, 'z': 8, 'curvature_sign': 9,
 #                 'alpha_thermal_expansion': 10, 'beta_power_absorption': 11, 'kappa_thermal_conductivity': 12,
 #                 'dn_dT': 13,
 #                 'nu_poisson_ratio': 14, 'alpha_volume_absorption': 15, 'surface_type': 16}

@@ -92,12 +92,12 @@ for right_arm_length in np.logspace(-1, 0, 10):
     plt.show()
 
     # %%
-    tolerance_matrix = cavity.generate_tolerance_matrix(print_progress=True)
+    tolerance_matrix = cavity.generate_tolerance_matrix()
 
     # # %%
     overlaps_series = cavity.generate_overlap_series(shifts=2 * np.abs(tolerance_matrix[:, :]),
                                                      shift_size=30,
-                                                     print_progress=True)
+                                                     )
     # # %%
     cavity.generate_overlaps_graphs(overlaps_series=overlaps_series, tolerance_matrix=tolerance_matrix[:, :],
                                     arm_index_for_NA=2)
