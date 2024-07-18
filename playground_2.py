@@ -99,7 +99,7 @@ plt.show()
 color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
 fig, ax = plt.subplots(figsize=(15, 10))
 default_phi = cavity.default_initial_angles[1]
-phis = np.linspace(-1e-3, 1e-3, 5)# np.array([0, 2.8e-4, 5.785e-4])
+phis = np.linspace(-1e-3, 1e-3, 100)# np.array([0, 2.8e-4, 5.785e-4])
 distances = np.zeros_like(phis)
 for i, phi in enumerate(phis):
     d = cavity.f_roots_standing_wave(np.array([0, np.pi+phi]))

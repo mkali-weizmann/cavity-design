@@ -2118,7 +2118,7 @@ class Cavity:
         origins_plane = FlatSurface(
             outwards_normal=self.physical_surfaces[-1].outwards_normal, center=self.physical_surfaces[-1].origin
         )
-        intersection_point = origins_plane.find_intersection_with_ray(last_arms_ray)
+        intersection_point = origins_plane.find_intersection_with_ray(last_arms_ray, paraxial=self.use_paraxial_ray_tracing)
         t, p = origins_plane.get_parameterization(intersection_point)
 
         # Alternative syntax (that results in rotated parameterization)
