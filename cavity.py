@@ -2772,10 +2772,10 @@ class Cavity:
                             shifts[element_index, j],
                             shift_size,
                         )
-                # The condition inside is for the case it is a mirror and the parameter is n, and then we don'theta want
+                # The condition inside is for the case it is a mirror and the parameter is n, and then we don't want
                 # to draw it.
-                if not (SurfacesTypes.has_refractive_index(self.params[element_index].surface_type)):
-                    overlaps[element_index, parameter_name, :] = self.calculated_shifted_cavity_overlap_integral(
+                if SurfacesTypes.has_refractive_index(self.params[element_index].surface_type) or parameter_name != ParamsNames.n_inside_or_after:
+                    overlaps[element_index, j, :] = self.calculated_shifted_cavity_overlap_integral(
                         perturbation_pointer=PerturbationPointer(
                             element_index=element_index, parameter_name=parameter_name, perturbation_value=shift_series
                         )
@@ -2817,7 +2817,7 @@ class Cavity:
 
         for i in range(len(self.params)):
             for j, parameter_name in enumerate(parameters_names):
-                # The condition inside is for the case it is a mirror and the parameter is n, and then we don'theta want
+                # The condition inside is for the case it is a mirror and the parameter is n, and then we don't want
                 # to draw it.
                 if parameter_name == ParamsNames.n_inside_or_after and np.isnan(tolerance_matrix[i, j]):
                     continue
@@ -3197,7 +3197,7 @@ def plot_tolerance_of_NA_same_plot(
     for l, a in enumerate(ax.ravel()):
         for i in range(n_elements):
             for j in j_ranges[l]:
-                # The condition inside is for the case it is a mirror and the parameter is n, and then we don'theta want
+                # The condition inside is for the case it is a mirror and the parameter is n, and then we don't want
                 # to draw it.
                 if not (
                     j == INDICES_DICT["n_inside_or_after"]
@@ -3406,7 +3406,7 @@ def plot_gaussian_subplot(
 def plot_2_gaussians_subplots(
     A_1: np.ndarray,
     A_2: np.ndarray,
-    # mu_1: np.ndarray, mu_2: np.ndarray, # Seems like I don'theta need the mus.
+    # mu_1: np.ndarray, mu_2: np.ndarray, # Seems like I don't need the mus.
     b_1: np.ndarray,
     b_2: np.ndarray,
     c_1: float,
@@ -3632,7 +3632,7 @@ def match_a_lens_parameters_to_modes(
             lens_parameters = np.array([lens_parameters[0], lens_parameters[1], fixed_n_lens])
         propagated_mode = local_mode_2_of_lens_parameters(lens_parameters, local_mode_1)
         q_error = propagated_mode.q[0] - local_mode_2.q[0]
-        if not fix_z_2:  # if we don'theta fix z_2, then the error in z_2 is set to 0, regardless of the actual value.
+        if not fix_z_2:  # if we don't fix z_2, then the error in z_2 is set to 0, regardless of the actual value.
             q_error = 1j * np.imag(q_error)
 
         if fixed_n_lens is not None:
@@ -3882,6 +3882,7 @@ def find_equal_angles_surface(
 
 
 def find_required_value_for_desired_change(
+    # This is the best function in the world <3
     cavity_generator: Callable,  # Takes a float as input and returns a cavity
     desired_parameter: Callable,  # Takes a cavity as input and returns a float
     # (NA of some arm, length of some arm, radius of curvature, etc.)
