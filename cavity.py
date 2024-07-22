@@ -20,6 +20,7 @@ pd.options.display.float_format = "{:.3e}".format
 
 np.seterr(all="raise")
 
+
 @dataclass
 class MaterialProperties:
     refractive_index: Optional[float] = None
@@ -268,16 +269,27 @@ class OpticalElementParams:
         )
 
 
-def params_to_perturbable_params_names(params_list: List[OpticalElementParams],
-                                       remove_one_of_the_angles: bool = False) -> List[str]:
+def params_to_perturbable_params_names(
+    params_list: List[OpticalElementParams], remove_one_of_the_angles: bool = False
+) -> List[str]:
     # Associates the cavity parameters with the number of parameters needed to describe the cavity.
     # If there is a lens, then the number of parameters is 7 (x, y, theta, phi, r, n_2):
 
-    perturbable_params = [ParamsNames.x, ParamsNames.y, ParamsNames.theta, ParamsNames.phi,
-                      ParamsNames.r_1, ParamsNames.n_inside_or_after]
+    perturbable_params = [
+        ParamsNames.x,
+        ParamsNames.y,
+        ParamsNames.theta,
+        ParamsNames.phi,
+        ParamsNames.r_1,
+        ParamsNames.n_inside_or_after,
+    ]
 
     surface_types = [params.surface_type for params in params_list]
-    if not (SurfacesTypes.curved_refractive_surface in surface_types or SurfacesTypes.thick_lens in surface_types or SurfacesTypes.ideal_thick_lens in surface_types):
+    if not (
+        SurfacesTypes.curved_refractive_surface in surface_types
+        or SurfacesTypes.thick_lens in surface_types
+        or SurfacesTypes.ideal_thick_lens in surface_types
+    ):
         perturbable_params.remove(ParamsNames.n_inside_or_after)
     if remove_one_of_the_angles:
         perturbable_params.remove(ParamsNames.theta)
@@ -1906,7 +1918,7 @@ class Cavity:
         **kwargs,
     ):
         if isinstance(params, np.ndarray):
-            p = [OpticalElementParams. from_array(params[i, :]) for i in range(len(params))]
+            p = [OpticalElementParams.from_array(params[i, :]) for i in range(len(params))]
         else:
             p = params
         physical_surfaces = []
@@ -2024,8 +2036,9 @@ class Cavity:
 
     @property
     def perturbable_params_names(self):
-        perturbable_params_names_list = params_to_perturbable_params_names(self.params,
-                                                                           self.t_is_trivial and self.p_is_trivial)
+        perturbable_params_names_list = params_to_perturbable_params_names(
+            self.params, self.t_is_trivial and self.p_is_trivial
+        )
         return perturbable_params_names_list
 
     @property
@@ -2669,8 +2682,7 @@ class Cavity:
     # parameter_index: Union[Tuple[int, int], Tuple[List[int], List[int]]],
     #                    shift_value: Union[float, np.ndarray]
     def calculated_shifted_cavity_overlap_integral(
-        self,
-        perturbation_pointer: Union[PerturbationPointer, List[PerturbationPointer]]
+        self, perturbation_pointer: Union[PerturbationPointer, List[PerturbationPointer]]
     ) -> Tuple[np.ndarray]:
         # For a prturbation of more than one parameter, the first dimension of shift is the shift version, and the second dimension for the parameter index
         # For example, if shift = [[1e-6, 2e-6], [3e-6, 4e-6]], then the first perturbation is [1e-6, 2e-6] and the second is [3e-6, 4e-6].
@@ -2724,12 +2736,13 @@ class Cavity:
             for tolerance_matrix_index, param_name in (
                 pbar := tqdm(enumerate(perturbable_params_names), disable=self.debug_printing_level < 1)
             ):
-                pbar.set_description(
-                    f"Tolerance Matrix - parameter index:  {param_name}"
-                )
+                pbar.set_description(f"Tolerance Matrix - parameter index:  {param_name}")
                 tolerance_matrix[element_index, tolerance_matrix_index] = self.calculate_parameter_tolerance(
-                    perturbation_pointer=PerturbationPointer(element_index, param_name), initial_step=initial_step,
-                    overlap_threshold=overlap_threshold, accuracy=accuracy)
+                    perturbation_pointer=PerturbationPointer(element_index, param_name),
+                    initial_step=initial_step,
+                    overlap_threshold=overlap_threshold,
+                    accuracy=accuracy,
+                )
         return tolerance_matrix
 
     def generate_overlap_series(
@@ -2761,14 +2774,11 @@ class Cavity:
                         )
                 # The condition inside is for the case it is a mirror and the parameter is n, and then we don'theta want
                 # to draw it.
-                if not (
-                        SurfacesTypes.has_refractive_index(self.params[element_index].surface_type)
-                ):
+                if not (SurfacesTypes.has_refractive_index(self.params[element_index].surface_type)):
                     overlaps[element_index, parameter_name, :] = self.calculated_shifted_cavity_overlap_integral(
                         perturbation_pointer=PerturbationPointer(
-                            element_index=element_index,
-                            parameter_name=parameter_name,
-                            perturbation_value=shift_series)
+                            element_index=element_index, parameter_name=parameter_name, perturbation_value=shift_series
+                        )
                     )
         return overlaps
 
@@ -3338,10 +3348,14 @@ def perturb_cavity(
 ):
     new_params = copy.deepcopy(cavity.params)
     for perturbation_pointer_temp in perturbation_pointer:
-        current_value = getattr(new_params[perturbation_pointer_temp.element_index], perturbation_pointer_temp.parameter_name)
+        current_value = getattr(
+            new_params[perturbation_pointer_temp.element_index], perturbation_pointer_temp.parameter_name
+        )
         new_value = current_value + perturbation_pointer_temp.perturbation_value
         # Set the new value back to the attribute
-        setattr(new_params[perturbation_pointer_temp.element_index], perturbation_pointer_temp.parameter_name, new_value)
+        setattr(
+            new_params[perturbation_pointer_temp.element_index], perturbation_pointer_temp.parameter_name, new_value
+        )
 
     parameters_names = [p.parameter_name for p in perturbation_pointer_temp]
 
@@ -3683,8 +3697,9 @@ def maximize_overlap(
         I = 0
 
     def controlled_overlap(control_parameters_values: np.ndarray):
-        corrected_cavity = perturb_cavity(perturbed_cavity, control_parameters_indices,
-                                          control_parameters_values)  #  * 1e-3
+        corrected_cavity = perturb_cavity(
+            perturbed_cavity, control_parameters_indices, control_parameters_values
+        )  #  * 1e-3
         overlap = calculate_cavities_overlap(cavity_1=cavity, cavity_2=corrected_cavity)
         overlap_abs_minus = np.nan_to_num(-np.abs(overlap), nan=2)
         if print_progress:
@@ -3924,65 +3939,87 @@ def mirror_lens_mirror_cavity_generator(
     auto_set_right_arm_length: bool = True,
     set_R_right_to_equalize_angles: bool = True,
     set_R_right_to_R_left: bool = False,
-    set_R_right_to_collimate: bool=False,
-    set_R_left_to_collimate: bool=True,
+    set_R_right_to_collimate: bool = False,
+    set_R_left_to_collimate: bool = True,
     **kwargs,
 ):
 
     # This function receives many parameters that can define a cavity of mirror-lens-mirror and creates a Cavity object
     # out of them.
-    assert not (set_R_left_to_collimate and set_R_right_to_collimate), "Too many solutions: can't set automatically both R_left to collimate and R_right to collimate"
-    assert not (set_R_right_to_collimate + set_R_right_to_equalize_angles + set_R_right_to_R_left) > 1, "Too many constraints on R_right"
+    assert not (
+        set_R_left_to_collimate and set_R_right_to_collimate
+    ), "Too many solutions: can't set automatically both R_left to collimate and R_right to collimate"
+    assert (
+        not (set_R_right_to_collimate + set_R_right_to_equalize_angles + set_R_right_to_R_left) > 1
+    ), "Too many constraints on R_right"
 
     if set_R_left_to_collimate or set_R_right_to_collimate:
         if set_R_left_to_collimate:
+
             def cavity_generator(R_left_):
-                cavity = mirror_lens_mirror_cavity_generator(NA_left=NA_left, waist_to_lens=waist_to_lens, h=h,
-                                                             R_left=R_left_, R_right=R_right, T_c=T_c, T_edge=T_edge,
-                                                             right_arm_length=right_arm_length,
-                                                             lens_fixed_properties=lens_fixed_properties,
-                                                             mirrors_fixed_properties=mirrors_fixed_properties,
-                                                             symmetric_left_arm=symmetric_left_arm,
-                                                             waist_to_left_mirror=waist_to_left_mirror,
-                                                             lambda_0_laser=lambda_0_laser,
-                                                             set_h_instead_of_w=set_h_instead_of_w,
-                                                             auto_set_right_arm_length=auto_set_right_arm_length,
-                                                             set_R_right_to_equalize_angles=set_R_right_to_equalize_angles,
-                                                             set_R_right_to_R_left=set_R_right_to_R_left,
-                                                             right_mirror_on_waist=right_mirror_on_waist,
-                                                             set_R_right_to_collimate=False,
-                                                             set_R_left_to_collimate=False,
-                                                             **kwargs)
+                cavity = mirror_lens_mirror_cavity_generator(
+                    NA_left=NA_left,
+                    waist_to_lens=waist_to_lens,
+                    h=h,
+                    R_left=R_left_,
+                    R_right=R_right,
+                    T_c=T_c,
+                    T_edge=T_edge,
+                    right_arm_length=right_arm_length,
+                    lens_fixed_properties=lens_fixed_properties,
+                    mirrors_fixed_properties=mirrors_fixed_properties,
+                    symmetric_left_arm=symmetric_left_arm,
+                    waist_to_left_mirror=waist_to_left_mirror,
+                    lambda_0_laser=lambda_0_laser,
+                    set_h_instead_of_w=set_h_instead_of_w,
+                    auto_set_right_arm_length=auto_set_right_arm_length,
+                    set_R_right_to_equalize_angles=set_R_right_to_equalize_angles,
+                    set_R_right_to_R_left=set_R_right_to_R_left,
+                    right_mirror_on_waist=right_mirror_on_waist,
+                    set_R_right_to_collimate=False,
+                    set_R_left_to_collimate=False,
+                    **kwargs,
+                )
                 return cavity
 
             x0 = R_left
         else:
+
             def cavity_generator(R_right_):
-                cavity = mirror_lens_mirror_cavity_generator(NA_left=NA_left, waist_to_lens=waist_to_lens, h=h,
-                                                             R_left=R_left, R_right=R_right_, T_c=T_c, T_edge=T_edge,
-                                                             right_arm_length=right_arm_length,
-                                                             lens_fixed_properties=lens_fixed_properties,
-                                                             mirrors_fixed_properties=mirrors_fixed_properties,
-                                                             symmetric_left_arm=symmetric_left_arm,
-                                                             waist_to_left_mirror=waist_to_left_mirror,
-                                                             lambda_0_laser=lambda_0_laser,
-                                                             set_h_instead_of_w=set_h_instead_of_w,
-                                                             auto_set_right_arm_length=auto_set_right_arm_length,
-                                                             set_R_right_to_equalize_angles=set_R_right_to_equalize_angles,
-                                                             set_R_right_to_R_left=set_R_right_to_R_left,
-                                                             right_mirror_on_waist=right_mirror_on_waist,
-                                                             set_R_right_to_collimate=False,
-                                                             set_R_left_to_collimate=False,
-                                                             **kwargs)
+                cavity = mirror_lens_mirror_cavity_generator(
+                    NA_left=NA_left,
+                    waist_to_lens=waist_to_lens,
+                    h=h,
+                    R_left=R_left,
+                    R_right=R_right_,
+                    T_c=T_c,
+                    T_edge=T_edge,
+                    right_arm_length=right_arm_length,
+                    lens_fixed_properties=lens_fixed_properties,
+                    mirrors_fixed_properties=mirrors_fixed_properties,
+                    symmetric_left_arm=symmetric_left_arm,
+                    waist_to_left_mirror=waist_to_left_mirror,
+                    lambda_0_laser=lambda_0_laser,
+                    set_h_instead_of_w=set_h_instead_of_w,
+                    auto_set_right_arm_length=auto_set_right_arm_length,
+                    set_R_right_to_equalize_angles=set_R_right_to_equalize_angles,
+                    set_R_right_to_R_left=set_R_right_to_R_left,
+                    right_mirror_on_waist=right_mirror_on_waist,
+                    set_R_right_to_collimate=False,
+                    set_R_left_to_collimate=False,
+                    **kwargs,
+                )
                 return cavity
+
             x0 = R_right
 
-        cavity = find_required_value_for_desired_change(cavity_generator=cavity_generator,
-                                                        # Takes a float as input and returns a cavity
-                                                        desired_parameter=lambda cavity: 1 / cavity.arms[
-                                                            2].mode_parameters_on_surfaces[0].z_minus_z_0[0],
-                                                        desired_value=-2 / right_arm_length,
-                                                        x0=x0)
+        cavity = find_required_value_for_desired_change(
+            cavity_generator=cavity_generator,
+            # Takes a float as input and returns a cavity
+            desired_parameter=lambda cavity: 1 / cavity.arms[2].mode_parameters_on_surfaces[0].z_minus_z_0[0],
+            desired_value=-2 / right_arm_length,
+            x0=x0,
+        )
         return cavity
 
     if set_R_right_to_R_left:
