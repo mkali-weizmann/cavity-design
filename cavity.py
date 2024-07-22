@@ -22,6 +22,11 @@ np.seterr(all="raise")
 
 
 @dataclass
+class PerturbationPointer:
+    element_index: int
+    parameter_name: str
+
+@dataclass
 class MaterialProperties:
     refractive_index: Optional[float] = None
     alpha_expansion: Optional[float] = None
@@ -879,7 +884,10 @@ class FlatSurface(Surface):
         else:
             forwards_normal = self.inwards_normal
             cos_theta = np.abs(cos_theta)
-        theta = np.arccos(np.clip(cos_theta, -1, 1))
+        sin_abs_theta = np.linalg.norm(np.cross(ray.k_vector, forwards_normal))
+        theta = np.arcsin(sin_abs_theta)  # You might as - but wait, can't we use the arccos of the cos_theta already
+        # calculated? the answer is no, because d/dx(cos) is 0 around 0 and d/dx(arccos) is infinite around 0, Which
+        # leads to numerical instability when dealing with small angles.
 
         closest_point_in_plane_to_global_origin = self.distance_from_origin * self.outwards_normal  # v in notes
 
@@ -2248,6 +2256,7 @@ class Cavity:
             theta_default, phi_default = self.default_initial_angles
             if self.t_is_trivial and self.p_is_trivial:
                 solution_angles = np.array([theta_default, phi_default])
+                central_line_successfully_traced = True
             elif (
                 not self.t_is_trivial and self.p_is_trivial
             ):  # This syntax is for the case when we know the perturbation is only in
@@ -2261,13 +2270,14 @@ class Cavity:
                         z = np.inf * np.sign(theta)
                     return z
 
-                solution = optimize.brenth(
+                solution = optimize.root_scalar(
                     f_reduced,
-                    a=self.default_initial_angles[0] - 1e-2,
-                    b=self.default_initial_angles[0] + 1e-2,
+                    x0=theta_default,
+                    x1=theta_default + 1e-10,
                     xtol=1e-12,
                 )
-                solution_angles = np.array([solution, phi_default])
+                solution_angles = np.array([solution.root, phi_default])
+                central_line_successfully_traced = solution.converged
             elif self.t_is_trivial and not self.p_is_trivial:
 
                 def f_reduced(phi):
@@ -2276,17 +2286,20 @@ class Cavity:
                         y = np.inf * np.sign(phi)
                     return y
 
-                solution = optimize.brenth(
+                solution = optimize.root_scalar(
                     f_reduced,
-                    a=self.default_initial_angles[1] - 1e-2,
-                    b=self.default_initial_angles[1] + 1e-2,
+                    x0=phi_default,
+                    x1=phi_default+1e-9,
                     xtol=1e-12,
                 )  # x0=np.array([self.default_initial_angles[1]])
-                solution_angles = np.array([theta_default, solution])
+                solution_angles = np.array([theta_default, solution.root])
+                central_line_successfully_traced = solution.converged
             else:
                 solution = optimize.root(self.f_roots_standing_wave, x0=np.array([*self.default_initial_angles]))
                 solution_angles = solution.x
+                central_line_successfully_traced = solution.converged
             solution_ray = Ray(self.physical_surfaces[0].origin, -unit_vector_of_angles(*solution_angles))  # minus sign
+            # central_line_successfully_traced = solution.
             # on the angles because we are searching now the intersection between the ray and the surface behind it.
 
             # Retrive the parameterization of the ray with respect to the first surface:
@@ -2295,7 +2308,7 @@ class Cavity:
             central_line_initial_parameters = np.array(
                 [solution_parameterization[0], solution_angles[0], solution_parameterization[1], solution_angles[1]]
             )
-            central_line_successfully_traced = True
+
         return central_line_initial_parameters, central_line_successfully_traced
 
     def set_central_line(self, **kwargs) -> Tuple[np.ndarray, bool]:
@@ -2483,12 +2496,12 @@ class Cavity:
         ax: Optional[plt.Axes] = None,
         axis_span: Optional[Union[float, np.ndarray]] = None,
         camera_center: Union[float, int] = -1,
-        ray_list: Optional[List[Ray]] = None,
         dim: int = 2,
         laser_color: str = "r",
         plane: str = "xy",
         plot_mode_lines: bool = True,
         plot_central_line: bool = True,
+        additional_rays: Optional[List[Ray]] = None
     ) -> plt.Axes:
 
         if axis_span is None:
@@ -2566,9 +2579,8 @@ class Cavity:
             origin_camera[y_index] + axis_span[1] * 0.55,
         )
 
-        if ray_list is None and self.central_line is not None and plot_central_line:
-            ray_list = self.central_line
-            for ray in ray_list:
+        if self.central_line is not None and plot_central_line:
+            for ray in self.central_line:
                 ray.plot(
                     ax=ax,
                     dim=dim,
@@ -2576,6 +2588,17 @@ class Cavity:
                     plane=plane,
                     linestyle="--",
                     alpha=0.8,
+                )
+
+        if additional_rays is not None:
+            for i, ray in enumerate(additional_rays):
+                ray.plot(
+                    ax=ax,
+                    dim=dim,
+                    plane=plane,
+                    linestyle="--",
+                    alpha=0.8,
+                    label=i
                 )
 
         for i, surface in enumerate(self.surfaces):
@@ -2619,6 +2642,8 @@ class Cavity:
                 # print("Mode was not successfully found, mode lines not plotted.")
                 pass
         ax.grid()
+        if additional_rays is not None:
+            ax.legend()
         return ax
 
     # parameter_index: Union[Tuple[int, int], Tuple[List[int], List[int]]],

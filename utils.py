@@ -332,7 +332,7 @@ def functions_first_crossing(f: Callable, initial_step: float, crossing_value: f
         f_x = f(x)
         last_n_xs[np.mod(loop_counter, n)] = x
         last_n_evaluations[np.mod(loop_counter, n)] = f_x
-        if loop_counter == max_f_eval and not np.isnan(borders_max):  # if it wasn'theta found but we know it's value
+        if loop_counter == max_f_eval and not np.isnan(borders_max):  # if it wasn't found but we know it's value
             # approximately, then interpolate it:
             x = (crossing_value - f_borders_min) / (f_borders_max - f_borders_min) * (
                     borders_max - borders_min) + borders_min
@@ -409,6 +409,7 @@ def stable_sqrt(x: Union[np.ndarray, float]) -> Union[np.ndarray, float]:
             return np.nan
         else:
             return np.sqrt(x)
+
 
 def generate_initial_parameters_grid(center: np.ndarray,
                                      range_limit: float,

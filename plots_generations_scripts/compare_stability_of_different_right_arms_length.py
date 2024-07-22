@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 
 from cavity import *
 
-NA_left = 1.5800000000e-01
+NA_left = 0.9800000000e-01
 mirror_on_waist = False
 x_2_perturbation = 0.0000000000e+00
 waist_to_lens = 5.0000000000e-03
@@ -31,6 +31,7 @@ camera_center = 2
 add_unheated_cavity = False
 print_input_parameters = True
 print_cavity_parameters = True
+use_paraxial_ray_tracing = True
 
 waist_to_lens += waist_to_lens_fine
 R_left += R_left_fine
@@ -38,7 +39,7 @@ R_right += R_right_fine
 x_span = 10 ** x_span
 y_span = 10 ** y_span
 
-for right_arm_length in np.logspace(-1, 0, 10):
+for right_arm_length in np.array([0.3]): #np.logspace(-1, 0, 10):
 
     if not set_R_right_to_collimate:
         def cavity_generator(R_left_):
@@ -51,7 +52,9 @@ for right_arm_length in np.logspace(-1, 0, 10):
                                                                  lambda_0_laser=1064e-9, power=2e4, set_h_instead_of_w=True,
                                                                  auto_set_right_arm_length=auto_set_right_arm_length,
                                                                  set_R_right_to_equalize_angles=set_R_right_to_equalize_angles,
-                                                                 set_R_right_to_R_left=set_R_right_to_R_left)
+                                                                 set_R_right_to_R_left=set_R_right_to_R_left,
+                                                                 debug_printing_level=1,
+                                                                 use_paraxial_ray_tracing=use_paraxial_ray_tracing)
             return cavity
     else:
         def cavity_generator(R_right_):
@@ -64,7 +67,9 @@ for right_arm_length in np.logspace(-1, 0, 10):
                                                                  lambda_0_laser=1064e-9, power=2e4, set_h_instead_of_w=True,
                                                                  auto_set_right_arm_length=auto_set_right_arm_length,
                                                                  set_R_right_to_equalize_angles=set_R_right_to_equalize_angles,
-                                                                 set_R_right_to_R_left=set_R_right_to_R_left)
+                                                                 set_R_right_to_R_left=set_R_right_to_R_left,
+                                                                 debug_printing_level=1,
+                                                                 use_paraxial_ray_tracing=use_paraxial_ray_tracing)
             return cavity
 
     if set_R_left_to_collimate or set_R_right_to_collimate:
@@ -96,7 +101,7 @@ for right_arm_length in np.logspace(-1, 0, 10):
 
     # # %%
     overlaps_series = cavity.generate_overlap_series(shifts=2 * np.abs(tolerance_matrix[:, :]),
-                                                     shift_size=30,
+                                                     shift_size=60,
                                                      )
     # # %%
     cavity.generate_overlaps_graphs(overlaps_series=overlaps_series, tolerance_matrix=tolerance_matrix[:, :],
