@@ -26,6 +26,7 @@ class PerturbationPointer:
     element_index: int
     parameter_name: str
 
+
 @dataclass
 class MaterialProperties:
     refractive_index: Optional[float] = None
@@ -70,7 +71,6 @@ class MaterialProperties:
                 nvl(self.temperature, np.nan),
             ]
         )  # Note: When changing the order or adding this list - the order or added items should be also updated in the from_array method of OpticalElementParams
-
 
 
 PHYSICAL_SIZES_DICT = {
@@ -361,7 +361,9 @@ class LocalModeParameters:
 
 @dataclass
 class ModeParameters:
-    center: np.ndarray  # First dimension is theta or phi (the two transversal axes of the mode), second dimension is x, y, z
+    center: (
+        np.ndarray
+    )  # First dimension is theta or phi (the two transversal axes of the mode), second dimension is x, y, z
     k_vector: np.ndarray
     w_0: np.ndarray
     principle_axes: np.ndarray  # First dimension is theta or phi, second dimension is x, y, z
@@ -813,7 +815,8 @@ class PhysicalSurface(Surface):
         intersection_point = flat_surface.find_intersection_with_ray(ray, paraxial=True)
         pseudo_z, pseudo_y = flat_surface.spanning_vectors()
         t, p = flat_surface.get_parameterization(
-            intersection_point)  # Those are the coordinates of pseudo_z and pseudo_y
+            intersection_point
+        )  # Those are the coordinates of pseudo_z and pseudo_y
         t_projection, p_projection = ray.k_vector @ pseudo_z, ray.k_vector @ pseudo_y
         theta, phi = np.pi / 2 - np.arccos(t_projection), np.pi / 2 - np.arccos(p_projection)
         input_vector = np.array([t, theta, p, phi])
@@ -824,14 +827,14 @@ class PhysicalSurface(Surface):
         # that was even not calculate yet. therefore, the cos_theta_incoming used here is the trivial one.
         if len(input_vector.shape) > 1:
             output_vector = np.swapaxes(output_vector, 0, 1)
-        t_projection_out, p_projection_out = cos_without_trailing_epsilon(np.pi / 2 - output_vector[1, ...]), cos_without_trailing_epsilon(
-            np.pi / 2 - output_vector[3, ...]
-        )
+        t_projection_out, p_projection_out = cos_without_trailing_epsilon(
+            np.pi / 2 - output_vector[1, ...]
+        ), cos_without_trailing_epsilon(np.pi / 2 - output_vector[3, ...])
         # Those are the components of the output direction vector in the pseudo_z and pseudo_y and
         # surface_normal directions:
         component_t = np.multiply.outer(t_projection_out, pseudo_z)
         component_p = np.multiply.outer(p_projection_out, pseudo_y)
-        component_n = np.multiply.outer((1 - t_projection_out ** 2 - p_projection_out ** 2) ** 0.5, forwards_normal)
+        component_n = np.multiply.outer((1 - t_projection_out**2 - p_projection_out**2) ** 0.5, forwards_normal)
         output_direction_vector = component_t + component_p + component_n
         return output_direction_vector
 
@@ -893,16 +896,23 @@ class FlatSurface(Surface):
 
         displacement_in_plane = ray.origin - (forwards_normal @ ray.origin) * forwards_normal
 
-        ray_origin_projected_onto_plane = closest_point_in_plane_to_global_origin + displacement_in_plane  # p_r in notes
+        ray_origin_projected_onto_plane = (
+            closest_point_in_plane_to_global_origin + displacement_in_plane
+        )  # p_r in notes
 
-        distance_between_rays_origin_and_plane = np.abs(self.distance_from_origin - (self.outwards_normal @ ray.origin))  # h in notes
+        distance_between_rays_origin_and_plane = np.abs(
+            self.distance_from_origin - (self.outwards_normal @ ray.origin)
+        )  # h in notes
 
         vector_in_plane_in_k_n_plane = ray.k_vector - cos_theta * forwards_normal  # u in notes
         if np.linalg.norm(vector_in_plane_in_k_n_plane) < 1e-20:
             return ray_origin_projected_onto_plane
         else:
             vector_in_plane_in_k_n_plane = normalize_vector(vector_in_plane_in_k_n_plane)
-            intersection_point = ray_origin_projected_onto_plane + theta * distance_between_rays_origin_and_plane * vector_in_plane_in_k_n_plane
+            intersection_point = (
+                ray_origin_projected_onto_plane
+                + theta * distance_between_rays_origin_and_plane * vector_in_plane_in_k_n_plane
+            )
         return intersection_point
 
     @property
@@ -1022,7 +1032,7 @@ class FlatRefractiveSurface(FlatSurface, PhysicalSurface):
         # except that here n_forwards and n_backwards are constants.
         cos_theta_incoming = np.clip(np.sum(ray.k_vector * self.outwards_normal, axis=-1), a_min=-1, a_max=1)  # m_rays
         n_orthogonal = (  # This is the vector that is orthogonal to the normal to the surface and lives in the plane spanned by the ray and the normal to the surface (Grahm-Schmidt process).
-                ray.k_vector - cos_theta_incoming[..., np.newaxis] * self.outwards_normal
+            ray.k_vector - cos_theta_incoming[..., np.newaxis] * self.outwards_normal
         )  # m_rays | 3
         n_orthogonal_norm = np.linalg.norm(n_orthogonal, axis=-1)  # m_rays
         if isinstance(n_orthogonal_norm, float) and n_orthogonal_norm < 1e-15:
@@ -1034,12 +1044,14 @@ class FlatRefractiveSurface(FlatSurface, PhysicalSurface):
             )  # This is done so that the normalization does not throw an error. those values will later be filled with
             # the trivial solution, so no nans in the output.
             n_orthogonal = normalize_vector(n_orthogonal)
-            sin_theta_incoming = np.sqrt(1 - cos_theta_incoming ** 2)
+            sin_theta_incoming = np.sqrt(1 - cos_theta_incoming**2)
             sin_theta_outgoing = (self.n_1 / self.n_2) * sin_theta_incoming  # m_rays  # Snell's law
-            cos_theta_outgoing = stable_sqrt(1 - sin_theta_outgoing ** 2)  # m_rays
-            reflected_direction_vector = (self.outwards_normal * cos_theta_outgoing[..., np.newaxis]   # outward_normal * cos(theta_o) + n_orthogonal * sin(theta_o)
-                                        + n_orthogonal * sin_theta_outgoing[..., np.newaxis])  # m_rays | 3
-
+            cos_theta_outgoing = stable_sqrt(1 - sin_theta_outgoing**2)  # m_rays
+            reflected_direction_vector = (
+                self.outwards_normal
+                * cos_theta_outgoing[..., np.newaxis]  # outward_normal * cos(theta_o) + n_orthogonal * sin(theta_o)
+                + n_orthogonal * sin_theta_outgoing[..., np.newaxis]
+            )  # m_rays | 3
 
             reflected_direction_vector[practically_normal_incidences] = self.outwards_normal[
                 practically_normal_incidences
@@ -1048,13 +1060,17 @@ class FlatRefractiveSurface(FlatSurface, PhysicalSurface):
 
     def ABCD_matrix(self, cos_theta_incoming: float = None) -> np.ndarray:
         # Note ! this code assumes the ray is in the x-y plane! Until it is fixed, the only perturbations in x,y,phi should be calculated!
-        sin_theta_incoming = np.sqrt(1 - cos_theta_incoming ** 2)
+        sin_theta_incoming = np.sqrt(1 - cos_theta_incoming**2)
         sin_theta_outgoing = (self.n_1 / self.n_2) * sin_theta_incoming
-        cos_theta_outgoing = stable_sqrt(1 - sin_theta_outgoing ** 2)
-        return np.array([[1, 0, 0, 0],
-                         [0, self.n_1 / self.n_2, 0],
-                         [0, 0, cos_theta_outgoing / cos_theta_incoming, 0],
-                         [0, 0, 0, (self.n_2 * cos_theta_incoming) / (self.n_1 * cos_theta_outgoing)]])
+        cos_theta_outgoing = stable_sqrt(1 - sin_theta_outgoing**2)
+        return np.array(
+            [
+                [1, 0, 0, 0],
+                [0, self.n_1 / self.n_2, 0],
+                [0, 0, cos_theta_outgoing / cos_theta_incoming, 0],
+                [0, 0, 0, (self.n_2 * cos_theta_incoming) / (self.n_1 * cos_theta_outgoing)],
+            ]
+        )
 
 
 class IdealLens(FlatSurface, PhysicalSurface):
@@ -1623,13 +1639,13 @@ def generate_lens_from_params(params: OpticalElementParams, name: Optional[str] 
 
 
 def convert_curved_refractive_surface_to_ideal_lens(surface: CurvedRefractiveSurface):
-    focal_length = 1 / (surface.n_2 - surface.n_1) * surface.radius * (-1*surface.curvature_sign)
+    focal_length = 1 / (surface.n_2 - surface.n_1) * surface.radius * (-1 * surface.curvature_sign)
     ideal_lens = IdealLens(
         outwards_normal=surface.outwards_normal,
         center=surface.center,
         focal_length=focal_length,
         name=surface.name,
-        thermal_properties=surface.material_properties
+        thermal_properties=surface.material_properties,
     )
 
     flat_refractive_surface = FlatRefractiveSurface(
@@ -1638,7 +1654,7 @@ def convert_curved_refractive_surface_to_ideal_lens(surface: CurvedRefractiveSur
         n_1=surface.n_1,
         n_2=surface.n_2,
         name=surface.name + "_refractive_surface",
-        thermal_properties=surface.material_properties
+        thermal_properties=surface.material_properties,
     )
 
     return ideal_lens, flat_refractive_surface
@@ -2126,7 +2142,9 @@ class Cavity:
         origins_plane = FlatSurface(
             outwards_normal=self.physical_surfaces[-1].outwards_normal, center=self.physical_surfaces[-1].origin
         )
-        intersection_point = origins_plane.find_intersection_with_ray(last_arms_ray, paraxial=self.use_paraxial_ray_tracing)
+        intersection_point = origins_plane.find_intersection_with_ray(
+            last_arms_ray, paraxial=self.use_paraxial_ray_tracing
+        )
         t, p = origins_plane.get_parameterization(intersection_point)
 
         # Alternative syntax (that results in rotated parameterization)
@@ -2289,7 +2307,7 @@ class Cavity:
                 solution = optimize.root_scalar(
                     f_reduced,
                     x0=phi_default,
-                    x1=phi_default+1e-9,
+                    x1=phi_default + 1e-9,
                     xtol=1e-12,
                 )  # x0=np.array([self.default_initial_angles[1]])
                 solution_angles = np.array([theta_default, solution.root])
@@ -2501,7 +2519,7 @@ class Cavity:
         plane: str = "xy",
         plot_mode_lines: bool = True,
         plot_central_line: bool = True,
-        additional_rays: Optional[List[Ray]] = None
+        additional_rays: Optional[List[Ray]] = None,
     ) -> plt.Axes:
 
         if axis_span is None:
@@ -2592,14 +2610,7 @@ class Cavity:
 
         if additional_rays is not None:
             for i, ray in enumerate(additional_rays):
-                ray.plot(
-                    ax=ax,
-                    dim=dim,
-                    plane=plane,
-                    linestyle="--",
-                    alpha=0.8,
-                    label=i
-                )
+                ray.plot(ax=ax, dim=dim, plane=plane, linestyle="--", alpha=0.8, label=i)
 
         for i, surface in enumerate(self.surfaces):
             # If there is not information on the spot size of the element, plot it with default length:
@@ -3918,7 +3929,7 @@ def mirror_lens_mirror_cavity_general_generator(
     auto_set_right_arm_length: bool = True,
     set_R_right_to_equalize_angles: bool = False,
     set_R_right_to_R_left: bool = False,
-    **kwargs
+    **kwargs,
 ):
     # This function receives many parameters that can define a cavity of mirror-lens-mirror and creates a Cavity object
     # out of them.
@@ -4081,7 +4092,7 @@ def mirror_lens_mirror_cavity_general_generator(
         names=["Left mirror", "lens_left", "lens_right", "Right mirror"],
         power=power,
         initial_mode_parameters=mode_left,
-        **kwargs
+        **kwargs,
     )
 
     return cavity
