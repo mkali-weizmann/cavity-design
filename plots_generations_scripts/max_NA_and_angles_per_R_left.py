@@ -44,16 +44,16 @@ R_rights = np.zeros_like(Rs)
 for i, R_left in enumerate(Rs):
     def cavity_generator_outer(NA_left_):
         def cavity_generator_inner(R_right_):
-            cavity = mirror_lens_mirror_cavity_general_generator(NA_left=NA_left_, waist_to_lens=waist_to_lens, h=h,
-                                                                 R_left=R_left, R_right=R_right_, T_edge=T_edge,
-                                                                 right_arm_length=right_arm_length,
-                                                                 lens_fixed_properties=lens_fixed_properties,
-                                                                 mirrors_fixed_properties=mirrors_fixed_properties,
-                                                                 symmetric_left_arm=True, waist_to_left_mirror=5e-3,
-                                                                 lambda_0_laser=1064e-9, power=2e4, set_h_instead_of_w=True,
-                                                                 auto_set_right_arm_length=auto_set_right_arm_length,
-                                                                 set_R_right_to_equalize_angles=set_R_right_to_equalize_angles,
-                                                                 set_R_right_to_R_left=set_R_right_to_R_left)
+            cavity = mirror_lens_mirror_cavity_generator(NA_left=NA_left_, waist_to_lens=waist_to_lens, h=h,
+                                                         R_left=R_left, R_right=R_right_, T_edge=T_edge,
+                                                         right_arm_length=right_arm_length,
+                                                         lens_fixed_properties=lens_fixed_properties,
+                                                         mirrors_fixed_properties=mirrors_fixed_properties,
+                                                         symmetric_left_arm=True, waist_to_left_mirror=5e-3,
+                                                         lambda_0_laser=1064e-9, set_h_instead_of_w=True,
+                                                         auto_set_right_arm_length=auto_set_right_arm_length,
+                                                         set_R_right_to_equalize_angles=set_R_right_to_equalize_angles,
+                                                         set_R_right_to_R_left=set_R_right_to_R_left, power=2e4)
             return cavity
 
 

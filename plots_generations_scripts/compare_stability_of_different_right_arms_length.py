@@ -43,33 +43,33 @@ for right_arm_length in np.array([0.3]): #np.logspace(-1, 0, 10):
 
     if not set_R_right_to_collimate:
         def cavity_generator(R_left_):
-            cavity = mirror_lens_mirror_cavity_general_generator(NA_left=NA_left, waist_to_lens=waist_to_lens, h=h,
-                                                                 R_left=R_left_, R_right=R_right, T_c=0, T_edge=T_edge,
-                                                                 right_arm_length=right_arm_length,
-                                                                 lens_fixed_properties=lens_fixed_properties,
-                                                                 mirrors_fixed_properties=mirrors_fixed_properties,
-                                                                 symmetric_left_arm=True, waist_to_left_mirror=5e-3,
-                                                                 lambda_0_laser=1064e-9, power=2e4, set_h_instead_of_w=True,
-                                                                 auto_set_right_arm_length=auto_set_right_arm_length,
-                                                                 set_R_right_to_equalize_angles=set_R_right_to_equalize_angles,
-                                                                 set_R_right_to_R_left=set_R_right_to_R_left,
-                                                                 debug_printing_level=1,
-                                                                 use_paraxial_ray_tracing=use_paraxial_ray_tracing)
+            cavity = mirror_lens_mirror_cavity_generator(NA_left=NA_left, waist_to_lens=waist_to_lens, h=h,
+                                                         R_left=R_left_, R_right=R_right, T_c=0, T_edge=T_edge,
+                                                         right_arm_length=right_arm_length,
+                                                         lens_fixed_properties=lens_fixed_properties,
+                                                         mirrors_fixed_properties=mirrors_fixed_properties,
+                                                         symmetric_left_arm=True, waist_to_left_mirror=5e-3,
+                                                         lambda_0_laser=1064e-9, set_h_instead_of_w=True,
+                                                         auto_set_right_arm_length=auto_set_right_arm_length,
+                                                         set_R_right_to_equalize_angles=set_R_right_to_equalize_angles,
+                                                         set_R_right_to_R_left=set_R_right_to_R_left,
+                                                         debug_printing_level=1, power=2e4,
+                                                         use_paraxial_ray_tracing=use_paraxial_ray_tracing)
             return cavity
     else:
         def cavity_generator(R_right_):
-            cavity = mirror_lens_mirror_cavity_general_generator(NA_left=NA_left, waist_to_lens=waist_to_lens, h=h,
-                                                                 R_left=R_left, R_right=R_right_, T_c=0, T_edge=T_edge,
-                                                                 right_arm_length=right_arm_length,
-                                                                 lens_fixed_properties=lens_fixed_properties,
-                                                                 mirrors_fixed_properties=mirrors_fixed_properties,
-                                                                 symmetric_left_arm=True, waist_to_left_mirror=5e-3,
-                                                                 lambda_0_laser=1064e-9, power=2e4, set_h_instead_of_w=True,
-                                                                 auto_set_right_arm_length=auto_set_right_arm_length,
-                                                                 set_R_right_to_equalize_angles=set_R_right_to_equalize_angles,
-                                                                 set_R_right_to_R_left=set_R_right_to_R_left,
-                                                                 debug_printing_level=1,
-                                                                 use_paraxial_ray_tracing=use_paraxial_ray_tracing)
+            cavity = mirror_lens_mirror_cavity_generator(NA_left=NA_left, waist_to_lens=waist_to_lens, h=h,
+                                                         R_left=R_left, R_right=R_right_, T_c=0, T_edge=T_edge,
+                                                         right_arm_length=right_arm_length,
+                                                         lens_fixed_properties=lens_fixed_properties,
+                                                         mirrors_fixed_properties=mirrors_fixed_properties,
+                                                         symmetric_left_arm=True, waist_to_left_mirror=5e-3,
+                                                         lambda_0_laser=1064e-9, set_h_instead_of_w=True,
+                                                         auto_set_right_arm_length=auto_set_right_arm_length,
+                                                         set_R_right_to_equalize_angles=set_R_right_to_equalize_angles,
+                                                         set_R_right_to_R_left=set_R_right_to_R_left,
+                                                         debug_printing_level=1, power=2e4,
+                                                         use_paraxial_ray_tracing=use_paraxial_ray_tracing)
             return cavity
 
     if set_R_left_to_collimate or set_R_right_to_collimate:

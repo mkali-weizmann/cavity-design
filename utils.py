@@ -76,6 +76,12 @@ class SurfacesTypes:
     def from_integer_representation(integer_representation: int) -> str:
         return SurfacesTypes.__dict__[SURFACE_TYPES_DICT_INVERSE[integer_representation]]
 
+    @staticmethod
+    def has_refractive_index(surface_type: str) -> bool:
+        return surface_type in [SurfacesTypes.curved_refractive_surface,
+                                SurfacesTypes.thick_lens,
+                                SurfacesTypes.ideal_thick_lens]
+
 @dataclass
 class CurvatureSigns:
     convex = -1

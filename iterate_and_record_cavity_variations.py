@@ -47,24 +47,18 @@ waist_to_lenss = np.linspace(5e-3, 10e-3, 10)
 
 for waist_to_lens in waist_to_lenss:
     def cavity_generator(R_right):
-        cavity = mirror_lens_mirror_cavity_general_generator(NA_left=NA_left,
-                                                             waist_to_lens=waist_to_lens,
-                                                             h=h,
-                                                             R_left=R_left,
-                                                             R_right=R_right,
-                                                             T_c=T_c,
-                                                             T_edge=T_edge,
-                                                             right_arm_length=right_arm_length,
-                                                             lens_fixed_properties=lens_fixed_properties,
-                                                             mirrors_fixed_properties=mirrors_fixed_properties,
-                                                             symmetric_left_arm=symmetric_left_arm,
-                                                             waist_to_left_mirror=waist_to_left_mirror,
-                                                             lambda_0_laser=lambda_0_laser,
-                                                             power=power,
-                                                             set_h_instead_of_w=set_h_instead_of_w,
-                                                             auto_set_right_arm_length=auto_set_right_arm_length,
-                                                             set_R_right_to_equalize_angles=set_R_right_to_equalize_angles,
-                                                             set_R_right_to_R_left=set_R_right_to_R_left)
+        cavity = mirror_lens_mirror_cavity_generator(NA_left=NA_left, waist_to_lens=waist_to_lens, h=h, R_left=R_left,
+                                                     R_right=R_right, T_c=T_c, T_edge=T_edge,
+                                                     right_arm_length=right_arm_length,
+                                                     lens_fixed_properties=lens_fixed_properties,
+                                                     mirrors_fixed_properties=mirrors_fixed_properties,
+                                                     symmetric_left_arm=symmetric_left_arm,
+                                                     waist_to_left_mirror=waist_to_left_mirror,
+                                                     lambda_0_laser=lambda_0_laser,
+                                                     set_h_instead_of_w=set_h_instead_of_w,
+                                                     auto_set_right_arm_length=auto_set_right_arm_length,
+                                                     set_R_right_to_equalize_angles=set_R_right_to_equalize_angles,
+                                                     set_R_right_to_R_left=set_R_right_to_R_left, power=power)
         return cavity
 
 
