@@ -43,7 +43,7 @@ cavity = Cavity.from_params(params=params,
                             power=2e4, use_brute_force_for_central_line=True)
 cavity.plot()
 # plt.show()
-perturbed_cavity = perturb_cavity(cavity, (0, 3), 1e-6)
+perturbed_cavity = perturb_cavity(cavity, PerturbationPointer(0, 'phi', 1e-6))
 
 # theta_initial_guess, phi_initial_guess = perturbed_cavity.default_initial_angles
 # initial_parameters = np.array([0, theta_initial_guess, 0, phi_initial_guess])

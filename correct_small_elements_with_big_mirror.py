@@ -27,8 +27,7 @@ CORRECTION_PARAMETER = 'theta'
 perturbed_params = params.copy()
 perturbed_params[PERTURBATION_ELEMENT_INDEX, INDICES_DICT[PERTURBATION_PARAMETER]] += PERTURBATION_VALUE
 
-perturbed_cavity = perturb_cavity(cavity_0,
-                                  (PERTURBATION_ELEMENT_INDEX, INDICES_DICT[PERTURBATION_PARAMETER]),
+perturbed_cavity = perturb_cavity(cavity_0, (PERTURBATION_ELEMENT_INDEX, INDICES_DICT[PERTURBATION_PARAMETER]),
                                   PERTURBATION_VALUE)
 
 cavity_0.plot()

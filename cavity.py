@@ -20,13 +20,6 @@ pd.options.display.float_format = "{:.3e}".format
 
 np.seterr(all="raise")
 
-
-@dataclass
-class PerturbationPointer:
-    element_index: int
-    parameter_name: str
-
-
 @dataclass
 class MaterialProperties:
     refractive_index: Optional[float] = None
@@ -275,6 +268,22 @@ class OpticalElementParams:
         )
 
 
+def params_to_perturbable_params_names(params_list: List[OpticalElementParams],
+                                       remove_one_of_the_angles: bool = False) -> List[str]:
+    # Associates the cavity parameters with the number of parameters needed to describe the cavity.
+    # If there is a lens, then the number of parameters is 7 (x, y, theta, phi, r, n_2):
+
+    perturbable_params = [ParamsNames.x, ParamsNames.y, ParamsNames.theta, ParamsNames.phi,
+                      ParamsNames.r_1, ParamsNames.n_inside_or_after]
+
+    surface_types = [params.surface_type for params in params_list]
+    if not (SurfacesTypes.curved_refractive_surface in surface_types or SurfacesTypes.thick_lens in surface_types or SurfacesTypes.ideal_thick_lens in surface_types):
+        perturbable_params.remove(ParamsNames.n_inside_or_after)
+    if remove_one_of_the_angles:
+        perturbable_params.remove(ParamsNames.theta)
+    return perturbable_params
+
+
 # Throughout the code, all tensors can take any number of dimensions, but the last dimension is always the coordinate
 # dimension. this allows a Ray to be either a single ray, a list of rays, or a list of lists of rays, etc.
 # For example, a Ray could be a set of rays with a starting point for every combination of x, y, z. in this case, the
@@ -361,6 +370,8 @@ class LocalModeParameters:
 
 @dataclass
 class ModeParameters:
+    # I have once spent a few hours unifying LocalModeParameters and ModeParameters into one class and at the end
+    # saw it only makes the code more cumbersome and less readable, so I rolled back.
     center: (
         np.ndarray
     )  # First dimension is theta or phi (the two transversal axes of the mode), second dimension is x, y, z
@@ -1896,7 +1907,7 @@ class Cavity:
         **kwargs,
     ):
         if isinstance(params, np.ndarray):
-            p = [OpticalElementParams.from_array(params[i, :]) for i in range(len(params))]
+            p = [OpticalElementParams. from_array(params[i, :]) for i in range(len(params))]
         else:
             p = params
         physical_surfaces = []
@@ -1931,7 +1942,7 @@ class Cavity:
 
     @property
     def id(self):
-        hashed_str = int(md5(self.to_array).hexdigest()[:5], 16)
+        hashed_str = int(md5(self.params).hexdigest()[:5], 16)
         return hashed_str
 
     @property
@@ -2013,11 +2024,10 @@ class Cavity:
             return self.names_memory
 
     @property
-    def perturbable_params_indices(self):
-        perturbable_params_indices_list = params_to_perturbable_params_indices(
-            self.to_array, self.t_is_trivial and self.p_is_trivial
-        )
-        return perturbable_params_indices_list
+    def perturbable_params_names(self):
+        perturbable_params_names_list = params_to_perturbable_params_names(self.params,
+                                                                           self.t_is_trivial and self.p_is_trivial)
+        return perturbable_params_names_list
 
     @property
     def roundtrip_power_losses(self):
@@ -2661,33 +2671,26 @@ class Cavity:
     #                    shift_value: Union[float, np.ndarray]
     def calculated_shifted_cavity_overlap_integral(
         self,
-        parameter_index: Union[Tuple[int, int], Tuple[List[int], List[int]]],
-        shift: Union[float, np.ndarray] = np.linspace(-1e-6, 1e-6, 50),
-    ) -> Tuple[np.ndarray, np.ndarray]:
+        perturbation_pointer: Union[PerturbationPointer, List[PerturbationPointer]]
+    ) -> Tuple[np.ndarray]:
         # For a prturbation of more than one parameter, the first dimension of shift is the shift version, and the second dimension for the parameter index
         # For example, if shift = [[1e-6, 2e-6], [3e-6, 4e-6]], then the first perturbation is [1e-6, 2e-6] and the second is [3e-6, 4e-6].
-        shift_input_is_float = isinstance(shift, (float, int))
-        if shift_input_is_float:
-            shift = np.array([shift])
-        n_shifts = shift.shape[0]
+        n_shifts = len(perturbation_pointer)
         overlaps = np.zeros(n_shifts, dtype=np.float64)
-        NAs = np.zeros(n_shifts)
         for i in range(n_shifts):
-            new_cavity = perturb_cavity(self, parameter_index, shift[i])
+            new_cavity = perturb_cavity(self, perturbation_pointer[i])
             try:
                 overlap = calculate_cavities_overlap(cavity_1=self, cavity_2=new_cavity)
             except np.linalg.LinAlgError:
                 continue
             overlaps[i] = np.abs(overlap)
-            if new_cavity.arms[0].mode_parameters is not None:
-                NAs[i] = new_cavity.arms[0].mode_parameters.NA[0]
-        if shift_input_is_float:
+        if n_shifts == 1:
             overlaps = overlaps[0]
-        return overlaps, NAs
+        return overlaps
 
     def calculate_parameter_tolerance(
         self,
-        parameter_index: Tuple[int, int],
+        perturbation_pointer: PerturbationPointer,
         initial_step: float = 1e-7,
         overlap_threshold: float = 0.9,
         accuracy: float = 1e-3,
@@ -2697,7 +2700,8 @@ class Cavity:
             return np.nan
 
         def f(shift):
-            return self.calculated_shifted_cavity_overlap_integral(parameter_index, shift)[0]
+            resulting_overlap = self.calculated_shifted_cavity_overlap_integral(perturbation_pointer(shift))
+            return resulting_overlap
 
         tolerance = functions_first_crossing_both_directions(
             f=f,
@@ -2713,23 +2717,20 @@ class Cavity:
         overlap_threshold: float = 0.9,
         accuracy: float = 1e-3,
     ) -> np.ndarray:
-        j_range = self.perturbable_params_indices
-        tolerance_matrix = np.zeros((len(self.params), len(j_range)))
-        for i in tqdm(
+        perturbable_params_names = self.perturbable_params_names
+        tolerance_matrix = np.zeros((len(self.params), len(perturbable_params_names)))
+        for element_index in tqdm(
             range(len(self.params)), desc="Tolerance Matrix - element index: ", disable=self.debug_printing_level < 1
         ):
-            for j_tolerance_matrix_index, j_param_matrix_index in (
-                pbar := tqdm(enumerate(j_range), disable=self.debug_printing_level < 1)
+            for tolerance_matrix_index, param_name in (
+                pbar := tqdm(enumerate(perturbable_params_names), disable=self.debug_printing_level < 1)
             ):
                 pbar.set_description(
-                    f"Tolerance Matrix - parameter index:  {INDICES_DICT_INVERSE[j_param_matrix_index]}"
+                    f"Tolerance Matrix - parameter index:  {param_name}"
                 )
-                tolerance_matrix[i, j_tolerance_matrix_index] = self.calculate_parameter_tolerance(
-                    parameter_index=(i, j_param_matrix_index),
-                    initial_step=initial_step,
-                    overlap_threshold=overlap_threshold,
-                    accuracy=accuracy,
-                )
+                tolerance_matrix[element_index, tolerance_matrix_index] = self.calculate_parameter_tolerance(
+                    perturbation_pointer=PerturbationPointer(element_index, param_name), initial_step=initial_step,
+                    overlap_threshold=overlap_threshold, accuracy=accuracy)
         return tolerance_matrix
 
     def generate_overlap_series(
@@ -2737,14 +2738,14 @@ class Cavity:
         shifts: Union[np.ndarray, float],  # Float is interpreted as linspace's limits,
         # np.ndarray means that the element_index'th parameter_index'th element of shifts is the linspace limits of
         # the element_index'th parameter_index'th parameter.
-        shift_size: int = 30,
+        shift_size: int = 50,
     ) -> np.ndarray:
-        overlaps = np.zeros((len(self.params), len(self.perturbable_params_indices), shift_size))
+        overlaps = np.zeros((len(self.params), len(self.perturbable_params_names), shift_size))
         for element_index in tqdm(
             range(len(self.params)), desc="Overlap Series - element_index", disable=self.debug_printing_level < 1
         ):
             for parameter_index in tqdm(
-                range(len(self.perturbable_params_indices)),
+                range(len(self.perturbable_params_names)),
                 desc="Overlap Series - parameter_index",
                 disable=self.debug_printing_level < 1,
             ):
@@ -2765,12 +2766,11 @@ class Cavity:
                     parameter_index == INDICES_DICT["n_inside_or_after"]
                     and np.isnan(shifts[element_index, parameter_index])
                 ):
-                    overlaps[element_index, parameter_index, :], _ = self.calculated_shifted_cavity_overlap_integral(
-                        parameter_index=(
-                            element_index,
-                            self.perturbable_params_indices[parameter_index],
-                        ),
-                        shift=shift_series,
+                    overlaps[element_index, parameter_index, :] = self.calculated_shifted_cavity_overlap_integral(
+                        perturbation_pointer=PerturbationPointer(
+                            element_index=element_index,
+                            parameter_name=self.perturbable_params_names[parameter_index],
+                            perturbation_value=shift_series)
                     )
         return overlaps
 
@@ -2788,7 +2788,7 @@ class Cavity:
         if names is None:
             names = self.names
 
-        parameters_indices = self.perturbable_params_indices
+        parameters_indices = self.perturbable_params_names
         if ax is None:
             fig, ax = plt.subplots(
                 len(self.params),
@@ -2808,7 +2808,7 @@ class Cavity:
         plt.suptitle(f"NA={self.arms[arm_index_for_NA].mode_parameters.NA[0]:.3e}")
 
         for i in range(len(self.params)):
-            for j in range(len(parameters_indices)):
+            for j, parameter_name in enumerate(range(len(parameters_indices))):
                 # The condition inside is for the case it is a mirror and the parameter is n, and then we don'theta want
                 # to draw it.
                 if parameters_indices[j] == INDICES_DICT["n_inside_or_after"] and np.isnan(tolerance_matrix[i, j]):
@@ -2821,7 +2821,7 @@ class Cavity:
 
                 ax[i, j].plot(shifts, overlaps_series[i, j, :])
 
-                title = f"{names[i]}, {INDICES_DICT_INVERSE[parameters_indices[j]]}, tolerance: {tolerance_abs:.2e}"
+                title = f"{names[i]}, {parameter_name}, tolerance: {tolerance_abs:.2e}"
                 ax[i, j].set_title(title)
                 if i == len(self.params) - 1:
                     ax[i, j].set_xlabel("Shift")
@@ -2859,8 +2859,8 @@ class Cavity:
             names = None
         else:
             names = copy.copy(self.names)
-            for i, surface_type in enumerate(self.to_array[:, INDICES_DICT["surface_type"]]):
-                if surface_type == SURFACE_TYPES_DICT["ThickLens"]:
+            for i, surface_type in [p.surface_type for p in self.params]:
+                if surface_type == SurfacesTypes.thick_lens:
                     names.insert(i + 1, names[i] + "_2")
                     names[i] = names[i] + "_1"
 
@@ -2982,7 +2982,7 @@ class Cavity:
                 "Tolerance - refractive Index",
             ]
         else:
-            index = [PRETTY_INDICES_NAMES[INDICES_DICT_INVERSE[j]] for j in self.perturbable_params_indices]
+            index = [PRETTY_INDICES_NAMES[param_name] for param_name in self.perturbable_params_names]
         df_tolerance = pd.DataFrame(tolerance_matrix.T, columns=self.names, index=index)
         df_tolerance_stacked = stack_df_for_print(df_tolerance)
 
@@ -3045,7 +3045,7 @@ def generate_tolerance_of_NA(
     tolerance_matrix = np.zeros(
         (
             params_array.shape[0],
-            params_to_perturbable_params_indices(params_array, t_is_trivial and p_is_trivial),
+            params_to_perturbable_params_names(params_array, t_is_trivial and p_is_trivial),
             parameter_values.shape[0],
         )
     )
@@ -3111,7 +3111,7 @@ def plot_tolerance_of_NA(
             standing_wave=standing_wave,
         )
     tolerance_matrix = np.abs(tolerance_matrix)
-    number_of_params = len(params_to_perturbable_params_indices(params, t_is_trivial and p_is_trivial))
+    number_of_params = len(params_to_perturbable_params_names(params, t_is_trivial and p_is_trivial))
     fig, ax = plt.subplots(
         tolerance_matrix.shape[0],
         number_of_params,
@@ -3335,23 +3335,22 @@ def evaluate_gaussian(A: np.ndarray, b: np.ndarray, c: complex, axis_span: float
 
 def perturb_cavity(
     cavity: Cavity,
-    parameter_index: Union[Tuple[int, int], Tuple[List[int], List[int]]],
-    shift_value: Union[float, np.ndarray],
+    perturbation_pointer: Union[PerturbationPointer, List[PerturbationPointer]],
     **kwargs,  # For the initialization of the new cavity
 ):
-    params = cavity.to_array
-    new_params = copy.copy(params)
-    if isinstance(parameter_index[0], int):
-        new_params[parameter_index] = params[parameter_index] + shift_value
-        parameter_index_1_list = [parameter_index[1]]
-    else:
-        new_params[parameter_index[0], parameter_index[1]] += shift_value
-        parameter_index_1_list = parameter_index[1]
+    new_params = copy.deepcopy(cavity.params)
+    for perturbation_pointer_temp in perturbation_pointer:
+        current_value = getattr(new_params[perturbation_pointer_temp.element_index], perturbation_pointer_temp.parameter_name)
+        new_value = current_value + perturbation_pointer_temp.perturbation_value
+        # Set the new value back to the attribute
+        setattr(new_params[perturbation_pointer_temp.element_index], perturbation_pointer_temp.parameter_name, new_value)
+
+    parameters_names = [p.parameter_name for p in perturbation_pointer_temp]
 
     # If the original cavity was symmetrical in the theta axis or the phi axis, and the perturbation does not disturb this
     # symmetry, then the new cavity is also symmetrical in the theta axis or the phi axis:
-    perturbance_in_z = [1 for i in parameter_index_1_list if i in [INDICES_DICT["z"], INDICES_DICT["theta"]]]
-    perturbance_in_y = [1 for i in parameter_index_1_list if i in [INDICES_DICT["y"], INDICES_DICT["phi"]]]
+    perturbance_in_z = [1 for i in parameters_names if i in [ParamsNames.z, ParamsNames.theta]]
+    perturbance_in_y = [1 for i in parameters_names if i in [ParamsNames.y, ParamsNames.phi]]
     perturbance_in_z = bool(len(perturbance_in_z))
     perturbance_in_y = bool(len(perturbance_in_y))
 
@@ -3686,9 +3685,8 @@ def maximize_overlap(
         I = 0
 
     def controlled_overlap(control_parameters_values: np.ndarray):
-        corrected_cavity = perturb_cavity(
-            perturbed_cavity, control_parameters_indices, control_parameters_values
-        )  #  * 1e-3
+        corrected_cavity = perturb_cavity(perturbed_cavity, control_parameters_indices,
+                                          control_parameters_values)  #  * 1e-3
         overlap = calculate_cavities_overlap(cavity_1=cavity, cavity_2=corrected_cavity)
         overlap_abs_minus = np.nan_to_num(-np.abs(overlap), nan=2)
         if print_progress:

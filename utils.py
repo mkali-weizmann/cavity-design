@@ -38,6 +38,32 @@ SURFACE_TYPES_DICT = {'curved_mirror': 0, 'thick_lens': 1, 'curved_refractive_su
 SURFACE_TYPES_DICT_INVERSE = {v: k for k, v in SURFACE_TYPES_DICT.items()}
 
 @dataclass
+class ParamsNames:
+    x: str = 'x'
+    y: str = 'y'
+    theta: str = 'theta'
+    phi: str = 'phi'
+    r_1: str = 'r_1'
+    r_2: str = 'r_2'
+    n_outside_or_before: str = 'n_outside_or_before'
+    T_c: str = 'T_c'
+    n_inside_or_after: str = 'n_inside_or_after'
+    z: str = 'z'
+    curvature_sign: str = 'curvature_sign'
+    material_refractive_index: str = 'material_refractive_index'
+    alpha_expansion: str = 'alpha_expansion'
+    beta_surface_absorption: str = 'beta_surface_absorption'
+    kappa_conductivity: str = 'kappa_conductivity'
+    dn_dT: str = 'dn_dT'
+    nu_poisson_ratio: str = 'nu_poisson_ratio'
+    alpha_volume_absorption: str = 'alpha_volume_absorption'
+    intensity_reflectivity: str = 'intensity_reflectivity'
+    intensity_transmittance: str = 'intensity_transmittance'
+    temperature: str = 'temperature'
+    surface_type: str = 'surface_type'
+
+
+@dataclass
 class SurfacesTypes:
     thick_lens = 'thick_lens'
     curved_mirror = 'curved_mirror'
@@ -63,6 +89,47 @@ class CurvatureSigns:
             return CurvatureSigns.concave
         else:
             raise ValueError("Curvature sign must be either 1 or -1")
+
+
+@dataclass
+class PerturbationPointer:
+    element_index: int
+    parameter_name: str
+    perturbation_value: Optional[Union[float, int, np.ndarray]] = None
+
+    def __getitem__(self, index):
+        if self.perturbation_value is None or isinstance(self.perturbation_value, (float, int)):
+            return self
+        else:
+            return PerturbationPointer(
+                element_index=self.element_index,
+                parameter_name=self.parameter_name,
+                perturbation_value=self.perturbation_value[index]
+            )
+
+    def __iter__(self):
+        if self.perturbation_value is None or isinstance(self.perturbation_value, (float, int)):
+            yield self
+        else:
+            for value in self.perturbation_value:
+                yield PerturbationPointer(
+                    element_index=self.element_index,
+                    parameter_name=self.parameter_name,
+                    perturbation_value=value
+                )
+
+    def __call__(self, perturbation_value: float):
+        return PerturbationPointer(
+            element_index=self.element_index,
+            parameter_name=self.parameter_name,
+            perturbation_value=perturbation_value
+        )
+
+    def __len__(self):
+        if self.perturbation_value is None or isinstance(self.perturbation_value, (float, int)):
+            return 1
+        else:
+            return len(self.perturbation_value)
 
 
 # with open('data/params_dict.pkl', 'rb') as f:
@@ -119,22 +186,6 @@ def plane_name_to_xy_indices(plane: str) -> Tuple[int, int]:
     else:
         raise ValueError("plane must be one of 'xy', 'xz', 'yz'")
     return x_index, y_index
-
-
-def params_to_perturbable_params_indices(params_array: np.ndarray, remove_one_of_the_angles: bool = False) -> List[int]:
-    # Associates the cavity parameters with the number of parameters needed to describe the cavity.
-    # If there is a lens, then the number of parameters is 7 (x, y, theta, phi, r, n_2):
-    if (np.any(params_array[:, INDICES_DICT['surface_type']] == SURFACE_TYPES_DICT['curved_refractive_surface'])
-     or np.any(params_array[:, INDICES_DICT['surface_type']] == SURFACE_TYPES_DICT['thick_lens'])):
-        params_indices = [INDICES_DICT['x'], INDICES_DICT['y'], INDICES_DICT['theta'], INDICES_DICT['phi'],
-                          INDICES_DICT['r_1'], INDICES_DICT['n_inside_or_after']]
-    # If there is no lens but there is a curved mirror: (x, y, theta, phi, r)
-    else:
-        params_indices = [INDICES_DICT['x'], INDICES_DICT['y'], INDICES_DICT['theta'], INDICES_DICT['phi'],
-                          INDICES_DICT['r_1']]
-    if remove_one_of_the_angles:
-        params_indices.remove(INDICES_DICT['theta'])
-    return params_indices
 
 
 def maximal_lens_height(R: float, w: float) -> float:
@@ -285,7 +336,7 @@ def gaussian_norm_log(A: np.ndarray, b: np.ndarray, c: float):
 
 
 def gaussians_overlap_integral(A_1: np.ndarray, A_2: np.ndarray,
-                               # mu_1: np.ndarray, mu_2: np.ndarray, # Seems like I don'theta need the mus.
+                               # mu_1: np.ndarray, mu_2: np.ndarray, # Seems like I don't need the mus.
                                b_1: np.ndarray, b_2: np.ndarray,
                                c_1: float, c_2: float) -> float:
     A_1_conjugate = np.conjugate(A_1)
