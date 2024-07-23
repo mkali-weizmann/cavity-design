@@ -1,7 +1,3 @@
-import time
-
-import matplotlib.pyplot as plt
-
 from cavity import *
 
 NA_left = 1.5800000000e-01

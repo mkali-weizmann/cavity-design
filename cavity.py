@@ -2337,7 +2337,7 @@ class Cavity:
             else:
                 solution = optimize.root(self.f_roots_standing_wave, x0=np.array([*self.default_initial_angles]))
                 solution_angles = solution.x
-                central_line_successfully_traced = solution.converged
+                central_line_successfully_traced = solution.success
             solution_ray = Ray(self.physical_surfaces[0].origin, -unit_vector_of_angles(*solution_angles))  # minus sign
             # central_line_successfully_traced = solution.
             # on the angles because we are searching now the intersection between the ray and the surface behind it.
@@ -2727,8 +2727,10 @@ class Cavity:
         initial_step: float = 1e-7,
         overlap_threshold: float = 0.9,
         accuracy: float = 1e-3,
+        perturbable_params_names: Optional[List[str]] = None,
     ) -> np.ndarray:
-        perturbable_params_names = self.perturbable_params_names
+        if perturbable_params_names is None:
+            perturbable_params_names = self.perturbable_params_names
         tolerance_matrix = np.zeros((len(self.params), len(perturbable_params_names)))
         for element_index in tqdm(
             range(len(self.params)), desc="Tolerance Matrix - element index: ", disable=self.debug_printing_level < 1
@@ -2751,13 +2753,16 @@ class Cavity:
         # np.ndarray means that the element_index'th parameter_index'th element of shifts is the linspace limits of
         # the element_index'th parameter_index'th parameter.
         shift_size: int = 50,
+        perturbable_params_names: Optional[List[str]] = None,
     ) -> np.ndarray:
-        overlaps = np.zeros((len(self.params), len(self.perturbable_params_names), shift_size))
+        if perturbable_params_names is None:
+            perturbable_params_names = self.perturbable_params_names
+        overlaps = np.zeros((len(self.params), len(perturbable_params_names), shift_size))
         for element_index in tqdm(
             range(len(self.params)), desc="Overlap Series - element_index", disable=self.debug_printing_level < 1
         ):
             for j, parameter_name in tqdm(
-                enumerate((self.perturbable_params_names)),
+                enumerate(perturbable_params_names),
                 desc="Overlap Series - parameter_index",
                 disable=self.debug_printing_level < 1,
             ):
@@ -2792,31 +2797,36 @@ class Cavity:
         overlaps_series: Optional[np.ndarray] = None,
         names: Optional[List[str]] = None,
         ax: Optional[np.ndarray] = None,
+        perturbable_params_names: Optional[List[str]] = None,
     ):
         if names is None:
             names = self.names
 
-        parameters_names = self.perturbable_params_names
+        if perturbable_params_names is None:
+            perturbable_params_names = self.perturbable_params_names
+
         if ax is None:
             fig, ax = plt.subplots(
                 len(self.params),
-                len(parameters_names),
-                figsize=(len(parameters_names) * 5, len(self.params) * 2.1),
+                len(perturbable_params_names),
+                figsize=(len(perturbable_params_names) * 5, len(self.params) * 2.1),
             )
         else:
             fig = ax.flatten()[0].get_figure()
+
         if tolerance_matrix is None:
             tolerance_matrix = self.generate_tolerance_matrix(
                 initial_step=initial_step,
                 overlap_threshold=overlap_threshold,
                 accuracy=accuracy,
             )
+
         if overlaps_series is None:
             overlaps_series = self.generate_overlap_series(shifts=2 * np.abs(tolerance_matrix), shift_size=30)
         plt.suptitle(f"NA={self.arms[arm_index_for_NA].mode_parameters.NA[0]:.3e}")
 
         for i in range(len(self.params)):
-            for j, parameter_name in enumerate(parameters_names):
+            for j, parameter_name in enumerate(perturbable_params_names):
                 # The condition inside is for the case it is a mirror and the parameter is n, and then we don't want
                 # to draw it.
                 if parameter_name == ParamsNames.n_inside_or_after and np.isnan(tolerance_matrix[i, j]):
@@ -3580,33 +3590,6 @@ def match_a_mirror_to_mode(
     return mirror
 
 
-# def match_a_lens_parameters_to_modes(local_mode_1: LocalModeParameters, local_mode_2: LocalModeParameters,
-#                                      n_lens: Optional[float] = None):
-#     def local_mode_2_of_lens_parameters(lens_parameters: np.ndarray):  # les_parameters = [r, n, w]
-#         if n_lens is None:
-#             R, n, w = lens_parameters
-#         else:
-#             R, w = lens_parameters
-#             n = n_lens
-#         params = np.array([0, 0, 0, 0, R, n, w, 1, 0, 0, 1])
-#         surface_0, surface_1 = generate_lens_from_params(params)
-#         ABCD_first = surface_0.ABCD_matrix(cos_theta_incoming=1)
-#         ABCD_between = ABCD_free_space(lens_parameters[2])
-#         ABCD_second = surface_1.ABCD_matrix(cos_theta_incoming=1)
-#         ABCD_total = ABCD_second @ ABCD_between @ ABCD_first
-#         propagated_parameters = propagate_local_mode_parameter_through_ABCD(local_mode_1, ABCD_total)
-#         q_error = propagated_parameters.q[0] - local_mode_2.q[0]
-#         if n_lens is None:
-#             return np.array([np.real(q_error), np.imag(q_error)])
-#         else:
-#             return np.array([np.real(q_error), 0, np.imag(q_error)])
-#
-#     if n_lens is None:
-#         return optimize.fsolve(local_mode_2_of_lens_parameters, np.array([1e-2, 1e-3]))
-#     else:
-#         return optimize.fsolve(local_mode_2_of_lens_parameters, np.array([1e-2, 1.5, 1e-3]))
-
-
 def local_mode_2_of_lens_parameters(
     lens_parameters: np.ndarray, local_mode_1: LocalModeParameters
 ):  # les_parameters = [r, n, w]
@@ -4272,3 +4255,6 @@ def plot_mirror_lens_mirror_cavity_analysis(
         )
     plt.subplots_adjust(hspace=0.35)
     fig.tight_layout()
+
+# def decompose_a_thick_lens_single_surfaces(cavity: Cavity) -> Cavity:
+#     new_params = [s.to_params for ]
