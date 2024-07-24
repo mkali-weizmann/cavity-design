@@ -114,7 +114,7 @@ class PerturbationPointer:
             )
 
     def __iter__(self):
-        if self.perturbation_value is None or isinstance(self.perturbation_value, (float, int)):
+        if self.perturbation_value is None or np.isscalar(self.perturbation_value):
             yield self
         else:
             for value in self.perturbation_value:

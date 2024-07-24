@@ -107,3 +107,4 @@ cavity_decomposed.generate_overlaps_graphs(
     arm_index_for_NA=2,
     perturbable_params_names=perturbable_params_names,
 )
+plt.show()

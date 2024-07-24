@@ -3893,15 +3893,20 @@ def find_required_value_for_desired_change(
 
 def find_required_perturbation_for_desired_change(
     cavity: Cavity,
-    parameter_index_to_change: Tuple[int, int],
+    perturbation_pointer: PerturbationPointer,
     desired_parameter: Callable,
     desired_value: float,
+    solver: Callable = optimize.fsolve,
     **kwargs,
 ) -> Cavity:
     def cavity_generator(perturbation_value: float):
-        return perturb_cavity(cavity, parameter_index_to_change, perturbation_value)
+        return perturb_cavity(cavity, perturbation_pointer=perturbation_pointer(perturbation_value))
 
-    return find_required_value_for_desired_change(cavity_generator, desired_parameter, desired_value, **kwargs)
+    return find_required_value_for_desired_change(cavity_generator=cavity_generator,
+                                                  desired_parameter=desired_parameter,
+                                                  desired_value=desired_value,
+                                                  solver=solver,
+                                                  **kwargs)
 
 
 def mirror_lens_mirror_cavity_generator(
@@ -4166,6 +4171,75 @@ def mirror_lens_mirror_cavity_generator(
     return cavity
 
 
+def generate_mirror_lens_mirror_cavity_textual_summary(cavity: Cavity,
+                                                       CA: float = 5e-3,
+                                                       h: float = 3.875e-3,
+                                                       T_edge=1e-3,
+                                                       minimal_h_divided_by_spot_size: float = 2.5,
+                                                       set_h_instead_of_w: bool = True,
+                                                       left_mirror_is_first=True):
+    if left_mirror_is_first:
+        left_mirror_index = 0
+        lens_left_index = 1
+        lens_right_index = 2
+        right_mirror_index = 3
+        left_surface_in_arm = 0
+        right_surface_in_arm = 1
+        left_arm_index = 0
+        right_arm_index = 2
+    else:
+        left_mirror_index = 3
+        lens_left_index = 2
+        lens_right_index = 1
+        right_mirror_index = 0
+        left_surface_in_arm = 1
+        right_surface_in_arm = 0
+        left_arm_index = 2
+        right_arm_index = 0
+
+    R_left = cavity.surfaces[lens_left_index].radius
+    R_right = cavity.surfaces[lens_right_index].radius
+    spot_size_lens_right = cavity.arms[1].mode_parameters_on_surfaces[right_surface_in_arm].spot_size[0]
+    CA_divided_by_2spot_size = CA / (2 * spot_size_lens_right)
+    T_c = np.linalg.norm(cavity.surfaces[2].center - cavity.surfaces[1].center)
+    short_arm_NA = cavity.arms[left_arm_index].mode_parameters.NA[0]
+    long_arm_NA = cavity.arms[right_arm_index].mode_parameters.NA[0]
+    short_arm_length = np.linalg.norm(cavity.surfaces[lens_left_index].center - cavity.surfaces[left_mirror_index].center)
+    long_arm_length = np.linalg.norm(cavity.surfaces[right_mirror_index].center - cavity.surfaces[lens_right_index].center)
+    waist_to_lens_short_arm = np.abs(cavity.surfaces[lens_left_index].center[0] - cavity.mode_parameters[left_arm_index].center[0, 0])
+    waist_to_lens_long_arm = np.abs(cavity.mode_parameters[right_arm_index].center[0, 0] - cavity.surfaces[lens_right_index].center[0])
+    spot_size_left_mirror = cavity.arms[left_arm_index].mode_parameters_on_surfaces[left_surface_in_arm].spot_size[0]
+    spot_size_right_mirror = cavity.arms[right_arm_index].mode_parameters_on_surfaces[right_surface_in_arm].spot_size[0]
+    R_left_mirror = cavity.surfaces[left_mirror_index].radius
+    angle_right = cavity.arms[right_arm_index].calculate_incidence_angle(surface_index=left_surface_in_arm)
+    angle_left = cavity.arms[left_arm_index].calculate_incidence_angle(surface_index=right_surface_in_arm)
+    
+    minimal_width_lens = find_minimal_width_for_spot_size_and_radius(
+        radius=R_left,
+        spot_size_radius=spot_size_lens_right,
+        T_edge=T_edge,
+        h_divided_by_spot_size=minimal_h_divided_by_spot_size,
+    )
+    geometric_feasibility = True
+    if set_h_instead_of_w:
+        if CA_divided_by_2spot_size < 2.5:
+            geometric_feasibility = False
+        lens_specs_string = (
+            f"R_left = {R_left:.3e},  R_right = {R_right:.3e},  D = {2 * h:.3e},  T_edge = {T_edge:.2e},  T_c = {T_c:.3e},  CA={CA:.2e}\n"
+            f"spot_size (2w) = {2 * spot_size_lens_right:.3e},   CA / 2w_spot_size = {CA_divided_by_2spot_size:.3e}, lens is wide enough = {geometric_feasibility},   {angle_left=:.2f},   {angle_right=:.2f}"
+        )
+    else:
+        if T_c < minimal_width_lens:
+            geometric_feasibility = False
+        minimal_CA_lens = minimal_h_divided_by_spot_size * spot_size_lens_right
+        lens_specs_string = f"R_lens = {R_left:.3e},  T_c = {T_c:.3e},  minimal_w_lens = {minimal_width_lens:.2e},  minimal_CA_lens={minimal_CA_lens:.3e},  lens is thick enough = {geometric_feasibility}"
+
+    textual_summary = (f"Short Arm: NA = {short_arm_NA:.3e},  length = {short_arm_length:.3e} [m], waist to lens = {waist_to_lens_short_arm:.3e}\n"
+                       f"Long Arm NA = {long_arm_NA:.3e},  length = {long_arm_length:.3e} [m], waist to lens = {waist_to_lens_long_arm:.3e}\n"
+                       f"{lens_specs_string}\n"
+                       f"R_left_mirror = {R_left_mirror:.3e}, spot diameters left mirror = {2 * spot_size_left_mirror:.2e}, R_right = {cavity.surfaces[3].radius:.3e}, spot diameters right mirror = {2 * spot_size_right_mirror:.2e}")
+    return textual_summary
+
 def plot_mirror_lens_mirror_cavity_analysis(
     cavity: Cavity,
     auto_set_x: bool = True,
@@ -4183,21 +4257,9 @@ def plot_mirror_lens_mirror_cavity_analysis(
     # Assumes: surfaces[0] is the left mirror, surfaces[1] is the lens_left side, surfaces[2] is the lens_right side,
     # surfaces[3] is the right mirror.
     R_left = cavity.surfaces[1].radius
-    R_right = cavity.surfaces[2].radius
     T_c = np.linalg.norm(cavity.surfaces[2].center - cavity.surfaces[1].center)
-    angle_right = cavity.arms[2].calculate_incidence_angle(surface_index=0)
-    angle_left = cavity.arms[0].calculate_incidence_angle(surface_index=1)
-    spot_size_lens_right = cavity.arms[1].mode_parameters_on_surfaces[1].spot_size[0]
-    CA_divided_by_2spot_size = CA / (2 * spot_size_lens_right)
     short_arm_NA = cavity.arms[0].mode_parameters.NA[0]
-    long_arm_NA = cavity.arms[2].mode_parameters.NA[0]
-    short_arm_length = np.linalg.norm(cavity.surfaces[1].center - cavity.surfaces[0].center)
-    long_arm_length = np.linalg.norm(cavity.surfaces[3].center - cavity.surfaces[2].center)
-    waist_to_lens_short_arm = cavity.surfaces[1].center[0] - cavity.mode_parameters[0].center[0, 0]
-    waist_to_lens_long_arm = cavity.mode_parameters[2].center[0, 0] - cavity.surfaces[2].center[0]
     spot_size_left_mirror = cavity.arms[0].mode_parameters_on_surfaces[0].spot_size[0]
-    spot_size_right_mirror = cavity.arms[2].mode_parameters_on_surfaces[1].spot_size[0]
-    R_left_mirror = cavity.surfaces[0].radius
     x_left_mirror = cavity.surfaces[0].center[0]
     x_lens_right = cavity.surfaces[2].center[0]
 
@@ -4208,38 +4270,16 @@ def plot_mirror_lens_mirror_cavity_analysis(
         ax = [ax]
     cavity.plot(axis_span=x_span, camera_center=camera_center, ax=ax[0])
 
-    minimal_width_lens = find_minimal_width_for_spot_size_and_radius(
-        radius=R_left,
-        spot_size_radius=spot_size_lens_right,
-        T_edge=T_edge,
-        h_divided_by_spot_size=minimal_h_divided_by_spot_size,
-    )
-    geometric_feasibility = True
+    textual_summary = generate_mirror_lens_mirror_cavity_textual_summary(
+        cavity, CA=CA, h=h, T_edge=T_edge, minimal_h_divided_by_spot_size=minimal_h_divided_by_spot_size,
+        set_h_instead_of_w=set_h_instead_of_w)
 
-    if set_h_instead_of_w:
-        if CA_divided_by_2spot_size < 2.5:
-            geometric_feasibility = False
-        lens_specs_string = (
-            f"R_left = {R_left:.3e},  R_right = {R_right:.3e},  D = {2 * h:.3e},  T_edge = {T_edge:.2e},  T_c = {T_c:.3e},  CA={CA:.2e}\n"
-            f"spot_size (2w) = {2 * spot_size_lens_right:.3e},   CA / 2w_spot_size = {CA_divided_by_2spot_size:.3e}, lens is wide enough = {geometric_feasibility},   {angle_left=:.2f},   {angle_right=:.2f}"
-        )
-    else:
-        if T_c < minimal_width_lens:
-            geometric_feasibility = False
-        minimal_CA_lens = minimal_h_divided_by_spot_size * spot_size_lens_right
-        lens_specs_string = f"R_lens = {R_left:.3e},  T_c = {T_c:.3e},  minimal_w_lens = {minimal_width_lens:.2e},  minimal_CA_lens={minimal_CA_lens:.3e},  lens is thick enough = {geometric_feasibility}"
-
-    ax[0].set_title(
-        f"Short Arm: NA = {short_arm_NA:.3e},  length = {short_arm_length:.3e} [m], waist to lens = {waist_to_lens_short_arm:.3e}\n"  #
-        f" Long Arm NA = {long_arm_NA:.3e},  length = {long_arm_length:.3e} [m], waist to lens = {waist_to_lens_long_arm:.3e}\n"  #
-        f"{lens_specs_string}, \n"
-        f"R_left_mirror = {R_left_mirror:.3e}, spot diameters left mirror = {2 * spot_size_left_mirror:.2e}, R_right = {cavity.surfaces[3].radius:.3e}, spot diameters right mirror = {2 * spot_size_right_mirror:.2e}"
-    )
+    ax[0].set_title(textual_summary)
 
     if auto_set_x:
         # cavity_length = cavity.surfaces[3].center[0] - cavity.surfaces[0].center[0]
         # ax[0].set_xlim(cavity.surfaces[0].center[0] - 0.01 * cavity_length, cavity.surfaces[3].center[0] + 0.01 * cavity_length)
-        ax[0].set_xlim(x_left_mirror - 0.01, x_lens_right + 0.35)
+        ax[0].set_xlim(x_left_mirror - 0.01, cavity.surfaces[3].center[0] + 0.01)
     if auto_set_y:
         y_lim = maximal_lens_height(R_left, T_c) * 1.1
     else:

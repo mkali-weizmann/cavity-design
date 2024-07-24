@@ -63,7 +63,7 @@ plot_mirror_lens_mirror_cavity_analysis(cavity,
                                         camera_center=camera_center,
                                         add_unheated_cavity=add_unheated_cavity)
 plt.show()
-
+# %%
 cavity_params_decomposed = [surface.to_params for surface in cavity.physical_surfaces]
 
 cavity_decomposed = Cavity.from_params(params=cavity_params_decomposed, standing_wave=True,

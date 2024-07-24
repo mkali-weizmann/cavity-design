@@ -1,6 +1,8 @@
+import matplotlib.pyplot as plt
+
 from cavity import *
 
-NA_left = 1.5800000000e-01
+NA_left = 1.500000000e-01
 mirror_on_waist = False
 x_2_perturbation = 0.0000000000e+00
 waist_to_lens = 5.0000000000e-03
@@ -35,8 +37,10 @@ R_right += R_right_fine
 x_span = 10 ** x_span
 y_span = 10 ** y_span
 
-for right_arm_length in np.logspace(-1, 0, 5):
+lengths = np.logspace(-1, 0, 5)
+min_tolerances = np.zeros_like(lengths)
 
+for i, right_arm_length in enumerate(lengths):
     cavity = mirror_lens_mirror_cavity_generator(NA_left=NA_left, waist_to_lens=waist_to_lens, h=h,
                                                  R_left=R_left, R_right=R_right, T_c=0, T_edge=T_edge,
                                                  right_arm_length=right_arm_length,
@@ -60,6 +64,7 @@ for right_arm_length in np.logspace(-1, 0, 5):
                                             T_edge=T_edge,
                                             camera_center=camera_center,
                                             add_unheated_cavity=add_unheated_cavity)
+    plt.xlim(-0.06, 1.01)
     plt.show()
 
     # %%
@@ -72,6 +77,21 @@ for right_arm_length in np.logspace(-1, 0, 5):
     # # %%
     cavity.generate_overlaps_graphs(overlaps_series=overlaps_series, tolerance_matrix=tolerance_matrix[:, :],
                                     arm_index_for_NA=2)
-    plt.suptitle(f'right_arm_length = {right_arm_length:.2e}')
+    plt.suptitle(generate_mirror_lens_mirror_cavity_textual_summary(cavity, h=h, T_edge=T_edge))
+    plt.tight_layout()
     plt.show()
 
+    min_tolerances[i] = np.nanmin(np.abs(tolerance_matrix))
+# %%
+fig, ax = plt.subplots(2, 1, figsize=(10, 10))
+scales = ['linear', 'log']
+for i, ax in enumerate(ax):
+    ax.plot(lengths, min_tolerances)
+    ax.set_yscale(scales[i])
+    ax.grid()
+    ax.set_xlabel('Long arm length')
+    ax.set_ylabel('Minimum tolerance (lens transversal displacement)')
+plt.suptitle('Stability of the cavity with respect to the long arm length')
+plt.tight_layout()
+plt.savefig('figures/right_arm_length_stability.png')
+plt.show()
