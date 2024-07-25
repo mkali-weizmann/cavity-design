@@ -594,6 +594,8 @@ class Surface:
         dim: int = 2,
         length=0.6,
         plane: str = "xy",
+        color: Optional[str] = None,
+        **kwargs,
     ):
         if ax is None:
             fig = plt.figure()
@@ -620,15 +622,16 @@ class Surface:
         T, S = np.meshgrid(t, s)
         points = self.parameterization(T, S)
         x, y, z = points[..., 0], points[..., 1], points[..., 2]
-        if isinstance(self, CurvedRefractiveSurface):
-            color = "grey"
-        elif isinstance(self, PhysicalSurface):
-            color = "b"
-        else:
-            color = "black"
+        if color is None:
+            if isinstance(self, CurvedRefractiveSurface):
+                color = "grey"
+            elif isinstance(self, PhysicalSurface):
+                color = "b"
+            else:
+                color = "black"
 
         if dim == 3:
-            ax.plot_surface(x, y, z, color=color, alpha=0.25)
+            ax.plot_surface(x, y, z, color=color, alpha=0.25, **kwargs)
         else:
             if plane in ["xy", "yx"]:
                 x_dummy = points[:, 0, 0]
@@ -641,7 +644,7 @@ class Surface:
                 y_dummy = points[0, :, 2]
             else:
                 raise ValueError("plane must be one of 'xy', 'xz', 'yz'")
-            ax.plot(x_dummy, y_dummy, color=color)
+            ax.plot(x_dummy, y_dummy, color=color, **kwargs)
         if name is not None:
             name_position = self.parameterization(0.4, 0)
             if dim == 3:
@@ -1301,10 +1304,11 @@ class CurvedSurface(Surface):
         dim: int = 2,
         length=None,
         plane: str = "xy",
+        **kwargs
     ):
         if length is None:
             length = 0.6 * self.radius
-        super().plot(ax, name, dim, length=length, plane=plane)
+        super().plot(ax, name, dim, length=length, plane=plane, **kwargs)
 
 
 class CurvedMirror(CurvedSurface, PhysicalSurface):
@@ -1877,7 +1881,7 @@ class Cavity:
         initial_mode_parameters: Optional[ModeParameters] = None,
         use_brute_force_for_central_line: bool = False,  # remove it once we know it works
         debug_printing_level: int = 0,  # 0 for no prints, 1 for main prints, 2 for all prints
-        use_paraxial_ray_tracing: bool = False,
+        use_paraxial_ray_tracing: bool = True,
     ):
         self.standing_wave = standing_wave
         self.physical_surfaces = physical_surfaces

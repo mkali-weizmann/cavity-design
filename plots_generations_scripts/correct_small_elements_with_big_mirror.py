@@ -54,7 +54,7 @@ cavity_0 = mirror_lens_mirror_cavity_generator(NA_left=NA_left, waist_to_lens=wa
                                              set_R_left_to_collimate=set_R_left_to_collimate,
                                              set_R_right_to_collimate=set_R_right_to_collimate)
 params = cavity_0.to_params
-
+# %%
 PERTURBATION_ELEMENT_INDEX = 0  # 2 for the left mirror, 1 for lens
 PERTURBATION_VALUE = 1e-8
 PERTURBATION_PARAMETER = ParamsNames.phi
