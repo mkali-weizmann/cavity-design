@@ -39,6 +39,7 @@ y_span = 10 ** y_span
 lengths = np.logspace(-1, 0, 5)
 min_tolerances = np.zeros_like(lengths)
 
+
 cavity_0 = mirror_lens_mirror_cavity_generator(NA_left=NA_left, waist_to_lens=waist_to_lens, h=h,
                                              R_left=R_left, R_right=R_right, T_c=0, T_edge=T_edge,
                                              right_arm_length=right_arm_length,
@@ -54,10 +55,10 @@ cavity_0 = mirror_lens_mirror_cavity_generator(NA_left=NA_left, waist_to_lens=wa
                                              set_R_left_to_collimate=set_R_left_to_collimate,
                                              set_R_right_to_collimate=set_R_right_to_collimate)
 params = cavity_0.to_params
-
+cavity_0.plot()
 # %%
 PERTURBATION_ELEMENT_INDEX = 0  # 0 for the left mirror, 1 for lens
-PERTURBATION_VALUE = 1e-12
+PERTURBATION_VALUE = 4e-6
 PERTURBATION_PARAMETER = ParamsNames.phi
 CORRECTION_ELEMENT_INDEX = 2  # this is always 2 because we correct with the large mirror
 CORRECTION_PARAMETER = ParamsNames.phi
@@ -68,7 +69,20 @@ perturbation_pointer = PerturbationPointer(element_index=PERTURBATION_ELEMENT_IN
 
 perturbed_cavity = perturb_cavity(cavity=cavity_0, perturbation_pointer=perturbation_pointer)
 
-perturbed_cavity.plot()
-plt.ylim(-1e-3, 1e-3)
+fig, ax = plt.subplots()
+cavity_0.plot(laser_color='r', ax=ax)
+perturbed_cavity.plot(laser_color='g', ax=ax)
+plt.grid()
 plt.show()
-print('kaki')
+
+# print_differences:
+for name, cavity in zip(['cavity_0', 'perturbed_cavity'], [cavity_0, perturbed_cavity]):
+    print(name)
+    print('central line lengths:\n', [l.length for l in cavity.central_line])
+    print('round_trip_ABCD:\n', cavity.ABCD_round_trip)
+    round_trip_eigen_mode = local_mode_parameters_of_round_trip_ABCD(
+        round_trip_ABCD=cavity.ABCD_round_trip, lambda_0_laser=cavity.lambda_0_laser, n=cavity.arms[0].n
+    )
+    print('round_trip_eigen_mode:\n', round_trip_eigen_mode.q)
+
+

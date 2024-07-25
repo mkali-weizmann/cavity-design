@@ -39,6 +39,7 @@ y_span = 10 ** y_span
 lengths = np.logspace(-1, 0, 5)
 min_tolerances = np.zeros_like(lengths)
 
+
 cavity_0 = mirror_lens_mirror_cavity_generator(NA_left=NA_left, waist_to_lens=waist_to_lens, h=h,
                                              R_left=R_left, R_right=R_right, T_c=0, T_edge=T_edge,
                                              right_arm_length=right_arm_length,
@@ -54,9 +55,10 @@ cavity_0 = mirror_lens_mirror_cavity_generator(NA_left=NA_left, waist_to_lens=wa
                                              set_R_left_to_collimate=set_R_left_to_collimate,
                                              set_R_right_to_collimate=set_R_right_to_collimate)
 params = cavity_0.to_params
+cavity_0.plot()
 # %%
-PERTURBATION_ELEMENT_INDEX = 0  # 2 for the left mirror, 1 for lens
-PERTURBATION_VALUE = 1e-8
+PERTURBATION_ELEMENT_INDEX = 0  # 0 for the left mirror, 1 for lens
+PERTURBATION_VALUE = 4.4e-6
 PERTURBATION_PARAMETER = ParamsNames.phi
 CORRECTION_ELEMENT_INDEX = 2  # this is always 2 because we correct with the large mirror
 CORRECTION_PARAMETER = ParamsNames.phi
@@ -67,9 +69,13 @@ perturbation_pointer = PerturbationPointer(element_index=PERTURBATION_ELEMENT_IN
 
 perturbed_cavity = perturb_cavity(cavity=cavity_0, perturbation_pointer=perturbation_pointer)
 
-cavity_0.plot()
+fig, ax = plt.subplots()
+cavity_0.plot(laser_color='r', ax=ax)
+perturbed_cavity.plot(laser_color='g', ax=ax)
+plt.grid()
 plt.show()
 
+# %%
 
 def overlap_extractor(cavity):
     overlap = np.abs(calculate_cavities_overlap(cavity_0, cavity))
@@ -91,12 +97,23 @@ print(f"perturbation_value: {getattr(corrected_cavity.to_params[2], PERTURBATION
 print(f"Perturbed overlap: {1-np.abs(calculate_cavities_overlap(cavity_0, perturbed_cavity)):.2e}, "
       f"Corrected_overlap: {1-np.abs(calculate_cavities_overlap(cavity_0, corrected_cavity)):.2e}")
 
-
 fig, ax = plt.subplots(2, 1, figsize=(10, 10))
 plt.suptitle('Overlap between cavities')
 plot_2_cavity_perturbation_overlap(cavity=cavity_0, second_cavity=perturbed_cavity, ax=ax[0], axis_span=1e-5)
 plot_2_cavity_perturbation_overlap(cavity=cavity_0, second_cavity=corrected_cavity, ax=ax[1], axis_span=1e-5)
-ax[0].set_title(f'Perturbed cavity, 1-overlap = {1-np.abs(calculate_cavities_overlap(cavity_0, perturbed_cavity)):.2e}')
-ax[1].set_title(f'Corrected cavity, 1-overlap = {1-np.abs(calculate_cavities_overlap(cavity_0, corrected_cavity)):.2e}')
+one_minus_overlap_perturbed = 1 - np.abs(calculate_cavities_overlap(cavity_0, perturbed_cavity))
+one_minus_overlap_corrected = 1 - np.abs(calculate_cavities_overlap(cavity_0, corrected_cavity))
+if one_minus_overlap_perturbed < 1e-3:
+    perturbed_title = f'Perturbed cavity, 1-overlap = {one_minus_overlap_perturbed:.2e}'
+else:
+    perturbed_title = f'Perturbed cavity, overlap = {1-one_minus_overlap_perturbed:.3f}'
+
+if one_minus_overlap_corrected < 1e-3:
+    corrected_title = f'Corrected cavity, 1-overlap = {one_minus_overlap_corrected:.2e}'
+else:
+    corrected_title = f'Corrected cavity, overlap = {1-one_minus_overlap_corrected:.3f}'
+
+ax[0].set_title(perturbed_title)
+ax[1].set_title(corrected_title)
 plt.tight_layout()
 plt.show()

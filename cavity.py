@@ -455,7 +455,7 @@ def local_mode_parameters_of_round_trip_ABCD(
     q_z = (A - D + np.sqrt(A**2 + 2 * C * B + D**2 - 2 + 0j)) / (2 * C)
     q_z = np.real(q_z) + 1j * np.abs(np.imag(q_z))  # For the beam amplitude to decay with transverse radius and not
     # to grow, the term -ik * i*im(1/q_z) has to be negative. since in the simulation k is always positive, we take the
-    # imaginary part of q_z to be positive (and the the imaginary part of it's inverse is negative).
+    # imaginary part of q_z to be positive (and the imaginary part of its inverse is negative).
 
     return LocalModeParameters(
         q=q_z, lambda_0_laser=lambda_0_laser, n=n
@@ -2571,7 +2571,7 @@ class Cavity:
                 else:
                     axis_span = np.array([axes_range[0], 0.01])
             else:
-                axes_range[axes_range == 0] = 1e-5
+                axes_range[axes_range == 0] = 5e-3
                 axis_span = axes_range
         else:
             axis_span = np.array([axis_span, axis_span, axis_span])
@@ -3473,6 +3473,7 @@ def plot_2_cavity_perturbation_overlap(
     second_cavity: Cavity = None,
     ax: Optional[plt.Axes] = None,
     axis_span: float = 0.0005,
+    real_or_abs: str = "abs",
 ):
     if second_cavity is None:
         second_cavity = perturb_cavity(cavity, parameter_index, shift_value)
@@ -3489,7 +3490,7 @@ def plot_2_cavity_perturbation_overlap(
             ax=ax,
             axis_span=axis_span,
             title="Cavity perturbation overlap",
-            real_or_abs="abs",
+            real_or_abs=real_or_abs,
         )
 
 
@@ -3876,7 +3877,7 @@ def find_required_value_for_desired_change(
     desired_value: float,  # Desired value to end up with for the parameter
     solver: Callable = optimize.fsolve,
     print_progress=False,
-    **kwargs,
+    **kwargs,  # Additional arguments for the solver
 ) -> Cavity:
     def f_root(input_parameter_value: Union[float, np.ndarray]):
         if isinstance(input_parameter_value, np.ndarray):
