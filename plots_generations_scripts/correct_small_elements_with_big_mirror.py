@@ -78,7 +78,7 @@ plt.show()
 # %%
 
 def overlap_extractor(cavity):
-    overlap = np.abs(calculate_cavities_overlap(cavity_0, cavity))
+    overlap = -np.abs(calculate_cavities_overlap(cavity_0, cavity))
     return overlap
 
 correction_pointer = PerturbationPointer(element_index=CORRECTION_ELEMENT_INDEX,
@@ -87,9 +87,10 @@ correction_pointer = PerturbationPointer(element_index=CORRECTION_ELEMENT_INDEX,
 corrected_cavity = find_required_perturbation_for_desired_change(cavity=perturbed_cavity,
                                                                  perturbation_pointer=correction_pointer,
                                                                  desired_parameter=overlap_extractor,
-                                                                 desired_value=1,
+                                                                 solver=optimize.minimize,
                                                                  x0=0,
-                                                                 xtol=1e-10)
+                                                                 tol=1e-10,
+                                                                 print_progress=True)
 
 print(f"perturbation_value: {getattr(corrected_cavity.to_params[2], PERTURBATION_PARAMETER):.2e}, "
       f"correction_value: {getattr(corrected_cavity.to_params[0], CORRECTION_PARAMETER)}")

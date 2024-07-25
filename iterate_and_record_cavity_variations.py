@@ -65,8 +65,7 @@ for waist_to_lens in waist_to_lenss:
 cavity = find_required_value_for_desired_change(cavity_generator=cavity_generator,
                                                 # Takes a float as input and returns a cavity
                                                 desired_parameter=lambda cavity: 1 / cavity.arms[
-                                                    2].mode_parameters_on_surface_0.z_minus_z_0[0],
-                                                desired_value=-2 / right_arm_length,
+                                                    2].mode_parameters_on_surface_0.z_minus_z_0[0]-(-2 / right_arm_length),
                                                 x0=0.005)
 plot_mirror_lens_mirror_cavity_analysis(cavity,
                                         auto_set_x=auto_set_x,

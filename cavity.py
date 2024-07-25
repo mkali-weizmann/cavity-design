@@ -3874,7 +3874,6 @@ def find_required_value_for_desired_change(
     cavity_generator: Callable,  # Takes a float as input and returns a cavity
     desired_parameter: Callable,  # Takes a cavity as input and returns a float
     # (NA of some arm, length of some arm, radius of curvature, etc.)
-    desired_value: float,  # Desired value to end up with for the parameter
     solver: Callable = optimize.fsolve,
     print_progress=False,
     **kwargs,  # Additional arguments for the solver
@@ -3884,12 +3883,11 @@ def find_required_value_for_desired_change(
             input_parameter_value = input_parameter_value[0]
         perturbed_cavity = cavity_generator(input_parameter_value)
         output_parameter_value = desired_parameter(perturbed_cavity)
-        diff = output_parameter_value - desired_value
         if print_progress:
             print(
-                f"input_parameter_value: {input_parameter_value:.10e}, output_parameter_value: {output_parameter_value:.3e}, diff: {diff:.3e}"
+                f"input_parameter_value: {input_parameter_value:.10e}, output_parameter_value: {output_parameter_value:.3e}"
             )
-        return diff
+        return output_parameter_value
 
     perturbation_value = solver(f_root, **kwargs)
     cavity = cavity_generator(perturbation_value[0])
@@ -3900,7 +3898,6 @@ def find_required_perturbation_for_desired_change(
     cavity: Cavity,
     perturbation_pointer: PerturbationPointer,
     desired_parameter: Callable,
-    desired_value: float,
     solver: Callable = optimize.fsolve,
     **kwargs,
 ) -> Cavity:
@@ -3909,7 +3906,6 @@ def find_required_perturbation_for_desired_change(
 
     return find_required_value_for_desired_change(cavity_generator=cavity_generator,
                                                   desired_parameter=desired_parameter,
-                                                  desired_value=desired_value,
                                                   solver=solver,
                                                   **kwargs)
 
@@ -4010,8 +4006,7 @@ def mirror_lens_mirror_cavity_generator(
         cavity = find_required_value_for_desired_change(
             cavity_generator=cavity_generator,
             # Takes a float as input and returns a cavity
-            desired_parameter=lambda cavity: 1 / cavity.arms[2].mode_parameters_on_surfaces[0].z_minus_z_0[0],
-            desired_value=-2 / right_arm_length,
+            desired_parameter=lambda cavity: 1 / cavity.arms[2].mode_parameters_on_surfaces[0].z_minus_z_0[0] - (-2 / right_arm_length),
             x0=x0,
         )
         return cavity
