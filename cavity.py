@@ -165,7 +165,7 @@ class OpticalElementParams:
     def __repr__(self):
         surface_type_string = f"'{self.surface_type}'"
         surface_type_string = surface_type_string.ljust(27)
-        curvature_sign_string = "CurvatureSigns.concave" if self.curvature_sign == -1 else "CurvatureSigns.convex"
+        curvature_sign_string = "CurvatureSigns.concave" if self.curvature_sign == 1 else "CurvatureSigns.convex"
         return (
             f"OpticalElementParams("
             f"surface_type={surface_type_string}, "
@@ -1957,7 +1957,7 @@ class Cavity:
 
     @property
     def id(self):
-        hashed_str = int(md5(self.params).hexdigest()[:5], 16)
+        hashed_str = int(md5(str(self.to_params).encode('utf-8')).hexdigest()[:5], 16)
         return hashed_str
 
     @property
@@ -3460,8 +3460,13 @@ def plot_2_gaussians_colors(
     rgb_image = np.stack([first_gaussian_values, second_gaussian_values, third_color_channel], axis=2)
     if real_or_abs == "abs":
         rgb_image = np.clip(np.abs(rgb_image), 0, 1)
-    else:
+    elif real_or_abs == "real":
         rgb_image = np.real(rgb_image)
+    elif real_or_abs == "abs_squared":
+        rgb_image = np.clip(np.abs(rgb_image)**2, 0, 1)
+    else:
+        raise ValueError("real_or_abs must be 'abs', 'real' or 'abs_squared'")
+
     ax.imshow(rgb_image, extent=[-axis_span, axis_span, -axis_span, axis_span])
     ax.set_title(title)
 

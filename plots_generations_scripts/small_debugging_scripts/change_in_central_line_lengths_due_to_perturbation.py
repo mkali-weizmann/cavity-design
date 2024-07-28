@@ -58,7 +58,7 @@ params = cavity_0.to_params
 cavity_0.plot()
 # %%
 PERTURBATION_ELEMENT_INDEX = 0  # 0 for the left mirror, 1 for lens
-PERTURBATION_VALUE = 4e-6
+PERTURBATION_VALUE = 4.4e-6
 PERTURBATION_PARAMETER = ParamsNames.phi
 CORRECTION_ELEMENT_INDEX = 2  # this is always 2 because we correct with the large mirror
 CORRECTION_PARAMETER = ParamsNames.phi

@@ -1,4 +1,7 @@
+import matplotlib.pyplot as plt
+
 from cavity import *
+from matplotlib.lines import Line2D
 
 lambda_0_laser = 1064e-9
 NA_left = 1.500000000e-01
@@ -55,7 +58,6 @@ cavity_0 = mirror_lens_mirror_cavity_generator(NA_left=NA_left, waist_to_lens=wa
                                              set_R_left_to_collimate=set_R_left_to_collimate,
                                              set_R_right_to_collimate=set_R_right_to_collimate)
 params = cavity_0.to_params
-cavity_0.plot()
 # %%
 PERTURBATION_ELEMENT_INDEX = 0  # 0 for the left mirror, 1 for lens
 PERTURBATION_VALUE = 4.4e-6
@@ -90,15 +92,17 @@ corrected_cavity = find_required_perturbation_for_desired_change(cavity=perturbe
                                                                  desired_value=1,
                                                                  x0=0,
                                                                  xtol=1e-10)
-
+# %%
 print(f"perturbation_value: {getattr(corrected_cavity.to_params[2], PERTURBATION_PARAMETER):.2e}, "
       f"correction_value: {getattr(corrected_cavity.to_params[0], CORRECTION_PARAMETER)}")
 
 print(f"Perturbed overlap: {1-np.abs(calculate_cavities_overlap(cavity_0, perturbed_cavity)):.2e}, "
       f"Corrected_overlap: {1-np.abs(calculate_cavities_overlap(cavity_0, corrected_cavity)):.2e}")
+sup_title = (f"perturbation value in small mirror: $\Delta\{CORRECTION_PARAMETER}=${perturbation_pointer.perturbation_value:.2e},"
+             f" correction value in big mirror: $\Delta\{PERTURBATION_PARAMETER}=${corrected_cavity.to_params[2].phi - cavity_0.to_params[2].phi:.2e}")
 
 fig, ax = plt.subplots(2, 1, figsize=(10, 10))
-plt.suptitle('Overlap between cavities')
+plt.suptitle(sup_title)
 plot_2_cavity_perturbation_overlap(cavity=cavity_0, second_cavity=perturbed_cavity, ax=ax[0], axis_span=1e-5)
 plot_2_cavity_perturbation_overlap(cavity=cavity_0, second_cavity=corrected_cavity, ax=ax[1], axis_span=1e-5)
 one_minus_overlap_perturbed = 1 - np.abs(calculate_cavities_overlap(cavity_0, perturbed_cavity))
@@ -116,4 +120,29 @@ else:
 ax[0].set_title(perturbed_title)
 ax[1].set_title(corrected_title)
 plt.tight_layout()
+plt.savefig(f'figures/overlap_perturbation_correction/pert_parm={PERTURBATION_PARAMETER} pert_elem={PERTURBATION_ELEMENT_INDEX}'
+            f' corr_param={CORRECTION_PARAMETER} plane=transverse.png',
+            dpi=300, bbox_inches='tight')
+plt.show()
+
+# create a legend:
+custom_lines = [Line2D([0], [0], color='r', lw=1, linestyle='--', label='Original cavity'),
+                Line2D([0], [0], color='g', lw=1, linestyle='--', label='Perturbed cavity'),
+                Line2D([0], [0], color='b', lw=1, linestyle='--', label='Corrected cavity')]
+
+fig, ax = plt.subplots(2, 1, figsize=(10, 10))
+for i, plane, plane_description in zip((0, 1), ('xy', 'xz'), ('perturbation plane', 'transverse plane')):
+    cavity_0.plot(laser_color='r', ax=ax[i], plane=plane)
+    perturbed_cavity.plot(laser_color='g', ax=ax[i], plane=plane)
+    corrected_cavity.plot(laser_color='b', ax=ax[i], plane=plane)
+
+    ax[i].set_title(plane_description)
+    ax[i].annotate('blue line on top of red line appear purple', xy=(ax[i].get_xlim()[0] + (ax[i].get_xlim()[1] - ax[i].get_xlim()[0]) / 3, ax[i].get_ylim()[0] + (ax[i].get_ylim()[1] - ax[i].get_ylim()[0]) / 4.5))
+    ax[i].set_ylim(-4e-3, 4e-3)
+    ax[i].legend(handles=custom_lines, loc='lower center')
+
+plt.suptitle(sup_title)
+plt.tight_layout()
+plt.savefig(f'figures/overlap_perturbation_correction/{PERTURBATION_PARAMETER}-{CORRECTION_PARAMETER}-longitudinal.png',
+            dpi=300, bbox_inches='tight')
 plt.show()
