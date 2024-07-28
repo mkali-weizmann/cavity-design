@@ -491,11 +491,3 @@ def generate_initial_parameters_grid(center: np.ndarray,
                                  base_grid * angle_factor + center[3], indexing='ij')
         initial_parameters = np.stack([X, T, Y, P], axis=-1)
     return initial_parameters
-
-
-def reverse_elements_order_of_mirror_lens_mirror(params: np.ndarray) -> np.ndarray:
-    # swap first and third rows of params:
-    params[[0, 2]] = params[[2, 0]]
-    params[1, [4, 5]] = params[1, [5, 4]]
-    params[1, 3] += 1j
-    return params

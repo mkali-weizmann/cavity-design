@@ -141,7 +141,8 @@ def convert_material_to_mirror_or_lens(
 
 @dataclass
 class OpticalElementParams:
-    surface_type: Union[str]
+    name: Optional[str]
+    surface_type: str
     x: float  # Of the center of the surface (the estimated point of intersection with the central line of the beam)
     y: float
     z: float
@@ -164,10 +165,13 @@ class OpticalElementParams:
 
     def __repr__(self):
         surface_type_string = f"'{self.surface_type}'"
-        surface_type_string = surface_type_string.ljust(27)
+        surface_type_string = surface_type_string.ljust(30)
+        name_string = f"name='{self.name}'"
+        name_string = name_string.ljust(25)
         curvature_sign_string = "CurvatureSigns.concave" if self.curvature_sign == 1 else "CurvatureSigns.convex"
         return (
             f"OpticalElementParams("
+            f"name={name_string}"
             f"surface_type={surface_type_string}, "
             f"x={pretty_print_number(self.x)}, "
             f"y={pretty_print_number(self.y)}, "
@@ -185,6 +189,7 @@ class OpticalElementParams:
 
     @property
     def to_array(self) -> np.ndarray:
+        # loses the name information, as it is string.
         if isinstance(self.surface_type, str):
             surface_type = SURFACE_TYPES_DICT[self.surface_type]
         else:
@@ -253,6 +258,7 @@ class OpticalElementParams:
             temperature=params[INDICES_DICT["temperature"]],
         )
         return OpticalElementParams(
+            name=None,  # This is not saved in the array
             surface_type=SurfacesTypes.from_integer_representation(params[INDICES_DICT["surface_type"]]),
             x=params[INDICES_DICT["x"]],
             y=params[INDICES_DICT["y"]],
@@ -699,13 +705,13 @@ class Surface:
                 outwards_normal=outwards_normal,
                 center=center,
                 curvature_sign=p.curvature_sign,
-                name=name,
+                name=p.name,
                 thermal_properties=p.material_properties,
             )
         elif p.surface_type == SurfacesTypes.thick_lens:  # ThickLens
-            surface = generate_lens_from_params(p, name=name)
+            surface = generate_lens_from_params(p)
         elif p.surface_type == SurfacesTypes.ideal_thick_lens:  # IdealThickLens
-            surface = generate_thick_ideal_lens_from_params(p, name=name)
+            surface = generate_thick_ideal_lens_from_params(p)
         elif p.surface_type == SurfacesTypes.curved_refractive_surface:  # Refractive surface (one side of a lens)
             surface = CurvedRefractiveSurface(
                 radius=p.r_1,
@@ -714,7 +720,7 @@ class Surface:
                 n_1=p.n_outside_or_before,
                 n_2=p.n_inside_or_after,
                 curvature_sign=p.curvature_sign,
-                name=name,
+                name=p.name,
                 thermal_properties=p.material_properties,
                 thickness=p.T_c,
             )
@@ -723,14 +729,14 @@ class Surface:
                 outwards_normal=outwards_normal,
                 center=center,
                 focal_length=p.r_1,
-                name=name,
+                name=p.name,
                 thermal_properties=p.material_properties,
             )
         elif p.surface_type == SurfacesTypes.flat_mirror:  # Flat mirror
             surface = FlatMirror(
                 outwards_normal=outwards_normal,
                 center=center,
-                name=name,
+                name=p.name,
                 thermal_properties=p.material_properties,
             )
         else:
@@ -772,6 +778,7 @@ class Surface:
             self.material_properties = MaterialProperties()
 
         params = OpticalElementParams(
+            name=self.name,
             surface_type=surface_type,
             x=x,
             y=y,
@@ -1620,7 +1627,7 @@ class CurvedRefractiveSurface(CurvedSurface, PhysicalSurface):
         # return self
 
 
-def generate_lens_from_params(params: OpticalElementParams, name: Optional[str] = "Lens"):
+def generate_lens_from_params(params: OpticalElementParams):
     p = params
     # generates a convex-convex lens from the parameters
     center = np.array([p.x, p.y, p.z])
@@ -1632,8 +1639,10 @@ def generate_lens_from_params(params: OpticalElementParams, name: Optional[str] 
     suffixes = directions_nams[main_axis]
     if forward_direction[main_axis] < 0:
         suffixes = suffixes[::-1]
-    if name is None:
+    if p.name is None:
         name = "Lens"
+    else:
+        name = p.name
     names = [name + suffix for suffix in suffixes]
 
     center_1 = center - (1 / 2) * p.T_c * forward_direction
@@ -1686,8 +1695,8 @@ def convert_curved_refractive_surface_to_ideal_lens(surface: CurvedRefractiveSur
     return ideal_lens, flat_refractive_surface
 
 
-def generate_thick_ideal_lens_from_params(params: OpticalElementParams, name: Optional[str] = "Lens"):
-    surface_1, surface_4 = generate_lens_from_params(params, name)
+def generate_thick_ideal_lens_from_params(params: OpticalElementParams):
+    surface_1, surface_4 = generate_lens_from_params(params)
     ideal_lens_1 = convert_curved_refractive_surface_to_ideal_lens(surface_1)
     ideal_lens_2 = convert_curved_refractive_surface_to_ideal_lens(surface_4)
     return ideal_lens_1, ideal_lens_2
@@ -1918,26 +1927,22 @@ class Cavity:
     @staticmethod
     def from_params(
         params: Union[np.ndarray, List[OpticalElementParams]],
-        names: Optional[List[str]] = None,
         **kwargs,
     ):
         if isinstance(params, np.ndarray):
-            p = [OpticalElementParams.from_array(params[i, :]) for i in range(len(params))]
-        else:
-            p = params
+            params = [OpticalElementParams.from_array(params[i, :]) for i in range(len(params))]
         physical_surfaces = []
-        if names is None:
-            names = [f"surface_{i}" for i in range(len(p))]
-        for i in range(len(p)):
-            surface_temp = Surface.from_params(p[i], name=names[i])
+        for i, p in enumerate(params):
+            if p.name is None:
+                p.name = f"Surface_{i}"
+            surface_temp = Surface.from_params(p)
             if isinstance(surface_temp, tuple):
                 physical_surfaces.extend(surface_temp)
             else:
                 physical_surfaces.append(surface_temp)
         cavity = Cavity(
             physical_surfaces,
-            params=p,
-            names=names,
+            params=params,
             **kwargs,
         )
         return cavity
@@ -2033,8 +2038,9 @@ class Cavity:
 
     @property
     def names(self):
-        if self.names_memory is None:
-            return [surface.name for surface in self.physical_surfaces]
+        names_params = [p.name for p in self.to_params]
+        if any(element is not None for element in names_params):
+            return names_params
         else:
             return self.names_memory
 
@@ -3883,22 +3889,27 @@ def find_required_value_for_desired_change(
     solver: Callable = optimize.fsolve,
     print_progress=False,
     **kwargs,  # Additional arguments for the solver
-) -> Cavity:
+) -> Tuple[Cavity, float]:
     def f_root(input_parameter_value: Union[float, np.ndarray]):
+        if print_progress:
+            print(f"input_parameter_value: {input_parameter_value}")
         if isinstance(input_parameter_value, np.ndarray):
             input_parameter_value = input_parameter_value[0]
         perturbed_cavity = cavity_generator(input_parameter_value)
         output_parameter_value = desired_parameter(perturbed_cavity)
         diff = output_parameter_value - desired_value
+        if np.isnan(diff):
+            diff = -np.abs(input_parameter_value) * 1e10
         if print_progress:
             print(
-                f"input_parameter_value: {input_parameter_value:.10e}, output_parameter_value: {output_parameter_value:.3e}, diff: {diff:.3e}"
+                f"output_parameter_value: {output_parameter_value:.3e}, diff: {diff:.3e}"
             )
+
         return diff
 
     perturbation_value = solver(f_root, **kwargs)
     cavity = cavity_generator(perturbation_value[0])
-    return cavity
+    return cavity, perturbation_value[0]
 
 
 def find_required_perturbation_for_desired_change(
@@ -3907,16 +3918,20 @@ def find_required_perturbation_for_desired_change(
     desired_parameter: Callable,
     desired_value: float,
     solver: Callable = optimize.fsolve,
+    print_progress=False,
     **kwargs,
-) -> Cavity:
+) -> Tuple[Cavity, float]:
     def cavity_generator(perturbation_value: float):
         return perturb_cavity(cavity, perturbation_pointer=perturbation_pointer(perturbation_value))
 
-    return find_required_value_for_desired_change(cavity_generator=cavity_generator,
+    cavity, perturbation_value = find_required_value_for_desired_change(cavity_generator=cavity_generator,
                                                   desired_parameter=desired_parameter,
                                                   desired_value=desired_value,
                                                   solver=solver,
+                                                  print_progress=print_progress,
                                                   **kwargs)
+
+    return cavity, perturbation_value
 
 
 def mirror_lens_mirror_cavity_generator(
@@ -4012,7 +4027,7 @@ def mirror_lens_mirror_cavity_generator(
 
             x0 = R_right
 
-        cavity = find_required_value_for_desired_change(
+        cavity, _ = find_required_value_for_desired_change(
             cavity_generator=cavity_generator,
             # Takes a float as input and returns a cavity
             desired_parameter=lambda cavity: 1 / cavity.arms[2].mode_parameters_on_surfaces[0].z_minus_z_0[0],
@@ -4153,7 +4168,9 @@ def mirror_lens_mirror_cavity_generator(
             z_minus_z_0_right_mirror = z_minus_z_0_right_surface + right_arm_length
     mirror_right = match_a_mirror_to_mode(mode_right, z_minus_z_0_right_mirror, mirrors_material_properties)
     mirror_left_params = mirror_left.to_params
+    mirror_left_params.name = "Small Mirror"
     mirror_right_params = mirror_right.to_params
+    mirror_right_params.name = "Big Mirror"
 
     params_lens = surface_right.to_params
     params_lens.x = (surface_left.center[0] + surface_right.center[0]) / 2
@@ -4163,6 +4180,7 @@ def mirror_lens_mirror_cavity_generator(
     params_lens.n_inside_or_after = n
     params_lens.n_outside_or_before = 1
     params_lens.surface_type = SurfacesTypes.thick_lens
+    params_lens.name = "Lens"
 
     params = [mirror_left_params, params_lens, mirror_right_params]
 
@@ -4173,12 +4191,25 @@ def mirror_lens_mirror_cavity_generator(
         p_is_trivial=True,
         t_is_trivial=True,
         set_mode_parameters=True,
-        names=["Left mirror", "lens_left", "lens_right", "Right mirror"],
+        names=["Left mirror", "Lens", "Lens", "Right mirror"],
         initial_mode_parameters=mode_left,
         **kwargs,
     )
 
     return cavity
+
+
+def reverse_elements_order_of_mirror_lens_mirror(params: Union[np.ndarray, List[OpticalElementParams]]) -> np.ndarray:
+    if isinstance(params, np.ndarray):
+        # swap first and third rows of params:
+        params[[0, 2]] = params[[2, 0]]
+        params[1, [4, 5]] = params[1, [5, 4]]
+        params[1, 3] += 1j
+    else:
+        new_params = [params[2], params[1], params[0]]
+        new_params[1].r_1, new_params[1].r_2 = new_params[1].r_2, new_params[1].r_1
+        new_params[1].phi += np.pi
+    return params
 
 
 def generate_mirror_lens_mirror_cavity_textual_summary(cavity: Cavity,
@@ -4249,6 +4280,7 @@ def generate_mirror_lens_mirror_cavity_textual_summary(cavity: Cavity,
                        f"{lens_specs_string}\n"
                        f"R_left_mirror = {R_left_mirror:.3e}, spot diameters left mirror = {2 * spot_size_left_mirror:.2e}, R_right = {cavity.surfaces[3].radius:.3e}, spot diameters right mirror = {2 * spot_size_right_mirror:.2e}")
     return textual_summary
+
 
 def plot_mirror_lens_mirror_cavity_analysis(
     cavity: Cavity,

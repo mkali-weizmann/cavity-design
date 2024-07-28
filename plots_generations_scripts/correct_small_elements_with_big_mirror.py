@@ -1,5 +1,3 @@
-import matplotlib.pyplot as plt
-
 from cavity import *
 from matplotlib.lines import Line2D
 
@@ -59,8 +57,8 @@ cavity_0 = mirror_lens_mirror_cavity_generator(NA_left=NA_left, waist_to_lens=wa
                                              set_R_right_to_collimate=set_R_right_to_collimate)
 params = cavity_0.to_params
 # %%
-PERTURBATION_ELEMENT_INDEX = 0  # 0 for the left mirror, 1 for lens
-PERTURBATION_VALUE = 4.4e-6
+PERTURBATION_ELEMENT_INDEX = 1  # 0 for the left mirror, 1 for lens
+PERTURBATION_VALUE = 8.8e-3
 PERTURBATION_PARAMETER = ParamsNames.phi
 CORRECTION_ELEMENT_INDEX = 2  # this is always 2 because we correct with the large mirror
 CORRECTION_PARAMETER = ParamsNames.phi
@@ -86,20 +84,24 @@ def overlap_extractor(cavity):
 correction_pointer = PerturbationPointer(element_index=CORRECTION_ELEMENT_INDEX,
                                          parameter_name=CORRECTION_PARAMETER)
 
-corrected_cavity = find_required_perturbation_for_desired_change(cavity=perturbed_cavity,
+corrected_cavity, correction_value = find_required_perturbation_for_desired_change(cavity=perturbed_cavity,
                                                                  perturbation_pointer=correction_pointer,
                                                                  desired_parameter=overlap_extractor,
                                                                  desired_value=1,
                                                                  x0=0,
-                                                                 xtol=1e-10)
+                                                                 xtol=1e-10,
+                                                                 print_progress=True)
 # %%
 print(f"perturbation_value: {getattr(corrected_cavity.to_params[2], PERTURBATION_PARAMETER):.2e}, "
       f"correction_value: {getattr(corrected_cavity.to_params[0], CORRECTION_PARAMETER)}")
 
-print(f"Perturbed overlap: {1-np.abs(calculate_cavities_overlap(cavity_0, perturbed_cavity)):.2e}, "
-      f"Corrected_overlap: {1-np.abs(calculate_cavities_overlap(cavity_0, corrected_cavity)):.2e}")
-sup_title = (f"perturbation value in small mirror: $\Delta\{CORRECTION_PARAMETER}=${perturbation_pointer.perturbation_value:.2e},"
-             f" correction value in big mirror: $\Delta\{PERTURBATION_PARAMETER}=${corrected_cavity.to_params[2].phi - cavity_0.to_params[2].phi:.2e}")
+print(f"Perturbed 1-overlap: {1-np.abs(calculate_cavities_overlap(cavity_0, perturbed_cavity)):.2e}, "
+      f"Corrected 1-overlap: {1-np.abs(calculate_cavities_overlap(cavity_0, corrected_cavity)):.2e}")
+sup_title = (f"perturbation value in {cavity_0.names[PERTURBATION_ELEMENT_INDEX]}: $\Delta {PERTURBATION_PARAMETER}=${perturbation_pointer.perturbation_value:.2e},"
+             f" correction value in {cavity_0.names[CORRECTION_ELEMENT_INDEX]}: $\Delta {CORRECTION_PARAMETER}=${correction_value:.2e}")
+
+file_path = (f'figures/overlap_perturbation_correction/pert_elem={cavity_0.names[PERTURBATION_ELEMENT_INDEX]} pert_parm={PERTURBATION_PARAMETER}'
+             f' corr_param={CORRECTION_PARAMETER} plane=')
 
 fig, ax = plt.subplots(2, 1, figsize=(10, 10))
 plt.suptitle(sup_title)
@@ -120,9 +122,7 @@ else:
 ax[0].set_title(perturbed_title)
 ax[1].set_title(corrected_title)
 plt.tight_layout()
-plt.savefig(f'figures/overlap_perturbation_correction/pert_parm={PERTURBATION_PARAMETER} pert_elem={PERTURBATION_ELEMENT_INDEX}'
-            f' corr_param={CORRECTION_PARAMETER} plane=transverse.png',
-            dpi=300, bbox_inches='tight')
+plt.savefig(f'{file_path}transverse.svg', dpi=300, bbox_inches='tight')
 plt.show()
 
 # create a legend:
@@ -137,12 +137,13 @@ for i, plane, plane_description in zip((0, 1), ('xy', 'xz'), ('perturbation plan
     corrected_cavity.plot(laser_color='b', ax=ax[i], plane=plane)
 
     ax[i].set_title(plane_description)
-    ax[i].annotate('blue line on top of red line appear purple', xy=(ax[i].get_xlim()[0] + (ax[i].get_xlim()[1] - ax[i].get_xlim()[0]) / 3, ax[i].get_ylim()[0] + (ax[i].get_ylim()[1] - ax[i].get_ylim()[0]) / 4.5))
     ax[i].set_ylim(-4e-3, 4e-3)
+    print(ax[i].get_ylim())
+    ax[i].annotate('blue line on top of red line appear purple', xy=(ax[i].get_xlim()[0] + (ax[i].get_xlim()[1] - ax[i].get_xlim()[0]) / 3, ax[i].get_ylim()[0] + (ax[i].get_ylim()[1] - ax[i].get_ylim()[0]) / 4))
+
     ax[i].legend(handles=custom_lines, loc='lower center')
 
 plt.suptitle(sup_title)
 plt.tight_layout()
-plt.savefig(f'figures/overlap_perturbation_correction/{PERTURBATION_PARAMETER}-{CORRECTION_PARAMETER}-longitudinal.png',
-            dpi=300, bbox_inches='tight')
+plt.savefig(f'{file_path}longitudinal.svg', dpi=300, bbox_inches='tight')
 plt.show()
