@@ -1,6 +1,5 @@
 from cavity import *
 
-lambda_0_laser = 1064e-9
 from matplotlib.lines import Line2D
 
 NA_left = 1.5600000000e-01
@@ -53,7 +52,7 @@ cavity = mirror_lens_mirror_cavity_generator(
     mirrors_fixed_properties=mirrors_fixed_properties,
     symmetric_left_arm=True,
     waist_to_left_mirror=5e-3,
-    lambda_0_laser=1064e-9,
+    lambda_0_laser=LAMBDA_0_LASER,
     set_h_instead_of_w=True,
     auto_set_right_arm_length=auto_set_right_arm_length,
     set_R_right_to_equalize_angles=set_R_right_to_equalize_angles,
@@ -82,7 +81,7 @@ cavity_params_decomposed = [surface.to_params for surface in cavity.physical_sur
 cavity_decomposed = Cavity.from_params(
     params=cavity_params_decomposed,
     standing_wave=True,
-    lambda_0_laser=lambda_0_laser,
+    lambda_0_laser=LAMBDA_0_LASER,
     names=["Left Mirror", "Lens - Left", "Lens - Right", "Mirror - Right"],
     set_central_line=True,
     set_mode_parameters=True,

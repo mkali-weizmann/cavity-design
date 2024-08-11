@@ -1,6 +1,7 @@
 from cavity import *
 import pickle as pkl
 from matplotlib.lines import Line2D
+from matplotlib import rc
 
 FONT_SIZE_AXIS_LABELS = 14
 FONT_SIZE_TITLES = 14
@@ -25,7 +26,6 @@ with open('data/params_dict.pkl', 'rb') as f:
 
 axis_span = 0.005
 camera_center = -1
-lambda_0_laser = 1064e-9
 names = ['Right Mirror', 'lens', 'Left Mirror']
 
 params = params_dict['Sapphire, NA=0.2-0.0365, L1=0.3 - High NA axis']
@@ -34,7 +34,7 @@ params_temp = params.copy()
 params_temp[1, 0] = x_2_values[-1]  # Change the position of the lens
 
 cavity = Cavity.from_params(params=params_temp, standing_wave=True,
-                            lambda_0_laser=lambda_0_laser, names=names, t_is_trivial=True, p_is_trivial=True)
+                            lambda_0_laser=LAMBDA_0_LASER, names=names, t_is_trivial=True, p_is_trivial=True)
 fig, ax = plt.subplots(figsize=(6, 4))
 cavity.plot(ax=ax, plane='xz')  #
 

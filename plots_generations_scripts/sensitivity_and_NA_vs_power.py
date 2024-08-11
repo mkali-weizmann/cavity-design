@@ -7,7 +7,6 @@ from matplotlib.lines import Line2D
 FONT_SIZE_AXIS_LABELS = 14
 FONT_SIZE_TITLES = 14
 FONT_SIZE_TICKS = 12
-lambda_0_laser = 1064e-9
 save_figs = False
 
 powers_100kW = np.logspace(0, 5, 40)
@@ -154,7 +153,7 @@ cavity_mirror_lens_mirror = Cavity.from_params(
     params=params,
     set_initial_surface=False,
     standing_wave=True,
-    lambda_0_laser=lambda_0_laser,
+    lambda_0_laser=LAMBDA_0_LASER,
     power=power_laser,
     p_is_trivial=True,
     t_is_trivial=True,
@@ -189,7 +188,7 @@ new_unheated_cavity = Cavity.from_params(
     params=new_params,
     set_initial_surface=False,
     standing_wave=True,
-    lambda_0_laser=lambda_0_laser,
+    lambda_0_laser=LAMBDA_0_LASER,
     power=0,
     p_is_trivial=True,
     t_is_trivial=True,

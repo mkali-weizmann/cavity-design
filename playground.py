@@ -1,74 +1,24 @@
 from cavity import *
 
-lambda_0_laser = 1064e-9
-NA_left = 1.500000000e-01
-mirror_on_waist = False
-x_2_perturbation = 0.0000000000e+00
-waist_to_lens = 5.0000000000e-03
-waist_to_lens_fine = 0.0000000000e+00
-T_edge = 1.0000000000e-03
-h = 3.8750000000e-03
-set_R_left_to_collimate = True
-R_left = 2.5000000000e-02
-R_left_fine = -1.3552527156e-20
-set_R_right_to_collimate = False
-set_R_right_to_equalize_angles = True
-set_R_right_to_R_left = False
-R_right = 5.0000000000e-03
-R_right_fine = -1.3552527156e-20
-auto_set_right_arm_length = False
-right_arm_length = 3.0000000000e-01
-lens_fixed_properties = 'sapphire'
-mirrors_fixed_properties = 'ULE'
-auto_set_x = True
-x_span = -1.0000000000e+00
-auto_set_y = True
-y_span = -2.9000000000e+00
-camera_center = 2
-add_unheated_cavity = False
-print_input_parameters = True
-print_cavity_parameters = True
-use_paraxial_ray_tracing = True
+params = [OpticalElementParams(name='Small Mirror', surface_type='curved_mirror'            , x=-5e-03               , y=0                    , z=0                    , theta=0                    , phi=-1e+00 * np.pi       , r_1=5.000045315676729e-03, r_2=np.nan               , curvature_sign=CurvatureSigns.concave, T_c=np.nan               , n_inside_or_after=1e+00                , n_outside_or_before=1e+00                , material_properties=MaterialProperties(refractive_index=None                 , alpha_expansion=7.5e-08              , beta_surface_absorption=1e-06                , kappa_conductivity=1.31e+00             , dn_dT=None                 , nu_poisson_ratio=1.7e-01              , alpha_volume_absorption=None                 , intensity_reflectivity=9.99889e-01          , intensity_transmittance=1e-04                , temperature=np.nan               )),
+          OpticalElementParams(name='Lens',         surface_type='thick_lens'               , x=6.456776823267892e-03, y=0                    , z=0                    , theta=0                    , phi=0                    , r_1=2.424176903520436e-02, r_2=5.487903137228402e-03, curvature_sign=CurvatureSigns.concave, T_c=2.913553646535783e-03, n_inside_or_after=1.76e+00             , n_outside_or_before=1e+00                , material_properties=PHYSICAL_SIZES_DICT['thermal_properties_sapphire']),
+          OpticalElementParams(name='Big Mirror',   surface_type='curved_mirror'            , x=3.079135536465358e-01, y=0                    , z=0                    , theta=0                    , phi=0                    , r_1=1.504597593390832e-01, r_2=np.nan               , curvature_sign=CurvatureSigns.concave, T_c=np.nan               , n_inside_or_after=1e+00                , n_outside_or_before=1e+00                , material_properties=MaterialProperties(refractive_index=None                 , alpha_expansion=7.5e-08              , beta_surface_absorption=1e-06                , kappa_conductivity=1.31e+00             , dn_dT=None                 , nu_poisson_ratio=1.7e-01              , alpha_volume_absorption=None                 , intensity_reflectivity=9.99889e-01          , intensity_transmittance=1e-04                , temperature=np.nan               ))]
+params[0].y += 1e-7
+cavity = Cavity.from_params(params=params,
+                            standing_wave=True,
+                            lambda_0_laser=LAMBDA_0_LASER,
+                            set_central_line=True,
+                            set_mode_parameters=True,
+                            set_initial_surface=False,
+                            t_is_trivial=True,
+                            p_is_trivial=False,
+                            power=2e4,
+                            use_paraxial_ray_tracing=True,
+                            debug_printing_level=1,
+                            )
 
-waist_to_lens += waist_to_lens_fine
-R_left += R_left_fine
-R_right += R_right_fine
-x_span = 10 ** x_span
-y_span = 10 ** y_span
 
-lengths = np.logspace(-1, 0, 5)
-min_tolerances = np.zeros_like(lengths)
-
-cavity_0 = mirror_lens_mirror_cavity_generator(NA_left=NA_left, waist_to_lens=waist_to_lens, h=h,
-                                             R_left=R_left, R_right=R_right, T_c=0, T_edge=T_edge,
-                                             right_arm_length=right_arm_length,
-                                             lens_fixed_properties=lens_fixed_properties,
-                                             mirrors_fixed_properties=mirrors_fixed_properties,
-                                             symmetric_left_arm=True, waist_to_left_mirror=5e-3,
-                                             lambda_0_laser=1064e-9, set_h_instead_of_w=True,
-                                             auto_set_right_arm_length=auto_set_right_arm_length,
-                                             set_R_right_to_equalize_angles=set_R_right_to_equalize_angles,
-                                             set_R_right_to_R_left=set_R_right_to_R_left,
-                                             debug_printing_level=1, power=2e4,
-                                             use_paraxial_ray_tracing=use_paraxial_ray_tracing,
-                                             set_R_left_to_collimate=set_R_left_to_collimate,
-                                             set_R_right_to_collimate=set_R_right_to_collimate)
-params = cavity_0.to_params
-
-# %%
-PERTURBATION_ELEMENT_INDEX = 0  # 0 for the left mirror, 1 for lens
-PERTURBATION_VALUE = 1e-12
-PERTURBATION_PARAMETER = ParamsNames.phi
-CORRECTION_ELEMENT_INDEX = 2  # this is always 2 because we correct with the large mirror
-CORRECTION_PARAMETER = ParamsNames.phi
-
-perturbation_pointer = PerturbationPointer(element_index=PERTURBATION_ELEMENT_INDEX,
-                                           parameter_name=PERTURBATION_PARAMETER,
-                                           perturbation_value=PERTURBATION_VALUE)
-
-perturbed_cavity = perturb_cavity(cavity=cavity_0, perturbation_pointer=perturbation_pointer)
-
-perturbed_cavity.plot()
+cavity.plot()
 plt.ylim(-1e-3, 1e-3)
+plt.xlim(-5.1e-3, 5.1e-3)
 plt.show()
-print('kaki')

@@ -8,7 +8,6 @@ import numpy as np
 
 from cavity import *
 
-lambda_0_laser = 1064e-9
 from matplotlib import use
 from matplotlib.lines import Line2D
 # use('TkAgg')
@@ -33,7 +32,7 @@ params
 
 cavity = Cavity.from_params(params=params,
                             standing_wave=True,
-                            lambda_0_laser=lambda_0_laser,
+                            lambda_0_laser=LAMBDA_0_LASER,
                             names=['Right mirror', 'Lens', 'Left Mirror'],
                             set_central_line=True,
                             set_mode_parameters=True,

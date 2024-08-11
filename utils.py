@@ -145,6 +145,8 @@ CENTRAL_LINE_TOLERANCE = 1
 STRETCH_FACTOR = 1  # 0.001
 C_LIGHT_SPEED = 299792458  # [m/s]
 ROOM_TEMPERATURE = 293  # [K]
+LAMBDA_0_LASER = 1064e-9
+LAMBDA_1_LASER = 532e-9
 
 
 def pretty_print_array(array: np.ndarray):

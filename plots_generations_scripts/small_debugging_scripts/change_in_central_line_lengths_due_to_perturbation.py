@@ -46,7 +46,7 @@ cavity_0 = mirror_lens_mirror_cavity_generator(NA_left=NA_left, waist_to_lens=wa
                                              lens_fixed_properties=lens_fixed_properties,
                                              mirrors_fixed_properties=mirrors_fixed_properties,
                                              symmetric_left_arm=True, waist_to_left_mirror=5e-3,
-                                             lambda_0_laser=1064e-9, set_h_instead_of_w=True,
+                                             lambda_0_laser=LAMBDA_0_LASER, set_h_instead_of_w=True,
                                              auto_set_right_arm_length=auto_set_right_arm_length,
                                              set_R_right_to_equalize_angles=set_R_right_to_equalize_angles,
                                              set_R_right_to_R_left=set_R_right_to_R_left,

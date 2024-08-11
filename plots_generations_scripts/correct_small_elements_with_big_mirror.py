@@ -1,7 +1,6 @@
 from cavity import *
 from matplotlib.lines import Line2D
 
-lambda_0_laser = 1064e-9
 NA_left = 1.500000000e-01
 mirror_on_waist = False
 x_2_perturbation = 0.0000000000e+00
@@ -47,7 +46,7 @@ cavity_0 = mirror_lens_mirror_cavity_generator(NA_left=NA_left, waist_to_lens=wa
                                              lens_fixed_properties=lens_fixed_properties,
                                              mirrors_fixed_properties=mirrors_fixed_properties,
                                              symmetric_left_arm=True, waist_to_left_mirror=5e-3,
-                                             lambda_0_laser=1064e-9, set_h_instead_of_w=True,
+                                             lambda_0_laser=LAMBDA_0_LASER, set_h_instead_of_w=True,
                                              auto_set_right_arm_length=auto_set_right_arm_length,
                                              set_R_right_to_equalize_angles=set_R_right_to_equalize_angles,
                                              set_R_right_to_R_left=set_R_right_to_R_left,
@@ -58,10 +57,10 @@ cavity_0 = mirror_lens_mirror_cavity_generator(NA_left=NA_left, waist_to_lens=wa
 params = cavity_0.to_params
 # %%
 PERTURBATION_ELEMENT_INDEX = 1  # 0 for the left mirror, 1 for lens
-PERTURBATION_VALUE = 8.8e-3
-PERTURBATION_PARAMETER = ParamsNames.phi
+PERTURBATION_VALUE = 4.5e-6
+PERTURBATION_PARAMETER = ParamsNames.x
 CORRECTION_ELEMENT_INDEX = 2  # this is always 2 because we correct with the large mirror
-CORRECTION_PARAMETER = ParamsNames.phi
+CORRECTION_PARAMETER = ParamsNames.x
 
 perturbation_pointer = PerturbationPointer(element_index=PERTURBATION_ELEMENT_INDEX,
                                            parameter_name=PERTURBATION_PARAMETER,
@@ -88,7 +87,7 @@ corrected_cavity, correction_value = find_required_perturbation_for_desired_chan
                                                                  perturbation_pointer=correction_pointer,
                                                                  desired_parameter=overlap_extractor,
                                                                  desired_value=1,
-                                                                 x0=0,
+                                                                 x0=-3e-3,
                                                                  xtol=1e-10,
                                                                  print_progress=True)
 # %%

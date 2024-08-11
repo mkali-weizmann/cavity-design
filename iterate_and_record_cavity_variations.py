@@ -1,6 +1,5 @@
 from cavity import *
 
-lambda_0_laser = 1065e-9
 symmetric_left_arm = False
 waist_to_left_mirror = -5.0000000000e-03
 waist_to_left_mirror_fine = 0.0000000000e+00
@@ -54,7 +53,7 @@ for waist_to_lens in waist_to_lenss:
                                                      mirrors_fixed_properties=mirrors_fixed_properties,
                                                      symmetric_left_arm=symmetric_left_arm,
                                                      waist_to_left_mirror=waist_to_left_mirror,
-                                                     lambda_0_laser=lambda_0_laser,
+                                                     lambda_0_laser=LAMBDA_0_LASER,
                                                      set_h_instead_of_w=set_h_instead_of_w,
                                                      auto_set_right_arm_length=auto_set_right_arm_length,
                                                      set_R_right_to_equalize_angles=set_R_right_to_equalize_angles,

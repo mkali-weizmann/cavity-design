@@ -8,11 +8,10 @@ for w in ['3mm', '4mm', '8mm']:
     auto_set_axes = 1.0000000000e+00
     axis_span = None
     camera_center = -1
-    lambda_0_laser = 1064e-9
     names = ['Right Mirror', 'lens', 'Left Mirror']
 
     cavity = Cavity.from_params(params=params, standing_wave=True,
-                                lambda_0_laser=lambda_0_laser, names=names, t_is_trivial=True, p_is_trivial=True)
+                                lambda_0_laser=LAMBDA_0_LASER, names=names, t_is_trivial=True, p_is_trivial=True)
 
     title = f"short arm NA={cavity.arms[2].local_mode_parameters.NA[0]:.2e}, short arm length = {np.linalg.norm(cavity.surfaces[2].center - cavity.surfaces[3].center):.2e} [m]\n" + \
             f"long arm NA={cavity.arms[0].local_mode_parameters.NA[0]:.2e},   long arm length = {np.linalg.norm(cavity.surfaces[1].center - cavity.surfaces[0].center):.2e} [m] w={w}"
@@ -54,11 +53,10 @@ params = np.array([[1.2912271191e-01+0.j,  0.0000000000e+00+0.j,  0.0000000000e+
          0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  1.0000000000e+00+0.j,  7.5000000000e-08+0.j,  1.0000000000e-06+0.j,
          1.3100000000e+00+0.j,  0.0000000000e+00+0.j,  1.7000000000e-01+0.j,  0.0000000000e+00+0.j,  9.9988900000e-01+0.j,  1.0000000000e-04+0.j,
                       np.nan+0.j,  0.0000000000e+00+0.j]])
-lambda_0_laser = 1064e-9
 names = ['Right Mirror', 'lens', 'Left Mirror']
 
 cavity = Cavity.from_params(params=params, standing_wave=True,
-                            lambda_0_laser=lambda_0_laser, names=names, t_is_trivial=True, p_is_trivial=True)
+                            lambda_0_laser=LAMBDA_0_LASER, names=names, t_is_trivial=True, p_is_trivial=True)
 cavity.plot()
 plt.xlim(-0.025, 0.01)
 R = np.real(params[1, INDICES_DICT['r']])
