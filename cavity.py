@@ -165,13 +165,13 @@ class OpticalElementParams:
 
     def __repr__(self):
         surface_type_string = f"'{self.surface_type}'"
-        surface_type_string = surface_type_string.ljust(30)
-        name_string = f"name='{self.name}'"
+        surface_type_string = surface_type_string.ljust(33)
+        name_string = f"'{self.name}'"
         name_string = name_string.ljust(25)
         curvature_sign_string = "CurvatureSigns.concave" if self.curvature_sign == 1 else "CurvatureSigns.convex"
         return (
             f"OpticalElementParams("
-            f"name={name_string}"
+            f"name={name_string},"
             f"surface_type={surface_type_string}, "
             f"x={pretty_print_number(self.x)}, "
             f"y={pretty_print_number(self.y)}, "
@@ -2887,7 +2887,7 @@ class Cavity:
             names = None
         else:
             names = copy.copy(self.names)
-            for i, surface_type in [p.surface_type for p in self.params]:
+            for i, surface_type in enumerate([p.surface_type for p in self.params]):
                 if surface_type == SurfacesTypes.thick_lens:
                     names.insert(i + 1, names[i] + "_2")
                     names[i] = names[i] + "_1"
@@ -4289,12 +4289,13 @@ def plot_mirror_lens_mirror_cavity_analysis(
     auto_set_y: bool = True,
     y_span: float = 8e-3,
     camera_center: Union[int, float] = 1,
-    add_unheated_cavity: bool = False,
     minimal_h_divided_by_spot_size: float = 2.5,
     T_edge=1e-3,
     CA: float = 5e-3,
     h: float = 3.875e-3,
     set_h_instead_of_w: bool = True,
+    ax: Optional[plt.Axes] = None,
+    add_unheated_cavity: bool = False,
 ):
     # Assumes: surfaces[0] is the left mirror, surfaces[1] is the lens_left side, surfaces[2] is the lens_right side,
     # surfaces[3] is the right mirror.
@@ -4303,12 +4304,15 @@ def plot_mirror_lens_mirror_cavity_analysis(
     short_arm_NA = cavity.arms[0].mode_parameters.NA[0]
     spot_size_left_mirror = cavity.arms[0].mode_parameters_on_surfaces[0].spot_size[0]
     x_left_mirror = cavity.surfaces[0].center[0]
-    x_lens_right = cavity.surfaces[2].center[0]
+
+    assert ax is None or add_unheated_cavity is False, "Can't add unheated cavity when ax is given"
 
     if add_unheated_cavity:
         fig, ax = plt.subplots(2, 1, figsize=(16, 12))
-    else:
+    elif ax is None:
         fig, ax = plt.subplots(1, 1, figsize=(16, 6))
+        ax = [ax]
+    else:
         ax = [ax]
     cavity.plot(axis_span=x_span, camera_center=camera_center, ax=ax[0])
 
@@ -4336,7 +4340,7 @@ def plot_mirror_lens_mirror_cavity_analysis(
             f"unheated_cavity, short arm NA={short_arm_NA:.2e}, Left mirror 2*spot size = {2 * spot_size_left_mirror:.2e}"
         )
     plt.subplots_adjust(hspace=0.35)
-    fig.tight_layout()
+    plt.gcf().tight_layout()
 
 # def decompose_a_thick_lens_single_surfaces(cavity: Cavity) -> Cavity:
 #     new_params = [s.to_params for ]

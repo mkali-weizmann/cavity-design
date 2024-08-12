@@ -99,7 +99,7 @@ print(f"Perturbed 1-overlap: {1-np.abs(calculate_cavities_overlap(cavity_0, pert
 sup_title = (f"perturbation value in {cavity_0.names[PERTURBATION_ELEMENT_INDEX]}: $\Delta {PERTURBATION_PARAMETER}=${perturbation_pointer.perturbation_value:.2e},"
              f" correction value in {cavity_0.names[CORRECTION_ELEMENT_INDEX]}: $\Delta {CORRECTION_PARAMETER}=${correction_value:.2e}")
 
-file_path = (f'figures/overlap_perturbation_correction/pert_elem={cavity_0.names[PERTURBATION_ELEMENT_INDEX]} pert_parm={PERTURBATION_PARAMETER}'
+file_path = (f'figures/overlap-perturbation-correction/pert_elem={cavity_0.names[PERTURBATION_ELEMENT_INDEX]} pert_parm={PERTURBATION_PARAMETER}'
              f' corr_param={CORRECTION_PARAMETER} plane=')
 
 fig, ax = plt.subplots(2, 1, figsize=(10, 10))
