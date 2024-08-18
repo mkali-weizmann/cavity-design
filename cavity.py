@@ -1529,11 +1529,12 @@ class CurvedRefractiveSurface(CurvedSurface, PhysicalSurface):
         n_surface_transform_lens: bool = True,
         n_volumetric_transform_lens: bool = True,
         curvature_transform_lens: bool = True,
-        change_lens_by_changing_n: bool = True,
-        change_lens_by_changing_R: bool = False,
+        change_lens_by_changing_n: bool = False,
+        change_lens_by_changing_R: bool = True,
         z_transform_lens: bool = False,
         **kwargs,
     ):
+        # This function follows the derivations from the file https://mynotebook.labarchives.com/doc/view/MTA3Ljl8MTA1ODU5NS84My9FbnRyeVBhcnQvMjE1NTkxNDI0fDI3My45?nb_id=MTM3NjE3My41fDEwNTg1OTUvMTA1ODU5NS9Ob3RlYm9vay8zMjQzMzA0MzY1fDM0OTMzNjMuNQ%3D%3D
         if np.isnan(w_spot_size):
             return self
         n_inside = np.max((self.n_1, self.n_2))
@@ -1583,15 +1584,11 @@ class CurvedRefractiveSurface(CurvedSurface, PhysicalSurface):
             + delta_optical_length_curvature_buldging * curvature_transform_lens
         )
 
-        # A way which is also correct but less readable and less intuitive:
-        # delta_optical_length_curvature_z = common_coefficient * n_inside * self.material_properties.alpha_expansion * (1+self.material_properties.nu_poisson_ratio) / (1-self.material_properties.nu_poisson_ratio)
-        # radius_new = self.radius * n_inside / (n_inside + delta_optical_length_curvature_z * self.radius)
-
-        if change_lens_by_changing_n:
+        if change_lens_by_changing_n:  # Equation (2) from the documentation in the link above
             radius_new = self.radius
             n_new = n_inside - delta_optical_length_curvature * self.radius
 
-        elif change_lens_by_changing_R:
+        elif change_lens_by_changing_R:  # Equation (3) from the documentation in the link above
             radius_new = n_inside * self.radius / (n_inside - delta_optical_length_curvature * self.radius)
             n_new = n_inside
         else:
@@ -1624,7 +1621,6 @@ class CurvedRefractiveSurface(CurvedSurface, PhysicalSurface):
             name=self.name,
             thermal_properties=new_thermal_properties,
         )
-        # return self
 
 
 def generate_lens_from_params(params: OpticalElementParams):
