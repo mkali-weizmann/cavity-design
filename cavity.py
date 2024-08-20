@@ -2658,7 +2658,7 @@ class Cavity:
 
         for i, surface in enumerate(self.surfaces):
             # If there is not information on the spot size of the element, plot it with default length:
-            if self.arms[0].mode_parameters is None or np.any(self.arms[0].mode_parameters.z_R == 0):
+            if self.arms[0].mode_parameters is None or np.any(np.isnan(self.arms[0].mode_parameters.z_R)) or np.any(self.arms[0].mode_parameters.z_R == 0):
                 surface.plot(ax=ax, dim=dim, plane=plane)
             else:
                 # If there is information on the spot size of the element, plot it with the spot size length*2.5:
