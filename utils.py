@@ -469,6 +469,10 @@ def stable_sqrt(x: Union[np.ndarray, float]) -> Union[np.ndarray, float]:
         else:
             return np.sqrt(x)
 
+def widget_convenient_exponent(x, base=10, scale=10):
+    y = base ** (x - scale) - base ** (-x - scale)
+    return y
+
 
 def generate_initial_parameters_grid(center: np.ndarray,
                                      range_limit: float,

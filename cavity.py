@@ -88,13 +88,13 @@ PHYSICAL_SIZES_DICT = {
         intensity_reflectivity=1 - 100e-6 - 1e-6 - 10e-6,  # All - transmittance - absorption - scattering
         intensity_transmittance=100e-6,  # DUMMY - for mirrors
     ),
-    "thermal_properties_fused_silica": MaterialProperties(
-        refractive_index=1.455,  # https://refractiveindex.info/?shelf=glass&book=fused_silica&page=Malitson,
-        alpha_expansion=0.48e-6,  # https://www.rp-photonics.com/fused_silica.html#:~:text=However%2C%20fused%20silica%20may%20exhibit,10%E2%88%926%20K%E2%88%921., https://www.swiftglass.com/blog/material-month-fused-silica/
+    "thermal_properties_fused_silica": MaterialProperties(  # https://www.corning.com/media/worldwide/csm/documents/HPFS_Product_Brochure_All_Grades_2015_07_21.pdf
+        refractive_index=1.45,  # The next link is ignored due to the link above: https://refractiveindex.info/?shelf=glass&book=fused_silica&page=Malitson,
+        alpha_expansion=0.52e-6,  # The next link is ignored due to the link above: https://www.rp-photonics.com/fused_silica.html#:~:text=However%2C%20fused%20silica%20may%20exhibit,10%E2%88%926%20K%E2%88%921., https://www.swiftglass.com/blog/material-month-fused-silica/
         beta_surface_absorption=1e-6,  # DUMMY
-        kappa_conductivity=1.38,  # https://www.swiftglass.com/blog/material-month-fused-silica/, https://www.heraeus-conamic.com/knowlegde-base/properties
+        kappa_conductivity=1.38,  # This link and the link above agree: https://www.swiftglass.com/blog/material-month-fused-silica/, https://www.heraeus-conamic.com/knowlegde-base/properties
         dn_dT=12e-6,  # https://iopscience.iop.org/article/10.1088/0022-3727/16/5/002/pdf
-        nu_poisson_ratio=0.15,
+        nu_poisson_ratio=0.16,
         alpha_volume_absorption=1e-3,  # https://www.crystran.co.uk/optical-materials/silica-glass-sio2
         intensity_reflectivity=100e-6,  # DUMMY - for lenses
         intensity_transmittance=1 - 100e-6 - 1e-6,  # DUMMY - for lenses
@@ -107,7 +107,15 @@ PHYSICAL_SIZES_DICT = {
         dn_dT=9e-6,  # https://pubmed.ncbi.nlm.nih.gov/18319922/
         nu_poisson_ratio=0.25,  #  https://www.crystran.co.uk/userfiles/files/yttrium-aluminium-garnet-yag-data-sheet.pdf, https://www.korth.de/en/materials/detail/YAG
     ),
-    "thermal_properties_bk7": MaterialProperties(alpha_expansion=7.1e-6, kappa_conductivity=1.114),
+    "thermal_properties_bk7": MaterialProperties(
+        alpha_expansion=7.1e-6,  # https://www.pgo-online.com/intl/BK7.html
+        kappa_conductivity=1.114,  # https://www.pgo-online.com/intl/BK7.html
+        refractive_index=1.507,  # https://www.pgo-online.com/intl/BK7.html
+        nu_poisson_ratio=0.206,  # https://www.matweb.com/search/DataSheet.aspx?MatGUID=a8c2d05c7a6244399bbc2e15c0438cb9, https://www.pgo-online.com/intl/BK7.html
+        intensity_reflectivity=1 - 100e-6 - 1e-6 - 10e-6,  # All - transmittance - absorption - scattering
+        intensity_transmittance=100e-6,  # DUMMY - for mirrors
+        beta_surface_absorption=1e-6,  # DUMMY
+    ),
     "c_mirror_radius_expansion": 1,  # DUMMY temp - should be 4 according to Lidan's simulation
     # But we take it to be 1 as the other values are currently 1.
     "c_lens_focal_length_expansion": 1,  # DUMMY
@@ -1434,10 +1442,9 @@ class CurvedMirror(CurvedSurface, PhysicalSurface):
             new_mirror = CurvedMirror(
                 radius=new_radius,
                 outwards_normal=self.outwards_normal,
-                center=self.center,
+                center=self.center, #+ (new_radius - self.radius) * self.inwards_normal,
                 thermal_properties=new_thermal_properties,
             )
-            new_mirror.radius = new_radius
             return new_mirror
 
 
@@ -1784,7 +1791,11 @@ class Arm:
     @property
     def mode_parameters(self):
         if self.mode_parameters_on_surface_0 is None:
-            return None
+            return ModeParameters(center=np.array([[np.nan, np.nan, np.nan], [np.nan, np.nan, np.nan]]),
+                                  k_vector=np.array([np.nan, np.nan, np.nan]),
+                                  w_0=np.array([np.nan, np.nan]),
+                                  principle_axes=np.array([[np.nan, np.nan, np.nan], [np.nan, np.nan, np.nan]]),
+                                  lambda_0_laser=self.lambda_0_laser, n=self.n)
         center = (
             self.central_line.origin
             - self.mode_parameters_on_surface_0.z_minus_z_0[..., np.newaxis] / self.n * self.central_line.k_vector
@@ -2426,6 +2437,11 @@ class Cavity:
                 local_mode_parameters_current = arm.propagate_local_mode_parameters()
                 arm.mode_principle_axes = self.principle_axes(arm.central_line.k_vector)
             self.resonating_mode_successfully_traced = True
+        else:
+            for arm in self.arms:
+                arm.mode_parameters_on_surface_0 = LocalModeParameters(z_minus_z_0=np.array([np.nan, np.nan]),z_R=np.array([np.nan, np.nan]), lambda_0_laser=self.lambda_0_laser)
+                arm.mode_parameters_on_surface_1 = LocalModeParameters(z_minus_z_0=np.array([np.nan, np.nan]),z_R=np.array([np.nan, np.nan]), lambda_0_laser=self.lambda_0_laser)
+
 
     def principle_axes(self, k_vector: np.ndarray):
         # Returns two vectors that are orthogonal to k_vector and each other, one lives in the central line plane,
@@ -2870,7 +2886,12 @@ class Cavity:
 
     def thermal_transformation(self, **kwargs) -> Cavity:
         unheated_surfaces = []
+        assert self.power is not None, "The power of the laser is not defined. It must be defined for thermal calculations"
+
         for i, surface in enumerate(self.physical_surfaces):
+            # if isinstance(unheated_surface, CurvedRefractiveSurface):
+            #     unheated_surface = surface
+            # else:
             unheated_surface = surface.thermal_transformation(
                 P_laser_power=-self.power,
                 w_spot_size=self.arms[i].mode_parameters_on_surface_0.spot_size[0],
@@ -3391,6 +3412,7 @@ def perturb_cavity(
         lambda_0_laser=cavity.lambda_0_laser,
         t_is_trivial=t_is_trivial,
         p_is_trivial=p_is_trivial,
+        power=cavity.power,
         use_brute_force_for_central_line=cavity.use_brute_force_for_central_line,
         debug_printing_level=cavity.debug_printing_level,
         use_paraxial_ray_tracing=cavity.use_paraxial_ray_tracing,
@@ -4236,20 +4258,32 @@ def generate_mirror_lens_mirror_cavity_textual_summary(cavity: Cavity,
 
     R_left = cavity.surfaces[lens_left_index].radius
     R_right = cavity.surfaces[lens_right_index].radius
+    # try: # I should add a non-existent mode and initialize it with np.nan when there is no mode instead of this solution.
     spot_size_lens_right = cavity.arms[1].mode_parameters_on_surfaces[right_surface_in_arm].spot_size[0]
     CA_divided_by_2spot_size = CA / (2 * spot_size_lens_right)
-    T_c = np.linalg.norm(cavity.surfaces[2].center - cavity.surfaces[1].center)
-    short_arm_NA = cavity.arms[left_arm_index].mode_parameters.NA[0]
-    long_arm_NA = cavity.arms[right_arm_index].mode_parameters.NA[0]
-    short_arm_length = np.linalg.norm(cavity.surfaces[lens_left_index].center - cavity.surfaces[left_mirror_index].center)
-    long_arm_length = np.linalg.norm(cavity.surfaces[right_mirror_index].center - cavity.surfaces[lens_right_index].center)
     waist_to_lens_short_arm = np.abs(cavity.surfaces[lens_left_index].center[0] - cavity.mode_parameters[left_arm_index].center[0, 0])
-    waist_to_lens_long_arm = np.abs(cavity.mode_parameters[right_arm_index].center[0, 0] - cavity.surfaces[lens_right_index].center[0])
-    spot_size_left_mirror = cavity.arms[left_arm_index].mode_parameters_on_surfaces[left_surface_in_arm].spot_size[0]
-    spot_size_right_mirror = cavity.arms[right_arm_index].mode_parameters_on_surfaces[right_surface_in_arm].spot_size[0]
-    R_left_mirror = cavity.surfaces[left_mirror_index].radius
     angle_right = cavity.arms[right_arm_index].calculate_incidence_angle(surface_index=left_surface_in_arm)
     angle_left = cavity.arms[left_arm_index].calculate_incidence_angle(surface_index=right_surface_in_arm)
+    spot_size_left_mirror = cavity.arms[left_arm_index].mode_parameters_on_surfaces[left_surface_in_arm].spot_size[0]
+    spot_size_right_mirror = cavity.arms[right_arm_index].mode_parameters_on_surfaces[right_surface_in_arm].spot_size[0]
+    short_arm_NA = cavity.arms[left_arm_index].mode_parameters.NA[0]
+    long_arm_NA = cavity.arms[right_arm_index].mode_parameters.NA[0]
+    # except AttributeError:
+    #     spot_size_lens_right = np.nan
+    #     CA_divided_by_2spot_size = np.nan
+    #     waist_to_lens_short_arm = np.nan
+    #     angle_right = np.nan
+    #     angle_left = np.nan
+    #     spot_size_left_mirror = np.nan
+    #     spot_size_right_mirror = np.nan
+
+    T_c = np.linalg.norm(cavity.surfaces[2].center - cavity.surfaces[1].center)
+    short_arm_length = np.linalg.norm(cavity.surfaces[lens_left_index].center - cavity.surfaces[left_mirror_index].center)
+    long_arm_length = np.linalg.norm(cavity.surfaces[right_mirror_index].center - cavity.surfaces[lens_right_index].center)
+    waist_to_lens_long_arm = np.abs(cavity.mode_parameters[right_arm_index].center[0, 0] - cavity.surfaces[lens_right_index].center[0])
+
+    R_left_mirror = cavity.surfaces[left_mirror_index].radius
+
     
     minimal_width_lens = find_minimal_width_for_spot_size_and_radius(
         radius=R_left,
@@ -4291,14 +4325,15 @@ def plot_mirror_lens_mirror_cavity_analysis(
     h: float = 3.875e-3,
     set_h_instead_of_w: bool = True,
     ax: Optional[plt.Axes] = None,
-    add_unheated_cavity: bool = False,
+    add_unheated_cavity: Union[bool, Cavity] = False,
+    left_mirror_is_first=True,
 ):
+    if left_mirror_is_first is False:
+        raise NotImplementedError
     # Assumes: surfaces[0] is the left mirror, surfaces[1] is the lens_left side, surfaces[2] is the lens_right side,
     # surfaces[3] is the right mirror.
     R_left = cavity.surfaces[1].radius
     T_c = np.linalg.norm(cavity.surfaces[2].center - cavity.surfaces[1].center)
-    short_arm_NA = cavity.arms[0].mode_parameters.NA[0]
-    spot_size_left_mirror = cavity.arms[0].mode_parameters_on_surfaces[0].spot_size[0]
     x_left_mirror = cavity.surfaces[0].center[0]
 
     assert ax is None or add_unheated_cavity is False, "Can't add unheated cavity when ax is given"
@@ -4327,13 +4362,22 @@ def plot_mirror_lens_mirror_cavity_analysis(
     else:
         y_lim = y_span
     ax[0].set_ylim(-y_lim, y_lim)
-    if add_unheated_cavity:
-        unheated_cavity = cavity.thermal_transformation()
+    if not add_unheated_cavity is False:  # if add_unheated_cavity is either True or a Cavity object
+        if isinstance(add_unheated_cavity, bool):
+            unheated_cavity = cavity.thermal_transformation()
+        else:
+            unheated_cavity = add_unheated_cavity
         unheated_cavity.plot(axis_span=x_span, camera_center=camera_center, ax=ax[1])
+        try:
+            spot_size_lens_long_arm_side = cavity.arms[1].mode_parameters_on_surfaces[1].spot_size[0]
+            short_arm_NA_unheated_cavity = unheated_cavity.arms[0].mode_parameters.NA[0]
+        except AttributeError:
+            spot_size_lens_long_arm_side = "Non existent"
+            short_arm_NA_unheated_cavity = "Non existent"
         ax[1].set_xlim(ax[0].get_xlim())
         ax[1].set_ylim(ax[0].get_ylim())
         ax[1].set_title(
-            f"unheated_cavity, short arm NA={short_arm_NA:.2e}, Left mirror 2*spot size = {2 * spot_size_left_mirror:.2e}"
+            f"unheated_cavity, short arm NA={short_arm_NA_unheated_cavity:.2e}, Left mirror 2*spot size = {2 * spot_size_lens_long_arm_side:.2e}"
         )
     plt.subplots_adjust(hspace=0.35)
     plt.gcf().tight_layout()
