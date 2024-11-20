@@ -18,11 +18,13 @@ cavity = Cavity.from_params(params=params,
                             )
 
 
-cavity.plot()
-# plot_mirror_lens_mirror_cavity_analysis(cavity)
+# cavity.plot()
+plot_mirror_lens_mirror_cavity_analysis(cavity)
 plt.show()
 
 
+# %%
+cavity.specs(print_specs=True, contracted=False, save_specs_name='classic_cavity_specs')
 
 # %%
 tolerance_matrix = cavity.generate_tolerance_matrix()

@@ -3925,9 +3925,9 @@ def find_required_value_for_desired_change(
 
         return diff
 
-    perturbation_value = solver(f_root, **kwargs)
-    cavity = cavity_generator(perturbation_value[0])
-    return cavity, perturbation_value[0]
+    input_parameter_value = solver(f_root, **kwargs)
+    cavity = cavity_generator(input_parameter_value[0])
+    return cavity, input_parameter_value[0]
 
 
 def find_required_perturbation_for_desired_change(
@@ -4327,6 +4327,7 @@ def plot_mirror_lens_mirror_cavity_analysis(
     ax: Optional[plt.Axes] = None,
     add_unheated_cavity: Union[bool, Cavity] = False,
     left_mirror_is_first=True,
+    **kwargs,
 ):
     if left_mirror_is_first is False:
         raise NotImplementedError
@@ -4345,7 +4346,7 @@ def plot_mirror_lens_mirror_cavity_analysis(
         ax = [ax]
     else:
         ax = [ax]
-    cavity.plot(axis_span=x_span, camera_center=camera_center, ax=ax[0])
+    cavity.plot(axis_span=x_span, camera_center=camera_center, ax=ax[0], **kwargs)
 
     textual_summary = generate_mirror_lens_mirror_cavity_textual_summary(
         cavity, CA=CA, h=h, T_edge=T_edge, minimal_h_divided_by_spot_size=minimal_h_divided_by_spot_size,

@@ -82,6 +82,10 @@ def overlap_extractor(cavity):
 
 correction_pointer = PerturbationPointer(element_index=CORRECTION_ELEMENT_INDEX,
                                          parameter_name=CORRECTION_PARAMETER)
+if PERTURBATION_PARAMETER in [ParamsNames.y, ParamsNames.phi]:
+    delta_y = cavity_0.params[1].y - cavity_0.physical_surfaces[0].origin[1]
+    delta_x = cavity_0.params[1].x - cavity_0.physical_surfaces[0].origin[0]
+    delta_x_long_arm = cavity_0.params[2].x - cavity_0.physical_surfaces[2].origin[0]
 
 corrected_cavity, correction_value = find_required_perturbation_for_desired_change(cavity=perturbed_cavity,
                                                                  perturbation_pointer=correction_pointer,
