@@ -75,8 +75,7 @@ PHYSICAL_SIZES_DICT = {
         kappa_conductivity=46.06,  # https://www.google.com/search?q=sapphire+thermal+conductivity&rlz=1C1GCEB_enIL1023IL1023&oq=sapphire+thermal+c&aqs=chrome.0.35i39i650j69i57j0i20i263i512j0i22i30l3j0i10i15i22i30j0i22i30l3.3822j0j1&sourceid=chrome&ie=UTF-8, https://www.shinkosha.com/english/techinfo/feature/thermal-properties-of-sapphire/, https://www.shinkosha.com/english/techinfo/feature/thermal-properties-of-sapphire/
         dn_dT=11.7e-6,  # https://secwww.jhuapl.edu/techdigest/Content/techdigest/pdf/V14-N01/14-01-Lange.pdf
         nu_poisson_ratio=0.3,  # https://www.google.com/search?q=sapphire+poisson+ratio&rlz=1C1GCEB_enIL1023IL1023&sxsrf=AB5stBgEUZwh7l9RzN9GwxjMPCw_DcShAw%3A1688647440018&ei=ELemZI1h0-2SBaukk-AH&ved=0ahUKEwiNqcD2jfr_AhXTtqQKHSvSBHwQ4dUDCA8&uact=5&oq=sapphire+poisson+ratio&gs_lcp=Cgxnd3Mtd2l6LXNlcnAQAzIECAAQHjIICAAQigUQhgMyCAgAEIoFEIYDMggIABCKBRCGAzIICAAQigUQhgMyCAgAEIoFEIYDOgoIABBHENYEELADSgQIQRgAUJsFWJsFYNQJaAFwAXgAgAF5iAF5kgEDMC4xmAEAoAEBwAEByAEI&sclient=gws-wiz-serp
-        alpha_volume_absorption=100e-6
-        * 100,  # The data is in ppm/cm and I convert it to ppm/m, hence the "*100".  # https://labcit.ligo.caltech.edu/~ligo2/pdf/Gustafson2c.pdf  # https://www.nature.com/articles/s41598-020-80313-1  # https://www.crystran.co.uk/optical-materials/sapphire-al2o3,
+        alpha_volume_absorption=100e-6 * 100,  # The data is in ppm/cm and I convert it to ppm/m, hence the "*100".  # https://labcit.ligo.caltech.edu/~ligo2/pdf/Gustafson2c.pdf  # https://www.nature.com/articles/s41598-020-80313-1  # https://www.crystran.co.uk/optical-materials/sapphire-al2o3,
         intensity_reflectivity=100e-6,  # DUMMY - for lenses
         intensity_transmittance=1 - 100e-6 - 1e-6,
     ),  # DUMMY - for lenses

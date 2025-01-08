@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE gaussianBeam>
+<gaussianBeam version="1.1">
+    <bench id="0">
+        <wavelength>1.064e-06</wavelength>
+        <leftBoundary>-0.1</leftBoundary>
+        <rightBoundary>1.8</rightBoundary>
+        <targetBeam id="0">
+            <position>0.6</position>
+            <waist>0.00015</waist>
+            <positionTolerance>0.1</positionTolerance>
+            <waistTolerance>0.05</waistTolerance>
+            <minOverlap>0.98</minOverlap>
+            <overlapCriterion>0</overlapCriterion>
+        </targetBeam>
+        <beamFit id="0">
+            <name>Fit0</name>
+            <dataType>1</dataType>
+            <color>0</color>
+            <data id="0">
+                <position>0</position>
+                <value>0</value>
+            </data>
+            <data id="1">
+                <position>0</position>
+                <value>0</value>
+            </data>
+            <data id="2">
+                <position>0</position>
+                <value>0</value>
+            </data>
+        </beamFit>
+        <opticsList>
+            <inputBeam id="2">
+                <waist>2.1534e-06</waist>
+                <index>1</index>
+                <M2>1</M2>
+                <position>0</position>
+                <name>w0</name>
+                <absoluteLock>1</absoluteLock>
+            </inputBeam>
+            <curvedInterface id="6">
+                <indexRatio>1.76</indexRatio>
+                <surfaceRadius>0.02422</surfaceRadius>
+                <position>0.005</position>
+                <name>C1</name>
+                <absoluteLock>0</absoluteLock>
+            </curvedInterface>
+            <curvedInterface id="7">
+                <indexRatio>0.57</indexRatio>
+                <surfaceRadius>-0.00548</surfaceRadius>
+                <position>0.00791</position>
+                <name>C2</name>
+                <absoluteLock>0</absoluteLock>
+            </curvedInterface>
+        </opticsList>
+    </bench>
+    <view id="0" bench="0">
+        <horizontalRange>0.3</horizontalRange>
+        <verticalRange>0.003</verticalRange>
+        <origin>-0.1</origin>
+        <showTargetBeam id="0">0</showTargetBeam>
+    </view>
+</gaussianBeam>
