@@ -4186,8 +4186,10 @@ def mirror_lens_mirror_cavity_generator(
     mirror_right = match_a_mirror_to_mode(mode_right, z_minus_z_0_right_mirror, mirrors_material_properties)
     mirror_left_params = mirror_left.to_params
     mirror_left_params.name = "Small Mirror"
+    mirror_left.material_properties = mirrors_material_properties
     mirror_right_params = mirror_right.to_params
     mirror_right_params.name = "Big Mirror"
+    mirror_right.material_properties = mirrors_material_properties
 
     params_lens = surface_right.to_params
     params_lens.x = (surface_left.center[0] + surface_right.center[0]) / 2
@@ -4198,6 +4200,7 @@ def mirror_lens_mirror_cavity_generator(
     params_lens.n_outside_or_before = 1
     params_lens.surface_type = SurfacesTypes.thick_lens
     params_lens.name = "Lens"
+    params_lens.material_properties = lens_material_properties
 
     params = [mirror_left_params, params_lens, mirror_right_params]
 
