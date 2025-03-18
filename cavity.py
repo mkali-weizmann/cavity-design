@@ -1766,7 +1766,7 @@ class Arm:
 
     def propagate_local_mode_parameters(self):
         if self.mode_parameters_on_surface_0 is None:
-            raise ValueError("Mode parameters on surface 1 not set")
+            raise ValueError("Mode parameters on surface 0 not set")
         self.mode_parameters_on_surface_1 = propagate_local_mode_parameter_through_ABCD(
             self.mode_parameters_on_surface_0, self.ABCD_matrix_free_space, n_1=self.n, n_2=self.n
         )
@@ -1876,6 +1876,19 @@ class Arm:
             list_of_data_frames.append(df)
         joined_df = pd.concat(list_of_data_frames)
         return joined_df
+
+    @property
+    def acquired_gouy_phase(self):
+        # The acquired gouy phase for the (0,0)'th mode. for any greater mode, (n,m) it will be:
+        # (n+m+1) * acquired_gouy_phase_value
+        if self.mode_parameters_on_surface_0 is None:
+            return None
+        if self.mode_parameters_on_surface_1 is None:
+            self.propagate_local_mode_parameters()
+        goy_phase_0 = np.tan(self.mode_parameters_on_surface_0.z_minus_z_0 / self.mode_parameters_on_surface_0.z_minus_z_0)
+        goy_phase_1 = np.tan(self.mode_parameters_on_surface_1.z_minus_z_0 / self.mode_parameters_on_surface_1.z_minus_z_0)
+        acquired_gouy_phase_value = goy_phase_1 - goy_phase_0
+        return acquired_gouy_phase_value
 
 
 class Cavity:
@@ -3070,6 +3083,13 @@ class Cavity:
 
         return whole_df
 
+    @property
+    def total_acquired_gouy_phase(self):
+        if self.arms[0].mode_parameters is None:
+            return None
+        gui_phases = [arm.acquired_gouy_phase for arm in self.arms]
+        return sum(gui_phases)
+
 
 def generate_tolerance_of_NA(
     params_array: np.ndarray,
@@ -3124,6 +3144,8 @@ def generate_tolerance_of_NA(
         return NAs, tolerance_matrix, cavities
     else:
         return NAs, tolerance_matrix
+
+
 
 
 def plot_tolerance_of_NA(
