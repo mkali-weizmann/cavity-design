@@ -945,14 +945,16 @@ class FlatSurface(Surface):
         )  # h in notes
 
         vector_in_plane_in_k_n_plane = ray.k_vector - cos_theta * forwards_normal  # u in notes
+
         if np.linalg.norm(vector_in_plane_in_k_n_plane) < 1e-20:
-            return ray_origin_projected_onto_plane
+            intersection_point = ray_origin_projected_onto_plane
         else:
             vector_in_plane_in_k_n_plane = normalize_vector(vector_in_plane_in_k_n_plane)
             intersection_point = (
                 ray_origin_projected_onto_plane
                 + theta * distance_between_rays_origin_and_plane * vector_in_plane_in_k_n_plane
             )
+        ray.length = np.linalg.norm(intersection_point - ray.origin, axis=-1)
         return intersection_point
 
     @property
@@ -1151,10 +1153,6 @@ class IdealLens(FlatSurface, PhysicalSurface):
     @property
     def center(self):
         return super().center
-
-    @property
-    def to_params(self) -> OpticalElementParams:
-        raise NotImplementedError
 
     def reflect_direction_exact(self, ray: Ray) -> np.ndarray:
         intersection_point = self.find_intersection_with_ray(ray)
@@ -1715,21 +1713,21 @@ class Arm:
         mode_principle_axes: Optional[np.ndarray] = None,
         lambda_0_laser: Optional[float] = None,
     ):
-        self.surface_0 = surface_0
-        self.surface_1 = surface_1
-        self.mode_parameters_on_surface_0 = mode_parameters_on_surface_0
-        self.mode_parameters_on_surface_1 = mode_parameters_on_surface_1
-        self.central_line = central_line
-        self.mode_principle_axes = mode_principle_axes
-        self.lambda_0_laser = lambda_0_laser
+        self.surface_0: Surface = surface_0
+        self.surface_1: Surface = surface_1
+        self.mode_parameters_on_surface_0: LocalModeParameters = mode_parameters_on_surface_0
+        self.mode_parameters_on_surface_1: LocalModeParameters = mode_parameters_on_surface_1
+        self.central_line: Ray = central_line
+        self.mode_principle_axes: Optional[np.ndarray] = mode_principle_axes
+        self.lambda_0_laser: float = lambda_0_laser
         if isinstance(surface_0, CurvedRefractiveSurface):
-            self.n = surface_0.n_2
+            self.n: float = surface_0.n_2
         elif isinstance(surface_1, CurvedRefractiveSurface):
-            self.n = surface_1.n_1
+            self.n: float = surface_1.n_1
         else:
-            self.n = 1
+            self.n: float = 1.0
         if isinstance(surface_0, CurvedRefractiveSurface) and isinstance(surface_1, CurvedRefractiveSurface):
-            assert surface_0.n_2 == surface_1.n_1
+            assert surface_0.n_2 == surface_1.n_1, 'The refractive index according to firs element is not the same as the refractive index according to the second element'
 
     def propagate(self, ray: Ray, use_paraxial_ray_tracing: bool = False):
 
@@ -1878,17 +1876,28 @@ class Arm:
         return joined_df
 
     @property
-    def acquired_gouy_phase(self):
+    def acquired_gouy_phase_per_axis(self):
         # The acquired gouy phase for the (0,0)'th mode. for any greater mode, (n,m) it will be:
         # (n+m+1) * acquired_gouy_phase_value
         if self.mode_parameters_on_surface_0 is None:
             return None
         if self.mode_parameters_on_surface_1 is None:
             self.propagate_local_mode_parameters()
-        goy_phase_0 = np.tan(self.mode_parameters_on_surface_0.z_minus_z_0 / self.mode_parameters_on_surface_0.z_minus_z_0)
-        goy_phase_1 = np.tan(self.mode_parameters_on_surface_1.z_minus_z_0 / self.mode_parameters_on_surface_1.z_minus_z_0)
-        acquired_gouy_phase_value = goy_phase_1 - goy_phase_0
+        # The 1/2 factor is because it is done to the two components of the mode independently
+        goy_phase_0 = 1/2 * np.arctan(self.mode_parameters_on_surface_0.z_minus_z_0 / self.mode_parameters_on_surface_0.z_R)
+        goy_phase_1 = 1/2 * np.arctan(self.mode_parameters_on_surface_1.z_minus_z_0 / self.mode_parameters_on_surface_1.z_R)
+        acquired_gouy_phase_value = -(goy_phase_1 - goy_phase_0) # The minus is in the definition of the Gouy phase
         return acquired_gouy_phase_value
+
+    @property
+    def acquired_gouy_phase(self):
+        acquired_gouy_phase_per_axis_values = self.acquired_gouy_phase_per_axis
+        acquired_gouy_phase_value = np.sum(acquired_gouy_phase_per_axis_values)
+        return acquired_gouy_phase_value
+
+    @property
+    def name(self):
+        return nvl(self.surface_0.name, 'unnamed_surface') + ' -> ' + nvl(self.surface_1.name, 'unnamed_surface') + ' - '
 
 
 class Cavity:
@@ -1999,7 +2008,7 @@ class Cavity:
             return self.physical_surfaces
 
     @property
-    def central_line(self):
+    def central_line(self) -> Optional[List[Ray]]:
         if self.arms[0].central_line is None:
             return None
         else:
@@ -2081,7 +2090,7 @@ class Cavity:
             first_surface = arm.surface_0
             if isinstance(first_surface, (CurvedMirror, FlatMirror)):
                 surface_unlost_portion = first_surface.material_properties.intensity_reflectivity
-            elif isinstance(first_surface, CurvedRefractiveSurface):
+            elif isinstance(first_surface, (CurvedRefractiveSurface, IdealLens)):
                 surface_unlost_portion = first_surface.material_properties.intensity_transmittance
             else:
                 raise ValueError(f"Surface type {type(first_surface)} not implemented in this function")
@@ -3085,10 +3094,21 @@ class Cavity:
 
     @property
     def total_acquired_gouy_phase(self):
-        if self.arms[0].mode_parameters is None:
+        if self.arms[0].mode_parameters is None or self.arms[0].mode_parameters_on_surface_0.z_R[0] == 0:
             return None
-        gui_phases = [arm.acquired_gouy_phase for arm in self.arms]
-        return sum(gui_phases)
+        gouy_phases = [arm.acquired_gouy_phase for arm in self.arms]
+        return sum(gouy_phases)
+
+    @property
+    def delta_f_frequency_transversal_modes(self):
+        if self.arms[0].mode_parameters is None or self.arms[0].mode_parameters_on_surface_0.z_R[0] == 0 or np.isnan(self.arms[0].mode_parameters_on_surface_0.z_R[0]):
+            return None
+        if np.abs(self.arms[0].mode_parameters_on_surface_0.z_R[0] - self.arms[0].mode_parameters_on_surface_0.z_R[1]) < 1e-14:
+            # If there is no astigmatism
+            delta_f = -self.total_acquired_gouy_phase / (2*np.pi) * self.free_spectral_range  # Derivation is at https://mynotebook.labarchives.com/share/Free%2520Electron%2520Lab/MTU2LjB8MTA1ODU5NS8xMjAtMzMzL1RyZWVOb2RlLzI4NTE0OTAzODZ8Mzk2LjA=
+            return delta_f
+        else:
+            raise NotImplementedError("The calculation of the frequency difference between the transversal modes is not implemented for astigmatic cavities.")
 
 
 def generate_tolerance_of_NA(
@@ -3777,10 +3797,10 @@ def find_minimal_width_for_spot_size_and_radius(radius, spot_size_radius, T_edge
 
 
 def calculate_incidence_angle(surface: Surface, mode_parameters: ModeParameters) -> float:
-    # Calculates the incidence angle betweer the beam at the E=E_0e^-1 lateral_position (one spot size away from it's optical axis)
+    # Calculates the incidence angle between the beam at the E=E_0e^-1 lateral_position (one spot size away from it's optical axis)
     # and the surface of an optical element
     if isinstance(surface, FlatSurface):
-        raise NotImplementedError("The function is not implemented for flat surfaces")
+        return np.arccos(surface.outwards_normal @ mode_parameters.k_vector)
 
     surface_center_to_waist_position_vector = mode_parameters.center[0, :] - surface.center
     from_the_convex_side = np.sign(surface.outwards_normal @ surface_center_to_waist_position_vector)
