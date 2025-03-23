@@ -17,10 +17,10 @@ def theoretical_df_FSR(L, R_1, R_2):
 N = 3000
 x_1 = -24e-3 + 1e-5
 x_2 = x_1 + 86e-2
-params_actual_lens = [OpticalElementParams(name='Small Mirror', surface_type='curved_mirror'            , x=x_1         , y=0                    , z=0                    , theta=0                    , phi=-1e+00 * np.pi       , r_1=24e-03           , r_2=np.nan               , curvature_sign=CurvatureSigns.concave, T_c=np.nan               , n_inside_or_after=1e+00                , n_outside_or_before=1e+00                , material_properties=MaterialProperties(refractive_index=None                 , alpha_expansion=7.5e-08              , beta_surface_absorption=1e-06                , kappa_conductivity=1.31e+00             , dn_dT=None                 , nu_poisson_ratio=1.7e-01              , alpha_volume_absorption=None                 , intensity_reflectivity=9.99889e-01          , intensity_transmittance=1e-04                , temperature=np.nan               )),
-                     OpticalElementParams(name='Lens',         surface_type='thick_lens'               , x=29e-3       , y=0                    , z=0                    , theta=0                    , phi=0                    , r_1=10000            , r_2=13.1e-3              , curvature_sign=CurvatureSigns.concave, T_c=11.7e-03             , n_inside_or_after=1.51e+00             , n_outside_or_before=1e+00                , material_properties=PHYSICAL_SIZES_DICT['thermal_properties_bk7']),
+params_actual_lens = [OpticalElementParams(name='Small Mirror', surface_type='curved_mirror'           , x=x_1        , y=0                    , z=0                    , theta=0                    , phi=-1e+00 * np.pi       , r_1=24e-03           , r_2=np.nan               , curvature_sign=CurvatureSigns.concave, T_c=np.nan               , n_inside_or_after=1e+00                , n_outside_or_before=1e+00                , material_properties=MaterialProperties(refractive_index=None                 , alpha_expansion=7.5e-08              , beta_surface_absorption=1e-06                , kappa_conductivity=1.31e+00             , dn_dT=None                 , nu_poisson_ratio=1.7e-01              , alpha_volume_absorption=None                 , intensity_reflectivity=9.99889e-01          , intensity_transmittance=1e-04                , temperature=np.nan               )),
+                     OpticalElementParams(name='Lens',         surface_type='thick_lens'               , x=26e-3       , y=0                    , z=0                    , theta=0                    , phi=0                    , r_1=10000            , r_2=13.1e-3              , curvature_sign=CurvatureSigns.concave, T_c=11.7e-03             , n_inside_or_after=1.51e+00             , n_outside_or_before=1e+00                , material_properties=PHYSICAL_SIZES_DICT['thermal_properties_bk7']),
                      OpticalElementParams(name='Big Mirror',   surface_type='curved_mirror'            , x=x_2         , y=0                    , z=0                    , theta=0                    , phi=0                    , r_1=0.5              , r_2=np.nan               , curvature_sign=CurvatureSigns.concave, T_c=np.nan               , n_inside_or_after=1e+00                , n_outside_or_before=1e+00                , material_properties=MaterialProperties(refractive_index=None                 , alpha_expansion=7.5e-08              , beta_surface_absorption=1e-06                , kappa_conductivity=1.31e+00             , dn_dT=None                 , nu_poisson_ratio=1.7e-01              , alpha_volume_absorption=None                 , intensity_reflectivity=9.99889e-01          , intensity_transmittance=1e-04                , temperature=np.nan               ))]
-delta_xs_lens_actual = np.linspace(-0.00436, -0.00282, N)
+delta_xs_lens_actual = np.linspace(-0.00136, 0.00182, N)
 title_actual_len = 'Actual cavity'
 parameters_actual_lens = (params_actual_lens, delta_xs_lens_actual, title_actual_len)
 
@@ -40,25 +40,25 @@ parameters_fabry_perot = (params_fabry_perot, delta_xs_lens_fabry_perot, title_f
 
 params, delta_xs_lens, title = parameters_actual_lens
 
-# cavity = Cavity.from_params(params=params,
-#                             standing_wave=True,
-#                             lambda_0_laser=LAMBDA_0_LASER,
-#                             set_central_line=True,
-#                             set_mode_parameters=True,
-#                             set_initial_surface=False,
-#                             t_is_trivial=True,
-#                             p_is_trivial=True,
-#                             power=2e4,
-#                             use_paraxial_ray_tracing=True,
-#                             debug_printing_level=1,
-#                             )
+cavity = Cavity.from_params(params=params,
+                            standing_wave=True,
+                            lambda_0_laser=LAMBDA_0_LASER,
+                            set_central_line=True,
+                            set_mode_parameters=True,
+                            set_initial_surface=False,
+                            t_is_trivial=True,
+                            p_is_trivial=True,
+                            power=2e4,
+                            use_paraxial_ray_tracing=True,
+                            debug_printing_level=1,
+                            )
 
 
 # cavity.plot()
-# plot_mirror_lens_mirror_cavity_analysis(cavity)
-# plt.ylim(-0.005, 0.005)
-# # plt.xlim(1e-2, 5e-2)
-# plt.show()
+plot_mirror_lens_mirror_cavity_analysis(cavity, CA=12.5e-3)
+plt.ylim(-0.003, 0.003)
+# plt.xlim(1e-2, 5e-2)
+plt.show()
 
 
 # %%
@@ -100,9 +100,9 @@ for i, delta_x_lens in enumerate(delta_xs_lens):
 
 fig, ax = plt.subplots(1, 2, figsize=(12, 5))
 ax[0].plot(Ls, NAs, label='NA')
-ax[0].plot(Ls, df_over_FSR, label=r'$\frac{df}{\text{FSR}}$ - simulation')
+ax[0].plot(Ls, df_over_FSR, )  # label=r'$\frac{df}{\text{FSR}}$ - simulation'
 if len(params) == 2:
-    ax[0].plot(Ls, df_over_FSR_theory, label=r'$\frac{df}{\text{FSR}}$ - theory', linestyle='--')
+    ax[0].plot(Ls, df_over_FSR_theory, linestyle='--')  # , label=r'$\frac{df}{\text{FSR}}$ - theory'
 # ax2 = ax[0].twinx()
 # ax2.plot(Ls, delta_xs_lens, label=r'$\Delta{x,\text{lens}}$', color='red')
 
@@ -111,7 +111,7 @@ ax[0].set_xlabel("Small arm's length [m]")
 ax[0].legend()
 
 ax[1].plot(df_over_FSR, NAs)
-ax[1].set_xlabel(r'$\frac{df}{\text{FSR}}$')
+# ax[1].set_xlabel(r'$\frac{df}{\text{FSR}}$')
 ax[1].set_ylabel('NA')
 # ax[1].set_xlim(0, 0.12)
 ax[1].set_ylim(0, 0.22)
@@ -126,9 +126,9 @@ plt.show()
 # Predict NA for a given DF/FSR using interpolation:
 from scipy.interpolate import interp1d
 df_over_FSR_interp = interp1d(df_over_FSR, NAs, fill_value='extrapolate')
-DF_over_FSR_example = -0.2
+DF_over_FSR_example = -0.05283001696353667
 NA_example = df_over_FSR_interp(DF_over_FSR_example)
-
+print(NA_example)
 #
 #
 # # %%
