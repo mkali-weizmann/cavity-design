@@ -15,11 +15,12 @@ def theoretical_df_FSR(L, R_1, R_2):
     return df_over_FSR
 
 N = 3000
-x_1 = -24e-3 + 1e-5
-x_2 = x_1 + 86e-2
-params_actual_lens = [OpticalElementParams(name='Small Mirror', surface_type='curved_mirror'           , x=x_1        , y=0                    , z=0                    , theta=0                    , phi=-1e+00 * np.pi       , r_1=24e-03           , r_2=np.nan               , curvature_sign=CurvatureSigns.concave, T_c=np.nan               , n_inside_or_after=1e+00                , n_outside_or_before=1e+00                , material_properties=MaterialProperties(refractive_index=None                 , alpha_expansion=7.5e-08              , beta_surface_absorption=1e-06                , kappa_conductivity=1.31e+00             , dn_dT=None                 , nu_poisson_ratio=1.7e-01              , alpha_volume_absorption=None                 , intensity_reflectivity=9.99889e-01          , intensity_transmittance=1e-04                , temperature=np.nan               )),
-                     OpticalElementParams(name='Lens',         surface_type='thick_lens'               , x=26e-3       , y=0                    , z=0                    , theta=0                    , phi=0                    , r_1=10000            , r_2=13.1e-3              , curvature_sign=CurvatureSigns.concave, T_c=11.7e-03             , n_inside_or_after=1.51e+00             , n_outside_or_before=1e+00                , material_properties=PHYSICAL_SIZES_DICT['thermal_properties_bk7']),
-                     OpticalElementParams(name='Big Mirror',   surface_type='curved_mirror'            , x=x_2         , y=0                    , z=0                    , theta=0                    , phi=0                    , r_1=0.5              , r_2=np.nan               , curvature_sign=CurvatureSigns.concave, T_c=np.nan               , n_inside_or_after=1e+00                , n_outside_or_before=1e+00                , material_properties=MaterialProperties(refractive_index=None                 , alpha_expansion=7.5e-08              , beta_surface_absorption=1e-06                , kappa_conductivity=1.31e+00             , dn_dT=None                 , nu_poisson_ratio=1.7e-01              , alpha_volume_absorption=None                 , intensity_reflectivity=9.99889e-01          , intensity_transmittance=1e-04                , temperature=np.nan               ))]
+x_1 = 24e-3 - 1e-5
+x_2 = x_1 - 86e-2
+x_lens = -26e-3
+params_actual_lens = [OpticalElementParams(name='Small Mirror', surface_type='curved_mirror'           , x=x_1        , y=0                    , z=0                    , theta=0                    , phi=0               , r_1=24e-03           , r_2=np.nan               , curvature_sign=CurvatureSigns.concave, T_c=np.nan               , n_inside_or_after=1e+00                , n_outside_or_before=1e+00                , material_properties=MaterialProperties(refractive_index=None                 , alpha_expansion=7.5e-08              , beta_surface_absorption=1e-06                , kappa_conductivity=1.31e+00             , dn_dT=None                 , nu_poisson_ratio=1.7e-01              , alpha_volume_absorption=None                 , intensity_reflectivity=9.99889e-01          , intensity_transmittance=1e-04                , temperature=np.nan               )),
+                     OpticalElementParams(name='Lens',         surface_type='thick_lens'               , x=x_lens     , y=0                    , z=0                    , theta=0                    , phi=-1e+00 * np.pi  , r_1=10000            , r_2=13.1e-3              , curvature_sign=CurvatureSigns.concave, T_c=11.7e-03             , n_inside_or_after=1.51e+00             , n_outside_or_before=1e+00                , material_properties=PHYSICAL_SIZES_DICT['thermal_properties_bk7']),
+                     OpticalElementParams(name='Big Mirror',   surface_type='curved_mirror'            , x=x_2        , y=0                    , z=0                    , theta=0                    , phi=-1e+00 * np.pi  , r_1=0.5              , r_2=np.nan               , curvature_sign=CurvatureSigns.concave, T_c=np.nan               , n_inside_or_after=1e+00                , n_outside_or_before=1e+00                , material_properties=MaterialProperties(refractive_index=None                 , alpha_expansion=7.5e-08              , beta_surface_absorption=1e-06                , kappa_conductivity=1.31e+00             , dn_dT=None                 , nu_poisson_ratio=1.7e-01              , alpha_volume_absorption=None                 , intensity_reflectivity=9.99889e-01          , intensity_transmittance=1e-04                , temperature=np.nan               ))]
 delta_xs_lens_actual = np.linspace(-0.00136, 0.00182, N)
 title_actual_len = 'Actual cavity'
 parameters_actual_lens = (params_actual_lens, delta_xs_lens_actual, title_actual_len)
@@ -57,7 +58,8 @@ cavity = Cavity.from_params(params=params,
 # cavity.plot()
 plot_mirror_lens_mirror_cavity_analysis(cavity, CA=12.5e-3)
 plt.ylim(-0.003, 0.003)
-# plt.xlim(1e-2, 5e-2)
+plt.xlim(-0.9, 0.05)
+# plt.gca().invert_xaxis()
 plt.show()
 
 
