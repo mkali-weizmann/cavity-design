@@ -4340,7 +4340,7 @@ def generate_mirror_lens_mirror_cavity_textual_summary(cavity: Cavity,
         if CA_divided_by_2spot_size < 2.5:
             geometric_feasibility = False
         lens_specs_string = (
-            f"R_left = {R_left:.3e},  R_right = {R_right:.3e},  D = {2 * h:.3e},  T_edge = {T_edge:.2e},  T_c = {T_c:.3e},  CA={CA:.2e}\n"
+            f"R_small = {R_left:.3e},  R_big = {R_right:.3e},  D = {2 * h:.3e},  T_edge = {T_edge:.2e},  T_c = {T_c:.3e},  CA={CA:.2e}\n"
             f"spot_size (2w) = {2 * spot_size_lens_right:.3e},   CA / 2w_spot_size = {CA_divided_by_2spot_size:.3e}, lens is wide enough = {geometric_feasibility},   {angle_left=:.2f},   {angle_right=:.2f}"
         )
     else:
@@ -4352,7 +4352,7 @@ def generate_mirror_lens_mirror_cavity_textual_summary(cavity: Cavity,
     textual_summary = (f"Short Arm: NA = {short_arm_NA:.3e},  length = {short_arm_length:.3e} [m], waist to lens = {waist_to_lens_short_arm:.3e}\n"
                        f"Long Arm NA = {long_arm_NA:.3e},  length = {long_arm_length:.3e} [m], waist to lens = {waist_to_lens_long_arm:.3e}\n"
                        f"{lens_specs_string}\n"
-                       f"R_left_mirror = {R_left_mirror:.3e}, spot diameters left mirror = {2 * spot_size_left_mirror:.2e}, R_right = {cavity.surfaces[3].radius:.3e}, spot diameters right mirror = {2 * spot_size_right_mirror:.2e}")
+                       f"R small mirror = {R_left_mirror:.3e}, spot diameter small mirror = {2 * spot_size_left_mirror:.2e}, R big mirror = {cavity.surfaces[3].radius:.3e}, spot diameter big mirror = {2 * spot_size_right_mirror:.2e}")
     return textual_summary
 
 
