@@ -1,3 +1,5 @@
+import copy
+
 import numpy as np
 from typing import List, Tuple, Optional, Union, Callable, Any
 import pickle as pkl
@@ -96,6 +98,266 @@ class CurvatureSigns:
         else:
             raise ValueError("Curvature sign must be either 1 or -1")
 
+@dataclass
+class MaterialProperties:
+    refractive_index: Optional[float] = None
+    alpha_expansion: Optional[float] = None
+    beta_surface_absorption: Optional[float] = None
+    kappa_conductivity: Optional[float] = None
+    dn_dT: Optional[float] = None
+    nu_poisson_ratio: Optional[float] = None
+    alpha_volume_absorption: Optional[float] = None
+    intensity_reflectivity: Optional[float] = None
+    intensity_transmittance: Optional[float] = None
+    temperature: Optional[float] = np.nan
+
+    def __repr__(self):
+        return (
+            f"MaterialProperties("
+            f"refractive_index={pretty_print_number(self.refractive_index)}, "
+            f"alpha_expansion={pretty_print_number(self.alpha_expansion)}, "
+            f"beta_surface_absorption={pretty_print_number(self.beta_surface_absorption)}, "
+            f"kappa_conductivity={pretty_print_number(self.kappa_conductivity)}, "
+            f"dn_dT={pretty_print_number(self.dn_dT)}, "
+            f"nu_poisson_ratio={pretty_print_number(self.nu_poisson_ratio)}, "
+            f"alpha_volume_absorption={pretty_print_number(self.alpha_volume_absorption)}, "
+            f"intensity_reflectivity={pretty_print_number(self.intensity_reflectivity)}, "
+            f"intensity_transmittance={pretty_print_number(self.intensity_transmittance)}, "
+            f"temperature={pretty_print_number(self.temperature)})"
+        )
+
+    @property
+    def to_array(self) -> np.ndarray:
+        return np.array(
+            [
+                nvl(self.refractive_index),
+                nvl(self.alpha_expansion, np.nan),
+                nvl(self.beta_surface_absorption, np.nan),
+                nvl(self.kappa_conductivity, np.nan),
+                nvl(self.dn_dT, np.nan),
+                nvl(self.nu_poisson_ratio, np.nan),
+                nvl(self.alpha_volume_absorption),
+                nvl(self.intensity_reflectivity),
+                nvl(self.intensity_transmittance),
+                nvl(self.temperature, np.nan),
+            ]
+        )  # Note: When changing the order or adding this list - the order or added items should be also updated in the from_array method of OpticalElementParams
+
+
+PHYSICAL_SIZES_DICT = {
+    "thermal_properties_sapphire": MaterialProperties(
+        refractive_index=1.76,
+        alpha_expansion=5.5e-6,  # https://www.shinkosha.com/english/techinfo/feature/thermal-properties-of-sapphire/#:~:text=Sapphire%20has%20a%20large%20linear,very%20resistant%20to%20thermal%20shock., https://www.roditi.com/SingleCrystal/Sapphire/Properties.html
+        beta_surface_absorption=1e-6,  # DUMMY
+        kappa_conductivity=46.06,  # https://www.google.com/search?q=sapphire+thermal+conductivity&rlz=1C1GCEB_enIL1023IL1023&oq=sapphire+thermal+c&aqs=chrome.0.35i39i650j69i57j0i20i263i512j0i22i30l3j0i10i15i22i30j0i22i30l3.3822j0j1&sourceid=chrome&ie=UTF-8, https://www.shinkosha.com/english/techinfo/feature/thermal-properties-of-sapphire/, https://www.shinkosha.com/english/techinfo/feature/thermal-properties-of-sapphire/
+        dn_dT=11.7e-6,  # https://secwww.jhuapl.edu/techdigest/Content/techdigest/pdf/V14-N01/14-01-Lange.pdf
+        nu_poisson_ratio=0.3,  # https://www.google.com/search?q=sapphire+poisson+ratio&rlz=1C1GCEB_enIL1023IL1023&sxsrf=AB5stBgEUZwh7l9RzN9GwxjMPCw_DcShAw%3A1688647440018&ei=ELemZI1h0-2SBaukk-AH&ved=0ahUKEwiNqcD2jfr_AhXTtqQKHSvSBHwQ4dUDCA8&uact=5&oq=sapphire+poisson+ratio&gs_lcp=Cgxnd3Mtd2l6LXNlcnAQAzIECAAQHjIICAAQigUQhgMyCAgAEIoFEIYDMggIABCKBRCGAzIICAAQigUQhgMyCAgAEIoFEIYDOgoIABBHENYEELADSgQIQRgAUJsFWJsFYNQJaAFwAXgAgAF5iAF5kgEDMC4xmAEAoAEBwAEByAEI&sclient=gws-wiz-serp
+        alpha_volume_absorption=100e-6 * 100,  # The data is in ppm/cm and I convert it to ppm/m, hence the "*100".  # https://labcit.ligo.caltech.edu/~ligo2/pdf/Gustafson2c.pdf  # https://www.nature.com/articles/s41598-020-80313-1  # https://www.crystran.co.uk/optical-materials/sapphire-al2o3,
+        intensity_reflectivity=100e-6,  # DUMMY - for lenses
+        intensity_transmittance=1 - 100e-6 - 1e-6,
+    ),  # DUMMY - for lenses
+    "thermal_properties_ULE": MaterialProperties(
+        alpha_expansion=7.5e-8,  # https://en.wikipedia.org/wiki/Ultra_low_expansion_glass#:~:text=It%20has%20a%20thermal%20conductivity,C%20%5B1832%20%C2%B0F%5D, https://www.corning.com/media/worldwide/csm/documents/7972%20ULE%20Product%20Information%20Jan%202016.pdf
+        kappa_conductivity=1.31,
+        nu_poisson_ratio=0.17,
+        beta_surface_absorption=1e-6,  # DUMMY
+        intensity_reflectivity=1 - 100e-6 - 1e-6 - 10e-6,  # All - transmittance - absorption - scattering
+        intensity_transmittance=100e-6,  # DUMMY - for mirrors
+    ),
+    "thermal_properties_fused_silica": MaterialProperties(  # https://www.corning.com/media/worldwide/csm/documents/HPFS_Product_Brochure_All_Grades_2015_07_21.pdf
+        refractive_index=1.45,  # The next link is ignored due to the link above: https://refractiveindex.info/?shelf=glass&book=fused_silica&page=Malitson,
+        alpha_expansion=0.52e-6,  # The next link is ignored due to the link above: https://www.rp-photonics.com/fused_silica.html#:~:text=However%2C%20fused%20silica%20may%20exhibit,10%E2%88%926%20K%E2%88%921., https://www.swiftglass.com/blog/material-month-fused-silica/
+        beta_surface_absorption=1e-6,  # DUMMY
+        kappa_conductivity=1.38,  # This link and the link above agree: https://www.swiftglass.com/blog/material-month-fused-silica/, https://www.heraeus-conamic.com/knowlegde-base/properties
+        dn_dT=12e-6,  # https://iopscience.iop.org/article/10.1088/0022-3727/16/5/002/pdf
+        nu_poisson_ratio=0.16,
+        alpha_volume_absorption=1e-3,  # https://www.crystran.co.uk/optical-materials/silica-glass-sio2
+        intensity_reflectivity=100e-6,  # DUMMY - for lenses
+        intensity_transmittance=1 - 100e-6 - 1e-6,  # DUMMY - for lenses
+    ),  # https://www.azom.com/properties.aspx?ArticleID=1387),
+    "thermal_properties_yag": MaterialProperties(
+        refractive_index=1.81,
+        alpha_expansion=8e-6,  # https://www.crystran.co.uk/optical-materials/yttrium-aluminium-garnet-yag
+        beta_surface_absorption=1e-6,  # DUMMY
+        kappa_conductivity=11.2,  # https://www.scientificmaterials.com/downloads/Nd_YAG.pdf, This does not agree: https://pubs.aip.org/aip/jap/article/131/2/020902/2836262/Thermal-conductivity-and-management-in-laser-gain
+        dn_dT=9e-6,  # https://pubmed.ncbi.nlm.nih.gov/18319922/
+        nu_poisson_ratio=0.25,  #  https://www.crystran.co.uk/userfiles/files/yttrium-aluminium-garnet-yag-data-sheet.pdf, https://www.korth.de/en/materials/detail/YAG
+    ),
+    "thermal_properties_bk7": MaterialProperties(
+        alpha_expansion=7.1e-6,  # https://www.pgo-online.com/intl/BK7.html
+        kappa_conductivity=1.114,  # https://www.pgo-online.com/intl/BK7.html
+        refractive_index=1.507,  # https://www.pgo-online.com/intl/BK7.html
+        nu_poisson_ratio=0.206,  # https://www.matweb.com/search/DataSheet.aspx?MatGUID=a8c2d05c7a6244399bbc2e15c0438cb9, https://www.pgo-online.com/intl/BK7.html
+        intensity_reflectivity=1 - 100e-6 - 1e-6 - 10e-6,  # All - transmittance - absorption - scattering
+        intensity_transmittance=100e-6,  # DUMMY - for mirrors
+        beta_surface_absorption=1e-6,  # DUMMY
+    ),
+    "c_mirror_radius_expansion": 1,  # DUMMY temp - should be 4 according to Lidan's simulation
+    # But we take it to be 1 as the other values are currently 1.
+    "c_lens_focal_length_expansion": 1,  # DUMMY
+    "c_lens_volumetric_absorption": 1,  # DUMMY
+}
+
+
+def convert_material_to_mirror_or_lens(
+    material_properties: MaterialProperties,
+    convert_to_type: str,
+    intensity_transmittance: Optional[float] = None,
+    intensity_reflectivity: Optional[float] = None,
+    scattering: Optional[float] = None,
+) -> MaterialProperties:
+    # The defaults are like so with the nvl because there are two defaults - for lenses and for mirrors.
+    if convert_to_type.lower() == "lens":
+        intensity_reflectivity = nvl(intensity_reflectivity, 100e-6)
+        intensity_transmittance = 1 - material_properties.beta_surface_absorption - intensity_reflectivity
+    elif convert_to_type.lower() == "mirror":
+        scattering = nvl(scattering, 10e-6)
+        intensity_transmittance = nvl(intensity_transmittance, 100e-6)
+        intensity_reflectivity = 1 - scattering - material_properties.beta_surface_absorption - intensity_transmittance
+    else:
+        raise ValueError("convert_to_type argument must be either 'lens' or 'mirror'")
+
+    material_properties.intensity_reflectivity = intensity_reflectivity
+    material_properties.intensity_transmittance = intensity_transmittance
+
+    return material_properties
+
+
+@dataclass
+class OpticalElementParams:
+    name: Optional[str]
+    surface_type: str
+    x: float  # Of the center of the surface (the estimated point of intersection with the central line of the beam)
+    y: float
+    z: float
+    theta: float  # the out-of-plane angle normal vector to the surface. when the plane is x,y, this is the theta angle.
+    phi: float  # the in-plane angle normal vector to the surface. when the plane is x,y, this is the phi angle.
+    r_1: float  # radius of curvature. np.inf for flat surfaces.
+    r_2: float  # nan if the optical object has only one face, or if the two faces are fixed to the same radius of curvature.
+    curvature_sign: int  # 1 if the surface is concave, -1 if it is convex  # ATTENTION: ONCE CONCAVE ELEMENTS WILL BE USED, THERE WILL HAVE TO BE TWO CURVATURE SIGNS
+    T_c: float  # center thickness of the element
+    n_inside_or_after: (
+        float  # refractive index inside the optical object (for a ThickLens) or after it (for a refractive surface)
+    )
+    n_outside_or_before: (
+        float  # refractive index outside the optical object (for a ThickLens) or before it (for a refractive surface)
+    )
+    material_properties: MaterialProperties
+
+    # def __post_init__(self):
+    #     assert self.material_properties.refractive_index == self.n_inside_or_after or self.material_properties.refractive_index == self.n_outside_or_before or np.isnan(self.material_properties.refractive_index), "The refractive index of the material properties is neither of the refractive indices of the optical element!"
+
+    def __repr__(self):
+        surface_type_string = f"'{self.surface_type}'"
+        surface_type_string = surface_type_string.ljust(33)
+        name_string = f"'{self.name}'"
+        name_string = name_string.ljust(25)
+        curvature_sign_string = "CurvatureSigns.concave" if self.curvature_sign == 1 else "CurvatureSigns.convex"
+        return (
+            f"OpticalElementParams("
+            f"name={name_string},"
+            f"surface_type={surface_type_string}, "
+            f"x={pretty_print_number(self.x)}, "
+            f"y={pretty_print_number(self.y)}, "
+            f"z={pretty_print_number(self.z)}, "
+            f"theta={pretty_print_number(self.theta, represents_angle=True)}, "
+            f"phi={pretty_print_number(self.phi, represents_angle=True)}, "
+            f"r_1={pretty_print_number(self.r_1)}, "
+            f"r_2={pretty_print_number(self.r_2)}, "
+            f"curvature_sign={curvature_sign_string}, "
+            f"T_c={pretty_print_number(self.T_c)}, "
+            f"n_inside_or_after={pretty_print_number(self.n_inside_or_after)}, "
+            f"n_outside_or_before={pretty_print_number(self.n_outside_or_before)}, "
+            f"material_properties={self.material_properties})"
+        )
+
+    @property
+    def to_array(self) -> np.ndarray:
+        # loses the name information, as it is string.
+        if isinstance(self.surface_type, str):
+            surface_type = SURFACE_TYPES_DICT[self.surface_type]
+        else:
+            surface_type = self.surface_type  # This should not happen
+        array = np.zeros(len(INDICES_DICT.keys())).astype(np.complex128)
+        array[
+            [
+                INDICES_DICT["surface_type"],
+                INDICES_DICT["x"],
+                INDICES_DICT["y"],
+                INDICES_DICT["z"],
+                INDICES_DICT["theta"],
+                INDICES_DICT["phi"],
+                INDICES_DICT["r_1"],
+                INDICES_DICT["r_2"],
+                INDICES_DICT["curvature_sign"],
+                INDICES_DICT["T_c"],
+                INDICES_DICT["n_inside_or_after"],
+                INDICES_DICT["n_outside_or_before"],
+                INDICES_DICT["material_refractive_index"],
+                INDICES_DICT["alpha_expansion"],
+                INDICES_DICT["beta_surface_absorption"],
+                INDICES_DICT["kappa_conductivity"],
+                INDICES_DICT["dn_dT"],
+                INDICES_DICT["nu_poisson_ratio"],
+                INDICES_DICT["alpha_volume_absorption"],
+                INDICES_DICT["intensity_reflectivity"],
+                INDICES_DICT["intensity_transmittance"],
+                INDICES_DICT["temperature"],
+            ]
+        ] = [
+            surface_type,
+            self.x,
+            self.y,
+            self.z,
+            self.theta,
+            self.phi,
+            self.r_1,
+            self.r_2,
+            self.curvature_sign,
+            self.T_c,
+            self.n_inside_or_after,
+            self.n_outside_or_before,
+            *self.material_properties.to_array,
+        ]
+        array[INDICES_DICT["theta"]] = 1j * array[INDICES_DICT["theta"]] / np.pi
+        array[INDICES_DICT["phi"]] = 1j * array[INDICES_DICT["phi"]] / np.pi
+        return array
+
+    @staticmethod
+    def from_array(params: np.ndarray):
+        params = np.real(params) + np.pi * np.imag(params)
+        material_properties = MaterialProperties(
+            refractive_index=nvl(
+                params[INDICES_DICT["material_refractive_index"]],
+                params[INDICES_DICT["n_inside_or_after"]],
+            ),
+            alpha_expansion=params[INDICES_DICT["alpha_expansion"]],
+            beta_surface_absorption=params[INDICES_DICT["beta_surface_absorption"]],
+            kappa_conductivity=params[INDICES_DICT["kappa_conductivity"]],
+            dn_dT=params[INDICES_DICT["dn_dT"]],
+            nu_poisson_ratio=params[INDICES_DICT["nu_poisson_ratio"]],
+            alpha_volume_absorption=params[INDICES_DICT["alpha_volume_absorption"]],
+            intensity_reflectivity=params[INDICES_DICT["intensity_reflectivity"]],
+            intensity_transmittance=params[INDICES_DICT["intensity_transmittance"]],
+            temperature=params[INDICES_DICT["temperature"]],
+        )
+        return OpticalElementParams(
+            name=None,  # This is not saved in the array
+            surface_type=SurfacesTypes.from_integer_representation(params[INDICES_DICT["surface_type"]]),
+            x=params[INDICES_DICT["x"]],
+            y=params[INDICES_DICT["y"]],
+            z=params[INDICES_DICT["z"]],
+            theta=params[INDICES_DICT["theta"]],
+            phi=params[INDICES_DICT["phi"]],
+            r_1=params[INDICES_DICT["r_1"]],
+            r_2=params[INDICES_DICT["r_2"]],
+            curvature_sign=params[INDICES_DICT["curvature_sign"]],
+            T_c=params[INDICES_DICT["T_c"]],
+            n_inside_or_after=params[INDICES_DICT["n_inside_or_after"]],
+            n_outside_or_before=params[INDICES_DICT["n_outside_or_before"]],
+            material_properties=material_properties,
+        )
+
 
 @dataclass
 class PerturbationPointer:
@@ -137,9 +399,16 @@ class PerturbationPointer:
         else:
             return len(self.perturbation_value)
 
+    def apply_to_params(self, params: List[OpticalElementParams]):
+        # Changes the original params
+        current_value = getattr(
+            params[self.element_index], self.parameter_name
+        )
+        new_value = current_value + self.perturbation_value
+        setattr(
+            params[self.element_index], self.parameter_name, new_value
+        )
 
-# with open('data/params_dict.pkl', 'rb') as f:
-#     params_dict = pkl.load(f)
 
 CENTRAL_LINE_TOLERANCE = 1
 STRETCH_FACTOR = 1  # 0.001
@@ -469,8 +738,8 @@ def stable_sqrt(x: Union[np.ndarray, float]) -> Union[np.ndarray, float]:
         else:
             return np.sqrt(x)
 
-def widget_convenient_exponent(x, base=10, scale=10):
-    y = base ** (x - scale) - base ** (-x - scale)
+def widget_convenient_exponent(x, base=10, scale=-10):
+    y = base ** (x + scale) - base ** (-x + scale)
     return y
 
 
