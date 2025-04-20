@@ -2849,6 +2849,55 @@ class Cavity:
         else:
             raise NotImplementedError("The calculation of the frequency difference between the transversal modes is not implemented for astigmatic cavities.")
 
+    def plot_spectrum(self, modes_decay_rate: float = 2, width_over_fsr: float = 0.1,
+                  n_base_mode: int = 10, n_transversal_modes: int = 5,
+                  fig: Optional[plt.Figure] = None, ax: Optional[plt.Axes] = None,
+                  ):
+        fsr = self.free_spectral_range
+        lorentzian_width = fsr * width_over_fsr
+        main_mode_picks_position = np.arange(n_base_mode) * fsr
+        transversal_modes_picks_positions = np.arange(n_transversal_modes) * self.delta_f_frequency_transversal_modes
+        picks_positions = main_mode_picks_position[:, None] + transversal_modes_picks_positions[None, :]
+        picks_amplitudes = np.ones_like(picks_positions)
+        picks_amplitudes = picks_amplitudes * np.exp(- modes_decay_rate * np.arange(1, n_transversal_modes + 1))[None, :]
+
+        x_dummy = np.linspace(transversal_modes_picks_positions[-1], fsr * n_base_mode, 1000)
+
+        # Lorentzian Function
+        def lorentzian(x, x0, gamma, A, y0):
+            return A * gamma / (np.pi * ((x - x0) ** 2 + gamma ** 2)) + y0
+
+        lorentzians = lorentzian(x_dummy[None, None, :], picks_positions[:, :, None], lorentzian_width,
+                                 picks_amplitudes[:, :, None], 0)
+        lorentzians = lorentzians.sum(axis=(0, 1))
+
+        colors = ['blue', 'orange', 'green', 'red', 'purple']
+
+        def plot_lorentzians(ax, x_dummy, lorentzians, picks_positions, colors, n_transversal_modes):
+            ax.plot(x_dummy, lorentzians)
+            y_limit = ax.get_ylim()
+            for i in range(n_transversal_modes):
+                ax.vlines(picks_positions[:, i], ymin=y_limit[0], ymax=y_limit[1], color=colors[i], linestyle='--',
+                          linewidth=0.75, label=f'Mode {i + 1}')
+            ax.hlines((y_limit[1] + y_limit[0]) / 2, picks_positions[-2, 0], picks_positions[-2, 1], color='black',
+                      linestyle='--', linewidth=0.75, label='Same longitudinal modes')
+            ax.set_xlim(x_dummy[0], x_dummy[-1])
+            ax.set_xlabel('Frequency [Hz]')
+            ax.set_ylabel('Amplitude [a.u.]')
+            ax.legend()
+        if fig is None or ax is None:
+            fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8))
+        else:
+            ax1, ax2 = ax
+
+        plot_lorentzians(ax1, x_dummy, lorentzians, picks_positions, colors, n_transversal_modes)
+
+        plot_lorentzians(ax2, x_dummy, lorentzians, picks_positions, colors, n_transversal_modes)
+        ax2.set_xlim(x_dummy[-1], x_dummy[0])
+        ax2.set_title('Lorentzian Function - Reverse Frequency')
+
+        plt.tight_layout()
+
 
 
 
@@ -4171,6 +4220,3 @@ def plot_mirror_lens_mirror_cavity_analysis(
         )
     plt.subplots_adjust(hspace=0.35)
     plt.gcf().tight_layout()
-
-# def decompose_a_thick_lens_single_surfaces(cavity: Cavity) -> Cavity:
-#     new_params = [s.to_params for ]
