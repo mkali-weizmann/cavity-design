@@ -77,7 +77,7 @@ def generate_lens_position_dependencies(params, delta_xs_lens, plot_dependencies
         Ls[i] = np.linalg.norm(params_copy[1].x - params_copy[0].x)
         try:
             df_over_FSR_temp = cavity.delta_f_frequency_transversal_modes / cavity.free_spectral_range
-            # df_over_FSR_temp = #np.abs(np.mod(df_over_FSR_temp + 0.5, 1) - 0.5)
+            df_over_FSR_temp = np.abs(np.mod(df_over_FSR_temp + 0.5, 1) - 0.5)
             df_over_FSR[i] = df_over_FSR_temp
 
         except (TypeError, FloatingPointError):
@@ -88,7 +88,7 @@ def generate_lens_position_dependencies(params, delta_xs_lens, plot_dependencies
     if plot_dependencies:
         fig, ax = plt.subplots(1, 2, figsize=(12, 5))
         ax[0].plot(Ls, NAs, label='NA')
-        ax[0].plot(Ls, df_over_FSR, label=r'$\frac{df}{\text{FSR}}$ - simulation)')  # '
+        ax[0].plot(Ls, df_over_FSR, label=r'$\frac{df}{FSR}$ - simulation)')  # '
         ax[0].grid()
         # ax2 = ax[0].twinx()
         # ax2.plot(Ls, delta_xs_lens, label=r'$\Delta{x,\text{lens}}$', color='red')
@@ -98,7 +98,7 @@ def generate_lens_position_dependencies(params, delta_xs_lens, plot_dependencies
         ax[0].legend()
 
         ax[1].plot(df_over_FSR, NAs)
-        ax[1].set_xlabel(r'$\frac{df}{\text{FSR}}$')
+        ax[1].set_xlabel(r'$\frac{df}{FSR}$')
         ax[1].set_ylabel('NA')
         # ax[1].set_xlim(0, 0.12)
         ax[1].set_ylim(0, 0.22)
