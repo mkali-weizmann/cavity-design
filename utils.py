@@ -145,7 +145,7 @@ class MaterialProperties:
 
 
 PHYSICAL_SIZES_DICT = {
-    "thermal_properties_sapphire": MaterialProperties(
+    "material_properties_sapphire": MaterialProperties(
         refractive_index=1.76,
         alpha_expansion=5.5e-6,  # https://www.shinkosha.com/english/techinfo/feature/thermal-properties-of-sapphire/#:~:text=Sapphire%20has%20a%20large%20linear,very%20resistant%20to%20thermal%20shock., https://www.roditi.com/SingleCrystal/Sapphire/Properties.html
         beta_surface_absorption=1e-6,  # DUMMY
@@ -156,7 +156,7 @@ PHYSICAL_SIZES_DICT = {
         intensity_reflectivity=100e-6,  # DUMMY - for lenses
         intensity_transmittance=1 - 100e-6 - 1e-6,
     ),  # DUMMY - for lenses
-    "thermal_properties_ULE": MaterialProperties(
+    "material_properties_ULE": MaterialProperties(
         alpha_expansion=7.5e-8,  # https://en.wikipedia.org/wiki/Ultra_low_expansion_glass#:~:text=It%20has%20a%20thermal%20conductivity,C%20%5B1832%20%C2%B0F%5D, https://www.corning.com/media/worldwide/csm/documents/7972%20ULE%20Product%20Information%20Jan%202016.pdf
         kappa_conductivity=1.31,
         nu_poisson_ratio=0.17,
@@ -164,7 +164,7 @@ PHYSICAL_SIZES_DICT = {
         intensity_reflectivity=1 - 100e-6 - 1e-6 - 10e-6,  # All - transmittance - absorption - scattering
         intensity_transmittance=100e-6,  # DUMMY - for mirrors
     ),
-    "thermal_properties_fused_silica": MaterialProperties(  # https://www.corning.com/media/worldwide/csm/documents/HPFS_Product_Brochure_All_Grades_2015_07_21.pdf
+    "material_properties_fused_silica": MaterialProperties(  # https://www.corning.com/media/worldwide/csm/documents/HPFS_Product_Brochure_All_Grades_2015_07_21.pdf
         refractive_index=1.45,  # The next link is ignored due to the link above: https://refractiveindex.info/?shelf=glass&book=fused_silica&page=Malitson,
         alpha_expansion=0.52e-6,  # The next link is ignored due to the link above: https://www.rp-photonics.com/fused_silica.html#:~:text=However%2C%20fused%20silica%20may%20exhibit,10%E2%88%926%20K%E2%88%921., https://www.swiftglass.com/blog/material-month-fused-silica/
         beta_surface_absorption=1e-6,  # DUMMY
@@ -175,7 +175,7 @@ PHYSICAL_SIZES_DICT = {
         intensity_reflectivity=100e-6,  # DUMMY - for lenses
         intensity_transmittance=1 - 100e-6 - 1e-6,  # DUMMY - for lenses
     ),  # https://www.azom.com/properties.aspx?ArticleID=1387),
-    "thermal_properties_yag": MaterialProperties(
+    "material_properties_yages_fused_silica": MaterialProperties(
         refractive_index=1.81,
         alpha_expansion=8e-6,  # https://www.crystran.co.uk/optical-materials/yttrium-aluminium-garnet-yag
         beta_surface_absorption=1e-6,  # DUMMY
@@ -183,7 +183,7 @@ PHYSICAL_SIZES_DICT = {
         dn_dT=9e-6,  # https://pubmed.ncbi.nlm.nih.gov/18319922/
         nu_poisson_ratio=0.25,  #  https://www.crystran.co.uk/userfiles/files/yttrium-aluminium-garnet-yag-data-sheet.pdf, https://www.korth.de/en/materials/detail/YAG
     ),
-    "thermal_properties_bk7": MaterialProperties(
+    "material_properties_bk7": MaterialProperties(
         alpha_expansion=7.1e-6,  # https://www.pgo-online.com/intl/BK7.html
         kappa_conductivity=1.114,  # https://www.pgo-online.com/intl/BK7.html
         refractive_index=1.507,  # https://www.pgo-online.com/intl/BK7.html

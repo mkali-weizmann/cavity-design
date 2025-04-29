@@ -75,9 +75,9 @@ names = ['Right Mirror', 'Left Mirror']
 #                 'alpha_thermal_expansion': 10, 'beta_power_absorption': 11, 'kappa_thermal_conductivity': 12,
 #                 'dn_dT': 13,
 #                 'nu_poisson_ratio': 14, 'alpha_volume_absorption': 15, 'surface_type': 16}
-params = np.array([[x_1, y_1, t_1, p_1, r_1, 0, 0, 0, 0, 1, *PHYSICAL_SIZES_DICT['thermal_properties_ULE'].to_array, 0],
+params = np.array([[x_1, y_1, t_1, p_1, r_1, 0, 0, 0, 0, 1, *PHYSICAL_SIZES_DICT['material_properties_ULE'].to_array, 0],
                    # [x_2, y_2, t_lens, p_2, r_2, n_in, w_2, n_out, 0, 0, 1],
-                   [x_3, y_3, t_3, p_3, r_3, 0, 0, 0, 0, 1, *PHYSICAL_SIZES_DICT['thermal_properties_ULE'].to_array, 0]])
+                   [x_3, y_3, t_3, p_3, r_3, 0, 0, 0, 0, 1, *PHYSICAL_SIZES_DICT['material_properties_ULE'].to_array, 0]])
 ratios = 1 - np.concatenate((np.array([0]), np.logspace(-7, -3.5, 10, endpoint=True)))
 x_1_values = x_1 * ratios
 params_temp = params.copy()

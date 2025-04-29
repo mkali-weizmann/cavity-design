@@ -119,8 +119,8 @@ with open("data/params_dict.pkl", "rb") as f:
 params = params_dict[
     "Sapphire, NA=0.2, L1=0.3m, w=5.9mm, R_lens=15.16mm - High NA Axis"
 ]
-params[0, INDICES_DICT['intensity_reflectivity']] = PHYSICAL_SIZES_DICT['thermal_properties_ULE'].intensity_reflectivity
-params[2, INDICES_DICT['intensity_reflectivity']] = PHYSICAL_SIZES_DICT['thermal_properties_ULE'].intensity_reflectivity
+params[0, INDICES_DICT['intensity_reflectivity']] = PHYSICAL_SIZES_DICT['material_properties_ULE'].intensity_reflectivity
+params[2, INDICES_DICT['intensity_reflectivity']] = PHYSICAL_SIZES_DICT['material_properties_ULE'].intensity_reflectivity
 params = np.array([[ 3.2550206224e-01+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  1.6128989168e-01+0.j,  0.0000000000e+00+0.j,
          0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  1.0000000000e+00+0.j,  7.5000000000e-08+0.j,  1.0000000000e-06+0.j,
          1.3100000000e+00+0.j,  0.0000000000e+00+0.j,  1.7000000000e-01+0.j,  0.0000000000e+00+0.j,  9.9988900000e-01+0.j,  1.0000000000e-04+0.j,
@@ -260,7 +260,7 @@ plot_high_power_and_low_power_cavity(
 #             0,
 #             0,
 #             1,
-#             *PHYSICAL_SIZES_DICT["thermal_properties_ULE"].to_array,
+#             *PHYSICAL_SIZES_DICT["material_properties_ULE"].to_array,
 #             0,
 #         ],
 #         [
@@ -274,7 +274,7 @@ plot_high_power_and_low_power_cavity(
 #             0,
 #             0,
 #             1,
-#             *PHYSICAL_SIZES_DICT["thermal_properties_ULE"].to_array,
+#             *PHYSICAL_SIZES_DICT["material_properties_ULE"].to_array,
 #             0,
 #         ],
 #     ]
@@ -331,7 +331,7 @@ plot_high_power_and_low_power_cavity(
 # r_3 = r_1
 # p_3 += np.pi
 # names = ["Right Mirror", "Left Mirror"]
-# thermal_properties_inverse_expansion = PHYSICAL_SIZES_DICT["thermal_properties_ULE"]
+# thermal_properties_inverse_expansion = PHYSICAL_SIZES_DICT["material_properties_ULE"]
 # thermal_properties_inverse_expansion.alpha_expansion *= -1
 # params = np.array(
 #     [

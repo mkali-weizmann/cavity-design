@@ -96,7 +96,7 @@ mode_3_k_vector = np.array([1, 0, 0])
 mode_3 = ModeParameters(center=np.stack([mode_3_center, mode_3_center], axis=0), k_vector=mode_3_k_vector,
                         w_0=np.array([w_0_3, w_0_3]),
                         principle_axes=np.array([[0, 0, 1], [0, 1, 0]]), lambda_0_laser=lambda_0_laser)
-mirror_3 = match_a_mirror_to_mode(mode_3, x_3 - mode_3.center[0, 0], PHYSICAL_SIZES_DICT['thermal_properties_ULE'])
+mirror_3 = match_a_mirror_to_mode(mode_3, x_3 - mode_3.center[0, 0], PHYSICAL_SIZES_DICT['material_properties_ULE'])
 
 # Generate lens:
 if lens_thermal_properties_override:
@@ -119,7 +119,7 @@ elif mirror_on_waist:
 else:
     z_minus_z_0 = local_mode_1.z_minus_z_0[0] + right_arm_length
 
-mirror_1 = match_a_mirror_to_mode(mode_1, z_minus_z_0, PHYSICAL_SIZES_DICT['thermal_properties_ULE'])
+mirror_1 = match_a_mirror_to_mode(mode_1, z_minus_z_0, PHYSICAL_SIZES_DICT['material_properties_ULE'])
 mirror_1.radius += right_mirror_radius_shift
 mirror_1.origin += np.array([right_mirror_position_shift-right_mirror_radius_shift, 0, 0])
 mirror_3_params = mirror_3.to_params
@@ -222,7 +222,7 @@ mode_3_k_vector = np.array([1, 0, 0])
 mode_3 = ModeParameters(center=np.stack([mode_3_center, mode_3_center], axis=0), k_vector=mode_3_k_vector,
                         w_0=np.array([w_0_3, w_0_3]),
                         principle_axes=np.array([[0, 0, 1], [0, 1, 0]]), lambda_0_laser=lambda_0_laser)
-mirror_3 = match_a_mirror_to_mode(mode_3, x_3 - mode_3.center[0, 0], PHYSICAL_SIZES_DICT['thermal_properties_ULE'])
+mirror_3 = match_a_mirror_to_mode(mode_3, x_3 - mode_3.center[0, 0], PHYSICAL_SIZES_DICT['material_properties_ULE'])
 
 # Generate lens:
 if lens_thermal_properties_override:
@@ -245,7 +245,7 @@ elif mirror_on_waist:
 else:
     z_minus_z_0 = local_mode_1.z_minus_z_0[0] + right_arm_length
 
-mirror_1 = match_a_mirror_to_mode(mode_1, z_minus_z_0, PHYSICAL_SIZES_DICT['thermal_properties_ULE'])
+mirror_1 = match_a_mirror_to_mode(mode_1, z_minus_z_0, PHYSICAL_SIZES_DICT['material_properties_ULE'])
 mirror_1.radius += right_mirror_radius_shift
 mirror_1.origin += np.array([right_mirror_position_shift-right_mirror_radius_shift, 0, 0])
 mirror_3_params = mirror_3.to_params
@@ -347,7 +347,7 @@ mode_3_k_vector = np.array([1, 0, 0])
 mode_3 = ModeParameters(center=np.stack([mode_3_center, mode_3_center], axis=0), k_vector=mode_3_k_vector,
                         z_R=np.array([w_0_3, w_0_3]),
                         principle_axes=np.array([[0, 0, 1], [0, 1, 0]]), lambda_0_laser=lambda_0_laser)
-mirror_3 = match_a_mirror_to_mode(mode_3, x_3 - mode_3.center[0, 0], PHYSICAL_SIZES_DICT['thermal_properties_ULE'])
+mirror_3 = match_a_mirror_to_mode(mode_3, x_3 - mode_3.center[0, 0], PHYSICAL_SIZES_DICT['material_properties_ULE'])
 
 # Generate lens:
 if lens_thermal_properties_override:
@@ -370,7 +370,7 @@ elif mirror_on_waist:
 else:
     z_minus_z_0 = local_mode_1.z_minus_z_0[0] + right_arm_length
 
-mirror_1 = match_a_mirror_to_mode(mode_1, z_minus_z_0, PHYSICAL_SIZES_DICT['thermal_properties_ULE'])
+mirror_1 = match_a_mirror_to_mode(mode_1, z_minus_z_0, PHYSICAL_SIZES_DICT['material_properties_ULE'])
 mirror_1.radius += right_mirror_radius_shift
 mirror_1.origin += np.array([right_mirror_position_shift-right_mirror_radius_shift, 0, 0])
 mirror_3_params = mirror_3.to_params
