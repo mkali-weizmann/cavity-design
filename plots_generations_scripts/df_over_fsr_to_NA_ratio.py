@@ -2,7 +2,7 @@ from copy import deepcopy
 # import matplotlib
 # matplotlib.use("Qt5Agg")  # Or "TkAgg" if Qt is unavailable
 from cavity import *
-from df_over_fsr_to_NA_ratio_output import generate_lens_position_dependencies, delta_xs_lens_actual, params_actual_cavity
+from plots_generations_scripts.df_over_fsr_to_NA_ratio_output import generate_lens_position_dependencies, delta_xs_lens_actual, params_actual_cavity, N
 
 
 def theoretical_df_FSR(L, R_1, R_2):
@@ -37,7 +37,7 @@ params_ideal_lens = [
     OpticalElementParams(name='Lens', surface_type=SurfacesTypes.ideal_lens, x=x_1 + 39e-3, y=0, z=0, theta=0, phi=0,
                          r_1=25.4e-3, r_2=np.nan, curvature_sign=CurvatureSigns.concave, T_c=np.nan,
                          n_inside_or_after=1e+00, n_outside_or_before=1e+00,
-                         material_properties=PHYSICAL_SIZES_DICT['material_properties_bk7']),
+                         material_properties=PHYSICAL_SIZES_DICT['thermal_properties_bk7']),
     OpticalElementParams(name='Big Mirror', surface_type=SurfacesTypes.curved_mirror, x=x_2, y=0, z=0, theta=0, phi=0,
                          r_1=0.5, r_2=np.nan, curvature_sign=CurvatureSigns.concave, T_c=np.nan,
                          n_inside_or_after=1e+00, n_outside_or_before=1e+00,
@@ -103,7 +103,7 @@ NAs, df_over_FSR, Ls = generate_lens_position_dependencies(params, delta_xs_lens
 # %%
 fig, ax = plt.subplots(1, 2, figsize=(12, 5))
 ax[0].plot(Ls, NAs, label='NA')
-ax[0].plot(Ls, df_over_FSR, label=r'$\frac{df}{\text{FSR}}$ - simulation)')  # '
+ax[0].plot(Ls, df_over_FSR, label=r'$\frac{df}{FSR}$ - simulation)')  # '
 # if len(params) == 2:
 #     ax[0].plot(Ls, df_over_FSR_theory, linestyle='--')  # , label=r'$\frac{df}{\text{FSR}}$ - theory'
 ax[0].grid()
@@ -131,7 +131,7 @@ plt.show()
 from scipy.interpolate import interp1d
 
 df_over_FSR_interp = interp1d(df_over_FSR, NAs, fill_value='extrapolate')
-DF_over_FSR_example = -0.299
+DF_over_FSR_example = 0.299
 NA_example = df_over_FSR_interp(DF_over_FSR_example)
 print(NA_example)
 
