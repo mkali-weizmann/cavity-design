@@ -742,6 +742,10 @@ def widget_convenient_exponent(x, base=10, scale=-10):
     y = base ** (x + scale) - base ** (-x + scale)
     return y
 
+def widget_convenient_exponent_inverse(y, base=10.0, scale=-10.0):
+    x = np.log((y * base ** - scale + np.sqrt(y**2 * base ** (-2*scale) + 4)) / 2) / np.log(base)
+    return x
+
 
 def generate_initial_parameters_grid(center: np.ndarray,
                                      range_limit: float,

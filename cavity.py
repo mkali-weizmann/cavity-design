@@ -188,6 +188,7 @@ class ModeParameters:
         return R_z
 
     def z_of_R(self, R: float, output_type: type) -> Union[float, np.ndarray]:
+        # negative R for negative z, positive R for positive z
         discriminant = 1 - 4 * self.z_R[0] ** 2 / R ** 2
         if discriminant < 0:
             raise ValueError("R is too small and is never achieved for that mode. R must be larger than 2 * z_R.")
@@ -3779,7 +3780,6 @@ def find_equal_angles_surface(
         surface_0: CurvedRefractiveSurface,
         T_edge: float = 1e-3,
         h: float = 3.875e-3,
-        lambda_0_laser: float = 1064e-9,
 ) -> CurvedRefractiveSurface:
     mode_parameters_just_before_surface_0 = mode_before_lens.local_mode_parameters(
         np.linalg.norm(surface_0.center - mode_before_lens.center[0])
@@ -3900,7 +3900,7 @@ def find_required_perturbation_for_desired_change(
 
 def mirror_lens_mirror_cavity_generator(
         NA_left: float = 0.1,
-        waist_to_lens: float = 5e-3,
+        waist_to_lens: Optional[float] = None,
         h: float = 3.875e-3,
         R_left: float = 5e-3,
         R_right: float = 5e-3,
@@ -3908,8 +3908,8 @@ def mirror_lens_mirror_cavity_generator(
         T_edge: float = 1e-3,
         lens_fixed_properties="sapphire",
         mirrors_fixed_properties="ULE",
-        symmetric_left_arm: bool = True,
-        waist_to_left_mirror: float = 5e-3,
+        R_small_mirror: Optional[float] = 5e-3,
+        waist_to_left_mirror: Optional[float] = None,
         lambda_0_laser=1064e-9,
         set_h_instead_of_w: bool = True,
         collimation_mode: str = "symmetric arm",  # 'symmetric arm' or 'on waist', if both R and L of long arm are given
@@ -3925,6 +3925,10 @@ def mirror_lens_mirror_cavity_generator(
     # This function receives many parameters that can define a cavity of mirror-lens-mirror and creates a Cavity object
     # out of them.
 
+    assert (R_small_mirror is not None or waist_to_left_mirror is not None) and not (
+                R_small_mirror is not None and waist_to_left_mirror is not None
+    ), "Either R_small_mirror or waist_to_left_mirror must be set, but not both"
+
     assert not (
             set_R_left_to_collimate and set_R_right_to_collimate
     ), "Too many solutions: can't set automatically both R_left to collimate and R_right to collimate"
@@ -3935,12 +3939,10 @@ def mirror_lens_mirror_cavity_generator(
         not (set_R_right_to_collimate + set_R_right_to_equalize_angles + set_R_right_to_R_left) > 1
     ), "Too many constraints on R_right, must choose either set_R_right_to_collimate or set_R_right_to_equalize_angles or set_R_right_to_R_left"
     assert not (smart_collimation and big_mirror_radius is None and right_arm_length is None
-            ), "Collimation is not well defined without the big mirror radius or the right arm length, one of them must be set"
+                ), "Collimation is not well defined without the big mirror radius or the right arm length, one of them must be set"
 
     assert not (smart_collimation and collimation_mode == "on waist" and right_arm_length is None
-            ), "Collimation on waist is not well defined without the right arm length, it must be set"
-
-
+                ), "Collimation on waist is not well defined without the right arm length, it must be set"
 
     if smart_collimation:
         if set_R_left_to_collimate:
@@ -3956,8 +3958,8 @@ def mirror_lens_mirror_cavity_generator(
                     T_edge=T_edge,
                     lens_fixed_properties=lens_fixed_properties,
                     mirrors_fixed_properties=mirrors_fixed_properties,
-                    symmetric_left_arm=symmetric_left_arm,
                     waist_to_left_mirror=waist_to_left_mirror,
+                    R_small_mirror=R_small_mirror,
                     lambda_0_laser=lambda_0_laser,
                     set_h_instead_of_w=set_h_instead_of_w,
                     collimation_mode=collimation_mode,
@@ -3985,8 +3987,8 @@ def mirror_lens_mirror_cavity_generator(
                     T_edge=T_edge,
                     lens_fixed_properties=lens_fixed_properties,
                     mirrors_fixed_properties=mirrors_fixed_properties,
-                    symmetric_left_arm=symmetric_left_arm,
                     waist_to_left_mirror=waist_to_left_mirror,
+                    R_small_mirror=R_small_mirror,
                     lambda_0_laser=lambda_0_laser,
                     set_h_instead_of_w=set_h_instead_of_w,
                     collimation_mode=collimation_mode,
@@ -4013,7 +4015,7 @@ def mirror_lens_mirror_cavity_generator(
             cavity_generator=cavity_generator,
             # Takes a float as input and returns a cavity
             desired_parameter=lambda cavity: 1 / cavity.arms[2].mode_parameters_on_surfaces[0].z_minus_z_0[0],
-            desired_value= - 1 / (desired_waist_position),  # We work with the inverse to be stable with collimated beams
+            desired_value=- 1 / (desired_waist_position),  # We work with the inverse to be stable with collimated beams
             x0=x0,
         )
         return cavity
@@ -4030,12 +4032,8 @@ def mirror_lens_mirror_cavity_generator(
 
     # Generate left arm's mirror:
     w_0_left = lambda_0_laser / (np.pi * NA_left)
-    left_waist_x = 0
-    if symmetric_left_arm:
-        x_left = left_waist_x - waist_to_lens
-    else:
-        x_left = waist_to_left_mirror
-    mode_left_center = np.array([left_waist_x, 0, 0])
+    x_left_waist = 0
+    mode_left_center = np.array([x_left_waist, 0, 0])
 
     mode_left_k_vector = np.array([1, 0, 0])
     mode_left = ModeParameters(
@@ -4045,9 +4043,33 @@ def mirror_lens_mirror_cavity_generator(
         principle_axes=np.array([[0, 0, 1], [0, 1, 0]]),
         lambda_0_laser=lambda_0_laser,
     )
-    mirror_left = match_a_mirror_to_mode(
-        mode=mode_left, z=x_left - mode_left.center[0, 0], material_properties=mirrors_material_properties
-    )
+    if waist_to_left_mirror is not None:
+        if waist_to_lens is None:
+            x_left = x_left_waist - waist_to_left_mirror
+            x_lens_left = x_left_waist + waist_to_left_mirror
+        else:
+            x_left = x_left_waist - waist_to_left_mirror
+            x_lens_left = x_left_waist + waist_to_lens
+        mirror_left = match_a_mirror_to_mode(
+            mode=mode_left,
+            z=x_left - mode_left.center[0, 0],
+            material_properties=mirrors_material_properties
+        )
+    elif R_small_mirror is not None:
+        mirror_left = match_a_mirror_to_mode(
+            mode=mode_left, R=-R_small_mirror, material_properties=mirrors_material_properties
+        )
+        if waist_to_lens is not None:
+            x_lens_left = x_left_waist + waist_to_lens
+        else:
+            x_lens_left = mirror_left.center[0, 0] + np.linalg.norm(mode_left.center[0, :] - mirror_left.center[0, :])
+
+    else:
+        raise ValueError(
+            "this line should not be reachable due to insert in the beginning"
+        )
+
+
     # Generate lens:
     # if lens_material_properties_override:
     (
@@ -4062,9 +4084,8 @@ def mirror_lens_mirror_cavity_generator(
         intensity_transmittance,
         temperature,
     ) = lens_material_properties.to_array
-    x_2_left = left_waist_x + waist_to_lens
     surface_left = CurvedRefractiveSurface(
-        center=np.array([x_2_left, 0, 0]),
+        center=np.array([x_lens_left, 0, 0]),
         radius=R_left,
         outwards_normal=np.array([-1, 0, 0]),
         n_1=1,
@@ -4079,7 +4100,6 @@ def mirror_lens_mirror_cavity_generator(
             surface_0=surface_left,
             T_edge=T_edge,
             h=h,
-            lambda_0_laser=lambda_0_laser,
         )
         T_c = np.linalg.norm(surface_right.center - surface_left.center)
     else:
@@ -4096,7 +4116,7 @@ def mirror_lens_mirror_cavity_generator(
             dT_c_right = R_right * (1 - np.sqrt(1 - h ** 2 / R_right ** 2))
             T_c = T_edge + dT_c_left + dT_c_right
 
-        x_2_right = x_2_left + T_c
+        x_2_right = x_lens_left + T_c
 
         surface_right = CurvedRefractiveSurface(
             center=np.array([x_2_right, 0, 0]),
@@ -4166,6 +4186,19 @@ def mirror_lens_mirror_cavity_generator(
             mode=mode_right,
             z=z_minus_z_0_right_mirror,
             material_properties=mirrors_material_properties
+        )
+    else:
+        if (
+                z_minus_z_0_right_surface > 0
+        ):  # It can not be symmetric if the mode is past the waist already at the lens,
+            # in such a case, we make it not symmetric.
+            z_minus_z_0_right_mirror = (
+                    z_minus_z_0_right_surface + right_arm_length + 1 / z_minus_z_0_right_surface
+            )  # This 1 / z_minus_z_0_right_surface is here to make the mirror further as the NA grows larger.
+        else:
+            z_minus_z_0_right_mirror = -z_minus_z_0_right_surface
+        mirror_right = match_a_mirror_to_mode(
+            mode=mode_right, z=z_minus_z_0_right_mirror, material_properties=mirrors_material_properties
         )
 
         # if right_arm_mode == "fixed R":
