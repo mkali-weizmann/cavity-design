@@ -33,8 +33,11 @@ set_R_right_to_equalize_angles = True
 set_R_right_to_R_left = False
 R_right = 5.4780000000e-03
 R_right_fine = 9.8000000000e-06
-right_arm_mode = 'fixed length'
-right_arm_mode_value = 2.6597084700e-01
+collimation_mode = 'symmetric arm'
+auto_set_big_mirror_radius = False
+big_mirror_radius = 2.0000000000e-01
+auto_set_right_arm_length = True
+right_arm_length = 4.0000000000e-01
 lens_fixed_properties = 'sapphire'
 mirrors_fixed_properties = 'ULE'
 auto_set_x = True
@@ -46,7 +49,6 @@ add_unheated_cavity = False
 print_input_parameters = True
 print_cavity_parameters = False
 
-# index 1 represents the right arm, index 2 the inner part of the lens, and index 3 the left arm.
 assert not (
             set_R_left_to_collimate and set_R_right_to_collimate), "Too many solutions: can't set automatically both R_left to collimate and R_right to collimate"
 assert not (
@@ -54,6 +56,8 @@ assert not (
 if print_input_parameters:
     print_parameters_func(locals())
 
+big_mirror_radius = big_mirror_radius if auto_set_big_mirror_radius is not None else None
+right_arm_length = right_arm_length if auto_set_right_arm_length is not None else None
 waist_to_lens += waist_to_lens_fine
 R_left += R_left_fine
 R_right += R_right_fine
@@ -65,8 +69,10 @@ cavity = mirror_lens_mirror_cavity_generator(NA_left=NA_left, waist_to_lens=wais
                                              T_edge=T_edge, lens_fixed_properties=lens_fixed_properties,
                                              mirrors_fixed_properties=mirrors_fixed_properties, symmetric_left_arm=True,
                                              waist_to_left_mirror=5e-3, lambda_0_laser=1064e-9, power=2e4,
-                                             set_h_instead_of_w=True, right_arm_mode=right_arm_mode,
-                                             right_arm_mode_value=right_arm_mode_value,
+                                             set_h_instead_of_w=True,
+                                             collimation_mode=collimation_mode,
+                                             big_mirror_radius=big_mirror_radius,
+                                             right_arm_length=right_arm_length,
                                              set_R_right_to_equalize_angles=set_R_right_to_equalize_angles,
                                              set_R_right_to_R_left=set_R_right_to_R_left,
                                              set_R_left_to_collimate=set_R_left_to_collimate,
@@ -83,3 +89,39 @@ plot_mirror_lens_mirror_cavity_analysis(cavity,
 plt.show()
 if print_cavity_parameters:
     print(cavity.params)
+
+
+# if print_input_parameters:
+#     print_parameters_func(locals())
+#
+# waist_to_lens += waist_to_lens_fine
+# R_left += R_left_fine
+# R_right += R_right_fine
+# x_span = 10 ** x_span
+# y_span = 10 ** y_span
+#
+# cavity = mirror_lens_mirror_cavity_generator(NA_left=NA_left, waist_to_lens=waist_to_lens, h=h, R_left=R_left,
+#                                              R_right=R_right, T_c=0,
+#                                              T_edge=T_edge, lens_fixed_properties=lens_fixed_properties,
+#                                              mirrors_fixed_properties=mirrors_fixed_properties, symmetric_left_arm=True,
+#                                              waist_to_left_mirror=5e-3, lambda_0_laser=1064e-9, power=2e4,
+#                                              set_h_instead_of_w=True,
+#                                              collimation_mode=collimation_mode,
+#                                              big_mirror_radius=big_mirror_radius,
+#                                              right_arm_length=right_arm_length,
+#                                              set_R_right_to_equalize_angles=set_R_right_to_equalize_angles,
+#                                              set_R_right_to_R_left=set_R_right_to_R_left,
+#                                              set_R_left_to_collimate=set_R_left_to_collimate,
+#                                              set_R_right_to_collimate=set_R_right_to_collimate)
+#
+# plot_mirror_lens_mirror_cavity_analysis(cavity,
+#                                         auto_set_x=auto_set_x,
+#                                         x_span=x_span,
+#                                         auto_set_y=auto_set_y,
+#                                         y_span=y_span,
+#                                         T_edge=T_edge,
+#                                         camera_center=camera_center,
+#                                         add_unheated_cavity=add_unheated_cavity)
+# plt.show()
+# if print_cavity_parameters:
+#     print(cavity.params)
