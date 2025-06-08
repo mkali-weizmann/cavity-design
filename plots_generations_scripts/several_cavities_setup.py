@@ -56,7 +56,7 @@ R_small_perturbation = 0.0000000000e+00
 w = -2.3635000000e+00
 w_small_perturbation = 0.0000000000e+00
 n = 1.7600000000e+00
-lens_thermal_properties_override = True
+lens_material_properties_override = True
 lens_fixed_properties = 'sapphire'
 alpha_lens = 5.5000000000e-06
 beta_lens = 1.0000000000e-06
@@ -98,9 +98,9 @@ mode_3 = ModeParameters(center=np.stack([mode_3_center, mode_3_center], axis=0),
 mirror_3 = match_a_mirror_to_mode(mode_3, x_3 - mode_3.center[0, 0], PHYSICAL_SIZES_DICT['material_properties_ULE'])
 
 # Generate lens:
-if lens_thermal_properties_override:
+if lens_material_properties_override:
     alpha_lens, beta_lens, kappa_lens, dn_dT_lens, nu_lens, alpha_absorption_lens = PHYSICAL_SIZES_DICT[
-        f"thermal_properties_{lens_fixed_properties}"].to_array
+        f"material_properties_{lens_fixed_properties}"].to_array
     n = PHYSICAL_SIZES_DICT['refractive_indices'][lens_fixed_properties]
 lens_params = np.array(
     [x_2, 0, 0, 0, R, n, w, 1, 0, 0, alpha_lens, beta_lens, kappa_lens, dn_dT_lens, nu_lens, alpha_absorption_lens,

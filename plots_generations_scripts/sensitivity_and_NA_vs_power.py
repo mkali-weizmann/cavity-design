@@ -331,8 +331,8 @@ plot_high_power_and_low_power_cavity(
 # r_3 = r_1
 # p_3 += np.pi
 # names = ["Right Mirror", "Left Mirror"]
-# thermal_properties_inverse_expansion = PHYSICAL_SIZES_DICT["material_properties_ULE"]
-# thermal_properties_inverse_expansion.alpha_expansion *= -1
+# material_properties_inverse_expansion = PHYSICAL_SIZES_DICT["material_properties_ULE"]
+# material_properties_inverse_expansion.alpha_expansion *= -1
 # params = np.array(
 #     [
 #         [
@@ -346,7 +346,7 @@ plot_high_power_and_low_power_cavity(
 #             0,
 #             0,
 #             1,
-#             *thermal_properties_inverse_expansion.to_array,
+#             *material_properties_inverse_expansion.to_array,
 #             0,
 #         ],
 #         [
@@ -360,7 +360,7 @@ plot_high_power_and_low_power_cavity(
 #             0,
 #             0,
 #             1,
-#             *thermal_properties_inverse_expansion.to_array,
+#             *material_properties_inverse_expansion.to_array,
 #             0,
 #         ],
 #     ]

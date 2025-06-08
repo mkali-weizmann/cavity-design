@@ -55,9 +55,9 @@ for waist_to_lens in waist_to_lenss:
                                                      waist_to_left_mirror=waist_to_left_mirror,
                                                      lambda_0_laser=LAMBDA_0_LASER,
                                                      set_h_instead_of_w=set_h_instead_of_w,
-                                                     auto_set_right_arm_length=auto_set_right_arm_length,
                                                      set_R_right_to_equalize_angles=set_R_right_to_equalize_angles,
-                                                     set_R_right_to_R_left=set_R_right_to_R_left, power=power)
+                                                     set_R_right_to_R_left=set_R_right_to_R_left,
+                                                     auto_set_right_arm_length=auto_set_right_arm_length, power=power)
         return cavity
 
 
