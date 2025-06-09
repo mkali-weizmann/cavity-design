@@ -42,9 +42,15 @@ y_span = 10 ** y_span
 T_edge = 1e-3
 h = 7.75e-3 / 2
 
+m = 10
 max_perturbation = 1e-4
-lens_perturbations = np.linspace(-max_perturbation, max_perturbation, 51)
+lens_perturbations = np.linspace(-max_perturbation, max_perturbation, 2*m + 1)
 long_arm_lengths = np.zeros(len(lens_perturbations))
+fig, ax = plt.subplots(6, 1, figsize=(14, 16))
+
+for idx in [0, 2, 4]:
+    ax[idx].set_visible(False)
+
 for i, lens_perturbation in enumerate(lens_perturbations):
     distance_to_lens_temp = waist_to_lens + lens_perturbation
     cavity = mirror_lens_mirror_cavity_generator(NA_left=NA_left, waist_to_lens=distance_to_lens_temp, h=h,
@@ -66,23 +72,38 @@ for i, lens_perturbation in enumerate(lens_perturbations):
     )
     long_arm_lengths[i] = cavity.arms[2].central_line.length
     print(lens_perturbation)
-    if np.isclose(lens_perturbation,0):
+    if i in [0, m, 2*m]:
         plot_mirror_lens_mirror_cavity_analysis(cavity,
                                             auto_set_x=auto_set_x,
                                             x_span=x_span,
                                             auto_set_y=auto_set_y,
                                             y_span=y_span,
-                                            camera_center=camera_center)
-        plt.show()
-
-
-plt.figure(figsize=(8, 6))
-plt.plot(lens_perturbations, long_arm_lengths, marker='o', linestyle='-')
-plt.xlabel('Lens Position Perturbation (m)')
-plt.ylabel('Long Arm Length (m)')
-plt.title('Long Arm Length vs Lens Position Perturbation')
-plt.grid()
-plt.tight_layout()
-plt.savefig(r'figures\long_arm_length_vs_lens_pos_perturb.png', dpi=300)
+                                            camera_center=camera_center,
+                                            ax=ax[2*i // m + 1],)
+    fig.tight_layout()
+plt.savefig(r'figures\long_arm_length_vs_lens_pos_perturb - systems.svg')
+# manager = plt.get_current_fig_manager()
+# manager.full_screen_toggle()
 plt.show()
+
+# %%
+# derivative of long arm length with respect to lens perturbation:
+dl_dperturbation = (long_arm_lengths[1:] - long_arm_lengths[:-1]) / (lens_perturbations[1:] - lens_perturbations[:-1])
+
+# Save the results to a file
+fig, ax = plt.subplots(2, 1, figsize=(12, 12))
+ax[0].plot(lens_perturbations, long_arm_lengths, marker='o', linestyle='-')
+ax[0].set_xlabel('Lens Position Perturbation (m)')
+ax[0].set_ylabel('Long Arm Length (m)')
+ax[0].set_title('Long Arm Length vs Lens Position Perturbation')
+ax[0].grid()
+ax[1].plot(lens_perturbations[:-1], dl_dperturbation, marker='o', linestyle='-')
+ax[1].set_xlabel('Lens Position Perturbation (m)')
+ax[1].set_ylabel('D_L_long to D_Lens_x (m/m)')
+ax[1].set_title('Derivative of Long Arm Length vs Lens Position Perturbation')
+ax[1].grid()
+plt.subplots_adjust(hspace=0.35)  # <-- Increased vertical space
+plt.savefig(r'figures\long_arm_length_vs_lens_pos_perturb.svg')
+plt.show()
+# %%
 
