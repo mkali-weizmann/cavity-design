@@ -3553,7 +3553,7 @@ def match_a_mirror_to_mode(
             )
     elif R is not None:
         center = mode.z_of_R(R, output_type=np.ndarray)
-        outwards_normal = mode.k_vector
+        outwards_normal = mode.k_vector * np.sign(R)
         if np.isclose(R, 0):
             mirror = FlatMirror(
                 center=center,
@@ -3564,7 +3564,7 @@ def match_a_mirror_to_mode(
             mirror = CurvedMirror(
                 center=center,
                 outwards_normal=outwards_normal,
-                radius=R,
+                radius=np.abs(R),
                 thermal_properties=material_properties,
             )
     return mirror
@@ -4201,33 +4201,6 @@ def mirror_lens_mirror_cavity_generator(
             mode=mode_right, z=z_minus_z_0_right_mirror, material_properties=mirrors_material_properties
         )
 
-        # if right_arm_mode == "fixed R":
-        #     mirror_right = match_a_mirror_to_mode(
-        #         mode=mode_right, R=right_mirror_radius, material_properties=mirrors_material_properties
-        #     )
-        # else:
-        #     if right_arm_mode == "fixed length":
-        #         z_minus_z_0_right_mirror = z_minus_z_0_right_surface + right_arm_length
-        #     elif right_arm_mode == "symmetric arm":
-        #         if (
-        #             z_minus_z_0_right_surface > 0
-        #         ):  # It can not be symmetric if the mode is past the waist already at the lens,
-        #             # in such a case, we make it not symmetric.
-        #             z_minus_z_0_right_mirror = (
-        #                 z_minus_z_0_right_surface + right_arm_length + 1 / z_minus_z_0_right_surface
-        #             )  # This 1 / z_minus_z_0_right_surface is here to make the mirror further as the NA grows larger.
-        #         else:
-        #             z_minus_z_0_right_mirror = -z_minus_z_0_right_surface
-        #     elif right_arm_mode == "on waist":
-        #         z_minus_z_0_right_mirror = 0
-        #     else:
-        #         raise ValueError(
-        #             f"Unknown right_mirror_mode: {right_arm_mode}. Must be one of: 'fixed R', 'fixed length', "
-        #             "'symmetric arm', 'on waist'."
-        #         )
-        # mirror_right = match_a_mirror_to_mode(
-        #     mode=mode_right, z=z_minus_z_0_right_mirror, material_properties=mirrors_material_properties
-        # )
     mirror_left_params = mirror_left.to_params
     mirror_left_params.name = "Small Mirror"
     mirror_left.material_properties = mirrors_material_properties
@@ -4286,38 +4259,39 @@ def generate_mirror_lens_mirror_cavity_textual_summary(
         left_mirror_is_first=True,
 ):
     if left_mirror_is_first:
-        left_mirror_index = 0
-        lens_left_index = 1
-        lens_right_index = 2
-        right_mirror_index = 3
-        left_surface_in_arm = 0
-        right_surface_in_arm = 1
-        left_arm_index = 0
-        right_arm_index = 2
+        small_mirror_index = 0
+        lens_short_arm_surface_index = 1
+        lens_long_arm_surface_index = 2
+        big_mirror_index = 3
+        lens_short_arm_surface_in_arm_index = 0
+        lens_long_arm_surface_in_arm_index = 1
+        short_arm_index = 0
+        long_arm_index = 2
     else:
-        left_mirror_index = 3
-        lens_left_index = 2
-        lens_right_index = 1
-        right_mirror_index = 0
-        left_surface_in_arm = 1
-        right_surface_in_arm = 0
-        left_arm_index = 2
-        right_arm_index = 0
+        small_mirror_index = 3
+        lens_short_arm_surface_index = 2
+        lens_long_arm_surface_index = 1
+        big_mirror_index = 0
+        lens_short_arm_surface_in_arm_index = 1
+        lens_long_arm_surface_in_arm_index = 0
+        short_arm_index = 2
+        long_arm_index = 0
 
-    R_left = cavity.surfaces[lens_left_index].radius
-    R_right = cavity.surfaces[lens_right_index].radius
+    R_short_side = cavity.surfaces[lens_short_arm_surface_index].radius
+    R_long_side = cavity.surfaces[lens_long_arm_surface_index].radius
     # try: # I should add a non-existent mode and initialize it with np.nan when there is no mode instead of this solution.
-    spot_size_lens_right = cavity.arms[1].mode_parameters_on_surfaces[right_surface_in_arm].spot_size[0]
-    CA_divided_by_2spot_size = CA / (2 * spot_size_lens_right)
+    spot_size_lens_long_side = cavity.arms[1].mode_parameters_on_surfaces[lens_long_arm_surface_in_arm_index].spot_size[0]
+    spot_size_lens_short_side = cavity.arms[1].mode_parameters_on_surfaces[lens_short_arm_surface_in_arm_index].spot_size[0]
+    CA_divided_by_2spot_size = CA / (2 * spot_size_lens_long_side)
     waist_to_lens_short_arm = np.abs(
-        cavity.surfaces[lens_left_index].center[0] - cavity.mode_parameters[left_arm_index].center[0, 0]
+        cavity.surfaces[lens_short_arm_surface_index].center[0] - cavity.mode_parameters[short_arm_index].center[0, 0]
     )
-    angle_right = cavity.arms[right_arm_index].calculate_incidence_angle(surface_index=left_surface_in_arm)
-    angle_left = cavity.arms[left_arm_index].calculate_incidence_angle(surface_index=right_surface_in_arm)
-    spot_size_left_mirror = cavity.arms[left_arm_index].mode_parameters_on_surfaces[left_surface_in_arm].spot_size[0]
-    spot_size_right_mirror = cavity.arms[right_arm_index].mode_parameters_on_surfaces[right_surface_in_arm].spot_size[0]
-    short_arm_NA = cavity.arms[left_arm_index].mode_parameters.NA[0]
-    long_arm_NA = cavity.arms[right_arm_index].mode_parameters.NA[0]
+    angle_right = cavity.arms[long_arm_index].calculate_incidence_angle(surface_index=lens_short_arm_surface_in_arm_index)
+    angle_left = cavity.arms[short_arm_index].calculate_incidence_angle(surface_index=lens_long_arm_surface_in_arm_index)
+    spot_size_left_mirror = cavity.arms[short_arm_index].mode_parameters_on_surfaces[lens_short_arm_surface_in_arm_index].spot_size[0]
+    spot_size_right_mirror = cavity.arms[long_arm_index].mode_parameters_on_surfaces[lens_long_arm_surface_in_arm_index].spot_size[0]
+    short_arm_NA = cavity.arms[short_arm_index].mode_parameters.NA[0]
+    long_arm_NA = cavity.arms[long_arm_index].mode_parameters.NA[0]
     # except AttributeError:
     #     spot_size_lens_right = np.nan
     #     CA_divided_by_2spot_size = np.nan
@@ -4329,20 +4303,20 @@ def generate_mirror_lens_mirror_cavity_textual_summary(
 
     T_c = np.linalg.norm(cavity.surfaces[2].center - cavity.surfaces[1].center)
     short_arm_length = np.linalg.norm(
-        cavity.surfaces[lens_left_index].center - cavity.surfaces[left_mirror_index].center
+        cavity.surfaces[lens_short_arm_surface_index].center - cavity.surfaces[small_mirror_index].center
     )
     long_arm_length = np.linalg.norm(
-        cavity.surfaces[right_mirror_index].center - cavity.surfaces[lens_right_index].center
+        cavity.surfaces[big_mirror_index].center - cavity.surfaces[lens_long_arm_surface_index].center
     )
     waist_to_lens_long_arm = np.abs(
-        cavity.mode_parameters[right_arm_index].center[0, 0] - cavity.surfaces[lens_right_index].center[0]
+        cavity.mode_parameters[long_arm_index].center[0, 0] - cavity.surfaces[lens_long_arm_surface_index].center[0]
     )
 
-    R_left_mirror = cavity.surfaces[left_mirror_index].radius
+    R_left_mirror = cavity.surfaces[small_mirror_index].radius
 
     minimal_width_lens = find_minimal_width_for_spot_size_and_radius(
-        radius=R_left,
-        spot_size_radius=spot_size_lens_right,
+        radius=R_short_side,
+        spot_size_radius=spot_size_lens_long_side,
         T_edge=T_edge,
         h_divided_by_spot_size=minimal_h_divided_by_spot_size,
     )
@@ -4351,14 +4325,14 @@ def generate_mirror_lens_mirror_cavity_textual_summary(
         if CA_divided_by_2spot_size < 2.5:
             geometric_feasibility = False
         lens_specs_string = (
-            f"R_small = {R_left:.3e},  R_big = {R_right:.3e},  D = {2 * h:.3e},  T_edge = {T_edge:.2e},  T_c = {T_c:.3e},  CA={CA:.2e}\n"
-            f"spot_size (2w) = {2 * spot_size_lens_right:.3e},   CA / 2w_spot_size = {CA_divided_by_2spot_size:.3e}, lens is wide enough = {geometric_feasibility},   {angle_left=:.2f},   {angle_right=:.2f}"
+            f"R_small = {R_short_side:.3e},  R_big = {R_long_side:.3e},  D = {2 * h:.3e},  T_edge = {T_edge:.2e},  T_c = {T_c:.3e},  CA={CA:.2e}\n"
+            f"spot size (long) (2w) = {2 * spot_size_lens_long_side:.3e}, spot size (short) (2w) = {2 * spot_size_lens_short_side:.3e},   CA / 2w_spot_size = {CA_divided_by_2spot_size:.3e}, lens is wide enough = {geometric_feasibility},   {angle_left=:.2f},   {angle_right=:.2f}"
         )
     else:
         if T_c < minimal_width_lens:
             geometric_feasibility = False
-        minimal_CA_lens = minimal_h_divided_by_spot_size * spot_size_lens_right
-        lens_specs_string = f"R_lens = {R_left:.3e},  T_c = {T_c:.3e},  minimal_w_lens = {minimal_width_lens:.2e},  minimal_CA_lens={minimal_CA_lens:.3e},  lens is thick enough = {geometric_feasibility}"
+        minimal_CA_lens = minimal_h_divided_by_spot_size * spot_size_lens_long_side
+        lens_specs_string = f"R_lens = {R_short_side:.3e},  T_c = {T_c:.3e},  minimal_w_lens = {minimal_width_lens:.2e},  minimal_CA_lens={minimal_CA_lens:.3e},  lens is thick enough = {geometric_feasibility}"
 
     textual_summary = (
         f"Short Arm: NA = {short_arm_NA:.3e},  length = {short_arm_length:.3e} [m], waist to lens = {waist_to_lens_short_arm:.3e}\n"

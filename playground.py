@@ -1,39 +1,19 @@
 from cavity import *
-np.set_printoptions(precision=10, linewidth=151)
-
-
-def print_parameters_func(local_parameters):
-    for key, value in local_parameters.items():
-        # if key.startswith("t_") or key.startswith("p_") or key in ["t", "p"]:
-        # print(f"{key} = 1j*{value/np.pi:.10e}")
-        if isinstance(value, float):
-            print(f"{key} = {value:.10e}")
-        elif isinstance(value, str):
-            print(f"{key} = '{value}'")
-        else:
-            print(f"{key} = {value}")
-
-
-# with open('data/params_dict.pkl', 'rb') as f:
-# params_dict = pkl.load(f)
-
-# %matplotlib inline
 
 NA_left = 1.5600000000e-01
-R_small_mirror = 5e-3
-waist_to_left_mirror = None
-waist_to_lens = 5e-3
-waist_to_lens_fine = 0
+waist_to_lens = 5.0000000000e-03
+waist_to_lens_fine = 0.0000000000e+00
 set_R_left_to_collimate = False
-R_left = 5.4780000000e-03
-R_left_fine = 0
+R_small_mirror = 5.0000000000e-03
+R_left = 2.4220000000e-02
+R_left_fine = -1.3552527156e-20
 set_R_right_to_collimate = False
-set_R_right_to_equalize_angles = True
+set_R_right_to_equalize_angles = False
 set_R_right_to_R_left = False
-R_right = 5.4780000000e-03
-R_right_fine = 0
+R_right = 5.4880000000e-03
+R_right_fine = -1.3552527156e-20
 collimation_mode = 'symmetric arm'
-auto_set_big_mirror_radius = True
+auto_set_big_mirror_radius = False
 big_mirror_radius = 2.0000000000e-01
 auto_set_right_arm_length = True
 right_arm_length = 4.0000000000e-01
@@ -43,50 +23,64 @@ auto_set_x = True
 x_span = -1.5700000000e+00
 auto_set_y = True
 y_span = -2.9000000000e+00
+T_edge = 1.0000000000e-03
+h = 3.8750000000e-03
 camera_center = 2
 add_unheated_cavity = False
 print_input_parameters = True
 print_cavity_parameters = False
+R_small_mirror=5e-3
+waist_to_left_mirror = None
 
-if print_input_parameters:
-    print_parameters_func(locals())
-
-big_mirror_radius = big_mirror_radius if auto_set_big_mirror_radius is False else None
-right_arm_length = right_arm_length if auto_set_right_arm_length is False else None
-waist_to_lens_fine = widget_convenient_exponent(waist_to_lens_fine)
-R_left_fine = widget_convenient_exponent(R_left_fine)
-R_right_fine = widget_convenient_exponent(R_right_fine)
-waist_to_lens = waist_to_lens + waist_to_lens_fine if waist_to_lens is not None else waist_to_lens
-R_left += R_left_fine
-R_right += R_right_fine
+big_mirror_radius = None if auto_set_big_mirror_radius else big_mirror_radius
+right_arm_length = None if auto_set_right_arm_length else right_arm_length
+waist_to_lens += widget_convenient_exponent(waist_to_lens_fine)
+R_left += widget_convenient_exponent(R_left_fine)
+R_right += widget_convenient_exponent(R_right_fine)
 x_span = 10 ** x_span
 y_span = 10 ** y_span
 
-cavity = mirror_lens_mirror_cavity_generator(NA_left=NA_left, waist_to_lens=waist_to_lens, h=7.75e-3/2,
-                                             R_left=R_left,
-                                             R_right=R_right, T_c=0,
-                                             T_edge=1e-3, lens_fixed_properties=lens_fixed_properties,
-                                             mirrors_fixed_properties=mirrors_fixed_properties,
-                                             R_small_mirror=R_small_mirror,
-                                             waist_to_left_mirror=waist_to_left_mirror,
-                                             lambda_0_laser=1064e-9, power=2e4,
-                                             set_h_instead_of_w=True,
-                                             collimation_mode=collimation_mode,
-                                             big_mirror_radius=big_mirror_radius,
-                                             right_arm_length=right_arm_length,
-                                             set_R_right_to_equalize_angles=set_R_right_to_equalize_angles,
-                                             set_R_right_to_R_left=set_R_right_to_R_left,
-                                             set_R_left_to_collimate=set_R_left_to_collimate,
-                                             set_R_right_to_collimate=set_R_right_to_collimate)
+cavity = mirror_lens_mirror_cavity_generator(
+    NA_left=NA_left, waist_to_lens=waist_to_lens, h=h,
+    R_left=R_left, R_right=R_right, T_c=0,
+    T_edge=T_edge, lens_fixed_properties=lens_fixed_properties,
+    mirrors_fixed_properties=mirrors_fixed_properties,
+    R_small_mirror=R_small_mirror,
+    waist_to_left_mirror=waist_to_left_mirror,
+    lambda_0_laser=1064e-9, power=2e4,
+    set_h_instead_of_w=True,
+    collimation_mode=collimation_mode,
+    big_mirror_radius=big_mirror_radius,
+    right_arm_length=right_arm_length,
+    set_R_right_to_equalize_angles=set_R_right_to_equalize_angles,
+    set_R_right_to_R_left=set_R_right_to_R_left,
+    set_R_left_to_collimate=set_R_left_to_collimate,
+    set_R_right_to_collimate=set_R_right_to_collimate
+)
 
-plot_mirror_lens_mirror_cavity_analysis(cavity,
-                                        auto_set_x=auto_set_x,
-                                        x_span=x_span,
-                                        auto_set_y=auto_set_y,
-                                        y_span=y_span,
-                                        T_edge=1e-3,
-                                        camera_center=camera_center,
-                                        add_unheated_cavity=add_unheated_cavity)
+plot_mirror_lens_mirror_cavity_analysis(
+    cavity,
+    auto_set_x=auto_set_x,
+    x_span=x_span,
+    auto_set_y=auto_set_y,
+    y_span=y_span,
+    T_edge=T_edge,
+    camera_center=camera_center,
+    add_unheated_cavity=add_unheated_cavity
+)
 plt.show()
-if print_cavity_parameters:
-    print(cavity.params)
+# %%
+n_arms = 1
+ABCD_matrices = cavity.ABCD_matrices[n_arms-1::-1]
+if n_arms == 1:
+    ABCD_first_n = ABCD_matrices[0]  # Only one arm, no need to reverse
+else:
+    ABCD_first_n = np.linalg.multi_dot(ABCD_matrices)
+
+refractive_index_n = cavity.arms[n_arms].n
+first_mode = cavity.arms[0].mode_parameters_on_surface_0
+mode_n = propagate_local_mode_parameter_through_ABCD(first_mode, ABCD_first_n, n_1=1, n_2=refractive_index_n)
+actual_mode_n = cavity.arms[n_arms].mode_parameters_on_surface_0
+
+print(mode_n.q[0])
+print(actual_mode_n.q[0])
