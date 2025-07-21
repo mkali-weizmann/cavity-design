@@ -7,6 +7,14 @@ import warnings
 # import dataclass:
 from dataclasses import dataclass
 
+# %% Constants
+CENTRAL_LINE_TOLERANCE = 1
+STRETCH_FACTOR = 1  # 0.001
+C_LIGHT_SPEED = 299792458  # [m/s]
+ROOM_TEMPERATURE = 293  # [K]
+LAMBDA_0_LASER = 1064e-9
+LAMBDA_1_LASER = 532e-9
+
 # Every optical element has a np.ndarray representation, and those two dictionaries defines the order and meaning of
 # the array columns.
 PRETTY_INDICES_NAMES = {'x': 'x [m]',
@@ -410,14 +418,6 @@ class PerturbationPointer:
         )
 
 
-CENTRAL_LINE_TOLERANCE = 1
-STRETCH_FACTOR = 1  # 0.001
-C_LIGHT_SPEED = 299792458  # [m/s]
-ROOM_TEMPERATURE = 293  # [K]
-LAMBDA_0_LASER = 1064e-9
-LAMBDA_1_LASER = 532e-9
-
-
 def pretty_print_array(array: np.ndarray):
     # Prints an array in a way that can be copy-pasted into the code.
     print(f"np.{array=}".replace('array=', "").replace("nan", "np.nan").replace("\n", "").replace("],", "],\n").replace(",        ", ", ").replace(",      ", ", ").replace("       [", "          ["))
@@ -440,7 +440,7 @@ def pretty_print_number(number: Optional[float], represents_angle: bool = False)
         pre_padded = 'e'.join(parts)
         if represents_angle:
             pre_padded += ' * np.pi'
-    final_string = pre_padded.ljust(21, ' ')
+    final_string = pre_padded.ljust(24, ' ')
     return final_string
 
 

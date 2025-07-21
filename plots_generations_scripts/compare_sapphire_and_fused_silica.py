@@ -24,8 +24,8 @@ for i, params_name in enumerate(['Sapphire, NA=0.2, L1=0.3, w=3mm - High NA axis
     # cavity.plot(axis_span=axis_span, camera_center=camera_center, ax=ax, plane='xz')  #
     # ax.set_xlim(x_3 - 0.01, x_1 + 0.01)
     # ax.set_ylim(-0.002, 0.002)
-    title = f"short arm NA={cavity.arms[2].mode_parameters.NA[0]:.2e}, short arm length = {np.linalg.norm(cavity.surfaces[2].center - cavity.surfaces[3].center):.2e} [m]\n" + \
-            f"long arm NA={cavity.arms[0].mode_parameters.NA[0]:.2e},   long arm length = {np.linalg.norm(cavity.surfaces[1].center - cavity.surfaces[0].center):.2e} [m] {lenses_types[i]}"
+    title = f"short arm NA={cavity.arms[2].mode_parameters.NA[0]:.2e}, short arm length = {np.linalg.norm(cavity.surfaces_ordered[2].center - cavity.surfaces_ordered[3].center):.2e} [m]\n" + \
+            f"long arm NA={cavity.arms[0].mode_parameters.NA[0]:.2e},   long arm length = {np.linalg.norm(cavity.surfaces_ordered[1].center - cavity.surfaces_ordered[0].center):.2e} [m] {lenses_types[i]}"
 
     # ax.set_title(title)
     # plt.savefig(
@@ -98,8 +98,8 @@ for i, params in enumerate(params_list):
     # cavity.plot(axis_span=axis_span, camera_center=camera_center, ax=ax, plane='xz')  #
     # ax.set_xlim(x_3 - 0.01, x_1 + 0.01)
     # ax.set_ylim(-0.002, 0.002)
-    title = f"short arm NA={cavity.arms[2].mode_parameters.NA[0]:.2e}, short arm length = {np.linalg.norm(params[1, 0] - cavity.surfaces[3].center):.2e} [m] {systems_names[i]}\n" + \
-            f"long arm NA={cavity.arms[0].mode_parameters.NA[0]:.2e},   long arm length = {np.linalg.norm(params[1, 0] - cavity.surfaces[0].center):.2e} [m] w={w}"
+    title = f"short arm NA={cavity.arms[2].mode_parameters.NA[0]:.2e}, short arm length = {np.linalg.norm(params[1, 0] - cavity.surfaces_ordered[3].center):.2e} [m] {systems_names[i]}\n" + \
+            f"long arm NA={cavity.arms[0].mode_parameters.NA[0]:.2e},   long arm length = {np.linalg.norm(params[1, 0] - cavity.surfaces_ordered[0].center):.2e} [m] w={w}"
 
     # ax.set_title(title)
     # plt.savefig(

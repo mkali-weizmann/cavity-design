@@ -375,11 +375,14 @@ class Surface:
             ax: Optional[plt.Axes] = None,
             name: Optional[str] = None,
             dim: int = 2,
-            length=0.6,
             plane: str = "xy",
             color: Optional[str] = None,
+            diameter: float = 7.75e-3,
             **kwargs,
     ):
+        half_spreading_angle = np.arcsin(diameter / (2 * self.radius))
+        half_spreading_length = half_spreading_angle * self.radius
+
         if ax is None:
             fig = plt.figure()
             if dim == 3:
@@ -387,18 +390,18 @@ class Surface:
             else:
                 ax = fig.add_subplot(111)
         if dim == 3:
-            s = np.linspace(-length / 2, length / 2, 100)
-            t = np.linspace(-length / 2, length / 2, 100)
+            s = np.linspace(-half_spreading_length, half_spreading_length, 100)
+            t = np.linspace(-half_spreading_length, half_spreading_length, 100)
         else:
             if plane in ["xy", "yx"]:
                 t = 0
-                s = np.linspace(-length / 2, length / 2, 100)
+                s = np.linspace(-half_spreading_length, half_spreading_length, 100)
             elif plane in ["xz", "zx"]:
                 s = 0
-                t = np.linspace(-length / 2, length / 2, 100)
+                t = np.linspace(-half_spreading_length, half_spreading_length, 100)
             elif plane in ["yz", "zy"]:
                 s = 0
-                t = np.linspace(-length / 2, length / 2, 100)
+                t = np.linspace(-half_spreading_length, half_spreading_length, 100)
             else:
                 raise ValueError("plane must be one of 'xy', 'xz', 'yz'")
 
@@ -747,7 +750,6 @@ class FlatSurface(Surface):
         p = (points - self.center) @ pseudo_y
         return t, p
 
-
 class FlatMirror(FlatSurface, PhysicalSurface):
 
     def __init__(
@@ -1086,13 +1088,13 @@ class CurvedSurface(Surface):
             ax: Optional[plt.Axes] = None,
             name: Optional[str] = None,
             dim: int = 2,
-            length=None,
             plane: str = "xy",
+            diameter: Optional[float] = 7.75e-3,
             **kwargs,
     ):
-        if length is None:
-            length = 0.6 * self.radius
-        super().plot(ax, name, dim, length=length, plane=plane, **kwargs)
+        if diameter is None:
+            diameter = 0.6 * self.radius
+        super().plot(ax, name, dim, diameter=diameter, plane=plane, **kwargs)
 
 
 class CurvedMirror(CurvedSurface, PhysicalSurface):
@@ -1769,6 +1771,14 @@ class Cavity:
         return params
 
     @property
+    def formatted_textual_params(self) -> str:
+        if self.params is None:
+            return "No parameters set for this cavity."
+        textual_representation = "params = " + str(self.params).replace('OpticalElementParams', '\n          OpticalElementParams').replace(
+            '))]', '))\n         ]')
+        return textual_representation
+
+    @property
     def to_array(self) -> np.ndarray:
         array = np.stack([param.to_array for param in self.to_params], axis=0)
         return array
@@ -1822,8 +1832,15 @@ class Cavity:
             return [arm.mode_parameters for arm in self.arms]
 
     @property
-    def surfaces(self):
+    def surfaces_ordered(self):
         return [arm.surface_0 for arm in self.arms]
+
+    @property
+    def surfaces(self):
+        if self.standing_wave:
+            return [arm.surface_0 for arm in self.arms[:len(self.arms)//2 + 1]]
+        else:
+            return [arm.surface_0 for arm in self.arms]
 
     @property
     def default_initial_k_vector(self) -> np.ndarray:
@@ -2242,7 +2259,8 @@ class Cavity:
                 arm.mode_parameters_on_surface_0 = local_mode_parameters_current
                 local_mode_parameters_current = arm.propagate_local_mode_parameters()
                 arm.mode_principle_axes = self.principle_axes(arm.central_line.k_vector)
-            self.resonating_mode_successfully_traced = True
+            if self.resonating_mode_successfully_traced is not False:
+                self.resonating_mode_successfully_traced = True
         else:
             for arm in self.arms:
                 arm.mode_parameters_on_surface_0 = LocalModeParameters(
@@ -2291,7 +2309,7 @@ class Cavity:
         if self.arms[0].mode_parameters is None:
             self.set_mode_parameters()
         list_of_spot_size_lines = []
-        if self.resonating_mode_successfully_traced is True:
+        if self.arms[0].mode_parameters is not None:
             for arm in self.arms:
                 spot_size_lines_separated = generate_spot_size_lines(
                     arm.mode_parameters,
@@ -2377,8 +2395,8 @@ class Cavity:
             plot_mode_lines: bool = True,
             plot_central_line: bool = True,
             additional_rays: Optional[List[Ray]] = None,
+            diameters: Optional[Union[float, np.ndarray]] = None,
     ) -> plt.Axes:
-
         if axis_span is None:
 
             axes_range = np.array(
@@ -2443,7 +2461,7 @@ class Cavity:
                                     camera_center_int].surface_1.center
                                 ) / 2
             else:
-                origin_camera = self.surfaces[camera_center_int].center
+                origin_camera = self.surfaces_ordered[camera_center_int].center
 
         x_index, y_index = plane_name_to_xy_indices(plane)
         ax.set_xlim(
@@ -2470,27 +2488,31 @@ class Cavity:
             for i, ray in enumerate(additional_rays):
                 ray.plot(ax=ax, dim=dim, plane=plane, linestyle="--", alpha=0.8, label=i)
 
+        if isinstance(diameters, float):
+            diameters = np.ones(len(self.surfaces_ordered)) * diameters
+        elif diameters is None:
+            diameters = np.array(
+                [surface.radius if isinstance(surface, CurvedSurface) else 7.75e-3 for surface in self.surfaces])
+
+        laser_color = laser_color if self.resonating_mode_successfully_traced is True else "grey"
+
         for i, surface in enumerate(self.surfaces):
+            surface.plot(ax=ax, dim=dim, plane=plane, diameter=diameters[i])
             # If there is not information on the spot size of the element, plot it with default length:
-            if (
-                    self.arms[0].mode_parameters is None
-                    or np.any(np.isnan(self.arms[0].mode_parameters.z_R))
-                    or np.any(self.arms[0].mode_parameters.z_R == 0)
-            ):
-                surface.plot(ax=ax, dim=dim, plane=plane)
-            else:
+            if (self.resonating_mode_successfully_traced and self.arms[0].mode_parameters is not None and not np.any(np.isnan(self.arms[0].mode_parameters.z_R)) and not np.any(self.arms[0].mode_parameters.z_R == 0)):
                 # If there is information on the spot size of the element, plot it with the spot size length*2.5:
                 spot_size = self.arms[i].mode_parameters_on_surface_0.spot_size
                 if plane == "xy":
                     spot_size = spot_size[1]
                 else:
                     spot_size = spot_size[0]
-                length = spot_size * 5
-                surface.plot(ax=ax, dim=dim, plane=plane, length=length)
+                diameter = spot_size * 5
+                surface.plot(ax=ax, dim=dim, plane=plane, diameter=diameter, alpha=0.5, linestyle='--', color=laser_color)
 
         if self.lambda_0_laser is not None and plot_mode_lines and self.arms[0].central_line is not None:
             try:
                 spot_size_lines = self.generate_spot_size_lines(dim=dim, plane=plane)
+
                 for line in spot_size_lines:
                     if dim == 2:
                         ax.plot(
@@ -4165,6 +4187,7 @@ def mirror_lens_mirror_cavity_generator(
             material_properties=mirrors_material_properties,
         )
     elif big_mirror_radius is not None and right_arm_length is not None:
+        warnings.warn("setting both big_mirror_radius and right_arm_length, ignoring NA set")
         center = surface_right.center + mode_right.k_vector * right_arm_length
         outwards_normal = mode_right.k_vector  # not convex compatible currently
         R = big_mirror_radius
@@ -4277,14 +4300,14 @@ def generate_mirror_lens_mirror_cavity_textual_summary(
         short_arm_index = 2
         long_arm_index = 0
 
-    R_short_side = cavity.surfaces[lens_short_arm_surface_index].radius
-    R_long_side = cavity.surfaces[lens_long_arm_surface_index].radius
+    R_short_side = cavity.surfaces_ordered[lens_short_arm_surface_index].radius
+    R_long_side = cavity.surfaces_ordered[lens_long_arm_surface_index].radius
     # try: # I should add a non-existent mode and initialize it with np.nan when there is no mode instead of this solution.
     spot_size_lens_long_side = cavity.arms[1].mode_parameters_on_surfaces[lens_long_arm_surface_in_arm_index].spot_size[0]
     spot_size_lens_short_side = cavity.arms[1].mode_parameters_on_surfaces[lens_short_arm_surface_in_arm_index].spot_size[0]
     CA_divided_by_2spot_size = CA / (2 * spot_size_lens_long_side)
     waist_to_lens_short_arm = np.abs(
-        cavity.surfaces[lens_short_arm_surface_index].center[0] - cavity.mode_parameters[short_arm_index].center[0, 0]
+        cavity.surfaces_ordered[lens_short_arm_surface_index].center[0] - cavity.mode_parameters[short_arm_index].center[0, 0]
     )
     angle_right = cavity.arms[long_arm_index].calculate_incidence_angle(surface_index=lens_short_arm_surface_in_arm_index)
     angle_left = cavity.arms[short_arm_index].calculate_incidence_angle(surface_index=lens_long_arm_surface_in_arm_index)
@@ -4301,18 +4324,18 @@ def generate_mirror_lens_mirror_cavity_textual_summary(
     #     spot_size_left_mirror = np.nan
     #     spot_size_right_mirror = np.nan
 
-    T_c = np.linalg.norm(cavity.surfaces[2].center - cavity.surfaces[1].center)
+    T_c = np.linalg.norm(cavity.surfaces_ordered[2].center - cavity.surfaces_ordered[1].center)
     short_arm_length = np.linalg.norm(
-        cavity.surfaces[lens_short_arm_surface_index].center - cavity.surfaces[small_mirror_index].center
+        cavity.surfaces_ordered[lens_short_arm_surface_index].center - cavity.surfaces_ordered[small_mirror_index].center
     )
     long_arm_length = np.linalg.norm(
-        cavity.surfaces[big_mirror_index].center - cavity.surfaces[lens_long_arm_surface_index].center
+        cavity.surfaces_ordered[big_mirror_index].center - cavity.surfaces_ordered[lens_long_arm_surface_index].center
     )
     waist_to_lens_long_arm = np.abs(
-        cavity.mode_parameters[long_arm_index].center[0, 0] - cavity.surfaces[lens_long_arm_surface_index].center[0]
+        cavity.mode_parameters[long_arm_index].center[0, 0] - cavity.surfaces_ordered[lens_long_arm_surface_index].center[0]
     )
 
-    R_left_mirror = cavity.surfaces[small_mirror_index].radius
+    R_left_mirror = cavity.surfaces_ordered[small_mirror_index].radius
 
     minimal_width_lens = find_minimal_width_for_spot_size_and_radius(
         radius=R_short_side,
@@ -4334,12 +4357,18 @@ def generate_mirror_lens_mirror_cavity_textual_summary(
         minimal_CA_lens = minimal_h_divided_by_spot_size * spot_size_lens_long_side
         lens_specs_string = f"R_lens = {R_short_side:.3e},  T_c = {T_c:.3e},  minimal_w_lens = {minimal_width_lens:.2e},  minimal_CA_lens={minimal_CA_lens:.3e},  lens is thick enough = {geometric_feasibility}"
 
+    if cavity.resonating_mode_successfully_traced is True:
+        mode_flag = ''
+    else:
+        mode_flag = "**INVALID MODE**"
     textual_summary = (
-        f"Short Arm: NA = {short_arm_NA:.3e},  length = {short_arm_length:.3e} [m], waist to lens = {waist_to_lens_short_arm:.3e}\n"
+        f"{mode_flag} Short Arm: NA = {short_arm_NA:.3e},  length = {short_arm_length:.3e} [m], waist to lens = {waist_to_lens_short_arm:.3e} {mode_flag}\n"
         f"Long Arm NA = {long_arm_NA:.3e},  length = {long_arm_length:.3e} [m], waist to lens = {waist_to_lens_long_arm:.3e}\n"
         f"{lens_specs_string}\n"
-        f"R small mirror = {R_left_mirror:.3e}, spot diameter small mirror = {2 * spot_size_left_mirror:.2e}, R big mirror = {cavity.surfaces[3].radius:.3e}, spot diameter big mirror = {2 * spot_size_right_mirror:.2e}"
+        f"R small mirror = {R_left_mirror:.3e}, spot diameter small mirror = {2 * spot_size_left_mirror:.2e}, R big mirror = {cavity.surfaces_ordered[3].radius:.3e}, spot diameter big mirror = {2 * spot_size_right_mirror:.2e}"
     )
+
+
     return textual_summary
 
 
@@ -4364,9 +4393,9 @@ def plot_mirror_lens_mirror_cavity_analysis(
         raise NotImplementedError
     # Assumes: surfaces[0] is the left mirror, surfaces[1] is the lens_left side, surfaces[2] is the lens_right side,
     # surfaces[3] is the right mirror.
-    R_left = cavity.surfaces[1].radius
-    T_c = np.linalg.norm(cavity.surfaces[2].center - cavity.surfaces[1].center)
-    x_left_mirror = cavity.surfaces[0].center[0]
+    R_left = cavity.surfaces_ordered[1].radius
+    T_c = np.linalg.norm(cavity.surfaces_ordered[2].center - cavity.surfaces_ordered[1].center)
+    x_left_mirror = cavity.surfaces_ordered[0].center[0]
 
     assert ax is None or add_unheated_cavity is False, "Can't add unheated cavity when ax is given"
 
@@ -4393,8 +4422,8 @@ def plot_mirror_lens_mirror_cavity_analysis(
     if auto_set_x:
         # cavity_length = cavity.surfaces[3].center[0] - cavity.surfaces[0].center[0]
         # ax[0].set_xlim(cavity.surfaces[0].center[0] - 0.01 * cavity_length, cavity.surfaces[3].center[0] + 0.01 * cavity_length)
-        direction = np.sign(cavity.surfaces[3].center[0] - x_left_mirror)
-        x_limits = [x_left_mirror - 0.01 * direction, cavity.surfaces[3].center[0] + 0.01 * direction]
+        direction = np.sign(cavity.surfaces_ordered[3].center[0] - x_left_mirror)
+        x_limits = [x_left_mirror - 0.01 * direction, cavity.surfaces_ordered[3].center[0] + 0.01 * direction]
         min_x = min(x_limits)
         max_x = max(x_limits)
         ax[0].set_xlim(min_x, max_x)

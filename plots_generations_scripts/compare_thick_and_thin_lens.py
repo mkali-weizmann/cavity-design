@@ -13,8 +13,8 @@ for w in ['3mm', '4mm', '8mm']:
     cavity = Cavity.from_params(params=params, standing_wave=True,
                                 lambda_0_laser=LAMBDA_0_LASER, names=names, t_is_trivial=True, p_is_trivial=True)
 
-    title = f"short arm NA={cavity.arms[2].local_mode_parameters.NA[0]:.2e}, short arm length = {np.linalg.norm(cavity.surfaces[2].center - cavity.surfaces[3].center):.2e} [m]\n" + \
-            f"long arm NA={cavity.arms[0].local_mode_parameters.NA[0]:.2e},   long arm length = {np.linalg.norm(cavity.surfaces[1].center - cavity.surfaces[0].center):.2e} [m] w={w}"
+    title = f"short arm NA={cavity.arms[2].local_mode_parameters.NA[0]:.2e}, short arm length = {np.linalg.norm(cavity.surfaces_ordered[2].center - cavity.surfaces_ordered[3].center):.2e} [m]\n" + \
+            f"long arm NA={cavity.arms[0].local_mode_parameters.NA[0]:.2e},   long arm length = {np.linalg.norm(cavity.surfaces_ordered[1].center - cavity.surfaces_ordered[0].center):.2e} [m] w={w}"
 
     # fig, ax = plt.subplots(figsize=(13, 5))
     # cavity.plot(axis_span=axis_span, camera_center=camera_center, ax=ax, plane='xz')  #

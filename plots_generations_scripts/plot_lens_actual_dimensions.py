@@ -39,12 +39,12 @@ plot_mirror_lens_mirror_cavity_analysis(cavity, CA=5e-3)
 # Calculate arc center and radius
 thetas = np.zeros(2)
 for i in range(2):
-    arc_center_x = cavity.arms[1].surfaces[i].origin[0]
-    arc_center_y = cavity.arms[1].surfaces[i].origin[1]
-    arc_radius = cavity.arms[1].surfaces[i].radius
+    arc_center_x = cavity.arms[1].surfaces_ordered[i].origin[0]
+    arc_center_y = cavity.arms[1].surfaces_ordered[i].origin[1]
+    arc_radius = cavity.arms[1].surfaces_ordered[i].radius
     arc_height = 7.75e-3
     theta = np.arcsin(arc_height / arc_radius / 2) * 360 / (2*np.pi)
-    add_half_circle = ((cavity.arms[1].surfaces[i].inwards_normal[0] + 1) / 2) * 180
+    add_half_circle = ((cavity.arms[1].surfaces_ordered[i].inwards_normal[0] + 1) / 2) * 180
     plt.gca().add_patch(Arc((arc_center_x, arc_center_y),
                             theta1=-theta + add_half_circle,
                             theta2=theta + add_half_circle,
@@ -55,30 +55,30 @@ for i in range(2):
     thetas[i] = theta
 # plt.title(r'Lens and $\pm\omega\left(z\right)$ rays')
 
-corner_left_up = cavity.arms[1].surfaces[0].origin + np.array([-cavity.arms[1].surfaces[0].radius * np.cos(np.deg2rad(thetas[0])),
-                                                               cavity.arms[1].surfaces[0].radius * np.sin(np.deg2rad(thetas[0])),
-                                                               0])
-corner_left_down = cavity.arms[1].surfaces[0].origin + np.array([-cavity.arms[1].surfaces[0].radius * np.cos(np.deg2rad(thetas[0])),
-                                                               -cavity.arms[1].surfaces[0].radius * np.sin(np.deg2rad(thetas[0])),
-                                                               0])
-corner_right_up = cavity.arms[1].surfaces[1].origin + np.array([cavity.arms[1].surfaces[1].radius * np.cos(np.deg2rad(thetas[1])),
-                                                               cavity.arms[1].surfaces[1].radius * np.sin(np.deg2rad(thetas[1])),
-                                                               0])
-corner_right_down = cavity.arms[1].surfaces[1].origin + np.array([cavity.arms[1].surfaces[1].radius * np.cos(np.deg2rad(thetas[1])),
-                                                               -cavity.arms[1].surfaces[1].radius * np.sin(np.deg2rad(thetas[1])),
-                                                               0])
+corner_left_up = cavity.arms[1].surfaces_ordered[0].origin + np.array([-cavity.arms[1].surfaces_ordered[0].radius * np.cos(np.deg2rad(thetas[0])),
+                                                                       cavity.arms[1].surfaces_ordered[0].radius * np.sin(np.deg2rad(thetas[0])),
+                                                                       0])
+corner_left_down = cavity.arms[1].surfaces_ordered[0].origin + np.array([-cavity.arms[1].surfaces_ordered[0].radius * np.cos(np.deg2rad(thetas[0])),
+                                                                         -cavity.arms[1].surfaces_ordered[0].radius * np.sin(np.deg2rad(thetas[0])),
+                                                                         0])
+corner_right_up = cavity.arms[1].surfaces_ordered[1].origin + np.array([cavity.arms[1].surfaces_ordered[1].radius * np.cos(np.deg2rad(thetas[1])),
+                                                                        cavity.arms[1].surfaces_ordered[1].radius * np.sin(np.deg2rad(thetas[1])),
+                                                                        0])
+corner_right_down = cavity.arms[1].surfaces_ordered[1].origin + np.array([cavity.arms[1].surfaces_ordered[1].radius * np.cos(np.deg2rad(thetas[1])),
+                                                                          -cavity.arms[1].surfaces_ordered[1].radius * np.sin(np.deg2rad(thetas[1])),
+                                                                          0])
 
 plt.plot([corner_left_up[0], corner_right_up[0]], [corner_left_up[1], corner_right_up[1]], color='black', lw=1.5)
 plt.plot([corner_left_down[0], corner_right_down[0]], [corner_left_down[1], corner_right_down[1]], color='black', lw=1.5)
-x_0 = (cavity.arms[1].surfaces[0].center[0] + cavity.arms[1].surface_1.center[0]) / 2
+x_0 = (cavity.arms[1].surfaces_ordered[0].center[0] + cavity.arms[1].surface_1.center[0]) / 2
 y_0 = 0
 d = 7e-3
 plt.xlim(x_0 - d, x_0 + d)
 plt.ylim(y_0 - d, y_0 + d)
 xticks = plt.gca().get_xticks()
 yticks = plt.gca().get_yticks()
-plt.gca().set_xticklabels([f'{(tick - cavity.arms[1].surfaces[0].center[0])*1000:.0f}' for tick in xticks])
-plt.gca().set_yticklabels([f'{(tick - cavity.arms[1].surfaces[0].center[0])*1000:.0f}' for tick in yticks])
+plt.gca().set_xticklabels([f'{(tick - cavity.arms[1].surfaces_ordered[0].center[0]) * 1000:.0f}' for tick in xticks])
+plt.gca().set_yticklabels([f'{(tick - cavity.arms[1].surfaces_ordered[0].center[0]) * 1000:.0f}' for tick in yticks])
 plt.gca().set_aspect('equal', adjustable='box')
 plt.xlabel('x (mm)')
 plt.ylabel('y (mm)')

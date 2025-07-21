@@ -93,7 +93,7 @@ ax.xaxis.set_major_formatter(plt.FuncFormatter(cm_format_shifted))
 ax.set_ylabel("y [cm]")
 ax.set_xlabel("x [cm]")
 ax.set_title(
-    f"Fabry Perot, NA={cavity.arms[0].mode_parameters.NA[0]:.3f}, length = {np.linalg.norm(cavity.surfaces[1].center - cavity.surfaces[0].center)*100:.0f}cm")
+    f"Fabry Perot, NA={cavity.arms[0].mode_parameters.NA[0]:.3f}, length = {np.linalg.norm(cavity.surfaces_ordered[1].center - cavity.surfaces_ordered[0].center) * 100:.0f}cm")
 
 plt.savefig('figures/systems/Fabry-Perot_scaled_x.svg', dpi=300, bbox_inches='tight')
 plt.show()
