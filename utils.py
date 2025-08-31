@@ -575,6 +575,10 @@ def z_R_of_w_0(w_0: np.ndarray, lambda_laser: float) -> np.ndarray:
     return np.pi * w_0 ** 2 / lambda_laser
 
 
+def w_0_of_NA(NA: float, lambda_laser: float):
+    return lambda_laser / (np.pi * NA)
+
+
 def spot_size(z: np.ndarray, z_R: np.ndarray, lambda_0_laser: float, n: float) -> np.ndarray:  # AKA w(z)
     # lambda_laser is the wavelength of the laser in the medium = lambda_0 / n
     w_0 = w_0_of_z_R(z_R, lambda_0_laser, n)

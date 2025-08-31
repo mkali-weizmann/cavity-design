@@ -147,6 +147,15 @@ class ModeParameters:
     lambda_0_laser: Optional[float]
     n: float = 1  # refractive index
 
+    def __post_init__(self):
+        if not isinstance(self.w_0, np.ndarray):
+            raise TypeError(f"waist must be np.ndarray, for both axes, got {type(self.w_0)}")
+
+        if isinstance(self.center, np.ndarray):  # If it is not None
+            if not np.isnan(self.center.flat[0]).item():  # If the mode is valid and is not nans
+                if self.center.ndim == 1:  # If it has only one axis instead of two:
+                    self.center = np.tile(self.center, (2, 1))  # Make it two...
+
     @property
     def ray(self):
         return Ray(self.center, self.k_vector)
@@ -1877,7 +1886,7 @@ class Cavity:
     @property
     def perturbable_params_names(self):
         perturbable_params_names_list = params_to_perturbable_params_names(
-            self.params, self.t_is_trivial and self.p_is_trivial
+            self.to_params, self.t_is_trivial and self.p_is_trivial
         )
         return perturbable_params_names_list
 
@@ -2593,9 +2602,9 @@ class Cavity:
     ) -> np.ndarray:
         if perturbable_params_names is None:
             perturbable_params_names = self.perturbable_params_names
-        tolerance_matrix = np.zeros((len(self.params), len(perturbable_params_names)))
+        tolerance_matrix = np.zeros((len(self.to_params), len(perturbable_params_names)))
         for element_index in tqdm(
-                range(len(self.params)), desc="Tolerance Matrix - element index: ",
+                range(len(self.to_params)), desc="Tolerance Matrix - element index: ",
                 disable=self.debug_printing_level < 1
         ):
             for tolerance_matrix_index, param_name in (
@@ -3329,7 +3338,7 @@ def perturb_cavity(
         perturbation_pointer: Union[PerturbationPointer, List[PerturbationPointer]],
         **kwargs,  # For the initialization of the new cavity
 ):
-    new_params = copy.deepcopy(cavity.params)
+    new_params = copy.deepcopy(cavity.to_params)
     for perturbation_pointer_temp in perturbation_pointer:
         current_value = getattr(
             new_params[perturbation_pointer_temp.element_index], perturbation_pointer_temp.parameter_name
