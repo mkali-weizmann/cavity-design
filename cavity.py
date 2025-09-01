@@ -2606,7 +2606,7 @@ class Cavity:
                     pbar := tqdm(tolerance_df.columns, disable=self.debug_printing_level < 1)
             ):
                 pbar.set_description(f"    Tolerance Matrix - {element_name} -  {param_name}")
-                if self.to_params[element_index].surface_type == SurfacesTypes.thick_lens and param_name in ['theta', 'phi']:
+                if self.to_params[element_index].surface_type == SurfacesTypes.thick_lens and param_name in ['theta', 'phi'] and self.use_paraxial_ray_tracing:  # Lens is invariant to small rotations under paraxial approx.
                     continue
                 tolerance_df.loc[element_name, param_name] = self.calculate_parameter_tolerance(
                     perturbation_pointer=PerturbationPointer(element_index, param_name),

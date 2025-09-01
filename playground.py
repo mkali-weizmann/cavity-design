@@ -86,18 +86,18 @@ for i, NA in (pbar_NAs := tqdm(enumerate(NAs), total=len(NAs))):
                                                                     set_R_left_to_collimate=set_R_left_to_collimate,
                                                                     power=2e4)
 
-    cavity_fabry_perot = fabry_perot_generator(radii=(R_small_mirror, R_small_mirror), NA=NA)
+    # cavity_fabry_perot = fabry_perot_generator(radii=(R_small_mirror, R_small_mirror), NA=NA)
 
     cavity_mirror_lens_mirror.debug_printing_level = 2
-    cavity_fabry_perot.debug_printing_level = 2
+    # cavity_fabry_perot.debug_printing_level = 2
 
     tolerance_df_mirror_lens_mirror = cavity_mirror_lens_mirror.generate_tolerance_dataframe()
-    tolerance_df_fabry_perot = cavity_fabry_perot.generate_tolerance_dataframe()
+    # tolerance_df_fabry_perot = cavity_fabry_perot.generate_tolerance_dataframe()
 
     tolerances_df_mirror_lens_mirror[i, :, :] = np.abs(tolerance_df_mirror_lens_mirror)
-    tolerances_df_fabry_perot[i, :, :] = np.abs(tolerance_df_fabry_perot)
+    # tolerances_df_fabry_perot[i, :, :] = np.abs(tolerance_df_fabry_perot)
 
-    # cavity_mirror_lens_mirror.generate_overlaps_graphs(tolerance_dataframe=tolerance_df_mirror_lens_mirror)
+    cavity_mirror_lens_mirror.generate_overlaps_graphs(tolerance_dataframe=tolerance_df_mirror_lens_mirror)
     # cavity_fabry_perot.generate_overlaps_graphs(tolerance_dataframe=tolerance_df_fabry_perot)
 # %%
 fig, ax = plt.subplots(1, 2, figsize=(10, 5))

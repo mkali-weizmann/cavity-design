@@ -643,7 +643,7 @@ def functions_first_crossing(f: Callable, initial_step: float, crossing_value: f
     # assumes f(0) == 1 and a decreasing function.
     stopping_flag = False
     increasing_ratio = 2
-    n = 1000
+    n = 10
     last_n_evaluations = np.zeros(n)
     last_n_xs = np.zeros(n)
     borders_min = 0
@@ -695,7 +695,7 @@ def functions_first_crossing(f: Callable, initial_step: float, crossing_value: f
         elif np.isnan(f_x):
             if np.isnan(borders_max):
                 increasing_ratio = 1.1
-                x *= increasing_ratio
+                x /= increasing_ratio
                 f_borders_max = f_x
             else:
                 # randomize new x with higher probability to be closer to borders_min (the pdf is phi(x)=2(1-x)), the cdf
