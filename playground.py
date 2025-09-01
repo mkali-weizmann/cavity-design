@@ -72,18 +72,18 @@ perturbation_pointers = [
     # PerturbationPointer(element_index=element_index_1, parameter_name=param_name_1, perturbation_value=perturbation_value_1)
 ]
 perturbed_cavity = perturb_cavity(cavity=cavity, perturbation_pointer=perturbation_pointers)
-
 fig, ax = plt.subplots(2, 1, figsize=(12, 12))
 plot_mirror_lens_mirror_cavity_analysis(perturbed_cavity, add_unheated_cavity=add_unheated_cavity,
                                         auto_set_x=auto_set_x, x_span=x_span, auto_set_y=auto_set_y, y_span=y_span,
                                         camera_center=camera_center, diameters=[7.75e-3, 7.75e-3, 7.75e-3, 0.0254],
                                         ax=ax[0])
-
+ax[0].axvline(x=cavity.mode_parameters[2].center[0, 0], color='black', linestyle='--', alpha=0.8, linewidth=1)
 spot_size_lines_original = cavity.generate_spot_size_lines(dim=2, plane='xy')
 for line in spot_size_lines_original:
     ax[0].plot(line[0, :], line[1, :], color='green', linestyle='--', alpha=0.8, linewidth=0.5,
                label="perturbed_mode")
-plot_2_cavity_perturbation_overlap(cavity=cavity, second_cavity=perturbed_cavity, real_or_abs='abs', ax=ax[1])
+plot_2_cavity_perturbation_overlap(cavity=cavity, second_cavity=perturbed_cavity, real_or_abs='abs', ax=ax[1],
+                                   arm_index=2),
 plt.suptitle(
     f"param_name_0={param_name_0}, {perturbation_value_0=:.3e}, param_name_1={param_name_1}, {perturbation_value_1=:.3e}\n")
 fig.tight_layout()

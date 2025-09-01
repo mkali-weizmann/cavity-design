@@ -3269,7 +3269,7 @@ def calculate_gaussian_parameters_on_surface(surface: FlatSurface, mode_paramete
     return A, b, c
 
 
-def evaluate_cavities_modes_on_surface(cavity_1: Cavity, cavity_2: Cavity):
+def evaluate_cavities_modes_on_surface(cavity_1: Cavity, cavity_2: Cavity, arm_index: int = 0):
     # Chooses a plane on which to evaluate the modes, and calculate the gaussian coefficients of the modes on that plane
     # for both cavities.
     correct_modes = True
@@ -3281,8 +3281,8 @@ def evaluate_cavities_modes_on_surface(cavity_1: Cavity, cavity_2: Cavity):
                 correct_modes = False
                 break
 
-    mode_parameters_1 = cavity_1.arms[0].mode_parameters
-    mode_parameters_2 = cavity_2.arms[0].mode_parameters
+    mode_parameters_1 = cavity_1.arms[arm_index].mode_parameters
+    mode_parameters_2 = cavity_2.arms[arm_index].mode_parameters
 
     if mode_parameters_1 is None or mode_parameters_2 is None:
         A_1, A_2, b_1, b_2, c_1, c_2, P1, correct_modes = 0, 0, 0, 0, 0, 0, 0, False
@@ -3298,19 +3298,20 @@ def evaluate_cavities_modes_on_surface(cavity_1: Cavity, cavity_2: Cavity):
         A_1, A_2, b_1, b_2, c_1, c_2, P1, correct_modes = 0, 0, 0, 0, 0, 0, 0, False
         return A_1, A_2, b_1, b_2, c_1, c_2, P1, correct_modes
 
-    # Note that the waist migh be outside the arm, but even if it is, the mode is still valid.
+
+    # Note that the waist might be outside the arm, but even if it is, the mode is still valid.
     cavity_1_waist_pos = mode_parameters_1.center[0, :]  # we take the waist of the first transversal direction
-    P1 = FlatSurface(center=cavity_1_waist_pos, outwards_normal=mode_parameters_1.k_vector)
+    surface = FlatSurface(center=cavity_1_waist_pos, outwards_normal=mode_parameters_1.k_vector)
     try:
-        A_1, b_1, c_1 = calculate_gaussian_parameters_on_surface(P1, mode_parameters_1)
-        A_2, b_2, c_2 = calculate_gaussian_parameters_on_surface(P1, mode_parameters_2)
+        A_1, b_1, c_1 = calculate_gaussian_parameters_on_surface(surface, mode_parameters_1)
+        A_2, b_2, c_2 = calculate_gaussian_parameters_on_surface(surface, mode_parameters_2)
     except FloatingPointError:
-        A_1, A_2, b_1, b_2, c_1, c_2, P1, correct_modes = 0, 0, 0, 0, 0, 0, 0, False
-    return A_1, A_2, b_1, b_2, c_1, c_2, P1, correct_modes
+        A_1, A_2, b_1, b_2, c_1, c_2, surface, correct_modes = 0, 0, 0, 0, 0, 0, 0, False
+    return A_1, A_2, b_1, b_2, c_1, c_2, surface, correct_modes
 
 
-def calculate_cavities_overlap(cavity_1: Cavity, cavity_2: Cavity) -> float:
-    A_1, A_2, b_1, b_2, c_1, c_2, P1, correct_modes = evaluate_cavities_modes_on_surface(cavity_1, cavity_2)
+def calculate_cavities_overlap(cavity_1: Cavity, cavity_2: Cavity, arm_index: int = 0) -> float:
+    A_1, A_2, b_1, b_2, c_1, c_2, P1, correct_modes = evaluate_cavities_modes_on_surface(cavity_1, cavity_2, arm_index)
     if correct_modes is False:
         return np.nan
     else:
@@ -3453,6 +3454,7 @@ def plot_2_cavity_perturbation_overlap(
         cavity: Cavity,
         perturbation_pointer: Optional[PerturbationPointer] = None,
         second_cavity: Cavity = None,
+        arm_index: int = 0,
         ax: Optional[plt.Axes] = None,
         axis_span: Optional[float] = None,
         real_or_abs: str = "abs",
@@ -3460,7 +3462,8 @@ def plot_2_cavity_perturbation_overlap(
     if second_cavity is None:
         second_cavity = perturb_cavity(cavity, perturbation_pointer)
 
-    A_1, A_2, b_1, b_2, c_1, c_2, P1, correct_mode = evaluate_cavities_modes_on_surface(cavity, second_cavity)
+    A_1, A_2, b_1, b_2, c_1, c_2, P1, correct_mode = evaluate_cavities_modes_on_surface(cavity, second_cavity,
+                                                                                         arm_index=arm_index)
     overlap = gaussians_overlap_integral(A_1, A_2, b_1, b_2, c_1, c_2)
     if correct_mode:
         plot_2_gaussians_colors(

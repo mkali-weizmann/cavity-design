@@ -61,7 +61,7 @@ def fabry_perot_generator(radii: Tuple[float, float], NA: float, lambda_0_laser=
                   standing_wave=True)
 
 # %% DELETE ME
-NA = 3.8e-02
+NA = 4.2e-02
 # cavity_mirror_lens_mirror = mirror_lens_mirror_cavity_generator(NA_left=NA, waist_to_lens=waist_to_lens, h=h,
 #                                                                 R_left=R_left, R_right=R_right, T_c=0,
 #                                                                 T_edge=T_edge,
