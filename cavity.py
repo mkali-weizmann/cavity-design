@@ -2162,7 +2162,7 @@ class Cavity:
                     x1=phi_default + 1e-9,
                     xtol=1e-12,
                 )  # x0=np.array([self.default_initial_angles[1]])
-                print(f"phi_solution = {solution.root}, y distance = {f_reduced(solution.root)}")
+                # print(f"phi_solution = {solution.root}, y distance = {f_reduced(solution.root)}")
                 solution_angles = np.array([theta_default, solution.root])
                 central_line_successfully_traced = solution.converged
             else:

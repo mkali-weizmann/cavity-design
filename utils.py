@@ -648,6 +648,7 @@ def functions_first_crossing(f: Callable, initial_step: float, crossing_value: f
     last_n_xs = np.zeros(n)
     borders_min = 0
     borders_max = np.nan
+    borders_max_real = np.nan
     loop_counter = 0
     f_0 = f(0)
     if np.isnan(f_0):
@@ -664,45 +665,44 @@ def functions_first_crossing(f: Callable, initial_step: float, crossing_value: f
         f_x = f(x)
         last_n_xs[np.mod(loop_counter, n)] = x
         last_n_evaluations[np.mod(loop_counter, n)] = f_x
-        if loop_counter == max_f_eval and not np.isnan(borders_max):  # if it wasn't found but we know it's value
+        if  loop_counter == max_f_eval and not np.isnan(borders_max_real):  # if it wasn't found but we know it's value
             # approximately, then interpolate it:
             x = (crossing_value - f_borders_min) / (f_borders_max - f_borders_min) * (
-                    borders_max - borders_min) + borders_min
+                    borders_max_real - borders_min) + borders_min
             # warnings.warn(
             #     f"Did not find crossing value, interpolated it between ({borders_min:.8e}, {f_borders_min:.5e}) and ({borders_max:.8e}, {f_borders_max:.5e}) to be ({x:.8e}, {crossing_value:.5e})")
             stopping_flag = True
         elif not np.any(np.invert(
-                np.abs(last_n_evaluations - 1) < 1e-18)) or loop_counter > max_f_eval:  # if the function is not
+                np.abs(1-last_n_evaluations) < 1e-18)) or loop_counter > max_f_eval:  # if the function is not
             # decreasing or we reached the max number of function evaluations:
             x = np.nan
             stopping_flag = True
-        elif f_x > crossing_value + accuracy:
+        elif f_x > crossing_value + accuracy:  # If we are still above the crossing value (for x values too small):
             borders_min = x
             f_borders_min = f_x
             if np.isnan(borders_max):
                 x *= increasing_ratio
             else:
-                x = interval_parameterization(x, borders_max, 0.5)
-        elif f_x < crossing_value - accuracy:
+                x = interval_parameterization(borders_min, borders_max, 0.5)
+        elif f_x < crossing_value - accuracy:  # If we are below the crossing value (for x values too large, but still
+            # not diverging f):
+            increasing_ratio = 1.1  # Slow down steps
+            borders_max = x
+            borders_max_real = x
+            f_borders_max = f_x
+            x = interval_parameterization(borders_min, borders_max, 0.5)
+        elif np.isnan(f_x):  # If x is too large and f diverges:
             increasing_ratio = 1.1
             borders_max = x
-            f_borders_max = f_x
-            x = interval_parameterization(borders_min, x, 0.5)
+            # randomize new x with higher probability to be closer to borders_min (the pdf is phi(x)=2(1-x)), the cdf
+            # is F(x)=2(x-x^2) and the inverse cdf is F^-1(y)=1-sqrt(1-y)
+            y = np.random.uniform()
+            x_normalized = 1 - np.sqrt(1 - y)
+            x = interval_parameterization(borders_min, borders_max, x_normalized)
         elif not np.any(np.invert(np.isnan(last_n_evaluations))):  # If all the last n evaluations were nan:
             borders_max = np.min(last_n_xs)  # Set borders_max to be the first value from which
             # onwards it seems to always be nan.
             x = interval_parameterization(borders_min, borders_max, 0.5)
-        elif np.isnan(f_x):
-            if np.isnan(borders_max):
-                increasing_ratio = 1.1
-                x /= increasing_ratio
-                f_borders_max = f_x
-            else:
-                # randomize new x with higher probability to be closer to borders_min (the pdf is phi(x)=2(1-x)), the cdf
-                # is F(x)=2(x-x^2) and the inverse cdf is F^-1(y)=1-sqrt(1-y)
-                y = np.random.uniform()
-                x_normalized = 1 - np.sqrt(1 - y)
-                x = interval_parameterization(borders_min, borders_max, x_normalized)
         elif crossing_value - accuracy < f_x < crossing_value + accuracy:
             stopping_flag = True
         else:

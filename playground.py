@@ -40,9 +40,6 @@ x_span = 10 ** x_span
 y_span = 10 ** y_span
 
 
-NAs = [0.0625]  # np.linspace(0.03, 0.16, 5)
-
-
 def fabry_perot_generator(radii: Tuple[float, float], NA: float, lambda_0_laser=LAMBDA_0_LASER):
     w_0 = w_0_of_NA(NA=NA, lambda_laser=lambda_0_laser)
     mode_0 = ModeParameters(center=np.array([0, 0, 0]),
@@ -63,9 +60,10 @@ def fabry_perot_generator(radii: Tuple[float, float], NA: float, lambda_0_laser=
                   p_is_trivial=True,
                   standing_wave=True)
 
+NAs = np.linspace(0.02, 0.16, 100)
 
-tolerances_df_mirror_lens_mirror = np.zeros((len(NAs), 3, 5))
-tolerances_df_fabry_perot = np.zeros((len(NAs), 2, 4))
+tolerances_mirror_lens_mirror = np.zeros((len(NAs), 3, 5))
+tolerances_fabry_perot = np.zeros((len(NAs), 2, 4))
 
 for i, NA in (pbar_NAs := tqdm(enumerate(NAs), total=len(NAs))):
     pbar_NAs.set_description(f'NA={NA:.3f}')
@@ -86,31 +84,38 @@ for i, NA in (pbar_NAs := tqdm(enumerate(NAs), total=len(NAs))):
                                                                     set_R_left_to_collimate=set_R_left_to_collimate,
                                                                     power=2e4)
 
-    # cavity_fabry_perot = fabry_perot_generator(radii=(R_small_mirror, R_small_mirror), NA=NA)
+    cavity_fabry_perot = fabry_perot_generator(radii=(R_small_mirror, R_small_mirror), NA=NA)
 
     cavity_mirror_lens_mirror.debug_printing_level = 2
-    # cavity_fabry_perot.debug_printing_level = 2
+    cavity_fabry_perot.debug_printing_level = 2
 
     tolerance_df_mirror_lens_mirror = cavity_mirror_lens_mirror.generate_tolerance_dataframe()
-    # tolerance_df_fabry_perot = cavity_fabry_perot.generate_tolerance_dataframe()
+    tolerance_df_fabry_perot = cavity_fabry_perot.generate_tolerance_dataframe()
 
-    tolerances_df_mirror_lens_mirror[i, :, :] = np.abs(tolerance_df_mirror_lens_mirror)
-    # tolerances_df_fabry_perot[i, :, :] = np.abs(tolerance_df_fabry_perot)
+    tolerances_mirror_lens_mirror[i, :, :] = np.abs(tolerance_df_mirror_lens_mirror)
+    tolerances_fabry_perot[i, :, :] = np.abs(tolerance_df_fabry_perot)
 
-    cavity_mirror_lens_mirror.generate_overlaps_graphs(tolerance_dataframe=tolerance_df_mirror_lens_mirror)
+    # cavity_mirror_lens_mirror.generate_overlaps_graphs(tolerance_dataframe=tolerance_df_mirror_lens_mirror)
+    # plt.show()
     # cavity_fabry_perot.generate_overlaps_graphs(tolerance_dataframe=tolerance_df_fabry_perot)
-# %%
-fig, ax = plt.subplots(1, 2, figsize=(10, 5))
+    # plt.show()
 
+# %%
+from matplotlib import use
+use('Qt5Agg')
+fig, ax = plt.subplots(1, 2, figsize=(10, 5))
+x_index, y_index, phi_index, r_1_index = 0, 1, 3, 4
 ax[0].set_title('Small mirror tilt tolerances')
-ax[0].plot(NAs, tolerances_df_mirror_lens_mirror[:, 0, 0] * 1e6, label='Mirror-lens-mirror cavity')
-ax[0].plot(NAs, tolerances_df_fabry_perot[:, 0, 0] * 1e6, label='Fabry-Perot cavity')
+ax[0].plot(NAs, tolerances_mirror_lens_mirror[:, 0, phi_index] * 1e6, label='Small mirror')
+ax[0].plot(NAs, tolerances_mirror_lens_mirror[:, 1, phi_index] * 1e6, label='Lens')
+ax[0].plot(NAs, tolerances_mirror_lens_mirror[:, 2, phi_index] * 1e6, label='Large mirror')
+ax[0].plot(NAs, tolerances_fabry_perot[:, 0, phi_index] * 1e6, label='Fabry-Perot cavity')
 ax[0].set_xlabel('NA')
 ax[0].set_ylabel('Tilt tolerance (urad)')
 ax[0].legend()
 ax[0].grid()
 ax[0].set_yscale('log')
-ax[0].set_xscale('log')
+# ax[0].set_xscale('log')
 plt.show()
 
 
