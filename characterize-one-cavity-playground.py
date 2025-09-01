@@ -27,17 +27,17 @@ plot_mirror_lens_mirror_cavity_analysis(cavity, CA=5e-3, diameters=[7.75e-3, 7.7
 plt.show()
 
 # %%
-tolerance_matrix = cavity.generate_tolerance_matrix()
+tolerance_matrix = cavity.generate_tolerance_dataframe()
 
 # %%
 overlaps_series = cavity.generate_overlap_series(shifts=2 * np.abs(tolerance_matrix[:, :]),
                                                  shift_size=50,
                                                  )
 # # %%
-cavity.generate_overlaps_graphs(overlaps_series=overlaps_series, tolerance_matrix=tolerance_matrix[:, :],
-                                arm_index_for_NA=0)
+cavity.generate_overlaps_graphs(arm_index_for_NA=0, tolerance_dataframe=tolerance_matrix[:, :],
+                                overlaps_series=overlaps_series)
 # # plt.savefig(f'figures/NA-tolerance/mirror-lens-mirror_high_NA_ratio_smart_choice_tolerance_NA_1_{cavity.arms[0].local_mode_parameters.NA[0]:.2e}_L_1_{np.linalg.norm(params[1, 0] - cavity.surfaces[0].center):.2e} w={w}.svg',
 # #     dpi=300, bbox_inches='tight')
 plt.show()
 # %%
-cavity.specs(print_specs=True, contracted=False, tolerance_matrix=tolerance_matrix)
+cavity.specs(tolerance_dataframe=tolerance_matrix, print_specs=True, contracted=False)

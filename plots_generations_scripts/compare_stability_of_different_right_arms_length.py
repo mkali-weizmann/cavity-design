@@ -68,15 +68,15 @@ for i, right_arm_length in enumerate(lengths):
     plt.show()
 
     # %%
-    tolerance_matrix = cavity.generate_tolerance_matrix()
+    tolerance_matrix = cavity.generate_tolerance_dataframe()
 
     # # %%
     overlaps_series = cavity.generate_overlap_series(shifts=2 * np.abs(tolerance_matrix[:, :]),
                                                      shift_size=100,
                                                      )
     # # %%
-    cavity.generate_overlaps_graphs(overlaps_series=overlaps_series, tolerance_matrix=tolerance_matrix[:, :],
-                                    arm_index_for_NA=2)
+    cavity.generate_overlaps_graphs(arm_index_for_NA=2, tolerance_dataframe=tolerance_matrix[:, :],
+                                    overlaps_series=overlaps_series)
     plt.suptitle(generate_mirror_lens_mirror_cavity_textual_summary(cavity, h=h, T_edge=T_edge))
     plt.tight_layout()
     plt.show()

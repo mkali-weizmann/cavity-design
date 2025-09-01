@@ -59,10 +59,14 @@ def fabry_perot_generator(radii: Tuple[float, float], NA: float, lambda_0_laser=
     return Cavity(physical_surfaces=[mirror_1, mirror_2],
                   lambda_0_laser=lambda_0_laser,
                   t_is_trivial=True,
-                  p_is_trivial=True, )
+                  p_is_trivial=True)
 
 
-for NA in NAs:
+tolerances_df_mirror_lens_mirror = np.zeros((len(NAs), 3, 5))
+tolerances_df_fabry_perot = np.zeros((len(NAs), 2, 4))
+
+for i, NA in (pbar_NAs := tqdm(enumerate(NAs), total=len(NAs))):
+    pbar_NAs.set_description(f'NA={NA:.3f}')
     cavity_mirror_lens_mirror = mirror_lens_mirror_cavity_generator(NA_left=NA_left, waist_to_lens=waist_to_lens, h=h,
                                                                     R_left=R_left, R_right=R_right, T_c=0,
                                                                     T_edge=T_edge,
@@ -82,7 +86,15 @@ for NA in NAs:
 
     cavity_fabry_perot = fabry_perot_generator(radii=(R_small_mirror, R_small_mirror), NA=NA)
 
-    tolerance_matrix_mirror_lens_mirror = cavity_mirror_lens_mirror.generate_tolerance_matrix()
-    tolerance_matrix_fabry_perot = cavity_fabry_perot.generate_tolerance_matrix()
+    cavity_mirror_lens_mirror.debug_printing_level = 2
+    cavity_fabry_perot.debug_printing_level = 2
 
-    print("kaki")
+    tolerance_df_mirror_lens_mirror = cavity_mirror_lens_mirror.generate_tolerance_dataframe()
+    tolerance_df_fabry_perot = cavity_fabry_perot.generate_tolerance_dataframe()
+
+    tolerances_df_mirror_lens_mirror[i, :, :] = np.abs(tolerance_df_mirror_lens_mirror)
+    tolerances_df_fabry_perot[i, :, :] = np.abs(tolerance_df_fabry_perot)
+
+    # cavity_mirror_lens_mirror.generate_overlaps_graphs(tolerance_dataframe=tolerance_df_mirror_lens_mirror)
+    # cavity_fabry_perot.generate_overlaps_graphs(tolerance_dataframe=tolerance_df_fabry_perot)
+

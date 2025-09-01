@@ -33,7 +33,7 @@ for i, params_name in enumerate(['Sapphire, NA=0.2, L1=0.3, w=3mm - High NA axis
         # dpi=300, bbox_inches='tight')
     # plt.show()
     # %%
-    tolerance_matrix = cavity.generate_tolerance_matrix(print_progress=False)
+    tolerance_matrix = cavity.generate_tolerance_dataframe()
 
     # %%
     overlaps_series = cavity.generate_overlap_series(shifts=2 * np.abs(tolerance_matrix[:, :]),
@@ -41,8 +41,8 @@ for i, params_name in enumerate(['Sapphire, NA=0.2, L1=0.3, w=3mm - High NA axis
                                                      print_progress=False)
 
     # %%
-    cavity.generate_overlaps_graphs(overlaps_series=overlaps_series, tolerance_matrix=tolerance_matrix[:, :],
-                                    arm_index_for_NA=2)
+    cavity.generate_overlaps_graphs(arm_index_for_NA=2, tolerance_dataframe=tolerance_matrix[:, :],
+                                    overlaps_series=overlaps_series)
     plt.suptitle(title)
     # plt.savefig(f'figures/NA-tolerance/mirror-lens-mirror_high_NA_ratio_smart_choice_tolerance_NA_1_{cavity.arms[0].mode_parameters.NA[0]:.2e}_L_1_{np.linalg.norm(cavity.surfaces[1].center - cavity.surfaces[0].center):.2e} w={w}.svg',
         # dpi=300, bbox_inches='tight')
@@ -107,7 +107,7 @@ for i, params in enumerate(params_list):
         # dpi=300, bbox_inches='tight')
     # plt.show()
     # %%
-    tolerance_matrix = cavity.generate_tolerance_matrix(print_progress=False)
+    tolerance_matrix = cavity.generate_tolerance_dataframe()
 
     # %%
     overlaps_series = cavity.generate_overlap_series(shifts=2 * np.abs(tolerance_matrix[:, :]),
@@ -115,8 +115,8 @@ for i, params in enumerate(params_list):
                                                      print_progress=False)
 
     # %%
-    cavity.generate_overlaps_graphs(overlaps_series=overlaps_series, tolerance_matrix=tolerance_matrix[:, :],
-                                    arm_index_for_NA=2)
+    cavity.generate_overlaps_graphs(arm_index_for_NA=2, tolerance_dataframe=tolerance_matrix[:, :],
+                                    overlaps_series=overlaps_series)
     plt.suptitle(title)
     # plt.savefig(f'figures/NA-tolerance/mirror-lens-mirror_high_NA_ratio_smart_choice_tolerance_NA_1_{cavity.arms[0].mode_parameters.NA[0]:.2e}_L_1_{np.linalg.norm(params[1, 0] - cavity.surfaces[0].center):.2e} w={w}.svg',
         # dpi=300, bbox_inches='tight')

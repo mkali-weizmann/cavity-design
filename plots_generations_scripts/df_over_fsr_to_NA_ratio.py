@@ -233,8 +233,8 @@ plt.ylim(-0.003, 0.003)
 plt.show()
 # %%
 
-tolerance_matrix_confocal = cavity_confocal.generate_tolerance_matrix()
-tolerance_matrix_concentric = cavity_concentric.generate_tolerance_matrix()
+tolerance_matrix_confocal = cavity_confocal.generate_tolerance_dataframe()
+tolerance_matrix_concentric = cavity_concentric.generate_tolerance_dataframe()
 
 # %%
 overlaps_series_confocal = cavity_confocal.generate_overlap_series(shifts=2 * np.abs(tolerance_matrix_confocal[:, :]),
@@ -246,11 +246,9 @@ overlaps_series_concentric = cavity_concentric.generate_overlap_series(
 )
 
 # # %%
-cavity_confocal.generate_overlaps_graphs(overlaps_series=overlaps_series_confocal,
-                                         tolerance_matrix=tolerance_matrix_confocal[:, :],
-                                         arm_index_for_NA=0)
+cavity_confocal.generate_overlaps_graphs(arm_index_for_NA=0, tolerance_dataframe=tolerance_matrix_confocal[:, :],
+                                         overlaps_series=overlaps_series_confocal)
 plt.show()
-cavity_concentric.generate_overlaps_graphs(overlaps_series=overlaps_series_concentric,
-                                           tolerance_matrix=tolerance_matrix_concentric[:, :],
-                                           arm_index_for_NA=0)
+cavity_concentric.generate_overlaps_graphs(arm_index_for_NA=0, tolerance_dataframe=tolerance_matrix_concentric[:, :],
+                                           overlaps_series=overlaps_series_concentric)
 plt.show()

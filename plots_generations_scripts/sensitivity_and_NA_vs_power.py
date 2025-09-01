@@ -196,10 +196,10 @@ new_unheated_cavity = Cavity.from_params(
 )
 print("Hot cavity:")
 cavity_mirror_lens_mirror_specs_ule = cavity_mirror_lens_mirror.specs(save_specs_name="hot_fuesed_silica",
-                                                                      tolerance_matrix=True, print_specs=True)
+                                                                      tolerance_dataframe=True, print_specs=True)
 print("Cold cavity:")
-new_unheated_cavity_specs_ule = new_unheated_cavity.specs(save_specs_name="cold_fuesed_silica", tolerance_matrix=True,
-                                                          print_specs=True)
+new_unheated_cavity_specs_ule = new_unheated_cavity.specs(save_specs_name="cold_fuesed_silica",
+                                                          tolerance_dataframe=True, print_specs=True)
 
 
 # %%

@@ -1877,11 +1877,11 @@ class Cavity:
 
     @property
     def names(self):
-        names_params = [p.name for p in self.to_params]
-        if any(element is not None for element in names_params):
-            return names_params
-        else:
+        if self.names_memory is not None:
             return self.names_memory
+        else:
+            names_params = [p.name if p.name is not None else i for i, p in enumerate(self.to_params)]
+            return names_params
 
     @property
     def perturbable_params_names(self):
@@ -2061,8 +2061,8 @@ class Cavity:
         root_error = np.linalg.norm(self.f_roots(central_line_initial_parameters))
         central_line_initial_parameters /= STRETCH_FACTOR
 
-        print(f"root_error: {root_error}")
-        print(f"diff: {self.f_roots(central_line_initial_parameters)}")
+        # print(f"root_error: {root_error}")
+        # print(f"diff: {self.f_roots(central_line_initial_parameters)}")
 
         central_line_successfully_traced = root_error < CENTRAL_LINE_TOLERANCE * STRETCH_FACTOR
 
@@ -2593,31 +2593,37 @@ class Cavity:
         )
         return tolerance
 
-    def generate_tolerance_matrix(
+    def generate_tolerance_dataframe(
             self,
             initial_step: float = 1e-7,
             overlap_threshold: float = 0.9,
             accuracy: float = 1e-3,
             perturbable_params_names: Optional[List[str]] = None,
-    ) -> np.ndarray:
+    ) -> pd.DataFrame:
         if perturbable_params_names is None:
             perturbable_params_names = self.perturbable_params_names
-        tolerance_matrix = np.zeros((len(self.to_params), len(perturbable_params_names)))
-        for element_index in tqdm(
-                range(len(self.to_params)), desc="Tolerance Matrix - element index: ",
-                disable=self.debug_printing_level < 1
+        tolerance_df = pd.DataFrame(index=self.names, columns=perturbable_params_names, dtype="float")
+        # np.zeros((len(self.to_params), len(perturbable_params_names)))
+        for element_index, element_name in (pbar_outer := tqdm(
+                enumerate(tolerance_df.index),
+                disable=self.debug_printing_level < 1)
         ):
-            for tolerance_matrix_index, param_name in (
-                    pbar := tqdm(enumerate(perturbable_params_names), disable=self.debug_printing_level < 1)
+            pbar_outer.set_description(f"  Tolerance Matrix - {element_name}")
+            for param_name in (
+                    pbar := tqdm(tolerance_df.columns, disable=self.debug_printing_level < 1)
             ):
-                pbar.set_description(f"Tolerance Matrix - parameter index:  {param_name}")
-                tolerance_matrix[element_index, tolerance_matrix_index] = self.calculate_parameter_tolerance(
+                pbar.set_description(f"    Tolerance Matrix - {element_name} -  {param_name}")
+                tolerance_df.loc[element_name, param_name] = self.calculate_parameter_tolerance(
                     perturbation_pointer=PerturbationPointer(element_index, param_name),
                     initial_step=initial_step,
                     overlap_threshold=overlap_threshold,
                     accuracy=accuracy,
                 )
-        return tolerance_matrix
+                if self.debug_printing_level >= 2:
+                    print(
+                        f"tolerance of {param_name} of {element_name}: {tolerance_df.loc[element_name, param_name]:.3e}"
+                    )
+        return tolerance_df
 
     def generate_overlap_series(
             self,
@@ -2629,9 +2635,9 @@ class Cavity:
     ) -> np.ndarray:
         if perturbable_params_names is None:
             perturbable_params_names = self.perturbable_params_names
-        overlaps = np.zeros((len(self.params), len(perturbable_params_names), shift_size))
+        overlaps = np.zeros((len(self.to_params), len(perturbable_params_names), shift_size))
         for element_index in tqdm(
-                range(len(self.params)), desc="Overlap Series - element_index", disable=self.debug_printing_level < 1
+                range(len(self.to_params)), desc="Overlap Series - element_index", disable=self.debug_printing_level < 1
         ):
             for j, parameter_name in tqdm(
                     enumerate(perturbable_params_names),
@@ -2652,7 +2658,7 @@ class Cavity:
                 # The condition inside is for the case it is a mirror and the parameter is n, and then we don't want
                 # to draw it.
                 if (
-                        SurfacesTypes.has_refractive_index(self.params[element_index].surface_type)
+                        SurfacesTypes.has_refractive_index(self.to_params[element_index].surface_type)
                         or parameter_name != ParamsNames.n_inside_or_after
                 ):
                     overlaps[element_index, j, :] = self.calculated_shifted_cavity_overlap_integral(
@@ -2668,7 +2674,7 @@ class Cavity:
             overlap_threshold: float = 0.9,
             accuracy: float = 1e-3,
             arm_index_for_NA: int = 0,
-            tolerance_matrix: Optional[np.ndarray] = None,
+            tolerance_dataframe: Optional[pd.DataFrame] = None,
             overlaps_series: Optional[np.ndarray] = None,
             names: Optional[List[str]] = None,
             ax: Optional[np.ndarray] = None,
@@ -2682,31 +2688,28 @@ class Cavity:
 
         if ax is None:
             fig, ax = plt.subplots(
-                len(self.params),
+                len(self.to_params),
                 len(perturbable_params_names),
-                figsize=(len(perturbable_params_names) * 5, len(self.params) * 2.1),
+                figsize=(len(perturbable_params_names) * 5, len(self.to_params) * 2.1),
             )
         else:
             fig = ax.flatten()[0].get_figure()
 
-        if tolerance_matrix is None:
-            tolerance_matrix = self.generate_tolerance_matrix(
-                initial_step=initial_step,
-                overlap_threshold=overlap_threshold,
-                accuracy=accuracy,
-            )
+        if tolerance_dataframe is None:
+            tolerance_dataframe = self.generate_tolerance_dataframe(initial_step=initial_step,
+                                                                    overlap_threshold=overlap_threshold, accuracy=accuracy)
 
         if overlaps_series is None:
-            overlaps_series = self.generate_overlap_series(shifts=2 * np.abs(tolerance_matrix), shift_size=30)
+            overlaps_series = self.generate_overlap_series(shifts=2 * np.abs(np.array(tolerance_dataframe)), shift_size=30)
         plt.suptitle(f"NA={self.arms[arm_index_for_NA].mode_parameters.NA[0]:.3e}")
 
-        for i in range(len(self.params)):
+        for i in range(len(self.to_params)):
             for j, parameter_name in enumerate(perturbable_params_names):
                 # The condition inside is for the case it is a mirror and the parameter is n, and then we don't want
                 # to draw it.
-                if parameter_name == ParamsNames.n_inside_or_after and np.isnan(tolerance_matrix[i, j]):
+                if parameter_name == ParamsNames.n_inside_or_after and np.isnan(tolerance_dataframe.iloc[i, j]):
                     continue
-                tolerance = tolerance_matrix[i, j]
+                tolerance = tolerance_dataframe.iloc[i, j]
                 if tolerance == 0 or np.isnan(tolerance):
                     tolerance = initial_step
                 tolerance_abs = np.abs(tolerance)
@@ -2716,7 +2719,7 @@ class Cavity:
 
                 title = f"{names[i]}, {parameter_name}, tolerance: {tolerance_abs:.2e}"
                 ax[i, j].set_title(title)
-                if i == len(self.params) - 1:
+                if i == len(self.to_params) - 1:
                     ax[i, j].set_xlabel("Shift")
                 if j == 0:
                     ax[i, j].set_ylabel("Overlap")
@@ -2819,7 +2822,7 @@ class Cavity:
     def specs(
             self,
             save_specs_name: Optional[str] = None,
-            tolerance_matrix: Union[np.ndarray, bool] = False,
+            tolerance_dataframe: Union[np.ndarray, bool] = False,
             print_specs: bool = False,
             contracted: bool = True,
     ):
@@ -2871,8 +2874,8 @@ class Cavity:
         # If it is a standing wave cavity, print only half of the arms, as the second half is the same arms in reverse
         df_arms = pd.concat(df_arms_list)
 
-        if isinstance(tolerance_matrix, bool):
-            tolerance_matrix = np.abs(self.generate_tolerance_matrix())
+        if isinstance(tolerance_dataframe, bool):
+            tolerance_dataframe = np.array(np.abs(self.generate_tolerance_dataframe()))
         if self.p_is_trivial and self.t_is_trivial:
             index = [
                 "Tolerance - axial displacement",
@@ -2883,7 +2886,7 @@ class Cavity:
             ]
         else:
             index = [PRETTY_INDICES_NAMES[param_name] for param_name in self.perturbable_params_names]
-        df_tolerance = pd.DataFrame(tolerance_matrix.T, columns=self.names, index=index)
+        df_tolerance = pd.DataFrame(tolerance_dataframe.T, columns=self.names, index=index)
         df_tolerance_stacked = stack_df_for_print(df_tolerance)
 
         whole_df = pd.concat([df_elements_stacked, df_cavity, df_arms, df_tolerance_stacked])
@@ -3071,11 +3074,9 @@ def generate_tolerance_of_NA(
             continue
         NAs[k] = cavity.mode_parameters[arm_index_for_NA].NA[0]  # ARBITRARY
         cavities.append(cavity)
-        tolerance_matrix[:, :, k] = cavity.generate_tolerance_matrix(
-            initial_step=initial_step,
-            overlap_threshold=overlap_threshold,
-            accuracy=accuracy,
-        )
+        tolerance_matrix[:, :, k] = cavity.generate_tolerance_dataframe(initial_step=initial_step,
+                                                                        overlap_threshold=overlap_threshold,
+                                                                        accuracy=accuracy)
     if return_cavities:
         return NAs, tolerance_matrix, cavities
     else:
@@ -4260,7 +4261,6 @@ def mirror_lens_mirror_cavity_generator(
         p_is_trivial=True,
         t_is_trivial=True,
         set_mode_parameters=True,
-        names=["Left mirror", "Lens", "Lens", "Right mirror"],
         initial_mode_parameters=mode_left,
         **kwargs,
     )
