@@ -3345,7 +3345,7 @@ def perturb_cavity(
             new_params[perturbation_pointer_temp.element_index], perturbation_pointer_temp.parameter_name, new_value
         )
 
-    parameters_names = [p.parameter_name for p in perturbation_pointer_temp]
+    parameters_names = [p.parameter_name for p in perturbation_pointer]
 
     # If the original cavity was symmetrical in the theta axis or the phi axis, and the perturbation does not disturb this
     # symmetry, then the new cavity is also symmetrical in the theta axis or the phi axis:
@@ -3421,12 +3421,15 @@ def plot_2_gaussians_colors(
         c_1: float,
         c_2: float,
         ax: Optional[plt.Axes] = None,
-        axis_span: float = 0.0005,
+        axis_span: Optional[float] = None,
         title: Optional[str] = "",
         real_or_abs: str = "abs",
 ):
     if ax is None:
         fig, ax = plt.subplots(1, 1, figsize=(10, 5))
+    if axis_span is None:
+        A_1_diagonal, A_2_diagonal = np.diag(A_1), np.diag(A_2)
+        axis_span = 8 * max(np.sqrt(2 / np.min(np.real(A_1_diagonal))), np.sqrt(2 / np.min(np.real(A_2_diagonal))))
     first_gaussian_values = evaluate_gaussian(A_1, b_1, c_1, axis_span)
     second_gaussian_values = evaluate_gaussian(A_2, b_2, c_2, axis_span)
     first_gaussian_values = first_gaussian_values / np.max(np.abs(first_gaussian_values))
@@ -3442,23 +3445,23 @@ def plot_2_gaussians_colors(
     else:
         raise ValueError("real_or_abs must be 'abs', 'real' or 'abs_squared'")
 
-    ax.imshow(rgb_image, extent=[-axis_span, axis_span, -axis_span, axis_span])
+    ax.imshow(rgb_image, extent=(-axis_span, axis_span, -axis_span, axis_span))
     ax.set_title(title)
 
 
 def plot_2_cavity_perturbation_overlap(
         cavity: Cavity,
-        parameter_index: Optional[Tuple[int, int]] = None,
-        shift_value: Optional[float] = None,
+        perturbation_pointer: Optional[PerturbationPointer] = None,
         second_cavity: Cavity = None,
         ax: Optional[plt.Axes] = None,
-        axis_span: float = 0.0005,
+        axis_span: Optional[float] = None,
         real_or_abs: str = "abs",
 ):
     if second_cavity is None:
-        second_cavity = perturb_cavity(cavity, parameter_index, shift_value)
+        second_cavity = perturb_cavity(cavity, perturbation_pointer)
 
     A_1, A_2, b_1, b_2, c_1, c_2, P1, correct_mode = evaluate_cavities_modes_on_surface(cavity, second_cavity)
+    overlap = gaussians_overlap_integral(A_1, A_2, b_1, b_2, c_1, c_2)
     if correct_mode:
         plot_2_gaussians_colors(
             A_1,
@@ -3469,7 +3472,7 @@ def plot_2_cavity_perturbation_overlap(
             c_2,
             ax=ax,
             axis_span=axis_span,
-            title="Cavity perturbation overlap",
+            title=f"Cavity perturbation overlap = {np.abs(overlap):.4f}",
             real_or_abs=real_or_abs,
         )
 
