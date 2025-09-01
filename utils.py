@@ -643,7 +643,7 @@ def functions_first_crossing(f: Callable, initial_step: float, crossing_value: f
     # assumes f(0) == 1 and a decreasing function.
     stopping_flag = False
     increasing_ratio = 2
-    n = 10
+    n = 1000
     last_n_evaluations = np.zeros(n)
     last_n_xs = np.zeros(n)
     borders_min = 0
@@ -653,7 +653,7 @@ def functions_first_crossing(f: Callable, initial_step: float, crossing_value: f
     if np.isnan(f_0):
         # warnings.warn('Function has no value at x_input=0, returning nan')
         f(0)
-        raise ValueError('Function has no value at x_input=0, returning nan')
+        warnings.warn('Function has no value at x_input=0, returning nan')
         return np.nan
     f_borders_min = f_0
     f_borders_max = np.nan

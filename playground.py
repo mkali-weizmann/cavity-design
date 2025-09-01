@@ -40,7 +40,8 @@ x_span = 10 ** x_span
 y_span = 10 ** y_span
 
 
-NAs = np.linspace(0.03, 0.16, 20)
+NAs = [0.0625]  # np.linspace(0.03, 0.16, 5)
+
 
 def fabry_perot_generator(radii: Tuple[float, float], NA: float, lambda_0_laser=LAMBDA_0_LASER):
     w_0 = w_0_of_NA(NA=NA, lambda_laser=lambda_0_laser)
@@ -59,7 +60,8 @@ def fabry_perot_generator(radii: Tuple[float, float], NA: float, lambda_0_laser=
     return Cavity(physical_surfaces=[mirror_1, mirror_2],
                   lambda_0_laser=lambda_0_laser,
                   t_is_trivial=True,
-                  p_is_trivial=True)
+                  p_is_trivial=True,
+                  standing_wave=True)
 
 
 tolerances_df_mirror_lens_mirror = np.zeros((len(NAs), 3, 5))
@@ -67,7 +69,7 @@ tolerances_df_fabry_perot = np.zeros((len(NAs), 2, 4))
 
 for i, NA in (pbar_NAs := tqdm(enumerate(NAs), total=len(NAs))):
     pbar_NAs.set_description(f'NA={NA:.3f}')
-    cavity_mirror_lens_mirror = mirror_lens_mirror_cavity_generator(NA_left=NA_left, waist_to_lens=waist_to_lens, h=h,
+    cavity_mirror_lens_mirror = mirror_lens_mirror_cavity_generator(NA_left=NA, waist_to_lens=waist_to_lens, h=h,
                                                                     R_left=R_left, R_right=R_right, T_c=0,
                                                                     T_edge=T_edge,
                                                                     lens_fixed_properties=lens_fixed_properties,
@@ -97,4 +99,18 @@ for i, NA in (pbar_NAs := tqdm(enumerate(NAs), total=len(NAs))):
 
     # cavity_mirror_lens_mirror.generate_overlaps_graphs(tolerance_dataframe=tolerance_df_mirror_lens_mirror)
     # cavity_fabry_perot.generate_overlaps_graphs(tolerance_dataframe=tolerance_df_fabry_perot)
+# %%
+fig, ax = plt.subplots(1, 2, figsize=(10, 5))
+
+ax[0].set_title('Small mirror tilt tolerances')
+ax[0].plot(NAs, tolerances_df_mirror_lens_mirror[:, 0, 0] * 1e6, label='Mirror-lens-mirror cavity')
+ax[0].plot(NAs, tolerances_df_fabry_perot[:, 0, 0] * 1e6, label='Fabry-Perot cavity')
+ax[0].set_xlabel('NA')
+ax[0].set_ylabel('Tilt tolerance (urad)')
+ax[0].legend()
+ax[0].grid()
+ax[0].set_yscale('log')
+ax[0].set_xscale('log')
+plt.show()
+
 

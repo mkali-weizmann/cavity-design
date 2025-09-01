@@ -1008,38 +1008,17 @@ class CurvedSurface(Surface):
             self.origin = origin
 
     def find_intersection_with_ray_exact(self, ray: Ray) -> np.ndarray:
-        # The following lines is the result of the next line of mathematica to find the intersection:
-        # Solve[(x0 + kx * theta - xc) ^ 2 + (y0 + ky * theta - yc) ^ 2 + (z0 + kz * theta - zc) ^ 2 == R ^ 2, theta]
-        l = (
-                    -ray.k_vector[..., 0] * ray.origin[..., 0]
-                    + ray.k_vector[..., 0] * self.origin[0]
-                    - ray.k_vector[..., 1] * ray.origin[..., 1]
-                    + ray.k_vector[..., 1] * self.origin[1]
-                    - ray.k_vector[..., 2] * ray.origin[..., 2]
-                    + ray.k_vector[..., 2] * self.origin[2]
-                    + self.curvature_sign
-                    * stable_sqrt(  # The stable_sqrt is to avoid numerical instability when the argument is negative.
-                # it returns nans on negative values instead of throwing an error.
-                -4
-                * (ray.k_vector[..., 0] ** 2 + ray.k_vector[..., 1] ** 2 + ray.k_vector[..., 2] ** 2)
-                * (
-                        -self.radius ** 2
-                        + (ray.origin[..., 0] - self.origin[0]) ** 2
-                        + (ray.origin[..., 1] - self.origin[1]) ** 2
-                        + (ray.origin[..., 2] - self.origin[2]) ** 2
-                )
-                + 4
-                * (
-                        ray.k_vector[..., 0] * (ray.origin[..., 0] - self.origin[0])
-                        + ray.k_vector[..., 1] * (ray.origin[..., 1] - self.origin[1])
-                        + ray.k_vector[..., 2] * (ray.origin[..., 2] - self.origin[2])
-                )
-                ** 2
-            )
-                    / 2
-            ) / (ray.k_vector[..., 0] ** 2 + ray.k_vector[..., 1] ** 2 + ray.k_vector[..., 2] ** 2)
-        intersection_point = ray.parameterization(l)
-        ray.length = l
+        # The following expression is the result of calculation "Intersection of a parameterized line and a sphere"
+        # in the research lyx file
+        Delta = ray.origin - self.origin  # m_rays | 3
+        Delta_squared = np.sum(Delta ** 2, axis=-1)  # m_rays
+        Delta_projection_on_k = np.sum(Delta * ray.k_vector, axis=-1)  # m_rays
+        try:
+            length = -Delta_projection_on_k + self.curvature_sign * np.sqrt(Delta_projection_on_k ** 2 - Delta_squared + self.radius ** 2)
+        except FloatingPointError:
+            return np.array([np.nan, np.nan, np.nan])
+        intersection_point = ray.parameterization(length)
+        ray.length = length
         return intersection_point
 
     def find_intersection_with_ray_paraxial(self, ray: Ray) -> np.ndarray:
@@ -1259,6 +1238,8 @@ class CurvedRefractiveSurface(CurvedSurface, PhysicalSurface):
         # explanable derivation of the calculation in lab archives: https://mynotebook.labarchives.com/MTM3NjE3My41fDEwNTg1OTUvMTA1ODU5NS9Ob3RlYm9vay8zMjQzMzA0MzY1fDM0OTMzNjMuNQ==/page/11290221-33
         if intersection_point is None:
             intersection_point = self.find_intersection_with_ray(ray)
+        if np.isnan(intersection_point.flat[0]):
+            return np.full_like(ray.k_vector, np.nan)
         n_backwards = (
                               self.origin - intersection_point
                       ) * self.curvature_sign  # m_rays | 3  # The normal to the surface
@@ -2181,6 +2162,7 @@ class Cavity:
                     x1=phi_default + 1e-9,
                     xtol=1e-12,
                 )  # x0=np.array([self.default_initial_angles[1]])
+                print(f"phi_solution = {solution.root}, y distance = {f_reduced(solution.root)}")
                 solution_angles = np.array([theta_default, solution.root])
                 central_line_successfully_traced = solution.converged
             else:
@@ -2221,8 +2203,19 @@ class Cavity:
             central_line = Ray(origin_solution, k_vector_solution)
             # This line is to save the central line in the ray history, so that it can be plotted later.
             central_line = self.trace_ray(central_line)
-            for i, arm in enumerate(self.arms):
-                arm.central_line = central_line[i]
+            if self.standing_wave:
+                # If it is a standing wave - set the backward trip to be identical to the forwards, but reversed:
+                n_physical_arms = len(self.physical_surfaces) - 1
+                for i, arm in enumerate(self.arms[0:n_physical_arms]):
+                    arm.central_line = central_line[i]
+                for i, arm in enumerate(self.arms[n_physical_arms:]):
+                    origin = central_line[n_physical_arms - i - 1].parameterization(central_line[n_physical_arms - i - 1].length)
+                    k_vector = -central_line[n_physical_arms - i - 1].k_vector
+                    length = central_line[n_physical_arms - i - 1].length
+                    arm.central_line = Ray(origin=origin, k_vector=k_vector,length=length)
+            else:
+                for i, arm in enumerate(self.arms):
+                    arm.central_line = central_line[i]
             self.central_line_successfully_traced = central_line_successfully_traced
         else:
             self.central_line_successfully_traced = False
@@ -2613,6 +2606,8 @@ class Cavity:
                     pbar := tqdm(tolerance_df.columns, disable=self.debug_printing_level < 1)
             ):
                 pbar.set_description(f"    Tolerance Matrix - {element_name} -  {param_name}")
+                if self.to_params[element_index].surface_type == SurfacesTypes.thick_lens and param_name in ['theta', 'phi']:
+                    continue
                 tolerance_df.loc[element_name, param_name] = self.calculate_parameter_tolerance(
                     perturbation_pointer=PerturbationPointer(element_index, param_name),
                     initial_step=initial_step,
@@ -3563,6 +3558,7 @@ def match_a_mirror_to_mode(
         material_properties: MaterialProperties,
         z: Optional[float] = None,
         R: Optional[float] = None,
+        name: Optional[str] = None,
 ) -> Union[FlatMirror, CurvedMirror]:
     if z is None and R is None or (z is not None and R is not None):
         raise ValueError("You must provide either z or R, but not both, and not neither.")
@@ -3572,6 +3568,7 @@ def match_a_mirror_to_mode(
                 center=mode.center[0, :],
                 outwards_normal=mode.k_vector,
                 thermal_properties=material_properties,
+                name=name
             )
         else:
             R_z_inverse = np.abs(z / (z ** 2 + mode.z_R[0] ** 2))
@@ -3582,6 +3579,7 @@ def match_a_mirror_to_mode(
                 outwards_normal=outwards_normal,
                 radius=R_z_inverse ** -1,
                 thermal_properties=material_properties,
+                name=name,
             )
     elif R is not None:
         center = mode.z_of_R(R, output_type=np.ndarray)
@@ -3591,6 +3589,7 @@ def match_a_mirror_to_mode(
                 center=center,
                 outwards_normal=outwards_normal,
                 thermal_properties=material_properties,
+                name=name,
             )
         else:
             mirror = CurvedMirror(
@@ -3598,6 +3597,7 @@ def match_a_mirror_to_mode(
                 outwards_normal=outwards_normal,
                 radius=np.abs(R),
                 thermal_properties=material_properties,
+                name=name,
             )
     return mirror
 
