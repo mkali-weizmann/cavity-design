@@ -561,6 +561,9 @@ class Surface:
         elif isinstance(self, FlatMirror):
             surface_type = SurfacesTypes.flat_mirror
             curvature_sign = 0
+        elif isinstance(self, FlatSurface):
+            surface_type = SurfacesTypes.flat_surface,
+            curvature_sign = 0
         else:
             raise ValueError(f"Unknown surface type {type(self)}")
         if self.material_properties is None:
@@ -1476,7 +1479,6 @@ class Arm:
             mode_parameters_on_surface_0: Optional[LocalModeParameters] = None,
             mode_parameters_on_surface_1: Optional[LocalModeParameters] = None,
             mode_principle_axes: Optional[np.ndarray] = None,
-            lambda_0_laser: Optional[float] = None,
     ):
         self.surface_0: Surface = surface_0
         self.surface_1: Surface = surface_1
@@ -1484,7 +1486,6 @@ class Arm:
         self.mode_parameters_on_surface_1: LocalModeParameters = mode_parameters_on_surface_1
         self.central_line: Ray = central_line
         self.mode_principle_axes: Optional[np.ndarray] = mode_principle_axes
-        self.lambda_0_laser: float = lambda_0_laser
         if isinstance(surface_0, CurvedRefractiveSurface):
             self.n: float = surface_0.n_2
         elif isinstance(surface_1, CurvedRefractiveSurface):
@@ -1504,6 +1505,13 @@ class Arm:
             new_position = self.surface_1.find_intersection_with_ray(ray, paraxial=use_paraxial_ray_tracing)
             ray = Ray(new_position, ray.k_vector)
         return ray
+
+    @property
+    def lambda_0_laser(self):
+        if self.mode_parameters_on_surface_0 is not None:
+            return self.mode_parameters_on_surface_0.lambda_0_laser
+        else:
+            return None
 
     @property
     def ABCD_matrix_free_space(self):
@@ -1676,6 +1684,114 @@ class Arm:
                                                                            "unnamed_surface") + " - "
         )
 
+def complete_orthonormal_basis(v: np.ndarray) -> np.ndarray:
+    """
+    Given a normalized 3D vector v, returns a 3x3 orthonormal basis matrix
+    where the first column is v.
+    If v is close to a standard basis vector, returns the regular basis.
+    """
+    v = np.asarray(v)
+    v = v / np.linalg.norm(v)
+    x = np.array([1.0, 0.0, 0.0])
+    y = np.array([0.0, 1.0, 0.0])
+    z = np.array([0.0, 0.0, 1.0])
+    tol = 1e-8
+
+    if np.allclose(v, x, atol=tol):
+        return np.vstack((z, y))
+    elif np.allclose(v, y, atol=tol):
+        return np.vstack((z, x))
+    elif np.allclose(v, z, atol=tol):
+        return np.vstack((x, y))
+    else:
+        # Find a vector not parallel to v
+        if abs(v[0]) < 0.9:
+            temp = x
+        else:
+            temp = y
+        # Gram-Schmidt process
+        v2 = temp - np.dot(temp, v) * v
+        v2 /= np.linalg.norm(v2)
+        v3 = np.cross(v, v2)
+        v3 /= np.linalg.norm(v3)
+        return np.vstack((v2, v3))
+
+
+def simple_mode_propagator(surfaces: Optional[list] = None,
+                           arms: Optional[list] = None,
+                           local_mode_parameters_initial: LocalModeParameters = None,
+                           ray_initial: Ray = None,
+                           mode_parameters_initial: Optional[ModeParameters] = None,
+                           initial_mode_on_first_surface: bool = False):  # Calculate it manullay in refactored version
+    assert (surfaces is not None or arms is not None) and not (surfaces is not None and arms is not None), \
+        "Either surfaces or arms must be provided, but not both."
+    assert (local_mode_parameters_initial is not None or mode_parameters_initial is not None) and not (
+            local_mode_parameters_initial is not None and mode_parameters_initial is not None), \
+        "Either local_mode_parameters_initial or mode_parameters_initial must be provided, but not both."
+
+    if mode_parameters_initial is not None:
+        raise NotImplementedError("Not yet implemented for mode_parameters_initial")
+
+    if surfaces is not None:
+        arms = [
+            Arm(
+                surfaces[i],
+                surfaces[i + 1],
+            )
+            for i in range(len(surfaces) - 1)
+        ]
+    last_step = arms[-1].surface_1.center - arms[-1].surface_0.center
+    arms.append(
+        Arm(surfaces[-1],
+            FlatSurface(outwards_normal=last_step / np.linalg.norm(last_step),
+                        center=arms[-1].surface_1.center + 10 * last_step,
+                        name="dummy_surface_final",
+                        ),
+            )
+    )
+
+    if not initial_mode_on_first_surface:
+        dummy_plane = FlatSurface(outwards_normal=-ray_initial.k_vector,
+                                  center=ray_initial.origin, name="dummy_initial_plane")
+        arms.insert(0, Arm(
+            surface_0=dummy_plane,
+            surface_1=arms[0].surface_0,
+            central_line=ray_initial))
+
+    central_line = ray_initial
+    for arm in arms:
+        arm.central_line = central_line
+        arm.mode_principle_axes = complete_orthonormal_basis(central_line.k_vector)
+        central_line = arm.propagate(central_line)
+
+    local_mode_parameters_current = local_mode_parameters_initial
+    for arm in arms:
+        arm.mode_parameters_on_surface_0 = local_mode_parameters_current
+        local_mode_parameters_current = arm.propagate_local_mode_parameters()
+    return arms
+
+    # if local_mode_parameters_initial is None:
+    #     ray_initial = Ray(origin=mode_parameters_initial.center[0, :], k_vector=mode_parameters_initial.k_vector)
+    #     first_intersection = arms[0].surface_0.find_intersection_with_ray(ray_initial)
+    #     first_intersection_parameterization = (first_intersection - ray_initial.origin) @ ray_initial.k_vector
+    #     delta_r_initial = arms[0].surface_0.center - mode_parameters_initial.center[0, :]
+    #     delta_r_initial_along_k = mode_parameters_initial.k_vector @ delta_r_initial
+    #     local_mode_parameters_initial = mode_parameters_initial.local_mode_parameters(delta_r_initial_along_k)
+    # if first_intersection_parameterization > 0:
+    #     first_surface_dummy = FlatSurface(outwards_normal=-ray_initial.k_vector, center=mode_)
+    #     central_line_after_one_propagation = arms[0].surface_0.propagate(ray_initial)
+    #     arms[0].central_line = ray_initial
+    # else:
+    # central_line_initial = Ray(
+    #     origin=surface_0.find_intersection_with_ray(Ray(mode_parameters_initial.center[0
+    #
+    # local_mode_parameters_current = local_mode_parameters_initial
+    # for arm in arms:
+    #     arm.mode_parameters_on_surface_0 = local_mode_parameters_current
+    #     local_mode_parameters_current = arm.propagate_local_mode_parameters()
+    #
+    # return arms
+
 
 class Cavity:
     def __init__(
@@ -1703,7 +1819,6 @@ class Cavity:
             Arm(
                 self.physical_surfaces_ordered[i],
                 self.physical_surfaces_ordered[np.mod(i + 1, len(self.physical_surfaces_ordered))],
-                lambda_0_laser=lambda_0_laser,
             )
             for i in range(len(self.physical_surfaces_ordered))
         ]

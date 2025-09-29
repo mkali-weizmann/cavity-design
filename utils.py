@@ -81,6 +81,7 @@ class SurfacesTypes:
     ideal_lens = 'ideal_lens'
     flat_mirror = 'flat_mirror'
     ideal_thick_lens = 'ideal_thick_lens'
+    flat_surface = 'flat_surface'  # Not an optical element, just a helper for the central line.
 
     @staticmethod
     def from_integer_representation(integer_representation: int) -> str:
