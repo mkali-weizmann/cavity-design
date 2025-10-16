@@ -103,7 +103,7 @@ ax[1].set_ylabel('D_L_long to D_Lens_x (m/m)')
 ax[1].set_title('Derivative of Long Arm Length vs Lens Position Perturbation')
 ax[1].grid()
 plt.subplots_adjust(hspace=0.35)  # <-- Increased vertical space
-plt.savefig(r'figures\long_arm_length_vs_lens_pos_perturb.svg')
+plt.savefig(r'figures\long_arm_length_vs_lens_pos_perturb.png')
 plt.show()
 # %%
 

@@ -51,5 +51,7 @@ for surface in [surface_1, surface_2]:
 plt.xlim(-1e-3, 19e-3)
 plt.ylim(-10e-3, 10e-3)
 plt.show()
+# %%
+print(f"{mode_output.NA[0]=:.3e}\n{mode_output.w_0[0]=:.3e}\n{surface_2.center[0] - mode_output.center[0, 0]=:.3e}")
 
-print(mode_output.NA)
+

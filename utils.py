@@ -194,6 +194,7 @@ PHYSICAL_SIZES_DICT = {
     ),
     "material_properties_bk7": MaterialProperties(
         alpha_expansion=7.1e-6,  # https://www.pgo-online.com/intl/BK7.html
+        alpha_volume_absorption = 0.001285 * 100,  # The data is in 1/cm and I convert it to 1/m https://refractiveindex.info/?shelf=3d&book=glass&page=BK7
         kappa_conductivity=1.114,  # https://www.pgo-online.com/intl/BK7.html
         refractive_index=1.507,  # https://www.pgo-online.com/intl/BK7.html
         nu_poisson_ratio=0.206,  # https://www.matweb.com/search/DataSheet.aspx?MatGUID=a8c2d05c7a6244399bbc2e15c0438cb9, https://www.pgo-online.com/intl/BK7.html
