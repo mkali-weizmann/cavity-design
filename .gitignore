@@ -130,7 +130,7 @@ dmypy.json
 
 .idea/
 /gaussian_integral_validation_matrices.py
-/figures/
+/outputs/figures/
 /data/cavities-specs/
 /SolidWorks/Single parts/Assymetric lens template.zip
 /SolidWorks/Single parts/Assymetric lens_equal_angles_version.SLDPRT

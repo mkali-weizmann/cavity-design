@@ -1,11 +1,9 @@
 from cavity import *
-import pickle as pkl
-from matplotlib import rc
 from matplotlib import use
 use('TkAgg')
 
 
-NA_left = 1.5600000000e-01
+NA_left = 1.0000000e-01
 set_mirror_radius = True
 R_small_mirror = 5.0000000000e-03
 waist_to_lens = 5.0000000000e-03
@@ -92,18 +90,21 @@ dl_dperturbation = (long_arm_lengths[1:] - long_arm_lengths[:-1]) / (lens_pertur
 
 # Save the results to a file
 fig, ax = plt.subplots(2, 1, figsize=(12, 12))
-ax[0].plot(lens_perturbations, long_arm_lengths, marker='o', linestyle='-')
-ax[0].set_xlabel('Lens Position Perturbation (m)')
-ax[0].set_ylabel('Long Arm Length (m)')
-ax[0].set_title('Long Arm Length vs Lens Position Perturbation')
+x_mm = lens_perturbations * 1e3
+long_arm_lengths_mm = long_arm_lengths * 1e3
+ax[0].plot(x_mm, long_arm_lengths_mm, marker='o', linestyle='-')
+ax[0].set_xlabel('Lens Position Perturbation (mm)')
+ax[0].set_ylabel('Long Arm Length (mm)')
+ax[0].set_title(f'Long Arm Length vs Lens Position Perturbation, short arm NA={NA_left:.3f}')
 ax[0].grid()
-ax[1].plot(lens_perturbations[:-1], dl_dperturbation, marker='o', linestyle='-')
-ax[1].set_xlabel('Lens Position Perturbation (m)')
-ax[1].set_ylabel('D_L_long to D_Lens_x (m/m)')
-ax[1].set_title('Derivative of Long Arm Length vs Lens Position Perturbation')
+# derivative in mm/mm: multiply lengths by 1e3 and x by 1e3 -> derivative unchanged
+ax[1].plot(x_mm[:-1], dl_dperturbation, marker='o', linestyle='-')
+ax[1].set_xlabel('Lens Position Perturbation (mm)')
+ax[1].set_ylabel('dL_long / dLens_x (mm/mm)')
+ax[1].set_title(f'Derivative of Long Arm Length vs Lens Position Perturbation, short arm NA={NA_left:.3f}')
 ax[1].grid()
 plt.subplots_adjust(hspace=0.35)  # <-- Increased vertical space
-plt.savefig(r'figures\long_arm_length_vs_lens_pos_perturb.png')
+plt.savefig(f'figures\long_arm_length_vs_lens_pos_perturb NA={NA_left*1000:.0f}.png')
 plt.show()
-# %%
+
 

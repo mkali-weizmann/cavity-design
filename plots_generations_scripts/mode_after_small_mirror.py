@@ -1,3 +1,5 @@
+import matplotlib.pyplot as plt
+
 from cavity import *
 
 w_0_initial = w_0_of_NA(0.16, lambda_laser=LAMBDA_0_LASER)
@@ -48,10 +50,28 @@ for line in list_of_spot_size_lines:
 for surface in [surface_1, surface_2]:
     surface.plot(ax=ax)
 
-plt.xlim(-1e-3, 19e-3)
+local_mode_parameter_8mm = mode_output.local_mode_parameters(z_minus_z_0=surface_2.center[0] - mode_output.center[0, 0] + 8e-3)
+local_mode_parameter_13mm = mode_output.local_mode_parameters(z_minus_z_0=surface_2.center[0] - mode_output.center[0, 0] + 13e-3)
+
+textual_description = (f"Mode in the cavity: {mode_0.NA[0]:.3e}\n"
+                       f"Mode after small mirror: NA={mode_output.NA[0]:.2e}\n"
+                       f"8mm after the mirror w={local_mode_parameter_8mm.spot_size[0]:.2e}, z-z_0={local_mode_parameter_8mm.z_minus_z_0[0]:.2e}"
+                       f"\n13mm after the mirror w={local_mode_parameter_13mm.spot_size[0]:.2e}, z-z_0={local_mode_parameter_13mm.z_minus_z_0[0]:.2e}")
+plt.title(textual_description)
+plt.xlim(-1e-3, 29e-3)
 plt.ylim(-10e-3, 10e-3)
-plt.show()
-# %%
-print(f"{mode_output.NA[0]=:.3e}\n{mode_output.w_0[0]=:.3e}\n{surface_2.center[0] - mode_output.center[0, 0]=:.3e}")
+plt.grid()
+x8 = surface_2.center[0] - mode_output.center[0, 0] + 9e-3
+x13 = surface_2.center[0] - mode_output.center[0, 0] + 14e-3
+plt.axvline(x8)
+plt.axvline(x13)
+y_text = 9e-3
+ax.text(x8, y_text, '8 mm from surface_2', rotation=90, va='top', ha='right', fontsize=8, color='blue')
+ax.text(x13, y_text, '13 mm from surface_2', rotation=90, va='top', ha='left', fontsize=8, color='blue')
+plt.xlabel('x (m)')
+plt.ylabel('y (m)')
+plt.savefig(r'figures\mode_after_small_mirror.png', dpi=300, bbox_inches='tight')
+
+
 
 
