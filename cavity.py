@@ -1,8 +1,5 @@
 # %%
 from __future__ import annotations
-
-import warnings
-
 from utils import *
 import numpy as np
 import matplotlib.pyplot as plt
@@ -14,12 +11,10 @@ import pandas as pd
 from datetime import datetime
 from hashlib import md5
 from tqdm import tqdm
-
 from utils import MaterialProperties
 
 pd.set_option("display.max_rows", 500)
 pd.options.display.float_format = "{:.3e}".format
-
 np.seterr(all="raise")
 
 
@@ -695,12 +690,12 @@ class FlatSurface(Surface):
             self.distance_from_origin = center @ self.outwards_normal
 
     def find_intersection_with_ray_exact(self, ray: Ray) -> np.ndarray:
-        A_vec = self.outwards_normal * self.distance_from_origin
-        BA_vec = A_vec - ray.origin
-        BC = BA_vec @ self.outwards_normal
-        cos_theta = ray.k_vector @ self.outwards_normal
-        t = BC / cos_theta
-        intersection_point = ray.parameterization(t)
+        surface_reference_point = self.outwards_normal * self.distance_from_origin
+        ray_origin_to_surface_reference_point = surface_reference_point - ray.origin
+        ray_origin_distance_from_surface = ray_origin_to_surface_reference_point @ self.outwards_normal
+        cos_angle_between_ray_direction_and_plane_normal = ray.k_vector @ self.outwards_normal
+        ray_length_to_surface = ray_origin_distance_from_surface / cos_angle_between_ray_direction_and_plane_normal
+        intersection_point = ray.parameterization(ray_length_to_surface)
         ray.length = np.linalg.norm(intersection_point - ray.origin, axis=-1)
         return intersection_point
 
@@ -1129,8 +1124,10 @@ class CurvedMirror(CurvedSurface, PhysicalSurface):
 
     def reflect_direction_paraxial(self, ray: Ray) -> np.ndarray:
         # This is maybe wrong but does not matter too much because anyway they are not used for the central line finding
-        intersection_point = self.find_intersection_with_ray(ray, paraxial=True)
-        return self.reflect_direction_exact(ray, intersection_point=intersection_point)
+        # ATTENTION - THIS SHOULD NOT BE HERE FOR NON-STANDING WAVES CAVITIES - BUT i AM DEALING ONLY WITH THOSE...
+        return self.reflect_direction_exact(ray)
+        # intersection_point = self.find_intersection_with_ray(ray, paraxial=True)
+        # return self.reflect_direction_exact(ray, intersection_point=intersection_point)
 
     def ABCD_matrix(self, cos_theta_incoming: float = None):
         # order of rows/columns elements is [theta, theta, phi, phi]
@@ -1141,6 +1138,8 @@ class CurvedMirror(CurvedSurface, PhysicalSurface):
         # It is not really justified for bigger perturbations and should be corrected.
         # It should be corrected by first finding the real axes, # And then apply a rotation matrix to this matrix on
         # both sides.
+        # ATTENTION - THIS SHOULD NOT BE HERE FOR NON-STANDING WAVES CAVITIES - BUT i AM DEALING ONLY WITH THOSE...
+        cos_theta_incoming=1
         ABCD = np.array(
             [
                 [1, 0, 0, 0],
@@ -1500,6 +1499,9 @@ class Arm:
     def propagate(self, ray: Ray, use_paraxial_ray_tracing: bool = False):
 
         if isinstance(self.surface_1, PhysicalSurface):
+            # ATTENTION - THIS SHOULD NOT BE HERE FOR NON-STANDING WAVES CAVITIES - BUT i AM DEALING ONLY WITH THOSE...
+            if isinstance(self.surface_1, CurvedMirror):
+                use_paraxial_ray_tracing = False
             ray = self.surface_1.reflect_ray(ray, paraxial=use_paraxial_ray_tracing)
         else:
             new_position = self.surface_1.find_intersection_with_ray(ray, paraxial=use_paraxial_ray_tracing)
@@ -2110,7 +2112,7 @@ class Cavity:
             outwards_normal=self.physical_surfaces[-1].outwards_normal, center=self.physical_surfaces[-1].origin
         )
         intersection_point = origins_plane.find_intersection_with_ray(
-            last_arms_ray, paraxial=self.use_paraxial_ray_tracing
+            last_arms_ray, paraxial=False  # ATTEMPT
         )
         t, p = origins_plane.get_parameterization(intersection_point)
 
@@ -3447,7 +3449,7 @@ def evaluate_gaussian(A: np.ndarray, b: np.ndarray, c: complex, axis_span: float
 
 def perturb_cavity(
         cavity: Cavity,
-        perturbation_pointer: Union[PerturbationPointer, List[PerturbationPointer]],
+        perturbation_pointer: Union[PerturbationPointer, List[PerturbationPointer], Tuple[PerturbationPointer]],
         **kwargs,  # For the initialization of the new cavity
 ):
     new_params = copy.deepcopy(cavity.to_params)
@@ -4433,18 +4435,59 @@ def generate_mirror_lens_mirror_cavity_textual_summary(
     R_short_side = cavity.surfaces_ordered[lens_short_arm_surface_index].radius
     R_long_side = cavity.surfaces_ordered[lens_long_arm_surface_index].radius
     # try: # I should add a non-existent mode and initialize it with np.nan when there is no mode instead of this solution.
-    spot_size_lens_long_side = cavity.arms[1].mode_parameters_on_surfaces[lens_long_arm_surface_in_arm_index].spot_size[0]
-    spot_size_lens_short_side = cavity.arms[1].mode_parameters_on_surfaces[lens_short_arm_surface_in_arm_index].spot_size[0]
+    valid_mode = cavity.arms[1].mode_parameters_on_surfaces[lens_long_arm_surface_in_arm_index] is not None
+    if valid_mode:
+        spot_size_lens_long_side = cavity.arms[1].mode_parameters_on_surfaces[lens_long_arm_surface_in_arm_index].spot_size[0]
+        spot_size_lens_short_side = cavity.arms[1].mode_parameters_on_surfaces[lens_short_arm_surface_in_arm_index].spot_size[0]
+        waist_to_lens_short_arm = np.abs(
+            cavity.surfaces_ordered[lens_short_arm_surface_index].center[0] -
+            cavity.mode_parameters[short_arm_index].center[0, 0]
+        )
+        angle_right = cavity.arms[long_arm_index].calculate_incidence_angle(
+            surface_index=lens_short_arm_surface_in_arm_index)
+        angle_left = cavity.arms[short_arm_index].calculate_incidence_angle(
+            surface_index=lens_long_arm_surface_in_arm_index)
+        spot_size_left_mirror = \
+        cavity.arms[short_arm_index].mode_parameters_on_surfaces[lens_short_arm_surface_in_arm_index].spot_size[0]
+        spot_size_right_mirror = \
+        cavity.arms[long_arm_index].mode_parameters_on_surfaces[lens_long_arm_surface_in_arm_index].spot_size[0]
+        short_arm_NA = cavity.arms[short_arm_index].mode_parameters.NA[0]
+        long_arm_NA = cavity.arms[long_arm_index].mode_parameters.NA[0]
+        long_arm_length = np.linalg.norm(
+            cavity.surfaces_ordered[big_mirror_index].center - cavity.surfaces_ordered[
+                lens_long_arm_surface_index].center
+        )
+        waist_to_lens_long_arm = np.abs(
+            cavity.mode_parameters[long_arm_index].center[0, 0] -
+            cavity.surfaces_ordered[lens_long_arm_surface_index].center[0]
+        )
+        short_arm_length = np.linalg.norm(
+            cavity.surfaces_ordered[lens_short_arm_surface_index].center - cavity.surfaces_ordered[
+                small_mirror_index].center
+        )
+    else:
+        spot_size_lens_long_side = np.nan
+        spot_size_lens_short_side = np.nan
+        waist_to_lens_short_arm = np.nan
+        angle_right = np.nan
+        angle_left = np.nan
+        spot_size_left_mirror = np.nan
+        spot_size_right_mirror = np.nan
+        short_arm_NA = np.nan
+        long_arm_NA = np.nan
+        long_arm_length = np.linalg.norm(
+            cavity.surfaces_ordered[big_mirror_index].center - cavity.surfaces_ordered[
+                lens_long_arm_surface_index].center
+        )
+        waist_to_lens_long_arm = np.nan
+        short_arm_length = np.linalg.norm(
+            cavity.surfaces_ordered[lens_short_arm_surface_index].center - cavity.surfaces_ordered[
+                small_mirror_index].center
+        )
+
     CA_divided_by_2spot_size = CA / (2 * spot_size_lens_long_side)
-    waist_to_lens_short_arm = np.abs(
-        cavity.surfaces_ordered[lens_short_arm_surface_index].center[0] - cavity.mode_parameters[short_arm_index].center[0, 0]
-    )
-    angle_right = cavity.arms[long_arm_index].calculate_incidence_angle(surface_index=lens_short_arm_surface_in_arm_index)
-    angle_left = cavity.arms[short_arm_index].calculate_incidence_angle(surface_index=lens_long_arm_surface_in_arm_index)
-    spot_size_left_mirror = cavity.arms[short_arm_index].mode_parameters_on_surfaces[lens_short_arm_surface_in_arm_index].spot_size[0]
-    spot_size_right_mirror = cavity.arms[long_arm_index].mode_parameters_on_surfaces[lens_long_arm_surface_in_arm_index].spot_size[0]
-    short_arm_NA = cavity.arms[short_arm_index].mode_parameters.NA[0]
-    long_arm_NA = cavity.arms[long_arm_index].mode_parameters.NA[0]
+
+
     # except AttributeError:
     #     spot_size_lens_right = np.nan
     #     CA_divided_by_2spot_size = np.nan
@@ -4455,15 +4498,7 @@ def generate_mirror_lens_mirror_cavity_textual_summary(
     #     spot_size_right_mirror = np.nan
 
     T_c = np.linalg.norm(cavity.surfaces_ordered[2].center - cavity.surfaces_ordered[1].center)
-    short_arm_length = np.linalg.norm(
-        cavity.surfaces_ordered[lens_short_arm_surface_index].center - cavity.surfaces_ordered[small_mirror_index].center
-    )
-    long_arm_length = np.linalg.norm(
-        cavity.surfaces_ordered[big_mirror_index].center - cavity.surfaces_ordered[lens_long_arm_surface_index].center
-    )
-    waist_to_lens_long_arm = np.abs(
-        cavity.mode_parameters[long_arm_index].center[0, 0] - cavity.surfaces_ordered[lens_long_arm_surface_index].center[0]
-    )
+
 
     R_left_mirror = cavity.surfaces_ordered[small_mirror_index].radius
 

@@ -114,39 +114,12 @@ def generate_tolerance_plots(
 
 
 # %% Mirror-lens-mirror cavity:
-with open("data/params_dict.pkl", "rb") as f:
-    params_dict = pkl.load(f)
-params = params_dict[
-    "Sapphire, NA=0.2, L1=0.3m, w=5.9mm, R_lens=15.16mm - High NA Axis"
-]
-params[0, INDICES_DICT['intensity_reflectivity']] = PHYSICAL_SIZES_DICT['material_properties_ULE'].intensity_reflectivity
-params[2, INDICES_DICT['intensity_reflectivity']] = PHYSICAL_SIZES_DICT['material_properties_ULE'].intensity_reflectivity
-params = np.array([[ 3.2550206224e-01+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  1.6128989168e-01+0.j,  0.0000000000e+00+0.j,
-         0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  1.0000000000e+00+0.j,  7.5000000000e-08+0.j,  1.0000000000e-06+0.j,
-         1.3100000000e+00+0.j,  0.0000000000e+00+0.j,  1.7000000000e-01+0.j,  0.0000000000e+00+0.j,  9.9988900000e-01+0.j,  1.0000000000e-04+0.j,
-                      np.nan+0.j,  0.0000000000e+00+0.j],
-       [ 1.7347234760e-18+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+1.j,  8.9127992977e-03+0.j,  1.4550000000e+00+0.j,
-         5.9000000000e-03+0.j,  1.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  4.8000000000e-07+0.j,  1.0000000000e-06+0.j,
-         1.3800000000e+00+0.j,  1.2000000000e-05+0.j,  1.5000000000e-01+0.j,  1.0000000000e-03+0.j,  1.0000000000e-04+0.j,  9.9989900000e-01+0.j,
-                      np.nan+0.j,  1.0000000000e+00+0.j],
-       [-2.0800928000e-02+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j, -0.0000000000e+00-1.j,  8.9254720322e-03+0.j,  0.0000000000e+00+0.j,
-         0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  1.0000000000e+00+0.j,  7.5000000000e-08+0.j,  1.0000000000e-06+0.j,
-         1.3100000000e+00+0.j,  0.0000000000e+00+0.j,  1.7000000000e-01+0.j,  0.0000000000e+00+0.j,  9.9988900000e-01+0.j,  1.0000000000e-04+0.j,
-                      np.nan+0.j,  0.0000000000e+00+0.j]])
 
-# params = np.array([[ 3.2519036040e-01+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  1.6113400154e-01+0.j,  0.0000000000e+00+0.j,
-#          0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  1.0000000000e+00+0.j,  7.5000000000e-08+0.j,  1.0000000000e-06+0.j,
-#          1.3100000000e+00+0.j,  0.0000000000e+00+0.j,  1.7000000000e-01+0.j,  0.0000000000e+00+0.j,  9.9988900000e-01+0.j,  1.0000000000e-04+0.j,
-#                       np.nan+0.j,  0.0000000000e+00+0.j],
-#        [ 1.7347234760e-18+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+1.j,  1.4886177934e-02+0.j,  1.7600000000e+00+0.j,
-#          5.9000000000e-03+0.j,  1.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  5.5000000000e-06+0.j,  1.0000000000e-06+0.j,
-#          4.6060000000e+01+0.j,  1.1700000000e-05+0.j,  3.0000000000e-01+0.j,  1.0000000000e-02+0.j,  1.0000000000e-04+0.j,  9.9989900000e-01+0.j,
-#                       np.nan+0.j,  1.0000000000e+00+0.j],
-#        [-2.0800928000e-02+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j, -0.0000000000e+00-1.j,  8.9254720322e-03+0.j,  0.0000000000e+00+0.j,
-#          0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  0.0000000000e+00+0.j,  1.0000000000e+00+0.j,  7.5000000000e-08+0.j,  1.0000000000e-06+0.j,
-#          1.3100000000e+00+0.j,  0.0000000000e+00+0.j,  1.7000000000e-01+0.j,  0.0000000000e+00+0.j,  9.9988900000e-01+0.j,  1.0000000000e-04+0.j,
-#                       np.nan+0.j,  0.0000000000e+00+0.j]])
-
+params = [
+          OpticalElementParams(name='Small Mirror'           ,surface_type='curved_mirror'                  , x=-4.988973493761732e-03  , y=0                       , z=0                       , theta=0                       , phi=-1e+00 * np.pi          , r_1=5e-03                   , r_2=np.nan                  , curvature_sign=CurvatureSigns.concave, T_c=np.nan                  , n_inside_or_after=1e+00                   , n_outside_or_before=1e+00                   , material_properties=MaterialProperties(refractive_index=None                    , alpha_expansion=7.5e-08                 , beta_surface_absorption=1e-06                   , kappa_conductivity=1.31e+00                , dn_dT=None                    , nu_poisson_ratio=1.7e-01                 , alpha_volume_absorption=None                    , intensity_reflectivity=9.99889e-01             , intensity_transmittance=1e-04                   , temperature=np.nan                  )),
+          OpticalElementParams(name='Lens'                   ,surface_type='thick_lens'                     , x=6.387599281689135e-03   , y=0                       , z=0                       , theta=0                       , phi=0                       , r_1=2.422e-02               , r_2=5.488e-03               , curvature_sign=CurvatureSigns.concave, T_c=2.913797540986543e-03   , n_inside_or_after=1.76e+00                , n_outside_or_before=1e+00                   , material_properties=MaterialProperties(refractive_index=1.76e+00                , alpha_expansion=5.5e-06                 , beta_surface_absorption=1e-06                   , kappa_conductivity=4.606e+01               , dn_dT=1.17e-05                , nu_poisson_ratio=3e-01                   , alpha_volume_absorption=1e-02                   , intensity_reflectivity=1e-04                   , intensity_transmittance=9.99899e-01             , temperature=np.nan                  )),
+          OpticalElementParams(name='Big Mirror'             ,surface_type='curved_mirror'                  , x=2.199758914379698e-01   , y=0                       , z=0                       , theta=0                       , phi=0                       , r_1=2e-01                   , r_2=np.nan                  , curvature_sign=CurvatureSigns.concave, T_c=np.nan                  , n_inside_or_after=1e+00                   , n_outside_or_before=1e+00                   , material_properties=MaterialProperties(refractive_index=None                    , alpha_expansion=7.5e-08                 , beta_surface_absorption=1e-06                   , kappa_conductivity=1.31e+00                , dn_dT=None                    , nu_poisson_ratio=1.7e-01                 , alpha_volume_absorption=None                    , intensity_reflectivity=9.99889e-01             , intensity_transmittance=1e-04                   , temperature=np.nan                  ))
+         ]
 
 power_laser = 2e4
 cavity_mirror_lens_mirror = Cavity.from_params(
@@ -159,15 +132,9 @@ cavity_mirror_lens_mirror = Cavity.from_params(
     t_is_trivial=True,
     names=["Right Mirror", "Lens", "Left Mirror"],
 )
+plot_mirror_lens_mirror_cavity_analysis(cavity_mirror_lens_mirror)
 # %%
 cavity_mirror_lens_mirror.plot()
-plt.xlim(-0.02, 0.02)
-plt.gca().set_aspect('equal', adjustable='box')
-plt.grid()
-plt.title('Sapphire')
-plt.show()
-
-cavity_mirror_lens_mirror.specs(save_specs_name='fused_silica comparison')
 
 # %%
 unheated_cavity = cavity_mirror_lens_mirror.thermal_transformation()

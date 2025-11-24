@@ -60,10 +60,10 @@ def fabry_perot_generator(radii: Tuple[float, float], NA: float, lambda_0_laser=
                   p_is_trivial=True,
                   standing_wave=True)
 
-# %%
+
 
 NAs = np.linspace(0.02, 0.16, 100)
-
+# %%
 tolerances_mirror_lens_mirror = np.zeros((len(NAs), 3, 5))
 tolerances_fabry_perot = np.zeros((len(NAs), 2, 4))
 
@@ -104,11 +104,13 @@ for i, NA in (pbar_NAs := tqdm(enumerate(NAs), total=len(NAs))):
 # %%
 tolerances_mirror_lens_mirror.tofile(r'outputs\tables\tolerances comparison - mirror lens mirror.npy')
 tolerances_fabry_perot.tofile(r'outputs\tables\tolerances comparison - fabry perot.npy')
-
+# %% Load those saved files from earlier runs:
+tolerances_mirror_lens_mirror = np.fromfile(r'outputs\tables\tolerances comparison - mirror lens mirror.npy').reshape((len(NAs), 3, 5))
+tolerances_fabry_perot = np.fromfile(r'outputs\tables\tolerances comparison - fabry perot.npy').reshape((len(NAs), 2, 4))
 # %%
 # from matplotlib import use
 # use('Qt5Agg')
-fig, ax = plt.subplots(1, 2, figsize=(10, 5))
+fig, ax = plt.subplots(1, 3, figsize=(20, 5))
 x_index, y_index, phi_index, r_1_index = 0, 1, 2, 3
 ax[0].set_title('Tilt tolerances')
 ax[0].plot(NAs, tolerances_mirror_lens_mirror[:, 0, phi_index], label='Small mirror')
@@ -120,6 +122,7 @@ ax[0].set_ylabel('Tilt tolerance')
 ax[0].legend()
 ax[0].grid()
 ax[0].set_yscale('log')
+# ax[0].set_xscale('log')
 
 ax[1].set_title('Lateral shift tolerances')
 ax[1].plot(NAs, tolerances_mirror_lens_mirror[:, 0, y_index], label='Small mirror')
@@ -127,12 +130,30 @@ ax[1].plot(NAs, tolerances_mirror_lens_mirror[:, 1, y_index], label='Lens')
 ax[1].plot(NAs, tolerances_mirror_lens_mirror[:, 2, y_index], label='Large mirror')
 ax[1].plot(NAs, tolerances_fabry_perot[:, 0, y_index], label='Fabry-Perot cavity')
 ax[1].set_xlabel('NA')
-ax[1].set_ylabel('Tilt tolerance')
+ax[1].set_ylabel('Lateral shift')
 ax[1].legend()
 ax[1].grid()
 ax[1].set_yscale('log')
+# ax[1].set_xscale('log')
+
+ax[2].set_title('Longitudinal shift tolerances')
+ax[2].plot(NAs, tolerances_mirror_lens_mirror[:, 0, x_index], label='Small mirror')
+ax[2].plot(NAs, tolerances_mirror_lens_mirror[:, 1, x_index], label='Lens')
+ax[2].plot(NAs, tolerances_mirror_lens_mirror[:, 2, x_index], label='Large mirror')
+ax[2].plot(NAs, tolerances_fabry_perot[:, 0, x_index], label='Fabry-Perot cavity')
+ax[2].set_xlabel('NA')
+ax[2].set_ylabel('Longitudinal tolerance')
+ax[2].legend()
+ax[2].grid()
+ax[2].set_yscale('log')
+# ax[2].set_xscale('log')
 
 plt.show()
+
+# %%
+i = 0
+j = 90
+NAs[j], tolerances_mirror_lens_mirror[j, i, 1] / tolerances_mirror_lens_mirror[j, i, 2]
 
 
 
