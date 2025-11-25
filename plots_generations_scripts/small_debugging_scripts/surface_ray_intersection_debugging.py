@@ -75,7 +75,7 @@ cavity = mirror_lens_mirror_cavity_generator(
 
 # %%
 
-perturbation_pointer = PerturbationPointer(element_index=1, parameter_name='y', perturbation_value=0),
+perturbation_pointer = PerturbationPointer(element_index=1, parameter_name='y', perturbation_value=35e-9),
 perturbed_cavity = perturb_cavity(cavity=cavity, perturbation_pointer=perturbation_pointer, set_central_line=False, set_mode_parameters=False)
 # Set a breakpoint at this line in Cavity.find_central_line_standing_wave:
 #                 def f_reduced(phi):

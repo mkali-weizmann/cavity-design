@@ -1,4 +1,3 @@
-# %%
 from __future__ import annotations
 from utils import *
 import numpy as np
@@ -92,7 +91,11 @@ class LocalModeParameters:
 
     @property
     def z_R(self):
-        return self.q.imag
+        if np.all(np.iscomplex(self.q)):
+            return self.q.imag
+        else:
+            return np.ones(self.q.shape) * np.nan
+
 
     @property
     def w_0(self):
@@ -384,7 +387,7 @@ class Surface:
             diameter: float = 7.75e-3,
             **kwargs,
     ):
-        half_spreading_angle = np.arcsin(diameter / (2 * self.radius))
+        half_spreading_angle = np.arcsin(min([diameter / (2 * self.radius), 1]))
         half_spreading_length = half_spreading_angle * self.radius
 
         if ax is None:
@@ -1479,27 +1482,33 @@ class Arm:
             mode_parameters_on_surface_1: Optional[LocalModeParameters] = None,
             mode_principle_axes: Optional[np.ndarray] = None,
     ):
-        self.surface_0: Surface = surface_0
-        self.surface_1: Surface = surface_1
-        self.mode_parameters_on_surface_0: LocalModeParameters = mode_parameters_on_surface_0
-        self.mode_parameters_on_surface_1: LocalModeParameters = mode_parameters_on_surface_1
-        self.central_line: Ray = central_line
-        self.mode_principle_axes: Optional[np.ndarray] = mode_principle_axes
         if isinstance(surface_0, CurvedRefractiveSurface):
             self.n: float = surface_0.n_2
         elif isinstance(surface_1, CurvedRefractiveSurface):
             self.n: float = surface_1.n_1
         else:
             self.n: float = 1.0
+
+        if mode_parameters_on_surface_0 is None:
+            mode_parameters_on_surface_0: LocalModeParameters = LocalModeParameters(q=np.nan, lambda_0_laser=np.nan, n=self.n)
+        if mode_parameters_on_surface_1 is None:
+            mode_parameters_on_surface_1: LocalModeParameters = LocalModeParameters(q=np.nan, lambda_0_laser=np.nan, n=self.n)
+        self.surface_0: Surface = surface_0
+        self.surface_1: Surface = surface_1
+        self.mode_parameters_on_surface_0: LocalModeParameters = mode_parameters_on_surface_0
+        self.mode_parameters_on_surface_1: LocalModeParameters = mode_parameters_on_surface_1
+        self.central_line: Ray = central_line
+        self.mode_principle_axes: Optional[np.ndarray] = mode_principle_axes
+
         if isinstance(surface_0, CurvedRefractiveSurface) and isinstance(surface_1, CurvedRefractiveSurface):
             assert (
                     surface_0.n_2 == surface_1.n_1
-            ), "The refractive index according to firs element is not the same as the refractive index according to the second element"
+            ), "The refractive index according to first element is not the same as the refractive index according to the second element"
 
     def propagate(self, ray: Ray, use_paraxial_ray_tracing: bool = False):
 
         if isinstance(self.surface_1, PhysicalSurface):
-            # ATTENTION - THIS SHOULD NOT BE HERE FOR NON-STANDING WAVES CAVITIES - BUT i AM DEALING ONLY WITH THOSE...
+            # ATTENTION - THIS SHOULD NOT BE HERE FOR NON-STANDING WAVES CAVITIES - BUT I AM DEALING ONLY WITH THOSE...
             if isinstance(self.surface_1, CurvedMirror):
                 use_paraxial_ray_tracing = False
             ray = self.surface_1.reflect_ray(ray, paraxial=use_paraxial_ray_tracing)
@@ -1563,8 +1572,15 @@ class Arm:
     #     return mode_principle_axes
 
     @property
+    def valid_mode_inside(self):
+        if np.all(self.mode_parameters_on_surface_0.z_R[0] > 0):
+            return True
+        else:
+            return False
+
+    @property
     def mode_parameters(self):
-        if self.mode_parameters_on_surface_0 is None:
+        if np.isnan(self.mode_parameters_on_surface_0.z_R[0]):
             return ModeParameters(
                 center=np.array([[np.nan, np.nan, np.nan], [np.nan, np.nan, np.nan]]),
                 k_vector=np.array([np.nan, np.nan, np.nan]),
@@ -1573,6 +1589,7 @@ class Arm:
                 lambda_0_laser=self.lambda_0_laser,
                 n=self.n,
             )
+        self.mode_parameters_on_surface_0.z_R[0]
         center = (
                 self.central_line.origin
                 - self.mode_parameters_on_surface_0.z_minus_z_0[..., np.newaxis] / self.n * self.central_line.k_vector
@@ -1587,11 +1604,11 @@ class Arm:
         )
         return mode_parameters
 
-    def local_mode_parameters_on_a_point(self, point: np.ndarray):
+    def local_mode_parameters_on_a_point(self, point: np.ndarray) -> LocalModeParameters:
         if self.central_line is None:
             raise ValueError("Central line not set")
-        if self.mode_parameters_on_surface_0 is None:
-            return None
+        if np.isnan(self.mode_parameters_on_surface_0.q):
+            return self.mode_parameters_on_surface_0
 
         point_plane_distance_from_surface_1 = (point - self.central_line.origin) @ self.central_line.k_vector
         propagation_ABCD = ABCD_free_space(point_plane_distance_from_surface_1)
@@ -2425,10 +2442,10 @@ class Cavity:
         # the first axis of initial_parameters.
 
     def generate_spot_size_lines(self, dim=2, plane="xy"):
-        if self.arms[0].mode_parameters is None:
+        if np.isnan(self.arms[0].mode_parameters.z_R[0]):
             self.set_mode_parameters()
         list_of_spot_size_lines = []
-        if self.arms[0].mode_parameters is not None:
+        if not np.isnan(self.arms[0].mode_parameters.z_R[0]):
             for arm in self.arms:
                 spot_size_lines_separated = generate_spot_size_lines(
                     arm.mode_parameters,
@@ -2531,7 +2548,7 @@ class Cavity:
 
             if self.t_is_trivial and self.p_is_trivial and dim == 2:
                 if (
-                        self.arms[0].mode_parameters is not None
+                        not np.isnan(self.arms[0].mode_parameters.z_R[0])
                         and np.min(self.arms[0].mode_parameters_on_surface_0.z_R) > 0
                 ):
                     maximal_spot_size = np.max([arm.mode_parameters_on_surface_0.spot_size[0] for arm in self.arms])
@@ -2618,7 +2635,7 @@ class Cavity:
         for i, surface in enumerate(self.surfaces):
             surface.plot(ax=ax, dim=dim, plane=plane, diameter=diameters[i])
             # If there is not information on the spot size of the element, plot it with default length:
-            if (self.resonating_mode_successfully_traced and self.arms[0].mode_parameters is not None and not np.any(np.isnan(self.arms[0].mode_parameters.z_R)) and not np.any(self.arms[0].mode_parameters.z_R == 0)):
+            if (self.resonating_mode_successfully_traced and not np.any(np.isnan(self.arms[0].mode_parameters.z_R)) and not np.any(self.arms[0].mode_parameters.z_R == 0)):
                 # If there is information on the spot size of the element, plot it with the spot size length*2.5:
                 spot_size = self.arms[i].mode_parameters_on_surface_0.spot_size
                 if plane == "xy":
@@ -3043,7 +3060,7 @@ class Cavity:
 
     @property
     def total_acquired_gouy_phase(self):
-        if self.arms[0].mode_parameters is None or self.arms[0].mode_parameters_on_surface_0.z_R[0] == 0:
+        if np.isnan(self.arms[0].mode_parameters.z_R[0]) or self.arms[0].mode_parameters_on_surface_0.z_R[0] == 0:
             return None
         gouy_phases = [arm.acquired_gouy_phase for arm in self.arms]
         return sum(gouy_phases)
@@ -3051,7 +3068,7 @@ class Cavity:
     @property
     def delta_f_frequency_transversal_modes(self):
         if (
-                self.arms[0].mode_parameters is None
+                np.isnan(self.arms[0].mode_parameters.z_R[0])
                 or self.arms[0].mode_parameters_on_surface_0.z_R[0] == 0
                 or np.isnan(self.arms[0].mode_parameters_on_surface_0.z_R[0])
         ):
@@ -3391,7 +3408,7 @@ def evaluate_cavities_modes_on_surface(cavity_1: Cavity, cavity_2: Cavity, arm_i
     # for both cavities.
     correct_modes = True
     for cavity in [cavity_1, cavity_2]:
-        if cavity.arms[0].mode_parameters is None:
+        if np.isnan(cavity.arms[0].mode_parameters.z_R[0]):
             try:
                 cavity.set_mode_parameters()
             except FloatingPointError:
