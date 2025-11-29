@@ -4,6 +4,8 @@ from cavity import *
 import pickle as pkl
 from matplotlib.lines import Line2D
 
+from utils import normalize_vector
+
 FONT_SIZE_AXIS_LABELS = 14
 FONT_SIZE_TITLES = 14
 FONT_SIZE_TICKS = 12
@@ -133,6 +135,7 @@ cavity_mirror_lens_mirror = Cavity.from_params(
     names=["Right Mirror", "Lens", "Left Mirror"],
 )
 plot_mirror_lens_mirror_cavity_analysis(cavity_mirror_lens_mirror)
+
 # %%
 cavity_mirror_lens_mirror.plot()
 

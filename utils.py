@@ -253,6 +253,7 @@ class OpticalElementParams:
         float  # refractive index outside the optical object (for a ThickLens) or before it (for a refractive surface)
     )
     material_properties: MaterialProperties
+    diameter: float = np.nan  # diameter of the optical element, None if not specified.
 
     # def __post_init__(self):
     #     assert self.material_properties.refractive_index == self.n_inside_or_after or self.material_properties.refractive_index == self.n_outside_or_before or np.isnan(self.material_properties.refractive_index), "The refractive index of the material properties is neither of the refractive indices of the optical element!"
@@ -278,6 +279,7 @@ class OpticalElementParams:
             f"T_c={pretty_print_number(self.T_c)}, "
             f"n_inside_or_after={pretty_print_number(self.n_inside_or_after)}, "
             f"n_outside_or_before={pretty_print_number(self.n_outside_or_before)}, "
+            f"diameter={pretty_print_number(self.diameter)}, "
             f"material_properties={self.material_properties})"
         )
 
@@ -303,6 +305,7 @@ class OpticalElementParams:
                 INDICES_DICT["T_c"],
                 INDICES_DICT["n_inside_or_after"],
                 INDICES_DICT["n_outside_or_before"],
+                INDICES_DICT["diameter"],
                 INDICES_DICT["material_refractive_index"],
                 INDICES_DICT["alpha_expansion"],
                 INDICES_DICT["beta_surface_absorption"],
@@ -327,6 +330,7 @@ class OpticalElementParams:
             self.T_c,
             self.n_inside_or_after,
             self.n_outside_or_before,
+            self.diameter,
             *self.material_properties.to_array,
         ]
         array[INDICES_DICT["theta"]] = 1j * array[INDICES_DICT["theta"]] / np.pi
@@ -365,6 +369,7 @@ class OpticalElementParams:
             T_c=params[INDICES_DICT["T_c"]],
             n_inside_or_after=params[INDICES_DICT["n_inside_or_after"]],
             n_outside_or_before=params[INDICES_DICT["n_outside_or_before"]],
+            diameter=params[INDICES_DICT["diameter"]],
             material_properties=material_properties,
         )
 
@@ -506,7 +511,7 @@ def rotation_matrix_around_n(n, theta):
 
 def focal_length_of_lens(R_1, R_2, n, width):
     # for R_1 = R_2 = 0.05, d=0.01, n=1.5, this function returns 1.5 [m]
-    one_over_f = (n - 1) * ((1 / R_1) + (1 / R_2) + ((n - 1) * width) / (n * R_1 * R_2))
+    one_over_f = (n - 1) * ((1 / R_1) + (1 / R_2) - ((n - 1) * width) / (n * R_1 * R_2))
     return 1 / one_over_f
 
 
