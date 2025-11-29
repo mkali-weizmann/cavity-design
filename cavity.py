@@ -389,11 +389,15 @@ class Surface:
             plane: str = "xy",
             color: Optional[str] = None,
             diameter: float = 7.75e-3,
+            fine_resolution=False,
             **kwargs,
     ):
         half_spreading_angle = np.arcsin(min([diameter / (2 * self.radius), 1]))
         half_spreading_length = half_spreading_angle * self.radius
-        N_points = 1000
+        if fine_resolution:
+            N_points = 10000
+        else:
+            N_points = 100
 
         if ax is None:
             fig = plt.figure()
@@ -1097,11 +1101,12 @@ class CurvedSurface(Surface):
             dim: int = 2,
             plane: str = "xy",
             diameter: Optional[float] = 7.75e-3,
+            fine_resolution: bool = False,
             **kwargs,
     ):
         if diameter is None:
             diameter = 0.6 * self.radius
-        super().plot(ax, name, dim, diameter=diameter, plane=plane, **kwargs)
+        super().plot(ax, name, dim, diameter=diameter, plane=plane, fine_resolution=fine_resolution, **kwargs)
 
 
 class CurvedMirror(CurvedSurface, PhysicalSurface):
@@ -2560,6 +2565,7 @@ class Cavity:
             plot_central_line: bool = True,
             additional_rays: Optional[List[Ray]] = None,
             diameters: Optional[Union[float, np.ndarray]] = None,
+            fine_resolution=False,
             **kwargs
     ) -> plt.Axes:
         if axis_span is None:
@@ -2663,9 +2669,9 @@ class Cavity:
         laser_color = laser_color if self.resonating_mode_successfully_traced is True else "grey"
 
         for i, surface in enumerate(self.surfaces):
-            surface.plot(ax=ax, dim=dim, plane=plane, diameter=diameters[i], **kwargs)
+            surface.plot(ax=ax, dim=dim, plane=plane, diameter=diameters[i], fine_resolution=fine_resolution, **kwargs)
             # If there is not information on the spot size of the element, plot it with default length:
-            if (self.resonating_mode_successfully_traced and not np.any(np.isnan(self.arms[0].mode_parameters.z_R)) and not np.any(self.arms[0].mode_parameters.z_R == 0)):
+            if (self.resonating_mode_successfully_traced and not np.any(np.isnan(self.arms[0].mode_parameters.z_R)) and not np.any(self.arms[0].mode_parameters.z_R == 0)) and plot_mode_lines:
                 # If there is information on the spot size of the element, plot it with the spot size length*2.5:
                 spot_size = self.arms[i].mode_parameters_on_surface_0.spot_size
                 if plane == "xy":
@@ -2673,7 +2679,7 @@ class Cavity:
                 else:
                     spot_size = spot_size[0]
                 diameter = spot_size * 5
-                surface.plot(ax=ax, dim=dim, plane=plane, diameter=diameter, alpha=0.5, linestyle='--', color=laser_color)
+                surface.plot(ax=ax, dim=dim, plane=plane, diameter=diameter, alpha=0.5, linestyle='--', color=laser_color, fine_resolution=fine_resolution)
 
         if self.lambda_0_laser is not None and plot_mode_lines and self.arms[0].central_line is not None:
             try:
@@ -4528,9 +4534,9 @@ def reverse_elements_order_of_mirror_lens_mirror(params: Union[np.ndarray, List[
         params[1, [4, 5]] = params[1, [5, 4]]
         params[1, 3] += 1j
     else:
-        new_params = [params[2], params[1], params[0]]
-        new_params[1].r_1, new_params[1].r_2 = new_params[1].r_2, new_params[1].r_1
-        new_params[1].phi += np.pi
+        params = [params[2], params[1], params[0]]
+        params[1].r_1, params[1].r_2 = params[1].r_2, params[1].r_1
+        params[1].phi += np.pi
     return params
 
 
