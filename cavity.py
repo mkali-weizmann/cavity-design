@@ -4530,14 +4530,15 @@ def fabry_perot_generator(radii: Union[Tuple[float, float], float],
 def reverse_elements_order_of_mirror_lens_mirror(params: Union[np.ndarray, List[OpticalElementParams]]) -> np.ndarray:
     if isinstance(params, np.ndarray):
         # swap first and third rows of params:
-        params[[0, 2]] = params[[2, 0]]
-        params[1, [4, 5]] = params[1, [5, 4]]
-        params[1, 3] += 1j
+        new_params = params.copy()
+        new_params[[0, 2]] = new_params[[2, 0]]
+        new_params[1, [4, 5]] = new_params[1, [5, 4]]
+        new_params[1, 3] += 1j
     else:
-        params = [params[2], params[1], params[0]]
-        params[1].r_1, params[1].r_2 = params[1].r_2, params[1].r_1
-        params[1].phi += np.pi
-    return params
+        new_params = [params[2], params[1], params[0]]
+        new_params[1].r_1, new_params[1].r_2 = new_params[1].r_2, new_params[1].r_1
+        new_params[1].phi += np.pi
+    return new_params
 
 
 def generate_mirror_lens_mirror_cavity_textual_summary(

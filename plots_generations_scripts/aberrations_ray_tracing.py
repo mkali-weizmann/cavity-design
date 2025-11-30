@@ -1,6 +1,34 @@
-from matplotlib import use
-use('TkAgg')
+# ---
+# jupyter:
+#   jupytext:
+#     text_representation:
+#       extension: .py
+#       format_name: percent
+#       format_version: '1.3'
+#       jupytext_version: 1.18.1
+#   kernelspec:
+#     display_name: Python 3 (ipykernel)
+#     language: python
+#     name: python3
+# ---
+
+# %%
 from cavity import *
+
+ALREADY_CHANGED_DIR = 0
+try:
+    from IPython import get_ipython
+    shell = get_ipython()
+    running_in_notebook = shell is not None and shell.__class__.__name__ == "ZMQInteractiveShell"
+    if ALREADY_CHANGED_DIR == 0:
+        import os
+        os.chdir('..')
+    ALREADY_CHANGED_DIR = 1
+except Exception:
+    running_in_notebook =  False
+    from matplotlib import use
+    use('TkAgg')
+
 
 def point_of_equal_angles(ray_1: Ray, ray_2: Ray, p_1: np.ndarray):
     # projects point p_1 (assumed to be on ray_1) onto ray_2 such that the angles between the segment p_1 to p_2 and the rays are equal.
@@ -79,8 +107,12 @@ def find_wavefront_deviation(cavity: Cavity,
         points_of_equal_phase_values_distance_from_face[1:][::-1], points_of_equal_phase_values_distance_from_face))
     tilt_angles_doubled = np.concatenate((-tilt_angles[1:][::-1], tilt_angles))
 
-    polynomial_coefficients_angles_doubled = np.polyfit(integrated_arc_lengths_doubled, integrated_divergence_doubled, deg=4)
-    polynomial_coefficients_wavefront_doubled = np.polyfit(integrated_arc_lengths_doubled, points_of_equal_phase_values_distance_from_face_doubled, deg=4)
+    if potential_fits_x_axis == 'arc_length':
+        x_data = integrated_arc_lengths_doubled
+    else:
+        x_data = tilt_angles_doubled
+    polynomial_coefficients_angles_doubled = np.polyfit(x_data, integrated_divergence_doubled, deg=4)
+    polynomial_coefficients_wavefront_doubled = np.polyfit(x_data, points_of_equal_phase_values_distance_from_face_doubled, deg=4)
 
     results_dict = {
         'first_mirror': first_mirror,
@@ -120,17 +152,21 @@ def find_wavefront_deviation(cavity: Cavity,
         ax_0[0].set_title(f'Integrated Incidence Angle vs {x_axis_name}\nQuadratic coefficient = {polynomial_coefficients_angles_doubled[-3]:.3e}, Quartic coefficient = {polynomial_coefficients_angles_doubled[-5]:.3e}')
         ax_0[0].set_ylabel('Integrated Incidence Angle (m)')
         ax_0[0].legend()
+        ax_0[0].grid()
         ax_0[1].scatter(x_data, points_of_equal_phase_values_distance_from_face_doubled, color='green', s=5, label='Numerical result')
         ax_0[1].plot(x_fit, y_fit_wavefront, color='red', label='Fitted Polynomial')
         ax_0[1].set_title(f'Traced wavefront vs {x_axis_name}\nQuadratic coefficient = {polynomial_coefficients_wavefront_doubled[-3]:.3e}, Quartic coefficient = {polynomial_coefficients_wavefront_doubled[-5]:.3e}')
         ax_0[1].set_xlabel(x_axis_label)
         ax_0[1].set_ylabel('Extracted Wavefront Distance from Mirror (m)')
         ax_0[1].legend()
+        ax_0[1].grid()
+
         if suptitles is not None:
             fig_0.suptitle(suptitles[0])
         fig_0.subplots_adjust(top=0.85, hspace=0.4)
-        root = fig_0.canvas.manager.window
-        root.geometry("+2000+200")
+        if not running_in_notebook:
+            root = fig_0.canvas.manager.window
+            root.geometry("+2000+200")
         results_dict['fig_potentials'] = fig_0
         results_dict['ax_potentials'] = ax_0
 
@@ -227,86 +263,121 @@ base_params = [
                                                                 intensity_transmittance=1e-04, temperature=np.nan))
 ]
 
-# %% Sanity checks on a fabry perot cavity:
-# % Show that for a fabry perot cavity with 0 unconcentricity, the manifold of equal phase is the mirror itself,
-# and that the intersection angles are all normals:
-# cavity_fabry_perot = fabry_perot_generator(radii=(5e-3, 5e-3), unconcentricity=0e-6, set_mode_parameters=False)
-# plt.close('all')
-# print(f"wavefront distance from right mirror: (both are practically 0, with different numerical errors)")
-# results_dict = find_wavefront_deviation(cavity=cavity_fabry_perot, max_initial_angle=0.156, n_rays=10000,
-#                                         plot_potential_fits=True, plot_wavefronts=True, plot_first_mirror_arc=True,
-#                                         secondary_axis_limits=(4.98e-3 - 2e-6, 4.98e-3 + 2e-6, 0.000440, 0.000456),
-#                                         angles_parity_sign=1,
-#                                         print_summary=True, suptitles=["Fabry Perot cavity with 0 unconcentricity\n(coefficients are practically 0)", "Fabry Perot cavity with 0 unconcentricity"])
-# results_dict['ax_wavefronts'][1].set_title("Zoomed in view showing that wavefront coincides with mirror surface")
-#
-# plt.show()
-# # %% Show that unconcentricity initialization works:
-# plt.close('all')
-# unconcentricity_value = 3e-6
-# cavity_fabry_perot = fabry_perot_generator(radii=(5e-3, 5e-3), unconcentricity=unconcentricity_value, set_mode_parameters=True)
-# cavity_fabry_perot.plot()
-# expected_NA = np.sqrt((2 * LAMBDA_0_LASER) / np.pi) * (unconcentricity_value * np.linalg.norm(cavity_fabry_perot.physical_surfaces[0].center - cavity_fabry_perot.physical_surfaces[1].center)) **(-1/4)
-# plt.title(f"unconcentricity={unconcentricity_value:.0e}\nCalculated NA (numerics): {cavity_fabry_perot.arms[0].mode_parameters.NA[0]:.3e}\nExpected NA (analytic expression): {expected_NA:.3e}")
-# root = plt.get_current_fig_manager().window
-# root.geometry("+2000+200")
-# plt.show()
-# # %% Plot all results for a finite unconcentricity fabry perot cavity:
-# print(f"wavefront distance from right mirror: (both are equal, so different methods agree):")
-# plt.close('all')
-# results_dict = find_wavefront_deviation(
-#     cavity=cavity_fabry_perot, max_initial_angle=0.156, n_rays=10000,
-#     plot_potential_fits=True,
-#     plot_wavefronts=True,
-#     plot_first_mirror_arc=True,
-#     secondary_axis_limits=(0.004936, 0.004946, 0.000750, 0.000765),
-#     print_summary=True,
-#     angles_parity_sign=1,
-#     suptitles=f"Fabry Perot cavity with unconcentricity={unconcentricity_value:.1e} m")
-# plt.show()
-# %% Show the unconcentricity initialization works
+# %% [markdown]
+# # Sanity checks on a fabry perot cavity:
+
+# %% [markdown]
+# Show that for a fabry perot cavity with 0 unconcentricity, the manifold of equal phase is the mirror itself, and that the intersection angles are all normals:
+
+# %% jupyter={"source_hidden": true}
+cavity_fabry_perot = fabry_perot_generator(radii=(5e-3, 5e-3), unconcentricity=0e-6, set_mode_parameters=False)
+print(f"wavefront distance from right mirror: (both are practically 0, with different numerical errors)")
+plt.close('all')
+results_dict = find_wavefront_deviation(cavity=cavity_fabry_perot, max_initial_angle=0.156, n_rays=10000,
+                                        plot_potential_fits=True, plot_wavefronts=True, plot_first_mirror_arc=True,
+                                        secondary_axis_limits=(4.98e-3 - 2e-6, 4.98e-3 + 2e-6, 0.000440, 0.000456),
+                                        angles_parity_sign=1,
+                                        print_summary=True, suptitles=["Fabry Perot cavity with 0 unconcentricity\n(coefficients are practically 0)", "Fabry Perot cavity with 0 unconcentricity"])
+results_dict['ax_wavefronts'][1].set_title("Zoomed in view showing that wavefront coincides with mirror surface")
+plt.show()
+
+# %% [markdown]
+# ### This cells shows that unconcentricity initialization of the fabry perot cavity works as expected (resulted numerical NA matches analytic expression):
+
+# %% jupyter={"source_hidden": true}
+unconcentricity_value = 3e-6
+cavity_fabry_perot = fabry_perot_generator(radii=(5e-3, 5e-3), unconcentricity=unconcentricity_value, set_mode_parameters=True)
+plt.close('all')
+cavity_fabry_perot.plot()
+expected_NA = np.sqrt((2 * LAMBDA_0_LASER) / np.pi) * (unconcentricity_value * np.linalg.norm(cavity_fabry_perot.physical_surfaces[0].center - cavity_fabry_perot.physical_surfaces[1].center)) **(-1/4)
+plt.title(f"unconcentricity={unconcentricity_value:.0e}\nCalculated NA (numerics): {cavity_fabry_perot.arms[0].mode_parameters.NA[0]:.3e}\nExpected NA (analytic expression): {expected_NA:.3e}")
+print("Calculated NA and expected NA are the same:")
+plt.show()
+
+# %% [markdown]
+# ### Ray tracing and wavefront tracing for the unconcentric fabry perot cavity:
+
+# %% jupyter={"source_hidden": true}
+print(f"wavefront distance from right mirror: (both are equal, so different methods agree):")
+plt.close('all')
+results_dict = find_wavefront_deviation(
+    cavity=cavity_fabry_perot, max_initial_angle=0.156, n_rays=10000,
+    plot_potential_fits=True,
+    plot_wavefronts=True,
+    plot_first_mirror_arc=True,
+    secondary_axis_limits=(0.004936, 0.004946, 0.000750, 0.000765),
+    print_summary=True,
+    angles_parity_sign=1,
+    suptitles=f"Fabry Perot cavity with unconcentricity={unconcentricity_value:.1e} m")
+plt.show()
+
+# %% [markdown]
+# ### Initialize a mirror-lens-mirror cavity with a given unconcentricity for the king arm (should have no mode for 0 unconcentricity, and a diverging mode for small non-zero unconcentricity):
+
+# %% jupyter={"source_hidden": true}
 unconcentricity_value=1000e-6
 cavity_unconcentricity_0 = mirror_lens_mirror_generator_with_unconcentricity(unconcentricity=0e-6, base_params=base_params)
-# cavity_unconcentricity_0.plot()
-# cavity_unconcentricity_small = mirror_lens_mirror_generator_with_unconcentricity(unconcentricity=unconcentricity_value, base_params=base_params)
-# plt.close('all')
-# fig, ax = plt.subplots(2, 1, figsize=(12, 10))
-# cavity_unconcentricity_0.plot(ax=ax[0])
-# cavity_unconcentricity_small.plot(ax=ax[1])
-# ax[0].set_title(f"0 unconcentricity - no mode")
-# ax[1].set_title(f"unconcentricity (in long arm) of {unconcentricity_value:.0e}- Diverging mode with NA={cavity_unconcentricity_small.arms[0].mode_parameters.NA[0]:.3e}")
-# fig.subplots_adjust(top=0.9, hspace=0.4)
-# root = fig.canvas.manager.window
-# root.geometry("+2000+200")
-# plt.show()
-# %%
-# plt.close('all')
-# print("For mirror-lens-mirror there are wavefronts deviations from mirror even for unconcentricity=0 due to aberations")
-# results_dict = find_wavefront_deviation(
-#     cavity=cavity_unconcentricity_0, max_initial_angle=0.2, n_rays=10000, plot_wavefronts=True, plot_potential_fits=True,
-#     plot_first_mirror_arc=False,secondary_axis_limits=(0.40980, 0.40983, -0.002, 0.0002), print_summary=True,
-#     angles_parity_sign=-1,
-#     suptitles="Mirror-Lens-Mirror cavity with 0 unconcentricity - shows aberrations")
-# plt.show()
-# %%
-# plt.close('all')
-# results_dict = find_wavefront_deviation(
-#     cavity=cavity_unconcentricity_small, max_initial_angle=0.03, n_rays=10000, plot_wavefronts=True, plot_potential_fits=True,
-#     plot_first_mirror_arc=False, print_summary=True,
-#     angles_parity_sign=-1,
-#
-#     suptitles=f"Mirror-Lens-Mirror cavity with unconcentricity={unconcentricity_value:.1e} m")
-# cavity_unconcentricity_0.physical_surfaces[-1].plot(ax=results_dict['ax_wavefronts'][1],
-#                                                     label="right mirror face - 0 unconcentricity",
-#                                                     color='orange', linestyle='--')
-# results_dict['ax_wavefronts'][0].set_xlim(0.40882467 + 6e-9, 0.40882467 + 10e-9)
-# results_dict['ax_wavefronts'][0].set_ylim(-8.9e-5, -8.5e-5)
-# results_dict['ax_wavefronts'][0].set_title('view close to optical axis')
-# results_dict['ax_wavefronts'][1].set_xlim(0.4088246 + 0.4e-8, 0.4088246 + 1.8e-8)
-# results_dict['ax_wavefronts'][1].set_ylim(-0.000192, -0.000180)
-# results_dict['ax_wavefronts'][1].set_title('view far from optical axis')
-# plt.show()
-# %%
+cavity_unconcentricity_0.plot()
+cavity_unconcentricity_small = mirror_lens_mirror_generator_with_unconcentricity(unconcentricity=unconcentricity_value, base_params=base_params)
+plt.close('all')
+fig, ax = plt.subplots(2, 1, figsize=(12, 10))
+cavity_unconcentricity_0.plot(ax=ax[0])
+cavity_unconcentricity_small.plot(ax=ax[1])
+ax[0].set_title(f"0 unconcentricity - no mode")
+ax[1].set_title(f"unconcentricity (in long arm) of {unconcentricity_value:.0e}- Short arm NA of={cavity_unconcentricity_small.arms[0].mode_parameters.NA[0]:.3e}")
+fig.subplots_adjust(top=0.9, hspace=0.4)
+plt.show()
+
+# %% [markdown]
+# Aberrations wavefront deviation for the cavity with 0 unconcentricity:
+
+# %% jupyter={"source_hidden": true}
+print("For mirror-lens-mirror there are wavefronts deviations from mirror even for unconcentricity=0 due to aberations")
+plt.close('all')
+results_dict = find_wavefront_deviation(
+    cavity=cavity_unconcentricity_0, max_initial_angle=0.2, n_rays=10000, plot_wavefronts=True, plot_potential_fits=True,
+    plot_first_mirror_arc=False,secondary_axis_limits=(0.40980, 0.40983, -0.002, 0.0002), print_summary=True,
+    angles_parity_sign=-1,
+    suptitles="Mirror-Lens-Mirror cavity with 0 unconcentricity - shows aberrations")
+plt.show()
+df = pd.DataFrame({'initial_angle': results_dict['tilt_angles'],
+                   'arc_length': results_dict['integrated_arc_lengths'],
+                   'incidence angle': results_dict['incidence_angles'],
+                   'distance from mirror': results_dict['integrated_divergence']})
+df.to_csv(r'outputs\tables\cavity_angles_small_to_large.csv')
+
+# %% [markdown]
+# ### Aberratmions wavefront deviation for the cavity with a small unconcentricity:
+
+# %% jupyter={"source_hidden": true}
+plt.close('all')
+results_dict = find_wavefront_deviation(
+    cavity=cavity_unconcentricity_small, max_initial_angle=0.03, n_rays=10000, plot_wavefronts=True, plot_potential_fits=True,
+    plot_first_mirror_arc=False, print_summary=True,
+    angles_parity_sign=-1,
+
+    suptitles=f"Mirror-Lens-Mirror cavity with unconcentricity={unconcentricity_value:.1e} m")
+cavity_unconcentricity_0.physical_surfaces[-1].plot(ax=results_dict['ax_wavefronts'][1],
+                                                    label="right mirror face - 0 unconcentricity",
+                                                    color='orange', linestyle='--')
+results_dict['ax_wavefronts'][0].set_xlim(0.40882467 + 6e-9, 0.40882467 + 10e-9)
+results_dict['ax_wavefronts'][0].set_ylim(-8.9e-5, -8.5e-5)
+results_dict['ax_wavefronts'][0].set_title('view close to optical axis')
+results_dict['ax_wavefronts'][1].set_xlim(0.4088246 + 0.4e-8, 0.4088246 + 1.8e-8)
+results_dict['ax_wavefronts'][1].set_ylim(-0.000192, -0.000180)
+results_dict['ax_wavefronts'][1].set_title('view far from optical axis')
+
+results_dict = find_wavefront_deviation(
+    cavity=cavity_unconcentricity_small, max_initial_angle=0.03, n_rays=10000, plot_wavefronts=False, plot_potential_fits=True,
+    plot_first_mirror_arc=False, print_summary=True,
+    angles_parity_sign=-1, potential_fits_x_axis='tilt_angle',
+    suptitles=f"potential as a function of initial tilt angle")
+plt.show()
+
+# %% [markdown]
+# Rays going from the big mirror to the small mirror:
+
+# %% jupyter={"source_hidden": true}
 base_params_inverted = reverse_elements_order_of_mirror_lens_mirror(cavity_unconcentricity_0.to_params)
 cavity_unconcentricity_0_inverted = Cavity.from_params(base_params_inverted,
                                                        standing_wave=True,
@@ -319,10 +390,13 @@ cavity_unconcentricity_0_inverted = Cavity.from_params(base_params_inverted,
                                                        use_paraxial_ray_tracing=False,
                                                        debug_printing_level=1,)
 plt.close('all')
-print("For mirror-lens-mirror there are wavefronts deviations from mirror even for unconcentricity=0 due to aberations")
 results_dict = find_wavefront_deviation(
     cavity=cavity_unconcentricity_0_inverted, max_initial_angle=0.01, n_rays=10000, plot_wavefronts=True, plot_potential_fits=True,
-    plot_first_mirror_arc=False, print_summary=True,
+    plot_first_mirror_arc=False, print_summary=True, secondary_axis_limits=(-0.0052, -0.0044, -0.0002, 0.002),
     angles_parity_sign=-1,
     suptitles="Mirror-Lens-Mirror cavity with 0 unconcentricity - shows aberrations")
-plt.show()
+df = pd.DataFrame({'initial angle': results_dict['tilt_angles'],
+                   'arc_length': results_dict['integrated_arc_lengths'],
+                   'incidence angle': results_dict['incidence_angles'],
+                   'distance from mirror': results_dict['integrated_divergence']})
+df.to_csv(r'outputs\tables\cavity_angles_large_to_small.csv')

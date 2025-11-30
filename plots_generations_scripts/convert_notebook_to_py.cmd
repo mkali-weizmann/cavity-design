@@ -1,0 +1,1 @@
+python -m jupytext --to py:percent aberrations_ray_tracing.ipynb
