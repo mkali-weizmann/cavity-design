@@ -102,11 +102,13 @@ for i, NA in (pbar_NAs := tqdm(enumerate(NAs), total=len(NAs))):
     # cavity_fabry_perot.generate_overlaps_graphs(tolerance_dataframe=tolerance_df_fabry_perot)
     # plt.show()
 # %%
-tolerances_mirror_lens_mirror.tofile(r'outputs\tables\tolerances comparison - mirror lens mirror.npy')
-tolerances_fabry_perot.tofile(r'outputs\tables\tolerances comparison - fabry perot.npy')
+NAs.tofile(r'outputs\tables\tolerances comparison - NAs.npy')
+# tolerances_mirror_lens_mirror.tofile(r'outputs\tables\tolerances comparison - mirror lens mirror.npy')
+# tolerances_fabry_perot.tofile(r'outputs\tables\tolerances comparison - fabry perot.npy')
 # %% Load those saved files from earlier runs:
-tolerances_mirror_lens_mirror = np.fromfile(r'outputs\tables\tolerances comparison - mirror lens mirror.npy').reshape((len(NAs), 3, 5))
-tolerances_fabry_perot = np.fromfile(r'outputs\tables\tolerances comparison - fabry perot.npy').reshape((len(NAs), 2, 4))
+# NAs = np.fromfile(r'outputs\manual-saves\tolerances comparison - NAs.npy')
+tolerances_mirror_lens_mirror = np.fromfile(r'outputs\manual-saves\tolerances comparison - mirror lens mirror.npy').reshape((len(NAs), 3, 5))
+tolerances_fabry_perot = np.fromfile(r'outputs\manual-saves\tolerances comparison - fabry perot.npy').reshape((len(NAs), 2, 4))
 # %%
 # from matplotlib import use
 # use('Qt5Agg')
@@ -114,7 +116,6 @@ fig, ax = plt.subplots(1, 3, figsize=(20, 5))
 x_index, y_index, phi_index, r_1_index = 0, 1, 2, 3
 ax[0].set_title('Tilt tolerances')
 ax[0].plot(NAs, tolerances_mirror_lens_mirror[:, 0, phi_index], label='Small mirror')
-ax[0].plot(NAs, tolerances_mirror_lens_mirror[:, 1, phi_index], label='Lens')
 ax[0].plot(NAs, tolerances_mirror_lens_mirror[:, 2, phi_index], label='Large mirror')
 ax[0].plot(NAs, tolerances_fabry_perot[:, 0, phi_index], label='Fabry-Perot cavity')
 ax[0].set_xlabel('NA')

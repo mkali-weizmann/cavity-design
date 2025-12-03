@@ -11,7 +11,8 @@
 #     language: python
 #     name: python3
 # ---
-
+from matplotlib import use
+use('TkAgg')
 # %%
 from cavity import *
 
@@ -85,6 +86,12 @@ def find_wavefront_deviation(cavity: Cavity,
     orthonormal_direction = unit_vector_of_angles(theta=np.zeros_like(tilt_angles), phi=tilt_angles + np.pi * (1 - first_mirror.inwards_normal[0])/2)  # Assume system is alligned with x axis
     orthonormal_ray = Ray(origin=initial_rays_origin, k_vector=orthonormal_direction)
     ray_history = cavity.trace_ray(orthonormal_ray, n_arms=len(cavity.physical_surfaces) - 1)
+    if cavity.to_params[1].surface_type == SurfacesTypes.thick_lens:
+        dummy_plane = FlatSurface(outwards_normal=np.array([1, 0, 0]), center=cavity.physical_surfaces[2].center)
+        intersection_points_dummy = dummy_plane.find_intersection_with_ray_exact(ray=ray_history[2])
+        ray_history = cavity.trace_ray(orthonormal_ray, n_arms=len(cavity.physical_surfaces) - 1)
+    else:
+        intersection_points_dummy = None
     intersection_points = ray_history[-1].origin
     intersection_directions = ray_history[-2].k_vector
     intersection_normals = normalize_vector(intersection_points - last_mirror.origin)
@@ -111,8 +118,8 @@ def find_wavefront_deviation(cavity: Cavity,
         x_data = integrated_arc_lengths_doubled
     else:
         x_data = tilt_angles_doubled
-    polynomial_coefficients_angles_doubled = np.polyfit(x_data, integrated_divergence_doubled, deg=4)
-    polynomial_coefficients_wavefront_doubled = np.polyfit(x_data, points_of_equal_phase_values_distance_from_face_doubled, deg=4)
+    polynomial_coefficients_angles_doubled = np.polyfit(x_data, integrated_divergence_doubled, deg=6)
+    polynomial_coefficients_wavefront_doubled = np.polyfit(x_data, points_of_equal_phase_values_distance_from_face_doubled, deg=6)
 
     results_dict = {
         'first_mirror': first_mirror,
@@ -129,7 +136,8 @@ def find_wavefront_deviation(cavity: Cavity,
         'points_of_equal_phase_values': points_of_equal_phase_values,
         'points_of_equal_phase_values_distance_from_face': points_of_equal_phase_values_distance_from_face,
         'polynomial_coefficients_angles_doubled': polynomial_coefficients_angles_doubled,
-        'polynomial_coefficients_wavefront_doubled': polynomial_coefficients_wavefront_doubled
+        'polynomial_coefficients_wavefront_doubled': polynomial_coefficients_wavefront_doubled,
+        'intersection_points_dummy': intersection_points_dummy,
     }
 
     if isinstance(suptitles, str):
@@ -138,7 +146,7 @@ def find_wavefront_deviation(cavity: Cavity,
         x_fit = np.linspace(np.min(integrated_arc_lengths_doubled), np.max(integrated_arc_lengths_doubled), 100)
         y_fit_angles = np.polyval(polynomial_coefficients_angles_doubled, x_fit)
         y_fit_wavefront = np.polyval(polynomial_coefficients_wavefront_doubled, x_fit)
-        fig_0, ax_0 = plt.subplots(2, 1, figsize=(10, 10))
+        fig_0, ax_0 = plt.subplots(2, 1, figsize=(15, 10))
         if potential_fits_x_axis == 'arc_length':
             x_axis_name = 'integrated arc length'
             x_axis_label = 'Integrated Arc Length (m)'
@@ -153,20 +161,30 @@ def find_wavefront_deviation(cavity: Cavity,
         ax_0[0].set_ylabel('Integrated Incidence Angle (m)')
         ax_0[0].legend()
         ax_0[0].grid()
-        ax_0[1].scatter(x_data, points_of_equal_phase_values_distance_from_face_doubled, color='green', s=5, label='Numerical result')
-        ax_0[1].plot(x_fit, y_fit_wavefront, color='red', label='Fitted Polynomial')
-        ax_0[1].set_title(f'Traced wavefront vs {x_axis_name}\nQuadratic coefficient = {polynomial_coefficients_wavefront_doubled[-3]:.3e}, Quartic coefficient = {polynomial_coefficients_wavefront_doubled[-5]:.3e}')
+        # ax_0[1].scatter(x_data, points_of_equal_phase_values_distance_from_face_doubled, color='green', s=5, label='Numerical result')
+        # ax_0[1].plot(x_fit, y_fit_wavefront, color='red', label='Fitted Polynomial')
+        # ax_0[1].set_title(f'Traced wavefront vs {x_axis_name}\nQuadratic coefficient = {polynomial_coefficients_wavefront_doubled[-3]:.3e}, Quartic coefficient = {polynomial_coefficients_wavefront_doubled[-5]:.3e}')
+        # ax_0[1].set_xlabel(x_axis_label)
+        # ax_0[1].set_ylabel('Extracted Wavefront Distance from Mirror (m)')
+        # ax_0[1].legend()
+        # ax_0[1].grid()
+        # Plot the difference between the first method and the polynomial fit, taking only the zeroth, first and second orders of the polynomial:
+        y_fit_wavefront_at_data_2 = np.polyval(polynomial_coefficients_angles_doubled[-3:] - np.array([0.3e-1, 0, 0]), x_data)
+        y_fit_wavefront_at_data_1 = np.polyval(polynomial_coefficients_angles_doubled[-2:], x_data)
+        wavefront_difference = (y_fit_wavefront_at_data_2 - y_fit_wavefront_at_data_1) - integrated_divergence_doubled
+        ax_0[1].scatter(x_data, wavefront_difference, color='purple', s=5)
+        ax_0[1].set_title(f'Difference between traced wavefront and polynomial fit vs {x_axis_name}')
         ax_0[1].set_xlabel(x_axis_label)
-        ax_0[1].set_ylabel('Extracted Wavefront Distance from Mirror (m)')
-        ax_0[1].legend()
+        ax_0[1].set_ylabel('Wavefront Difference (m)')
         ax_0[1].grid()
+
 
         if suptitles is not None:
             fig_0.suptitle(suptitles[0])
         fig_0.subplots_adjust(top=0.85, hspace=0.4)
-        if not running_in_notebook:
-            root = fig_0.canvas.manager.window
-            root.geometry("+2000+200")
+        # if not running_in_notebook:
+        root = fig_0.canvas.manager.window
+        root.geometry("-3000+200")
         results_dict['fig_potentials'] = fig_0
         results_dict['ax_potentials'] = ax_0
 
@@ -262,6 +280,17 @@ base_params = [
                                                                 intensity_reflectivity=9.99889e-01,
                                                                 intensity_transmittance=1e-04, temperature=np.nan))
 ]
+plt.close('all')
+unconcentricity_value=1000e-6
+cavity_unconcentricity_0 = mirror_lens_mirror_generator_with_unconcentricity(unconcentricity=0e-6, base_params=base_params)
+# cavity_unconcentricity_0.plot()
+cavity_unconcentricity_small = mirror_lens_mirror_generator_with_unconcentricity(unconcentricity=unconcentricity_value, base_params=base_params)
+results_dict = find_wavefront_deviation(
+    cavity=cavity_unconcentricity_0, max_initial_angle=0.3, n_rays=10000, plot_wavefronts=False, plot_potential_fits=True,
+    plot_first_mirror_arc=False,secondary_axis_limits=(0.40980, 0.40983, -0.002, 0.0002), print_summary=True,
+    angles_parity_sign=-1,
+    suptitles="Mirror-Lens-Mirror cavity with 0 unconcentricity - shows aberrations")
+plt.show()
 
 # %% [markdown]
 # # Sanity checks on a fabry perot cavity:
@@ -334,8 +363,12 @@ plt.show()
 # %% jupyter={"source_hidden": true}
 print("For mirror-lens-mirror there are wavefronts deviations from mirror even for unconcentricity=0 due to aberations")
 plt.close('all')
+unconcentricity_value=1000e-6
+cavity_unconcentricity_0 = mirror_lens_mirror_generator_with_unconcentricity(unconcentricity=0e-6, base_params=base_params)
+cavity_unconcentricity_0.plot()
+cavity_unconcentricity_small = mirror_lens_mirror_generator_with_unconcentricity(unconcentricity=unconcentricity_value, base_params=base_params)
 results_dict = find_wavefront_deviation(
-    cavity=cavity_unconcentricity_0, max_initial_angle=0.2, n_rays=10000, plot_wavefronts=True, plot_potential_fits=True,
+    cavity=cavity_unconcentricity_0, max_initial_angle=0.5, n_rays=10000, plot_wavefronts=True, plot_potential_fits=True,
     plot_first_mirror_arc=False,secondary_axis_limits=(0.40980, 0.40983, -0.002, 0.0002), print_summary=True,
     angles_parity_sign=-1,
     suptitles="Mirror-Lens-Mirror cavity with 0 unconcentricity - shows aberrations")
