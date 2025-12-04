@@ -2927,7 +2927,7 @@ class Cavity:
             names = None
         else:
             names = copy.copy(self.names)
-            for i, surface_type in enumerate([p.surface_type for p in self.params]):
+            for i, surface_type in enumerate([p.surface_type for p in self.to_params]):
                 if surface_type == SurfacesTypes.thick_lens:
                     names.insert(i + 1, names[i] + "_2")
                     names[i] = names[i] + "_1"
