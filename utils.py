@@ -631,6 +631,9 @@ def gaussians_overlap_integral(A_1: np.ndarray, A_2: np.ndarray,
     b_1_conjugate = np.conjugate(b_1)
     c_1_conjugate = np.conjugate(c_1)
 
+    # Plot a surface of the real part of the first gaussian, with x and y axes being the two dimensions, and z being the value of the gaussian at that point:
+    # generate x and y as ranging from -5 sigmas to 5 sigmas of the first gaussian:
+
     A = A_1_conjugate + A_2
     b = b_1_conjugate + b_2
     c = c_1_conjugate + c_2
@@ -646,7 +649,7 @@ def interval_parameterization(a: float, b: float, t: float) -> float:
 
 
 def functions_first_crossing(f: Callable, initial_step: float, crossing_value: float = 0.9,
-                             accuracy: float = 0.001, max_f_eval: int = 100) -> float:
+                             accuracy: float = 0.001, max_f_eval: int = 200) -> float:
     # assumes f(0) == 1 and a decreasing function.
     stopping_flag = False
     increasing_ratio = 2
@@ -693,13 +696,13 @@ def functions_first_crossing(f: Callable, initial_step: float, crossing_value: f
                 x = interval_parameterization(borders_min, borders_max, 0.5)
         elif f_x < crossing_value - accuracy:  # If we are below the crossing value (for x values too large, but still
             # not diverging f):
-            increasing_ratio = 1.1  # Slow down steps
+            increasing_ratio = 1.001  # Slow down steps
             borders_max = x
             borders_max_real = x
             f_borders_max = f_x
             x = interval_parameterization(borders_min, borders_max, 0.5)
         elif np.isnan(f_x):  # If x is too large and f diverges:
-            increasing_ratio = 1.1
+            increasing_ratio = 1.001
             borders_max = x
             # randomize new x with higher probability to be closer to borders_min (the pdf is phi(x)=2(1-x)), the cdf
             # is F(x)=2(x-x^2) and the inverse cdf is F^-1(y)=1-sqrt(1-y)

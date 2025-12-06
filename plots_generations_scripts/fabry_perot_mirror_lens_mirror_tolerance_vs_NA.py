@@ -1,3 +1,6 @@
+# from matplotlib import use
+# use('TkAgg')
+
 from cavity import *
 
 NA_left = 1.5300000000e-01
@@ -58,15 +61,14 @@ def fabry_perot_generator(radii: Tuple[float, float], NA: float, lambda_0_laser=
                   lambda_0_laser=lambda_0_laser,
                   t_is_trivial=True,
                   p_is_trivial=True,
-                  standing_wave=True)
+                  standing_wave=True,
+                  use_paraxial_ray_tracing=True)
 
 
-
-NAs = np.linspace(0.02, 0.16, 100)
 # %%
+NAs = np.linspace(0.02, 0.16, 6)
 tolerances_mirror_lens_mirror = np.zeros((len(NAs), 3, 5))
 tolerances_fabry_perot = np.zeros((len(NAs), 2, 4))
-
 for i, NA in (pbar_NAs := tqdm(enumerate(NAs), total=len(NAs))):
     pbar_NAs.set_description(f'NA={NA:.3f}')
     cavity_mirror_lens_mirror = mirror_lens_mirror_cavity_generator(NA_left=NA, waist_to_lens=waist_to_lens, h=h,
@@ -88,31 +90,41 @@ for i, NA in (pbar_NAs := tqdm(enumerate(NAs), total=len(NAs))):
 
     cavity_fabry_perot = fabry_perot_generator(radii=(R_small_mirror, R_small_mirror), NA=NA)
 
-    cavity_mirror_lens_mirror.debug_printing_level = 0
-    cavity_fabry_perot.debug_printing_level = 0
+    # tolerance_df_mirror_lens_mirror = cavity_mirror_lens_mirror.generate_tolerance_dataframe(accuracy=1e-4, initial_step=1e-8)
+    tolerance_df_fabry_perot = cavity_fabry_perot.generate_tolerance_dataframe(accuracy=1e-4, initial_step=1e-8)
+    # if NA > 0.04 or NA < 0.08:
+    #     tolerance_estimate = 0.15
+    # else:
+    #     tolerance_estimate = 0.01
+    # perturbation_pointer = PerturbationPointer(element_index=2, parameter_name=ParamsNames.x,
+    #                                            perturbation_value=np.linspace(-tolerance_estimate, tolerance_estimate, 1600))
 
-    tolerance_df_mirror_lens_mirror = cavity_mirror_lens_mirror.generate_tolerance_dataframe()
-    tolerance_df_fabry_perot = cavity_fabry_perot.generate_tolerance_dataframe()
+    # tolerances_mirror_lens_mirror[i, 2, 0] = cavity_mirror_lens_mirror.calculate_parameter_tolerance(perturbation_pointer)
 
-    tolerances_mirror_lens_mirror[i, :, :] = np.abs(tolerance_df_mirror_lens_mirror)
+    # tolerances_mirror_lens_mirror[i, :, :] = np.abs(tolerance_df_mirror_lens_mirror)
     tolerances_fabry_perot[i, :, :] = np.abs(tolerance_df_fabry_perot)
 
     # cavity_mirror_lens_mirror.generate_overlaps_graphs(tolerance_dataframe=tolerance_df_mirror_lens_mirror)
     # plt.show()
-    # cavity_fabry_perot.generate_overlaps_graphs(tolerance_dataframe=tolerance_df_fabry_perot)
-    # plt.show()
+    cavity_fabry_perot.generate_overlaps_graphs(tolerance_dataframe=tolerance_df_fabry_perot)
+    plt.show()
 # %%
-NAs.tofile(r'outputs\tables\tolerances comparison - NAs.npy')
+# tolerances_mirror_lens_mirror[:, 2, 0].tofile(r'outputs\tables\tolerances comparison - large mirror longitodinal tolerance.npy')
+# NAs.tofile(r'outputs\tables\tolerances comparison - NAs.npy')
 # tolerances_mirror_lens_mirror.tofile(r'outputs\tables\tolerances comparison - mirror lens mirror.npy')
 # tolerances_fabry_perot.tofile(r'outputs\tables\tolerances comparison - fabry perot.npy')
+# NAs.tofile(r'outputs\tables\tolerances comparison - NAs large mirror.npy')
 # %% Load those saved files from earlier runs:
-# NAs = np.fromfile(r'outputs\manual-saves\tolerances comparison - NAs.npy')
-tolerances_mirror_lens_mirror = np.fromfile(r'outputs\manual-saves\tolerances comparison - mirror lens mirror.npy').reshape((len(NAs), 3, 5))
-tolerances_fabry_perot = np.fromfile(r'outputs\manual-saves\tolerances comparison - fabry perot.npy').reshape((len(NAs), 2, 4))
+NAs = np.fromfile(r'outputs\manual-saves\data\tolerances comparison - NAs.npy')
+NAs_large_mirror = np.fromfile(r'outputs\manual-saves\data\tolerances comparison - NAs large mirror.npy')
+tolerances_mirror_lens_mirror = np.fromfile(r'outputs\manual-saves\data\tolerances comparison - mirror lens mirror.npy').reshape((len(NAs), 3, 5))
+tolerances_fabry_perot = np.fromfile(r'outputs\manual-saves\data\tolerances comparison - fabry perot.npy').reshape((len(NAs), 2, 4))
+large_mirror_longitudinal_tolerance = np.fromfile(r'outputs\manual-saves\data\tolerances comparison - large mirror longitodinal tolerance.npy')
 # %%
 # from matplotlib import use
 # use('Qt5Agg')
-fig, ax = plt.subplots(1, 3, figsize=(20, 5))
+# plt.close('all')
+fig, ax = plt.subplots(1, 3, figsize=(15, 5))
 x_index, y_index, phi_index, r_1_index = 0, 1, 2, 3
 ax[0].set_title('Tilt tolerances')
 ax[0].plot(NAs, tolerances_mirror_lens_mirror[:, 0, phi_index], label='Small mirror')
@@ -135,12 +147,16 @@ ax[1].set_ylabel('Lateral shift')
 ax[1].legend()
 ax[1].grid()
 ax[1].set_yscale('log')
-# ax[1].set_xscale('log')
+# ax[1].set_xscale('logj')
+
+order = np.argsort(NAs_large_mirror)
+NAs_large_mirror = NAs_large_mirror[order]
+large_mirror_longitudinal_tolerance = large_mirror_longitudinal_tolerance[order]
 
 ax[2].set_title('Longitudinal shift tolerances')
 ax[2].plot(NAs, tolerances_mirror_lens_mirror[:, 0, x_index], label='Small mirror')
 ax[2].plot(NAs, tolerances_mirror_lens_mirror[:, 1, x_index], label='Lens')
-ax[2].plot(NAs, tolerances_mirror_lens_mirror[:, 2, x_index], label='Large mirror')
+ax[2].plot(NAs_large_mirror, np.abs(large_mirror_longitudinal_tolerance[:]), label='Large mirror')
 ax[2].plot(NAs, tolerances_fabry_perot[:, 0, x_index], label='Fabry-Perot cavity')
 ax[2].set_xlabel('NA')
 ax[2].set_ylabel('Longitudinal tolerance')
@@ -148,13 +164,8 @@ ax[2].legend()
 ax[2].grid()
 ax[2].set_yscale('log')
 # ax[2].set_xscale('log')
+plt.savefig(rf'outputs\figures\tolerances_vs_NA_comparison_fabry_perot_mirror_lens_mirror_{__import__("datetime").datetime.now().strftime("%H%M")}.svg')
 
 plt.show()
-
-# %%
-i = 0
-j = 90
-NAs[j], tolerances_mirror_lens_mirror[j, i, 1] / tolerances_mirror_lens_mirror[j, i, 2]
-
 
 

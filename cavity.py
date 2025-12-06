@@ -2713,8 +2713,6 @@ class Cavity:
             ax.legend()
         return ax
 
-    # parameter_index: Union[Tuple[int, int], Tuple[List[int], List[int]]],
-    #                    shift_value: Union[float, np.ndarray]
     def calculated_shifted_cavity_overlap_integral(
             self, perturbation_pointer: Union[PerturbationPointer, List[PerturbationPointer]]
     ) -> Tuple[np.ndarray]:
@@ -2731,6 +2729,30 @@ class Cavity:
             overlaps[i] = np.abs(overlap)
         if n_shifts == 1:
             overlaps = overlaps[0]
+        # DEBUG PLOT:
+        # fig, ax = plt.subplots(2, 1, figsize=(16, 16))
+        # plot_mirror_lens_mirror_cavity_analysis(new_cavity, add_unheated_cavity=False,
+        #                                         auto_set_x=True, auto_set_y=True,
+        #                                         diameters=[7.75e-3, 7.75e-3, 7.75e-3, 0.0254], ax=ax[0])
+        #
+        # spot_size_lines_original = self.generate_spot_size_lines(dim=2, plane='xy')
+        # for line in spot_size_lines_original:
+        #     ax[0].plot(line[0, :], line[1, :], color='green', linestyle='--', alpha=0.8, linewidth=0.5,
+        #                label="perturbed_mode")
+        # plot_2_cavity_perturbation_overlap(cavity=self, second_cavity=new_cavity, real_or_abs='abs', ax=ax[1])
+        # if isinstance(perturbation_pointer, list):
+        #     param_name_0 = perturbation_pointer[0].parameter_name
+        #     parameter_value_0 = perturbation_pointer[0].perturbation_value
+        # else:
+        #     param_name_0 = perturbation_pointer.parameter_name
+        #     parameter_value_0 = perturbation_pointer.perturbation_value
+        # plt.suptitle(
+        #     f"param_name_0={param_name_0}, {parameter_value_0=:.3e}\n")
+        # fig.tight_layout()
+        # timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        # plt.savefig(f"outputs/debugging/perturbation_overlap_{timestamp}.png")
+        # plt.close(fig)
+        # DEBUG PLOT END
         return overlaps
 
     def calculate_parameter_tolerance(
@@ -2740,21 +2762,38 @@ class Cavity:
             overlap_threshold: float = 0.9,
             accuracy: float = 1e-3,
     ) -> float:
+
         if np.isnan(self.arms[0].mode_parameters.NA[0]):
             warnings.warn("cavity has no mode even before perturbation, returning nan.")
             return np.nan
+        if perturbation_pointer.perturbation_value is None or isinstance(perturbation_pointer.perturbation_value, (float, int)):
+            def f(shift):
+                resulting_overlap = self.calculated_shifted_cavity_overlap_integral(perturbation_pointer(shift))
+                return resulting_overlap
 
-        def f(shift):
-            resulting_overlap = self.calculated_shifted_cavity_overlap_integral(perturbation_pointer(shift))
-            return resulting_overlap
+            tolerance = functions_first_crossing_both_directions(
+                f=f,
+                initial_step=initial_step,
+                crossing_value=overlap_threshold,
+                accuracy=accuracy,
+            )
+            return tolerance
+        else:
+            overlap_series: np.ndarray = self.calculated_shifted_cavity_overlap_integral(perturbation_pointer)
+            # Return the shift value where the overlap crosses the threshold which is closest to zero:
+            overlap_series_calibrated = overlap_threshold - overlap_series
+            product = overlap_series_calibrated[1:] * overlap_series_calibrated[:-1]
+            sign_change_mask = np.logical_or(product < 0, np.isnan(product))
+            sign_change_indices = np.nonzero(sign_change_mask)[0] + 1  # shift by 1 because we looked at b[1:]
 
-        tolerance = functions_first_crossing_both_directions(
-            f=f,
-            initial_step=initial_step,
-            crossing_value=overlap_threshold,
-            accuracy=accuracy,
-        )
-        return tolerance
+            if sign_change_indices.size == 0:
+                return None  # or np.nan, or raise, depending on what you want
+
+            # 2) Among those indices, find the one where |a[i]| is minimal
+            idx_best = sign_change_indices[np.argmin(np.abs(perturbation_pointer.perturbation_value[sign_change_indices]))]
+
+            # 3) Return the corresponding a[i]
+            return perturbation_pointer.perturbation_value[idx_best]
 
     def generate_tolerance_dataframe(
             self,
@@ -3944,7 +3983,7 @@ def generate_spot_size_lines(
         k_vector=mode_parameters.k_vector,
         length=np.linalg.norm(last_point - first_point),
     )
-    t = np.linspace(0, central_line.length, 100)  # 100 is always enough
+    t = np.linspace(0, central_line.length, 1000)  # 100 is always enough
     ray_points = central_line.parameterization(t=t)
     z_minus_z_0 = np.linalg.norm(ray_points[:, np.newaxis, :] - mode_parameters.center, axis=2)  # Before
     # the norm the size is 100 | 2 | 3 and after it is 100 | 2 (100 points for in_plane and out_of_plane

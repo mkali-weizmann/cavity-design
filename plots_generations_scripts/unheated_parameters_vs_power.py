@@ -87,15 +87,17 @@ for j, cavity in tqdm(enumerate([cavity_fabry_perot, cavity_fabry_perot_negative
 
 
 # %%
+plt.close('all')
 fig1, ax1 = plt.subplots(figsize=(12, 8))
 plt.plot(powers, NA_initials[:, 0], label='Fabry-Perot Cavity')
 plt.plot(powers, NA_initials[:, 1], label='Fabry-Perot Cavity with Negative TEC')
 plt.plot(powers, NA_initials[:, 2], label='Mirror-Lens-Mirror Cavity')
-plt.title(f"Initial NA vs Power for Fabry-Perot Cavity (Target NA={NA})")
+plt.title(f"Initial NA vs Power for Fabry-Perot Cavity (High power NA={NA})")
 plt.xlabel("Power (W)")
 plt.ylabel("Initial NA")
 plt.grid(True)
 plt.legend()
+plt.savefig(f'outputs\\figures\initial_NA_vs_power_high_power_NA={NA}.png')
 plt.show()
 
 fig2, ax2 = plt.subplots(figsize=(12, 8))
@@ -108,4 +110,5 @@ plt.ylabel("Initial Mirror Shift Tolerance (µm)")
 plt.yscale('log')
 plt.grid(True)
 plt.legend()
+plt.savefig(f'outputs\\figures\initial_tolerance_vs_power_high_power_NA={NA}.png')
 plt.show()
