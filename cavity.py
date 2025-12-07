@@ -3463,17 +3463,16 @@ def calculate_gaussian_parameters_on_surface(surface: FlatSurface, mode_paramete
     )
     )
     b = (
-            -(1 / 2)
-            * 1j
+            - 1j
             * k
             * np.array(
         [
-            (k_hat @ t_hat) + 2 * (r_0 @ u_hat) * (t_hat @ u_hat) / q_u + 2 * (r_0 @ v_hat) * (t_hat @ v_hat) / q_v,
-            (k_hat @ p_hat) + 2 * (r_0 @ u_hat) * (p_hat @ u_hat) / q_u + 2 * (r_0 @ v_hat) * (p_hat @ v_hat) / q_v,
+            (k_hat @ t_hat) + (r_0 @ u_hat) * (t_hat @ u_hat) / q_u + (r_0 @ v_hat) * (t_hat @ v_hat) / q_v,
+            (k_hat @ p_hat) + (r_0 @ u_hat) * (p_hat @ u_hat) / q_u + (r_0 @ v_hat) * (p_hat @ v_hat) / q_v,
         ]
     )
     )
-    c = -(1 / 2) * 1j * k * ((k_hat @ r_0) + (r_0 @ u_hat) ** 2 / q_u + (r_0 @ v_hat) ** 2 / q_v)
+    c = -(1 / 2) * 1j * k * (2 * (k_hat @ r_0) + (r_0 @ u_hat) ** 2 / q_u + (r_0 @ v_hat) ** 2 / q_v)
 
     return A, b, c
 
