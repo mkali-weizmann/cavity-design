@@ -539,7 +539,8 @@ def cos_without_trailing_epsilon(phi: Union[np.ndarray, float]) -> Union[np.ndar
 
 def unit_vector_of_angles(theta: Union[np.ndarray, float], phi: Union[np.ndarray, float]) -> np.ndarray:
     # Those are the angles of the unit vector in spherical coordinates, with respect to the global system of coordinates
-    # theta and phi are assumed to be in radians
+    # theta and phi are assumed to be in radians.
+    # Since I work mostly in the x-y plane, theta is measured from the x-y plane, so that it is usually close to 0.
     sin_phi = sin_without_trailing_epsilon(phi)
     cos_phi = cos_without_trailing_epsilon(phi)
     sin_theta = sin_without_trailing_epsilon(theta)

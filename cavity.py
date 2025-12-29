@@ -632,6 +632,7 @@ class PhysicalSurface(Surface):
 
     def reflect_ray(self, ray: Ray, paraxial: bool = False) -> Ray:
         intersection_point = self.find_intersection_with_ray(ray, paraxial=paraxial)
+        ray.length = np.linalg.norm(intersection_point - ray.origin, axis=-1)
         reflected_direction_vector = self.reflect_direction(ray, paraxial=paraxial)
         return Ray(intersection_point, reflected_direction_vector)
 
@@ -715,7 +716,6 @@ class FlatSurface(Surface):
         cos_angle_between_ray_direction_and_plane_normal = ray.k_vector @ self.outwards_normal
         ray_length_to_surface = ray_origin_distance_from_surface / cos_angle_between_ray_direction_and_plane_normal
         intersection_point = ray.parameterization(ray_length_to_surface)
-        ray.length = np.linalg.norm(intersection_point - ray.origin, axis=-1)
         return intersection_point
 
     def find_intersection_with_ray_paraxial(self, ray: Ray) -> np.ndarray:
@@ -753,7 +753,6 @@ class FlatSurface(Surface):
                     ray_origin_projected_onto_plane
                     + theta * distance_between_rays_origin_and_plane * vector_in_plane_in_k_n_plane
             )
-        ray.length = np.linalg.norm(intersection_point - ray.origin, axis=-1)
         return intersection_point
 
     @property
@@ -1041,13 +1040,11 @@ class CurvedSurface(Surface):
         except FloatingPointError:
             return np.array([np.nan, np.nan, np.nan])
         intersection_point = ray.parameterization(length)
-        ray.length = length
         return intersection_point
 
     def find_intersection_with_ray_paraxial(self, ray: Ray) -> np.ndarray:
         flat_surface = FlatSurface(center=self.center, outwards_normal=self.outwards_normal)
         intersection_point = flat_surface.find_intersection_with_ray_paraxial(ray)
-        ray.length = np.linalg.norm(intersection_point - ray.origin, axis=-1)
         return intersection_point
 
     def parameterization(
@@ -2657,7 +2654,7 @@ class Cavity:
 
         if additional_rays is not None:
             for i, ray in enumerate(additional_rays):
-                ray.plot(ax=ax, dim=dim, plane=plane, linestyle="--", alpha=0.8, label=i)
+                ray.plot(ax=ax, dim=dim, plane=plane, linestyle="--", alpha=0.8, color='blue')
 
         if diameters is not None:
             if isinstance(diameters, float):
