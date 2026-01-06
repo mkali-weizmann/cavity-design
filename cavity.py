@@ -259,6 +259,7 @@ class Ray:
             origin: np.ndarray,  # [m_rays..., 3]
             k_vector: np.ndarray,  # [m_rays..., 3]
             length: Optional[Union[np.ndarray, float]] = None,  # [m_rays..., 3]
+            n: Optional[Union[np.ndarray, float]] = None,  # [m_rays..., 3], the refractive index in the medium the ray is in
     ):
         if k_vector.ndim == 1 and origin.shape[0] > 1:
             k_vector = np.tile(k_vector, (*origin.shape[:-1], 1))
@@ -270,11 +271,11 @@ class Ray:
         if length is not None and isinstance(length, float) and origin.ndim > 1:  # If there is one length for many rays
             length = np.ones(origin.shape[0]) * length
         self.length = length  # m_rays or None
+        self.n = n  # m_rays or None
 
     def __getitem__(self, key):
-        subscripted_ray = Ray(
-            self.origin[key], self.k_vector[key], self.length[key] if self.length is not None else None
-        )
+        subscripted_ray = Ray(self.origin[key], self.k_vector[key],
+                              self.length[key] if self.length is not None else None)
         return subscripted_ray
 
     def parameterization(self, t: Union[np.ndarray, float]) -> np.ndarray:
@@ -283,6 +284,13 @@ class Ray:
         if isinstance(t, (float, int)):
             t = np.array(t)
         return self.origin + t[..., np.newaxis] * self.k_vector
+
+    @property
+    def optical_path_length(self) -> Optional[np.ndarray]:
+        if self.length is not None and self.n is not None:
+            return self.length * self.n
+        else:
+            return None
 
     def plot(self, ax: Optional[plt.Axes] = None, dim=2, plane: str = "xy", **kwargs):
         if ax is None:
@@ -1534,16 +1542,18 @@ class Arm:
             ), "The refractive index according to first element is not the same as the refractive index according to the second element"
 
     def propagate(self, ray: Ray, use_paraxial_ray_tracing: bool = False):
+        ray.n = self.n
 
         if isinstance(self.surface_1, PhysicalSurface):
             # ATTENTION - THIS SHOULD NOT BE HERE FOR NON-STANDING WAVES CAVITIES - BUT I AM DEALING ONLY WITH THOSE...
             if isinstance(self.surface_1, CurvedMirror):
                 use_paraxial_ray_tracing = False
-            ray = self.surface_1.reflect_ray(ray, paraxial=use_paraxial_ray_tracing)
+            propagated_ray = self.surface_1.reflect_ray(ray, paraxial=use_paraxial_ray_tracing)
         else:
             new_position = self.surface_1.find_intersection_with_ray(ray, paraxial=use_paraxial_ray_tracing)
-            ray = Ray(new_position, ray.k_vector)
-        return ray
+            propagated_ray = Ray(new_position, ray.k_vector)
+
+        return propagated_ray
 
     @property
     def lambda_0_laser(self):
@@ -2376,7 +2386,7 @@ class Cavity:
                     origin = central_line[n_physical_arms - i - 1].parameterization(central_line[n_physical_arms - i - 1].length)
                     k_vector = -central_line[n_physical_arms - i - 1].k_vector
                     length = central_line[n_physical_arms - i - 1].length
-                    arm.central_line = Ray(origin=origin, k_vector=k_vector,length=length)
+                    arm.central_line = Ray(origin=origin, k_vector=k_vector, length=length)
             else:
                 for i, arm in enumerate(self.arms):
                     arm.central_line = central_line[i]
@@ -3974,11 +3984,8 @@ def generate_spot_size_lines(
         principle_axes = mode_parameters.principle_axes
     elif plane == "xy" and principle_axes is None:
         principle_axes = np.array([[0, 0, 1], [0, -1, 0]])
-    central_line = Ray(
-        origin=first_point,
-        k_vector=mode_parameters.k_vector,
-        length=np.linalg.norm(last_point - first_point),
-    )
+    central_line = Ray(origin=first_point, k_vector=mode_parameters.k_vector,
+                       length=np.linalg.norm(last_point - first_point))
     t = np.linspace(0, central_line.length, 1000)  # 100 is always enough
     ray_points = central_line.parameterization(t=t)
     z_minus_z_0 = np.linalg.norm(ray_points[:, np.newaxis, :] - mode_parameters.center, axis=2)  # Before
@@ -4059,11 +4066,9 @@ def find_equal_angles_surface(
         arm = Arm(
             surface_0=surface_0,
             surface_1=second_surface,
-            central_line=Ray(
-                origin=surface_0.center,
-                k_vector=normalize_vector(second_surface.center - surface_0.center),
-                length=np.linalg.norm(second_surface.center - surface_0.center),
-            ),
+            central_line=Ray(origin=surface_0.center,
+                             k_vector=normalize_vector(second_surface.center - surface_0.center),
+                             length=np.linalg.norm(second_surface.center - surface_0.center)),
             mode_parameters_on_surface_0=mode_parameters_right_after_surface_0,
         )
         local_mode_parameters_right_after_surface_2 = arm.propagate_local_mode_parameters()
@@ -4426,11 +4431,9 @@ def mirror_lens_mirror_cavity_generator(
     arm_lens = Arm(
         surface_0=surface_left,
         surface_1=surface_right,
-        central_line=Ray(
-            origin=surface_left.center,
-            k_vector=normalize_vector(surface_right.center - surface_left.center),
-            length=np.linalg.norm(surface_right.center - surface_left.center),
-        ),
+        central_line=Ray(origin=surface_left.center,
+                         k_vector=normalize_vector(surface_right.center - surface_left.center),
+                         length=np.linalg.norm(surface_right.center - surface_left.center)),
         mode_parameters_on_surface_0=mode_parameters_right_after_surface_left,
     )
     mode_parameters_right_after_surface_right = arm_lens.propagate_local_mode_parameters()

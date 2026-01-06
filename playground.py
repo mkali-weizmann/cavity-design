@@ -1,73 +1,85 @@
+import matplotlib.pyplot as plt
+
 from cavity import *
 
-NA_left = 6.7400000000e-02
-waist_to_lens = 5.0000000000e-03
-waist_to_lens_fine = -5.8407300310e+00
-set_R_left_to_collimate = False
-R_small_mirror = 5.0000000000e-03
-R_left = 2.4220000000e-02
-R_left_fine = -1.3552527156e-20
-set_R_right_to_collimate = False
-set_R_right_to_equalize_angles = False
-set_R_right_to_R_left = False
-R_right = 5.4880000000e-03
-R_right_fine = -1.3552527156e-20
-collimation_mode = 'symmetric arm'
-auto_set_big_mirror_radius = False
-big_mirror_radius = 2.0000000000e-01
-auto_set_right_arm_length = True
-right_arm_length = 4.0000000000e-01
-lens_fixed_properties = 'sapphire'
-mirrors_fixed_properties = 'ULE'
-auto_set_x = True
-x_span = -1.5700000000e+00
-auto_set_y = True
-y_span = -2.9000000000e+00
-T_edge = 1.0000000000e-03
-h = 3.8750000000e-03
-camera_center = 2
-add_unheated_cavity = False
-copy_input_parameters = True
-copy_cavity_parameters = False
-eval_box = ''
-waist_to_left_mirror = None
-
-big_mirror_radius = None if auto_set_big_mirror_radius else big_mirror_radius
-right_arm_length = None if auto_set_right_arm_length else right_arm_length
-waist_to_lens += widget_convenient_exponent(waist_to_lens_fine)
-R_left += widget_convenient_exponent(R_left_fine)
-R_right += widget_convenient_exponent(R_right_fine)
-
-NAs = np.linspace(0.07, 0.09, 5)  # np.concatenate((np.linspace(0.038, 0.05, 70), np.linspace(0.051, 0.16, 20)))
-tolerances_mirror_lens_mirror = np.zeros((len(NAs), 3, 5))
-tolerances_fabry_perot = np.zeros((len(NAs), 2, 4))
-for i, NA in (pbar_NAs := tqdm(enumerate(NAs), total=len(NAs))):
-    pbar_NAs.set_description(f'NA={NA:.3f}')
-    cavity = mirror_lens_mirror_cavity_generator(NA_left=NA, waist_to_lens=waist_to_lens, h=h,
-                                                                    R_left=R_left, R_right=R_right, T_c=0,
-                                                                    T_edge=T_edge,
-                                                                    lens_fixed_properties=lens_fixed_properties,
-                                                                    mirrors_fixed_properties=mirrors_fixed_properties,
-                                                                    R_small_mirror=R_small_mirror,
-                                                                    waist_to_left_mirror=waist_to_left_mirror,
-                                                                    lambda_0_laser=1064e-9, set_h_instead_of_w=True,
-                                                                    collimation_mode=collimation_mode,
-                                                                    big_mirror_radius=big_mirror_radius,
-                                                                    right_arm_length=right_arm_length,
-                                                                    set_R_right_to_equalize_angles=set_R_right_to_equalize_angles,
-                                                                    set_R_right_to_R_left=set_R_right_to_R_left,
-                                                                    set_R_right_to_collimate=set_R_right_to_collimate,
-                                                                    set_R_left_to_collimate=set_R_left_to_collimate,
-                                                                    power=2e4)
-    perturbation_pointer = PerturbationPointer(element_index=0, parameter_name=ParamsNames.y, perturbation_value=np.linspace(-4e-6, 4e-6, 1000))
-    cavity.calculate_parameter_tolerance(perturbation_pointer)
-    overlap_series = cavity.calculated_shifted_cavity_overlap_integral(
-                        perturbation_pointer=perturbation_pointer)
+params = [
+          OpticalElementParams(name='Small Mirror'           ,surface_type='curved_mirror'                  , x=-4.999961263669513e-03  , y=0                       , z=0                       , theta=0                       , phi=-1e+00 * np.pi          , r_1=5e-03                   , r_2=np.nan                  , curvature_sign=CurvatureSigns.concave, T_c=np.nan                  , n_inside_or_after=1e+00                   , n_outside_or_before=1e+00                   , material_properties=MaterialProperties(refractive_index=None                    , alpha_expansion=7.5e-08                 , beta_surface_absorption=1e-06                   , kappa_conductivity=1.31e+00                , dn_dT=None                    , nu_poisson_ratio=1.7e-01                 , alpha_volume_absorption=None                    , intensity_reflectivity=9.99889e-01             , intensity_transmittance=1e-04                   , temperature=np.nan                  )),
+          OpticalElementParams(name='Lens'                   ,surface_type='thick_lens'                     , x=6.387599281689135e-03   , y=0                       , z=0                       , theta=0                       , phi=0                       , r_1=2.422e-02               , r_2=5.488e-03               , curvature_sign=CurvatureSigns.concave, T_c=2.913797540986543e-03   , n_inside_or_after=1.76e+00                , n_outside_or_before=1e+00                   , material_properties=MaterialProperties(refractive_index=1.76e+00                , alpha_expansion=5.5e-06                 , beta_surface_absorption=1e-06                   , kappa_conductivity=4.606e+01               , dn_dT=1.17e-05                , nu_poisson_ratio=3e-01                   , alpha_volume_absorption=1e-02                   , intensity_reflectivity=1e-04                   , intensity_transmittance=9.99899e-01             , temperature=np.nan                  )),
+          OpticalElementParams(name='Big Mirror'             ,surface_type='curved_mirror'                  , x=4.078081462362321e-01   , y=0                       , z=0                       , theta=0                       , phi=0                       , r_1=2e-01                   , r_2=np.nan                  , curvature_sign=CurvatureSigns.concave, T_c=np.nan                  , n_inside_or_after=1e+00                   , n_outside_or_before=1e+00                   , material_properties=MaterialProperties(refractive_index=None                    , alpha_expansion=7.5e-08                 , beta_surface_absorption=1e-06                   , kappa_conductivity=1.31e+00                , dn_dT=None                    , nu_poisson_ratio=1.7e-01                 , alpha_volume_absorption=None                    , intensity_reflectivity=9.99889e-01             , intensity_transmittance=1e-04                   , temperature=np.nan                  ))
+         ]
 
 
-    plt.plot(perturbation_pointer.perturbation_value, overlap_series)
-    plt.xlabel('bit mirror shift (m)')
-    plt.ylabel('Overlap integral')
-    plt.title(f'Cavity Overlap Integral vs Lens Shift\nNA={NA:.3f}')
-    plt.grid()
-    plt.show()
+unit_vector_of_angles(np.pi/2, 0)
+
+cavity = Cavity.from_params(params=params,
+                            standing_wave=True,
+                            lambda_0_laser=LAMBDA_0_LASER,
+                            set_central_line=True,
+                            set_mode_parameters=True,
+                            set_initial_surface=False,
+                            t_is_trivial=True,
+                            p_is_trivial=True,
+                            power=2e4,
+                            use_paraxial_ray_tracing=False,
+                            debug_printing_level=1,
+                            )
+first_mirror = cavity.surfaces[0]
+
+tilt_angle_p_1 = 0.002
+initial_arc_lengths = tilt_angle_p_1 * first_mirror.radius
+p_1 = first_mirror.parameterization(0, -initial_arc_lengths)
+theta = np.linspace(-0.002, 0.002, 50)
+phi = tilt_angle_p_1 + np.linspace(-0.002, 0.002, 50)
+k_vector = unit_vector_of_angles(theta=theta, phi=phi + np.pi * (1 - first_mirror.inwards_normal[0])/2)  # Assume system is alligned with x axis
+THETA, PHI = np.meshgrid(theta, phi)
+k_vector = unit_vector_of_angles(THETA, PHI)
+rays = Ray(origin=p_1, k_vector=k_vector)
+rays_history = cavity.trace_ray(rays)
+cavity.plot(additional_rays=rays_history[:-1])
+plt.show()
+
+optical_paths_lengths = np.stack([r.optical_path_length for r in rays_history[:-1]], axis=0).sum(axis=0)
+last_phases = np.exp(1j * 2 * np.pi / LAMBDA_0_LASER * optical_paths_lengths)
+last_intersection_points_parameterization = first_mirror.get_parameterization(rays_history[-1].origin)
+last_intersection_points_parameterization = np.stack(last_intersection_points_parameterization, axis=-1)
+p_0_parameterization = np.array([0.0005, 0.0005])
+p_t_distances = p_0_parameterization - last_intersection_points_parameterization
+arc_length_distance = np.sqrt(np.sum(p_t_distances**2, axis=-1))
+p_0_mask = arc_length_distance < 0.0002
+k_0_1 = np.sum(last_phases[p_0_mask])
+plt.xlim(-0.02, 0.0005)
+plt.ylim(-0.001, 0.001)
+
+# python
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.tri as mtri
+
+# assume last_intersection_points_parameterization shape (N, M, 2)
+# and last_phases shape (N, M) are available in the namespace
+
+# flatten data
+pts = last_intersection_points_parameterization.reshape(-1, 2)
+x = pts[:, 0]
+y = pts[:, 1]
+vals = last_phases.reshape(-1)
+
+# mask invalid entries
+finite_mask = np.isfinite(x) & np.isfinite(y) & np.isfinite(vals.real) & np.isfinite(vals.imag)
+x = x[finite_mask]
+y = y[finite_mask]
+phase = np.angle(vals[finite_mask])  # in \-pi..pi\ range
+
+# build triangulation and plot filled phase map
+triang = mtri.Triangulation(x, y)
+fig, ax = plt.subplots(figsize=(6, 5))
+pcm = ax.tripcolor(triang, phase, cmap='twilight', shading='gouraud')  # cyclic colormap
+ax.set_aspect('equal', 'box')
+ax.set_xlabel('parameterization p')
+ax.set_ylabel('parameterization t')
+cbar = fig.colorbar(pcm, ax=ax, orientation='vertical', pad=0.02)
+cbar.set_label('phase (radians)')
+cbar.set_ticks([-np.pi, -np.pi/2, 0, np.pi/2, np.pi])
+cbar.set_ticklabels([r'$-\pi$', r'$-\pi/2$', '0', r'$\pi/2$', r'$\pi$'])
+plt.tight_layout()
+plt.show()
