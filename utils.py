@@ -14,6 +14,8 @@ C_LIGHT_SPEED = 299792458  # [m/s]
 ROOM_TEMPERATURE = 293  # [K]
 LAMBDA_0_LASER = 1064e-9
 LAMBDA_1_LASER = 532e-9
+EPSILON_0_PERMITTIVITY = 8.854187e-12  # [F/m]
+MU_0_PERMEABILITY = 1.256637e-6
 
 # Every optical element has a np.ndarray representation, and those two dictionaries defines the order and meaning of
 # the array columns.
@@ -789,23 +791,23 @@ def generate_initial_parameters_grid(center: np.ndarray,
 # %% Wave equations functions:
 def green_function_free_space(r_source: np.ndarray, r_observer: np.ndarray, k: float) -> complex:
     r_vector = r_observer - r_source
-    r = np.linalg.norm(r_vector)
+    r = np.linalg.norm(r_vector, axis=-1)
     G = np.exp(1j * k * r) / (4 * np.pi * r)
     return G
 
 def green_function_first_derivative(r_source: np.ndarray, r_observer: np.ndarray, k: float) -> np.ndarray:
     r_vector = r_observer - r_source
-    r = np.linalg.norm(r_vector)
+    r = np.linalg.norm(r_vector, axis=-1)
     dG_dr = (1j * k - 1 / r) * np.exp(1j * k * r) / (4 * np.pi * r ** 2)
-    dG_dvector = dG_dr * r_vector
+    dG_dvector = dG_dr[..., None] * r_vector
     return dG_dvector
 
 def green_function_second_derivative(r_source: np.ndarray, r_observer: np.ndarray, k: float) -> np.ndarray:
     r_vector = r_observer - r_source
-    r = np.linalg.norm(r_vector)
+    r = np.linalg.norm(r_vector, axis=-1)
     coefficient = -k**2 / r ** 3 * np.exp(1j * k * r) / (4 * np.pi)
-    r_vector_outer_product = np.outer(r_vector, r_vector)
-    second_derivative = coefficient * r_vector_outer_product
+    r_vector_outer_product = r_vector[..., :, None] * r_vector[..., None, :]
+    second_derivative = coefficient[..., None, None] * r_vector_outer_product
     return second_derivative
 
 def normal_to_a_sphere(r_surface: np.ndarray, o_center: np.ndarray, sign: int) -> np.ndarray:
@@ -813,36 +815,112 @@ def normal_to_a_sphere(r_surface: np.ndarray, o_center: np.ndarray, sign: int) -
     normal_vector = normal_vector / np.linalg.norm(normal_vector, axis=-1)[..., np.newaxis] * sign
     return normal_vector
 
-def m_EE(r_source: np.ndarray, r_observer: np.ndarray, k: float, o_source: np.ndarray, sign: int) -> np.ndarray:
+def m_EE(r_source: np.ndarray, r_observer: np.ndarray, k: float, normal_function: Callable) -> np.ndarray:
     dG = green_function_first_derivative(r_source, r_observer, k)
-    n = normal_to_a_sphere(r_source, o_source, sign)
-    M = np.array([[-(dG[1] * n[1] + dG[2] * n[2]), dG[1] * n[0], dG[2] * n[0]],
-                 [dG[0] * n[1], -(dG[2] * n[2] + dG[0] * n[0]), dG[2] * n[1]],
-                 [dG[0] * n[2], dG[1] * n[2], -(dG[0] * n[0] + dG[1] * n[1])]],
-        dtype=complex)
+    n = normal_function(r_source)
+    if r_source.ndim == 1:
+        M = np.array([[-(dG[1] * n[1] + dG[2] * n[2]), dG[1] * n[0], dG[2] * n[0]],
+                     [dG[0] * n[1], -(dG[2] * n[2] + dG[0] * n[0]), dG[2] * n[1]],
+                     [dG[0] * n[2], dG[1] * n[2], -(dG[0] * n[0] + dG[1] * n[1])]],
+            dtype=complex)
+    else:
+        row0 = np.stack(
+            [
+                -(dG[..., 1] * n[..., 1] + dG[..., 2] * n[..., 2]),
+                dG[..., 1] * n[..., 0],
+                dG[..., 2] * n[..., 0],
+            ],
+            axis=-1,
+        )
+
+        row1 = np.stack(
+            [
+                dG[..., 0] * n[..., 1],
+                -(dG[..., 2] * n[..., 2] + dG[..., 0] * n[..., 0]),
+                dG[..., 2] * n[..., 1],
+            ],
+            axis=-1,
+        )
+
+        row2 = np.stack(
+            [
+                dG[..., 0] * n[..., 2],
+                dG[..., 1] * n[..., 2],
+                -(dG[..., 0] * n[..., 0] + dG[..., 1] * n[..., 1]),
+            ],
+            axis=-1,
+        )
+
+        M = np.stack([row0, row1, row2], axis=-2)
     return M
 
-def m_EH(r_source: np.ndarray, r_observer: np.ndarray, k: float, o_source: np.ndarray, sign: int):
+def m_EH(r_source: np.ndarray, r_observer: np.ndarray, k: float, normal_function: Callable):
     ddG = green_function_second_derivative(r_source, r_observer, k)
-    n = normal_to_a_sphere(r_source, o_source, sign)
-    M = np.array(
-        [
+    n = normal_function(r_source)
+    if r_source.ndim == 1:
+        M = np.array(
             [
-                ddG[1, 0] * n[2] - ddG[2, 0] * n[1],
-                ddG[1, 1] * n[2] + ddG[2, 2] * n[2] + ddG[2, 0] * n[0],
-                -(ddG[1, 0] * n[0] + ddG[1, 1] * n[1] + ddG[2, 2] * n[1]),
+                [
+                    ddG[1, 0] * n[2] - ddG[2, 0] * n[1],
+                    ddG[1, 1] * n[2] + ddG[2, 2] * n[2] + ddG[2, 0] * n[0],
+                    -(ddG[1, 0] * n[0] + ddG[1, 1] * n[1] + ddG[2, 2] * n[1]),
+                ],
+                [
+                    -(ddG[2, 1] * n[1] + ddG[2, 2] * n[2] + ddG[0, 0] * n[2]),
+                    ddG[2, 1] * n[0] - ddG[0, 1] * n[2],
+                    ddG[2, 2] * n[0] + ddG[0, 0] * n[0] + ddG[0, 1] * n[1],
+                ],
+                [
+                    ddG[0, 0] * n[1] + ddG[1, 1] * n[1] + ddG[1, 2] * n[2],
+                    -(ddG[0, 2] * n[2] + ddG[0, 0] * n[0] + ddG[1, 1] * n[0]),
+                    ddG[0, 2] * n[1] - ddG[1, 2] * n[0],
+                ],
             ],
+            dtype=complex,
+        )
+    else:
+        row0 = np.stack(
             [
-                -(ddG[2, 1] * n[1] + ddG[2, 2] * n[2] + ddG[0, 0] * n[2]),
-                ddG[2, 1] * n[0] - ddG[0, 1] * n[2],
-                ddG[2, 2] * n[0] + ddG[0, 0] * n[0] + ddG[0, 1] * n[1],
+                ddG[..., 1, 0] * n[..., 2] - ddG[..., 2, 0] * n[..., 1],
+                ddG[..., 1, 1] * n[..., 2] + ddG[..., 2, 2] * n[..., 2] + ddG[..., 2, 0] * n[..., 0],
+                -(ddG[..., 1, 0] * n[..., 0] + ddG[..., 1, 1] * n[..., 1] + ddG[..., 2, 2] * n[..., 1]),
             ],
+            axis=-1,
+        )
+
+        row1 = np.stack(
             [
-                ddG[0, 0] * n[1] + ddG[1, 1] * n[1] + ddG[1, 2] * n[2],
-                -(ddG[0, 2] * n[2] + ddG[0, 0] * n[0] + ddG[1, 1] * n[0]),
-                ddG[0, 2] * n[1] - ddG[1, 2] * n[0],
+                -(ddG[..., 2, 1] * n[..., 1] + ddG[..., 2, 2] * n[..., 2] + ddG[..., 0, 0] * n[..., 2]),
+                ddG[..., 2, 1] * n[..., 0] - ddG[..., 0, 1] * n[..., 2],
+                ddG[..., 2, 2] * n[..., 0] + ddG[..., 0, 0] * n[..., 0] + ddG[..., 0, 1] * n[..., 1],
             ],
-        ],
-        dtype=complex,
-    )
+            axis=-1,
+        )
+
+        row2 = np.stack(
+            [
+                ddG[..., 0, 0] * n[..., 1] + ddG[..., 1, 1] * n[..., 1] + ddG[..., 1, 2] * n[..., 2],
+                -(ddG[..., 0, 2] * n[..., 2] + ddG[..., 0, 0] * n[..., 0] + ddG[..., 1, 1] * n[..., 0]),
+                ddG[..., 0, 2] * n[..., 1] - ddG[..., 1, 2] * n[..., 0],
+            ],
+            axis=-1,
+        )
+
+        M = np.stack([row0, row1, row2], axis=-2)
     return M
+
+def m_total(r_source: np.ndarray, r_observer: np.ndarray, k: float, normal_function: Callable, n_index) -> np.ndarray:
+    M_EE_matrix = m_EE(r_source, r_observer, k, normal_function)
+    M_EH_matrix = m_EH(r_source, r_observer, k, normal_function)
+    M_total = np.zeros((*r_source.shape[0:-1], 6, 6), dtype=complex)
+    M_total[..., 0:3, 0:3] = M_EE_matrix
+    M_total[..., 0:3, 3:6] = 1 / (1j * k * C_LIGHT_SPEED * EPSILON_0_PERMITTIVITY) * M_EH_matrix
+    M_total[..., 3:6, 0:3] = - 1 / (1j * k * C_LIGHT_SPEED * MU_0_PERMEABILITY) * M_EH_matrix
+    M_total[..., 3:6, 3:6] = M_EE_matrix
+    return M_total
+
+r_source = np.random.normal(size=(2, 4, 3))
+r_observer = np.random.normal(size=(3, ))
+k = 2 * np.pi / LAMBDA_0_LASER
+
+m_EE(r_source, r_observer, k, lambda r_s: normal_to_a_sphere(r_s, np.array([0, 0, 0]), sign=1))
