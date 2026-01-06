@@ -785,3 +785,64 @@ def generate_initial_parameters_grid(center: np.ndarray,
                                  base_grid * angle_factor + center[3], indexing='ij')
         initial_parameters = np.stack([X, T, Y, P], axis=-1)
     return initial_parameters
+
+# %% Wave equations functions:
+def green_function_free_space(r_source: np.ndarray, r_observer: np.ndarray, k: float) -> complex:
+    r_vector = r_observer - r_source
+    r = np.linalg.norm(r_vector)
+    G = np.exp(1j * k * r) / (4 * np.pi * r)
+    return G
+
+def green_function_first_derivative(r_source: np.ndarray, r_observer: np.ndarray, k: float) -> np.ndarray:
+    r_vector = r_observer - r_source
+    r = np.linalg.norm(r_vector)
+    dG_dr = (1j * k - 1 / r) * np.exp(1j * k * r) / (4 * np.pi * r ** 2)
+    dG_dvector = dG_dr * r_vector
+    return dG_dvector
+
+def green_function_second_derivative(r_source: np.ndarray, r_observer: np.ndarray, k: float) -> np.ndarray:
+    r_vector = r_observer - r_source
+    r = np.linalg.norm(r_vector)
+    coefficient = -k**2 / r ** 3 * np.exp(1j * k * r) / (4 * np.pi)
+    r_vector_outer_product = np.outer(r_vector, r_vector)
+    second_derivative = coefficient * r_vector_outer_product
+    return second_derivative
+
+def normal_to_a_sphere(r_surface: np.ndarray, o_center: np.ndarray, sign: int) -> np.ndarray:
+    normal_vector = r_surface - o_center
+    normal_vector = normal_vector / np.linalg.norm(normal_vector, axis=-1)[..., np.newaxis] * sign
+    return normal_vector
+
+def m_EE(r_source: np.ndarray, r_observer: np.ndarray, k: float, o_source: np.ndarray, sign: int) -> np.ndarray:
+    dG = green_function_first_derivative(r_source, r_observer, k)
+    n = normal_to_a_sphere(r_source, o_source, sign)
+    M = np.array([[-(dG[1] * n[1] + dG[2] * n[2]), dG[1] * n[0], dG[2] * n[0]],
+                 [dG[0] * n[1], -(dG[2] * n[2] + dG[0] * n[0]), dG[2] * n[1]],
+                 [dG[0] * n[2], dG[1] * n[2], -(dG[0] * n[0] + dG[1] * n[1])]],
+        dtype=complex)
+    return M
+
+def m_EH(r_source: np.ndarray, r_observer: np.ndarray, k: float, o_source: np.ndarray, sign: int):
+    ddG = green_function_second_derivative(r_source, r_observer, k)
+    n = normal_to_a_sphere(r_source, o_source, sign)
+    M = np.array(
+        [
+            [
+                ddG[1, 0] * n[2] - ddG[2, 0] * n[1],
+                ddG[1, 1] * n[2] + ddG[2, 2] * n[2] + ddG[2, 0] * n[0],
+                -(ddG[1, 0] * n[0] + ddG[1, 1] * n[1] + ddG[2, 2] * n[1]),
+            ],
+            [
+                -(ddG[2, 1] * n[1] + ddG[2, 2] * n[2] + ddG[0, 0] * n[2]),
+                ddG[2, 1] * n[0] - ddG[0, 1] * n[2],
+                ddG[2, 2] * n[0] + ddG[0, 0] * n[0] + ddG[0, 1] * n[1],
+            ],
+            [
+                ddG[0, 0] * n[1] + ddG[1, 1] * n[1] + ddG[1, 2] * n[2],
+                -(ddG[0, 2] * n[2] + ddG[0, 0] * n[0] + ddG[1, 1] * n[0]),
+                ddG[0, 2] * n[1] - ddG[1, 2] * n[0],
+            ],
+        ],
+        dtype=complex,
+    )
+    return M
