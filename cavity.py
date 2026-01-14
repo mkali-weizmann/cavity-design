@@ -1741,12 +1741,13 @@ class Arm:
                                                                            "unnamed_surface")
         )
 
+    @property
     def propagation_kernel(self):
         if isinstance(self.surface_0, FlatSurface):
-            normal_function = lambda x: self.surface_0.outwards_normal  # Add sign
+            sign = np.sign((self.surface_1.center - self.surface_0.center) @ self.surface_0.outwards_normal)
+            normal_function = lambda x: self.surface_0.outwards_normal * sign  # Add sign
         elif isinstance(self.surface_0, CurvedSurface):
-            sign = self.surface_0.curvature_sign  # Add sign
-            normal_function = lambda r: normal_to_a_sphere(r_surface=r, o_center=self.surface_0.origin, sign=sign)  # Add sign
+            normal_function = lambda r: normal_to_a_sphere(r_surface=r, o_center=self.surface_0.origin, sign=-self.surface_0.curvature_sign)  # Add sign
 
         def propagation_kernel(r_source: np.ndarray, r_observer: np.ndarray, k: float):
             M = m_total(r_source=r_source, r_observer=r_observer, k=k, normal_function=normal_function, n_index=self.n)

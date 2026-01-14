@@ -805,9 +805,11 @@ def green_function_first_derivative(r_source: np.ndarray, r_observer: np.ndarray
 def green_function_second_derivative(r_source: np.ndarray, r_observer: np.ndarray, k: float) -> np.ndarray:
     r_vector = r_observer - r_source
     r = np.linalg.norm(r_vector, axis=-1)
-    coefficient = -k**2 / r ** 3 * np.exp(1j * k * r) / (4 * np.pi)
+    common_coefficient = k * np.exp(1j * k * r) / (4 * np.pi * r ** 2)
     r_vector_outer_product = r_vector[..., :, None] * r_vector[..., None, :]
-    second_derivative = coefficient[..., None, None] * r_vector_outer_product
+    diagonal_matrix = np.eye(3)
+    second_derivative = -common_coefficient[..., None, None] / r[..., None, None] * (2j / r[..., None, None] + k) * r_vector_outer_product
+    second_derivative += common_coefficient[..., None, None] * 1j * diagonal_matrix
     return second_derivative
 
 def normal_to_a_sphere(r_surface: np.ndarray, o_center: np.ndarray, sign: int) -> np.ndarray:
@@ -918,9 +920,3 @@ def m_total(r_source: np.ndarray, r_observer: np.ndarray, k: float, normal_funct
     M_total[..., 3:6, 0:3] = - 1 / (1j * k * C_LIGHT_SPEED * MU_0_PERMEABILITY) * M_EH_matrix
     M_total[..., 3:6, 3:6] = M_EE_matrix
     return M_total
-
-r_source = np.random.normal(size=(2, 4, 3))
-r_observer = np.random.normal(size=(3, ))
-k = 2 * np.pi / LAMBDA_0_LASER
-
-m_EE(r_source, r_observer, k, lambda r_s: normal_to_a_sphere(r_s, np.array([0, 0, 0]), sign=1))
