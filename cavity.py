@@ -1,4 +1,7 @@
 from __future__ import annotations
+
+from scipy.optimize import brentq
+
 from utils import *
 import numpy as np
 import matplotlib.pyplot as plt
@@ -11,6 +14,7 @@ from datetime import datetime
 from hashlib import md5
 from tqdm import tqdm
 from utils import MaterialProperties
+from numpy.polynomial import Polynomial
 
 pd.set_option("display.max_rows", 500)
 pd.options.display.float_format = "{:.3e}".format
@@ -279,7 +283,7 @@ class Ray:
         return subscripted_ray
 
     def parameterization(self, t: Union[np.ndarray, float]) -> np.ndarray:
-        # Currently this function allows only one theta per ray. if needed it can be extended to allow multiple theta per ray.
+        # Currently this function allows only one t per ray. if needed it can be extended to allow multiple t per ray.
         # theta needs to be either a float or a numpy array with dimensions m_rays
         if isinstance(t, (float, int)):
             t = np.array(t)
@@ -400,8 +404,11 @@ class Surface:
             fine_resolution=False,
             **kwargs,
     ):
-        half_spreading_angle = np.arcsin(min([diameter / (2 * self.radius), 1]))
-        half_spreading_length = half_spreading_angle * self.radius
+        if np.isinf(self.radius):
+            half_spreading_length = nvl(diameter, 0.01) / 2
+        else:
+            half_spreading_angle = np.arcsin(min([diameter / (2 * self.radius), 1]))
+            half_spreading_length = half_spreading_angle * self.radius
         if fine_resolution:
             N_points = 10000
         else:
@@ -696,6 +703,89 @@ class PhysicalSurface(Surface):
         raise NotImplementedError
 
 
+class AsphericSurface(Surface):
+    def __init__(
+            self,
+            center: np.ndarray,
+            outwards_normal: np.ndarray,
+            polynomial_coefficients: Union[Polynomial, np.ndarray, List[float]], # a0, a2, a4...
+            name: Optional[str] = None,
+            diameter: Optional[float] = None,
+            material_properties: MaterialProperties = None,
+            **kwargs,
+    ):
+        super().__init__(outwards_normal=outwards_normal, name=name, radius=np.nan, **kwargs)
+        self._center = center
+        self.outwards_normal = normalize_vector(outwards_normal)
+        self.name = name
+        self.radius = np.nan
+        self.diameter = diameter
+        self.material_properties = material_properties
+        self.polynomial_coefficients = polynomial_coefficients if isinstance(
+            polynomial_coefficients, Polynomial
+        ) else Polynomial(polynomial_coefficients)
+
+    def find_intersection_with_ray_exact(self, ray: Ray) -> np.ndarray:
+        # For a sketch and a detalied explanation on the calculation, go to:
+        # "Intersection with a cyllindrically symmetric surface with polynominal parameterization x\left(\rho\right)" in my research lyx file #TODO: convert to PDF
+
+        # Flatten rays for independent solves
+        origin_original_shape = ray.origin.shape[:-1]
+        origin_flattened = ray.origin.reshape(-1, 3)
+        k_vector_flattened = ray.k_vector.reshape(-1, 3)
+
+        ray_origin_relative_to_center = origin_flattened - self.center  # (N, 3)
+
+        results = np.full((origin_flattened.shape[0],), np.nan)
+
+        for i in range(origin_flattened.shape[0]):
+            relative_origin_temp = ray_origin_relative_to_center[i]
+            k_temp = k_vector_flattened[i]
+
+            # Scalar functions
+            def F(t):
+                r_of_t_relative = relative_origin_temp + t * k_temp  # vector from center to point on ray
+                r_of_t_relative_projected_on_n = r_of_t_relative @ self.outwards_normal  # scalar projection on surface normal
+                # The next line is the cross product of r_of_t_relative and n because (d X n) ** 2 = d^2*sin^2(theta)=  d^2 * (1-cos^2(theta)) = d \cdot d - d^2 \cdot n^2
+                r_of_t_distance_from_center_squared = np.dot(r_of_t_relative, r_of_t_relative) - r_of_t_relative_projected_on_n**2
+                polynomial_value = self.polynomial_coefficients(r_of_t_distance_from_center_squared)
+                equation_expression = r_of_t_relative_projected_on_n + polynomial_value  # 0 when on surface, positive when on the convex side ("outside" the surface), negative when on the concave side ("inside" the surface)
+                return equation_expression
+
+            # Bracketing
+            t_min = 0.0
+            t_max = 1.0
+
+            f_min = F(t_min)
+            f_max = F(t_max)
+
+            # Expand bracket until sign change or failure
+            for _ in range(60):
+                if np.sign(f_min) != np.sign(f_max):
+                    break
+                t_max *= 2.0
+                f_max = F(t_max)
+            else:
+                continue  # no intersection found
+
+            try:
+                t_hit = brentq(F, t_min, t_max, xtol=1e-12, rtol=1e-12)
+            except ValueError:
+                continue
+
+            results[i] = t_hit
+
+        # Reconstruct intersection points
+        t = results.reshape(origin_original_shape)
+        intersection = ray.parameterization(t)
+
+        return intersection
+
+    @property
+    def center(self):
+        return self._center
+
+
 class FlatSurface(Surface):
     def __init__(
             self,
@@ -861,7 +951,6 @@ class FlatRefractiveSurface(FlatSurface, PhysicalSurface):
             material_properties=thermal_properties,
             distance_from_origin=distance_from_origin,
             center=center,
-            radius=np.inf,
             diameter=diameter,
         )
         self.n_1 = n_1
@@ -871,11 +960,10 @@ class FlatRefractiveSurface(FlatSurface, PhysicalSurface):
             self,
             ax: Optional[plt.Axes] = None,
             name: Optional[str] = None,
-            dim: int = 3,
-            length=0.6,
+            dim: int = 2,
             plane: str = "xy",
     ):
-        return super().plot(ax, name, dim, length, plane)
+        return super().plot(ax=ax, name=name, dim=dim, diameter=self.diameter, plane=plane)
 
     def reflect_direction_exact(self, ray: Ray) -> np.ndarray:
         # Assumes self.outwards_normal is pointing towards the medium with n_2.
@@ -1426,6 +1514,7 @@ class CurvedRefractiveSurface(CurvedSurface, PhysicalSurface):
             curvature_sign=self.curvature_sign,
             name=self.name,
             thermal_properties=new_thermal_properties,
+            diameter=self.diameter,
         )
 
 
@@ -3009,8 +3098,8 @@ class Cavity:
 
         return unheated_cavity
 
-    def analyze_thermal_transformation(self, arm_index_for_NA: int):
-        N = 5
+    def analyze_thermal_transformation(self, arm_index_for_NA: int) -> Tuple[dict, List[Cavity]]:
+        N = 4
         boolean_array = np.eye(N).astype(bool)
         boolean_array = np.vstack((np.zeros((1, N), dtype=bool), np.ones((1, N), dtype=bool), boolean_array))
         cavities = []  # [self]
@@ -3022,14 +3111,12 @@ class Cavity:
                 curvature_transform_lens,
                 n_surface_transform_lens,
                 n_volumetric_transform_lens,
-                z_transform_lens,
                 transform_mirror,
             ) = boolean_array[i, :]
             unheated_cavity = self.thermal_transformation(
                 curvature_transform_lens=curvature_transform_lens,
                 n_surface_transform_lens=n_surface_transform_lens,
                 n_volumetric_transform_lens=n_volumetric_transform_lens,
-                z_transform_lens=z_transform_lens,
                 transform_mirror=transform_mirror,
             )
             cavities.append(unheated_cavity)
