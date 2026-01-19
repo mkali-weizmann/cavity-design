@@ -721,9 +721,10 @@ class AsphericSurface(Surface):
         self.radius = np.nan
         self.diameter = diameter
         self.material_properties = material_properties
-        self.polynomial_coefficients = polynomial_coefficients if isinstance(
+        self.polynomial = polynomial_coefficients if isinstance(
             polynomial_coefficients, Polynomial
         ) else Polynomial(polynomial_coefficients)
+        self.thickness_center = self.polynomial((self.diameter / 2) ** 2) # thickness at the center of the surface
 
     def find_intersection_with_ray_exact(self, ray: Ray) -> np.ndarray:
         # For a sketch and a detalied explanation on the calculation, go to:
@@ -734,42 +735,27 @@ class AsphericSurface(Surface):
         origin_flattened = ray.origin.reshape(-1, 3)
         k_vector_flattened = ray.k_vector.reshape(-1, 3)
 
-        ray_origin_relative_to_center = origin_flattened - self.center  # (N, 3)
+        ray_origin_relative_to_center = origin_flattened - self.center  # (N, 3) points from the origin of the ray to the tip of the surface.
+        cosine_theta_incidence_to_center_normal = k_vector_flattened @ self.outwards_normal
 
         results = np.full((origin_flattened.shape[0],), np.nan)
 
         for i in range(origin_flattened.shape[0]):
-            relative_origin_temp = ray_origin_relative_to_center[i]
-            k_temp = k_vector_flattened[i]
-
             # Scalar functions
-            def F(t):
-                r_of_t_relative = relative_origin_temp + t * k_temp  # vector from center to point on ray
-                r_of_t_relative_projected_on_n = r_of_t_relative @ self.outwards_normal  # scalar projection on surface normal
-                # The next line is the cross product of r_of_t_relative and n because (d X n) ** 2 = d^2*sin^2(theta)=  d^2 * (1-cos^2(theta)) = d \cdot d - d^2 \cdot n^2
-                r_of_t_distance_from_center_squared = np.dot(r_of_t_relative, r_of_t_relative) - r_of_t_relative_projected_on_n**2
-                polynomial_value = self.polynomial_coefficients(r_of_t_distance_from_center_squared)
-                equation_expression = r_of_t_relative_projected_on_n + polynomial_value  # 0 when on surface, positive when on the convex side ("outside" the surface), negative when on the concave side ("inside" the surface)
+            def F_i(t):
+                r_of_t = origin_flattened[i] + t * k_vector_flattened[i]
+                equation_expression = self.defining_equation(r_of_t)
                 return equation_expression
 
             # Bracketing
-            t_min = 0.0
-            t_max = 1.0
+            t_max = ray_origin_relative_to_center[i] @ self.inwards_normal / cosine_theta_incidence_to_center_normal[i] # end at the plane that is thickness_center away from the center along the surface normal
+            t_min = t_max - self.thickness_center / cosine_theta_incidence_to_center_normal[i]  # Start from the plane that contains the center and is normal to the surface normal
 
-            f_min = F(t_min)
-            f_max = F(t_max)
-
-            # Expand bracket until sign change or failure
-            for _ in range(60):
-                if np.sign(f_min) != np.sign(f_max):
-                    break
-                t_max *= 2.0
-                f_max = F(t_max)
-            else:
-                continue  # no intersection found
+            # When coming from the convex side, we might have t_min > t_max, so we need to swap them
+            t_min, t_max = min(t_min, t_max), max(t_min, t_max)
 
             try:
-                t_hit = brentq(F, t_min, t_max, xtol=1e-12, rtol=1e-12)
+                t_hit = brentq(F_i, t_min, t_max, xtol=1e-12, rtol=1e-12)
             except ValueError:
                 continue
 
@@ -781,9 +767,71 @@ class AsphericSurface(Surface):
 
         return intersection
 
+    def relative_coordinates(self, r: np.ndarray) -> np.ndarray:
+        r_relative = r - self.center  # r.shape, vector pointing from the center of the surface to the point r
+        r_relative_projected_on_n = r_relative @ self.inwards_normal  # r.shape[:-1], longitudinal position of r relative to the center plane along the inwards normal (bigger value means more inwards)
+        r_relative_distance_from_center_squared = np.sum(r_relative**2, -1) - r_relative_projected_on_n**2  # r.shape[:-1]  # distance of r from optical axis
+        return np.stack([r_relative_distance_from_center_squared, r_relative_projected_on_n], axis=-1)  # \rho, x
+
+    def defining_equation(self, r: np.ndarray) -> Union[np.ndarray, float]:
+        # points on the surface satisfy this equation.
+        # points on the concave side have positive values (they are "above" the polynomial curve as y-P(x) > 0) and vice versa.
+        relative_coordinates = self.relative_coordinates(r)
+        rho = relative_coordinates[..., 0]  # r.shape[:-1] distance of r from optical axis
+        x = relative_coordinates[..., 1]  # r.shape[:-1], longitudinal position of r relative to the center plane along the inwards normal (bigger value means more inwards)
+        polynomial_value = self.polynomial(rho**2)
+        equation_expression = x - polynomial_value  # y - P(x)
+        return equation_expression
+
+    def normal_to_a_point(self, r: np.ndarray):
+        relative_coordinates = self.relative_coordinates(r)
+        rho = relative_coordinates[..., 0]
+        x = relative_coordinates[..., 1]
+        dP_drho = self.polynomial.deriv()(rho**2) * 2 * rho  # r.shape[:-1]  # P is the polynomial of rho^2, so the derivative of P is dP/drho = dP/d(rho^2) * 2 * rho
+        normal_vector_in_surface_coordinates = np.stack([-dP_drho, np.ones_like(dP_drho)], axis=-1)  # r.shape[:-1, 2]  # normal vector in the (rho, x) coordinates
+        normal_vector_in_surface_coordinates_normalized = normalize_vector(normal_vector_in_surface_coordinates)  # r.shape[:-1, 2]
+
+
+
     @property
     def center(self):
         return self._center
+
+    def plot(self,
+            ax: Optional[plt.Axes] = None,
+            name: Optional[str] = None,
+            dim: int = 2,
+            plane: str = "xy",
+            color: Optional[str] = None,
+            diameter: float = 7.75e-3,
+            fine_resolution=False,
+            **kwargs,
+    ):
+        if plane != "xy" or self.outwards_normal[2] != 0:
+            raise NotImplementedError("Plotting AsphericSurface is only implemented for the 'xy' plane.")
+        if dim != 2:
+            raise NotImplementedError("Plotting AsphericSurface is only implemented for 2D plots.")
+        if fine_resolution:
+            N_points = 10000
+        else:
+            N_points = 100
+        if ax is None:
+            fig, ax = plt.subplots()
+
+        t_dummy = np.linspace(-self.diameter/2, self.diameter/2, N_points)
+
+        transverse_direction = np.cross(self.outwards_normal, np.array([0, 0, 1]))
+        longitudinal_direction = self.inwards_normal
+
+        r = self.center + transverse_direction * t_dummy[:, np.newaxis] + self.polynomial(t_dummy**2)[:, np.newaxis] * longitudinal_direction
+        ax.plot(r[:, 0], r[:, 1], color=color if color is not None else 'blue', **kwargs)
+
+        r_back_side = self.center + self.inwards_normal * self.thickness_center + transverse_direction * t_dummy[:, np.newaxis]
+        # create kwargs without linestyle to avoid warning:
+        kwargs.pop("linestyle", None)
+        kwargs.pop("ls", None)
+        ax.plot(r_back_side[:, 0], r_back_side[:, 1], linestyle='--', color=color if color is not None else 'blue', **kwargs)
+
 
 
 class FlatSurface(Surface):
