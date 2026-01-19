@@ -1,30 +1,70 @@
+from matplotlib import use
+use('TkAgg')  # or 'Qt5Agg', 'Agg', etc. depending on your environment
 from cavity import *
+import cavity
+import importlib
+importlib.reload(cavity)
 
-# %%
-cos_phi = -np.sqrt(1)
-cos_theta = np.sqrt(0.97)
+globals().update({
+    name: obj
+    for name, obj in cavity.__dict__.items()
+    if not name.startswith("_")
+})
 
-s = AsphericSurface(center=np.array([0.5, 0, 0]),
+
+cos_phi = np.sqrt(1)
+cos_theta = np.sqrt(0.99)
+
+f=20.0
+T_c=3.0
+n_1 = 1
+n_2 = 1.5
+polynomial_coefficients = [0, 4.54546675e-02, -2.23050041e-05,  1.88752450e-08] # generated for f=20, Tc=3 in aspheric_lens_generator.py
+polynomial = Polynomial(polynomial_coefficients)
+
+diameter = 8
+back_center = np.array([f, 0, 0])
+front_center = back_center + np.array([T_c, 0, 0])
+forwards_normal = np.array([cos_phi, np.sqrt(1 - cos_phi**2), 0])
+fig, ax = plt.subplots()
+s_1 = FlatRefractiveSurface(outwards_normal=forwards_normal, center=back_center,n_1=n_1, n_2=n_2, diameter=diameter)
+
+s_2 = AsphericRefractiveSurface(center=front_center,
                     outwards_normal = np.array([cos_phi, np.sqrt(1 - cos_phi**2), 0]),
-                    diameter=0.4,
-                    polynomial_coefficients=[0, 1])
-ray = Ray(origin=np.array([0, 0, 0]),
+                    diameter=diameter,
+                    polynomial_coefficients=polynomial,
+                              n_1=n_2,
+                              n_2=n_1)
+
+ray_initial = Ray(origin=np.array([0, 0, 0]),
           k_vector=np.array([cos_theta, np.sqrt(1 - cos_theta**2), 0]))
 
 
+intersection_1 = s_1.find_intersection_with_ray_exact(ray_initial)
+ray_inner = s_1.reflect_ray(ray_initial)
 
-intersection = s.find_intersection_with_ray_exact(ray)
-# Validate intersection
-print(s.defining_equation(intersection))
+intersection_2 = s_2.find_intersection_with_ray_exact(ray_inner)
+output_direction = s_2.reflect_direction_exact(ray_inner, intersection_2, plot_ax=ax)
+ray_output = s_2.reflect_ray(ray_inner)
 
-fig, ax = plt.subplots()
+s_1.plot(ax=ax, label='Back Surface', color='black')
+ray_initial.plot(ax=ax, label='Initial Ray', color='m')
 
-s.plot(ax=ax)
-ray.plot(ax=ax, label='Initial Ray')
-plt.plot(intersection[0], intersection[1], 'ro', label='Intersection')
-plt.axis('equal')
-plt.legend()
+ray_inner.plot(ax=ax, label='Inner Ray', color='c')
+ax.legend()
+ax.grid()
 plt.show()
+print(ray_output.k_vector)
+
+# %%
+# fig, ax = plt.subplots()
+# s.plot(ax=ax)
+# ray.plot(ax=ax, label='Initial Ray')
+# plt.plot(intersection[0], intersection[1], 'ro', label='Intersection')
+# plt.plot([intersection[0], intersection[0] + n[0]*1], [intersection[1], intersection[1] + n[1]*1], 'g-', label='Normal Vector')
+# plt.axis('equal')
+# plt.legend()
+# plt.show()
 
 
 

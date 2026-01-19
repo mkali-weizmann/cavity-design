@@ -1,4 +1,6 @@
 # %%  # Generate an aspheic lens, where the rays hit the flat surface first:
+from matplotlib import use
+use('TkAgg')  # or 'Qt5Agg', 'Agg', etc. depending on your environment
 import numpy as np
 from dataclasses import dataclass
 from typing import Optional, Tuple
@@ -186,85 +188,110 @@ g_vals = term1 + term2 - y
 # is the derivative's value according to the differential equation so they should
 # be equal. Third column is the relation between x, y, and theta and should be ~0 when the condition is met
 stacked = np.vstack([dx_dy, (params.n * s_vals) / (params.n * c_vals - 1.0), g_vals]).T
-# %%  Generate an aspheric lens, where the rays hit the curves surface first
-@dataclass(frozen=True)
-class AsphereParams:
-    n: float      # refractive index (n > 1)
-    f: float      # focal length
+
+# %%
+# Fit a polynomial to x as a function of y^2, with only even powers:
+from numpy.polynomial import Polynomial
+y_squared = y**2
+degree = 8  # even degree
+# Fit only even powers: we fit a polynomial in y^2
+p_fit = Polynomial.fit(y_squared, x, deg=degree//2)
+x_fit = p_fit(y_squared)
 
 
-def rhs(y: float, x_arr: np.ndarray, p: AsphereParams) -> np.ndarray:
-    """
-    ODE:
-    dx/dy = ( (y/(f+x)) / ( n*sqrt(1 + (y/(f+x))^2) - 1 ) )
-    """
-    x = float(x_arr[0])
-    a = y / (p.f + x)
-    denominator = p.n * np.sqrt(1.0 + a*a) - 1.0
-
-    return np.array([a / denominator])
-
-
-def solve_asphere(
-    p: AsphereParams,
-    y_max: float,
-    *,
-    n_points: int = 2000,
-    method: str = "RK45",
-    rtol: float = 1e-9,
-    atol: float = 1e-12,
-    max_step: Optional[float] = None,
-) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    Solve x(y) for the aspheric surface.
-    """
-    sol = solve_ivp(
-        fun=lambda y, x: rhs(y, x, p),
-        t_span=(0.0, y_max),
-        y0=np.array([0.0]),
-        method=method,
-        rtol=rtol,
-        atol=atol,
-        dense_output=True,
-    )
-
-    if not sol.success:
-        raise RuntimeError(sol.message)
-
-    y = np.linspace(0.0, y_max, n_points)
-    x = sol.sol(y)[0]
-    return y, x
+plt.plot(x, y, label='Original Data')
+plt.plot(x_fit, y, label='Fitted Polynomial', linestyle='--')
+# plt.plot(x_fit, -y, linestyle='--')  # Mirror for negative y
+plt.xlabel("x")
+plt.ylabel("y(x)")
+plt.title("Aspheric Surface Fit with Even Polynomial")
+plt.gca().set_aspect('equal', adjustable='box')
+plt.legend()
+plt.grid(True)
+plt.show()
+print(f"polynomial coefficients (even powers only): {p_fit.convert().coef}")
 
 
 
-params = AsphereParams(
-    n=1.7,
-    f=20.0,
-)
-
-y, x = solve_asphere(params, y_max=12.5)
-
-# Optional plot
-try:
-    import matplotlib.pyplot as plt
-    plt.plot(x, y)
-    plt.plot(x, -y)
-    plt.xlabel("x")
-    plt.ylabel("y(x)")
-    plt.title("Aspheric surface from exact Snell-law ODE")
-    # Set aspect ratio to 1:1
-    plt.gca().set_aspect('equal', adjustable='box')
-    plt.grid(True)
-    plt.show()
-except Exception:
-    pass
-
-# %% validate_solution
-dx_dy = np.gradient(x, y)
-a = y / (params.f + x)
-denominator = params.n * np.sqrt(1.0 + a*a) - 1
-rhs_values = a / denominator
-# first is the extracted derivative from the results and second column
-# is the derivative's value according to the differential equation so they should
-# be equal.
-stacked = np.vstack([dx_dy, rhs_values]).T
+# #  %%  Generate an aspheric lens, where the rays hit the curved surface first
+# @dataclass(frozen=True)
+# class AsphereParams:
+#     n: float      # refractive index (n > 1)
+#     f: float      # focal length
+#
+#
+# def rhs(y: float, x_arr: np.ndarray, p: AsphereParams) -> np.ndarray:
+#     """
+#     ODE:
+#     dx/dy = ( (y/(f+x)) / ( n*sqrt(1 + (y/(f+x))^2) - 1 ) )
+#     """
+#     x = float(x_arr[0])
+#     a = y / (p.f + x)
+#     denominator = p.n * np.sqrt(1.0 + a*a) - 1.0
+#
+#     return np.array([a / denominator])
+#
+#
+# def solve_asphere(
+#     p: AsphereParams,
+#     y_max: float,
+#     *,
+#     n_points: int = 2000,
+#     method: str = "RK45",
+#     rtol: float = 1e-9,
+#     atol: float = 1e-12,
+#     max_step: Optional[float] = None,
+# ) -> Tuple[np.ndarray, np.ndarray]:
+#     """
+#     Solve x(y) for the aspheric surface.
+#     """
+#     sol = solve_ivp(
+#         fun=lambda y, x: rhs(y, x, p),
+#         t_span=(0.0, y_max),
+#         y0=np.array([0.0]),
+#         method=method,
+#         rtol=rtol,
+#         atol=atol,
+#         dense_output=True,
+#     )
+#
+#     if not sol.success:
+#         raise RuntimeError(sol.message)
+#
+#     y = np.linspace(0.0, y_max, n_points)
+#     x = sol.sol(y)[0]
+#     return y, x
+#
+#
+#
+# params = AsphereParams(
+#     n=1.7,
+#     f=20.0,
+# )
+#
+# y, x = solve_asphere(params, y_max=12.5)
+#
+# # Optional plot
+# try:
+#     import matplotlib.pyplot as plt
+#     plt.plot(x, y)
+#     plt.plot(x, -y)
+#     plt.xlabel("x")
+#     plt.ylabel("y(x)")
+#     plt.title("Aspheric surface from exact Snell-law ODE")
+#     # Set aspect ratio to 1:1
+#     plt.gca().set_aspect('equal', adjustable='box')
+#     plt.grid(True)
+#     plt.show()
+# except Exception:
+#     pass
+#
+# # %% validate_solution
+# dx_dy = np.gradient(x, y)
+# a = y / (params.f + x)
+# denominator = params.n * np.sqrt(1.0 + a*a) - 1
+# rhs_values = a / denominator
+# # first is the extracted derivative from the results and second column
+# # is the derivative's value according to the differential equation so they should
+# # be equal.
+# stacked = np.vstack([dx_dy, rhs_values]).T

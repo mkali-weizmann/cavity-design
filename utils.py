@@ -490,10 +490,15 @@ def ABCD_free_space(length: float) -> np.ndarray:
                      [0, 0,      0, 1]])
 
 
-def normalize_vector(vector: Union[np.ndarray, list]) -> np.ndarray:
+def normalize_vector(vector: Union[np.ndarray, list], ignore_null_vectors: bool = False) -> np.ndarray:
     if isinstance(vector, list):
         vector = np.array(vector)
-    return vector / np.linalg.norm(vector, axis=-1)[..., np.newaxis]
+    norm = np.linalg.norm(vector, axis=-1)[..., np.newaxis]
+    if not ignore_null_vectors:
+        return vector / norm
+    else:
+        norm = np.where(norm == 0, 1, norm)
+        return vector / norm
 
 
 def rotation_matrix_around_n(n, theta):

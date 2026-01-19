@@ -400,10 +400,11 @@ class Surface:
             dim: int = 2,
             plane: str = "xy",
             color: Optional[str] = None,
-            diameter: float = 7.75e-3,
+            diameter: Optional[float] = None,
             fine_resolution=False,
             **kwargs,
     ):
+        diameter = nvl(nvl(diameter, self.diameter), 7.75e-3)
         if np.isinf(self.radius):
             half_spreading_length = nvl(diameter, 0.01) / 2
         else:
@@ -768,10 +769,11 @@ class AsphericSurface(Surface):
         return intersection
 
     def relative_coordinates(self, r: np.ndarray) -> np.ndarray:
+        # Convert a globar coordinate to it's cylindrical coordinates relative to the surface's optical axis (rho, x)
         r_relative = r - self.center  # r.shape, vector pointing from the center of the surface to the point r
         r_relative_projected_on_n = r_relative @ self.inwards_normal  # r.shape[:-1], longitudinal position of r relative to the center plane along the inwards normal (bigger value means more inwards)
-        r_relative_distance_from_center_squared = np.sum(r_relative**2, -1) - r_relative_projected_on_n**2  # r.shape[:-1]  # distance of r from optical axis
-        return np.stack([r_relative_distance_from_center_squared, r_relative_projected_on_n], axis=-1)  # \rho, x
+        r_relative_distance_from_center = np.sqrt(np.sum(r_relative**2, -1) - r_relative_projected_on_n**2)  # r.shape[:-1]  # distance of r from optical axis
+        return np.stack([r_relative_distance_from_center, r_relative_projected_on_n], axis=-1)  # \rho, x
 
     def defining_equation(self, r: np.ndarray) -> Union[np.ndarray, float]:
         # points on the surface satisfy this equation.
@@ -786,16 +788,32 @@ class AsphericSurface(Surface):
     def normal_to_a_point(self, r: np.ndarray):
         relative_coordinates = self.relative_coordinates(r)
         rho = relative_coordinates[..., 0]
-        x = relative_coordinates[..., 1]
         dP_drho = self.polynomial.deriv()(rho**2) * 2 * rho  # r.shape[:-1]  # P is the polynomial of rho^2, so the derivative of P is dP/drho = dP/d(rho^2) * 2 * rho
         normal_vector_in_surface_coordinates = np.stack([-dP_drho, np.ones_like(dP_drho)], axis=-1)  # r.shape[:-1, 2]  # normal vector in the (rho, x) coordinates
         normal_vector_in_surface_coordinates_normalized = normalize_vector(normal_vector_in_surface_coordinates)  # r.shape[:-1, 2]
 
+        rho_vec = (r - self.center) - ((r - self.center) @ self.inwards_normal)[..., np.newaxis] * self.inwards_normal  # r.shape[:-1, 3]
+        # rho_vec[np.linalg.norm(rho_vec, axis=-1) == 0, :] = self.inwards_normal  # It's either this or the True in the next line
+        rho_hat = normalize_vector(rho_vec, ignore_null_vectors=True)  # r.shape[:-1, 3]
+        normal = normal_vector_in_surface_coordinates_normalized[..., 0] * rho_hat + normal_vector_in_surface_coordinates_normalized[..., 1] * self.inwards_normal
+        return normal
 
 
     @property
     def center(self):
         return self._center
+
+    def find_intersection_with_ray_paraxial(self, ray: Ray) -> np.ndarray:
+        raise NotImplementedError("No paraxial methods for spherical surfaces")
+
+
+    def parameterization(self, t: Union[np.ndarray, float], p: Union[np.ndarray, float]) -> np.ndarray:
+        # Take parameters and return points on the surface
+        raise NotImplementedError
+
+    def get_parameterization(self, points: np.ndarray):
+        # takes a point on the surface and returns the parameters
+        raise NotImplementedError
 
     def plot(self,
             ax: Optional[plt.Axes] = None,
@@ -831,6 +849,84 @@ class AsphericSurface(Surface):
         kwargs.pop("linestyle", None)
         kwargs.pop("ls", None)
         ax.plot(r_back_side[:, 0], r_back_side[:, 1], linestyle='--', color=color if color is not None else 'blue', **kwargs)
+
+class AsphericRefractiveSurface(AsphericSurface, PhysicalSurface):
+    def __init__(
+            self,
+            center: np.ndarray,
+            outwards_normal: np.ndarray,
+            polynomial_coefficients: Union[Polynomial, np.ndarray, List[float]], # a0, a2, a4...
+            n_1: float,
+            n_2: float,
+            name: Optional[str] = None,
+            diameter: Optional[float] = None,
+            material_properties: MaterialProperties = None,
+            **kwargs,
+    ):
+        super().__init__(
+            center=center,
+            outwards_normal=outwards_normal,
+            polynomial_coefficients=polynomial_coefficients,
+            name=name,
+            diameter=diameter,
+            material_properties=material_properties,
+            **kwargs,
+        )
+        self.n_1 = n_1
+        self.n_2 = n_2
+
+
+    def ABCD_matrix(self, cos_theta_incoming: Optional[float] = None) -> np.ndarray:
+        raise NotImplementedError("no ABCD matrices for aspheric refractive surfaces - the whole point is to go beyond paraxial")
+
+    def reflect_direction_exact(self, ray: Ray, intersection_point: Optional[np.ndarray] = None, plot_ax=None) -> np.ndarray:
+        # explanable derivation of the calculation in lab archives: https://mynotebook.labarchives.com/MTM3NjE3My41fDEwNTg1OTUvMTA1ODU5NS9Ob3RlYm9vay8zMjQzMzA0MzY1fDM0OTMzNjMuNQ==/page/11290221-33
+        # TODO: unify this with the one in CurvedRefractiveSurface.
+        if intersection_point is None:
+            intersection_point = self.find_intersection_with_ray(ray)
+        if np.isnan(intersection_point.flat[0]):
+            return np.full_like(ray.k_vector, np.nan)
+        point_normal_unsigned = self.normal_to_a_point(intersection_point)  # m_rays | 3
+        n_forwards = point_normal_unsigned * np.sign(ray.k_vector @ point_normal_unsigned)[..., np.newaxis]  # m_rays | 3
+        cos_theta_incoming = np.clip(np.sum(ray.k_vector * n_forwards, axis=-1), a_min=-1, a_max=1)  # m_rays
+        n_orthogonal = (
+                ray.k_vector - cos_theta_incoming[..., np.newaxis] * n_forwards
+        )  # m_rays | 3  # This is the vector that is orthogonal to the normal to the surface and lives in the plane spanned by the ray and the normal to the surface (grahm-schmidt process).
+        n_orthogonal_norm = np.linalg.norm(n_orthogonal, axis=-1)  # m_rays
+        if isinstance(n_orthogonal_norm, float) and n_orthogonal_norm < 1e-15:
+            reflected_direction_vector = n_forwards
+        else:
+            practically_normal_incidences = n_orthogonal_norm < 1e-15
+            n_orthogonal[practically_normal_incidences] = (
+                np.nan
+            )  # This is done so that the normalization does not throw an error.
+            n_orthogonal = normalize_vector(n_orthogonal)
+            sin_theta_outgoing = np.sqrt((self.n_1 / self.n_2) ** 2 * (1 - cos_theta_incoming ** 2))  # m_rays
+            reflected_direction_vector = (
+                    n_forwards * stable_sqrt(1 - sin_theta_outgoing[..., np.newaxis] ** 2)
+                    + n_orthogonal * sin_theta_outgoing[..., np.newaxis]
+            )  # m_rays | 3
+            reflected_direction_vector[practically_normal_incidences] = n_forwards[
+                practically_normal_incidences
+            ]  # For the nans we initiated before, we just want the normal to the surface to be the new direction of the ray
+        if plot_ax is not None:
+            self.plot(ax=plot_ax)
+            ray.plot(ax=plot_ax)
+            plot_ax.plot(intersection_point[0], intersection_point[1], 'black', label='Intersection')
+            plot_ax.plot([intersection_point[0]-n_forwards[0] * 0.2, intersection_point[0] + n_forwards[0] * 0.2],
+                     [intersection_point[1]-n_forwards[1] * 0.2, intersection_point[1] + n_forwards[1] * 0.2], 'g--', label='Normal Vector')
+            plot_ax.plot([intersection_point[0]-n_orthogonal[0] * 1 * 0.2, intersection_point[0] + n_orthogonal[0] * 0.2],
+                     [intersection_point[1]-n_orthogonal[1] * 1 * 0.2, intersection_point[1] + n_orthogonal[1] * 1 * 0.2], color='orange', linestyle='--',
+                     label='Tangent Vector')
+            plot_ax.plot([intersection_point[0], intersection_point[0] + reflected_direction_vector[0] * 0.2],
+                     [intersection_point[1], intersection_point[1] + reflected_direction_vector[1] * 0.2], 'r-',
+                     label='Outgoing direction')
+            plot_ax.axis('equal')
+            plot_ax.legend()
+        return reflected_direction_vector
+
+    def thermal_transformation(self, P_laser_power: float, w_spot_size: float, **kwargs):
+        raise NotImplementedError
 
 
 
@@ -1003,15 +1099,6 @@ class FlatRefractiveSurface(FlatSurface, PhysicalSurface):
         )
         self.n_1 = n_1
         self.n_2 = n_2
-
-    def plot(
-            self,
-            ax: Optional[plt.Axes] = None,
-            name: Optional[str] = None,
-            dim: int = 2,
-            plane: str = "xy",
-    ):
-        return super().plot(ax=ax, name=name, dim=dim, diameter=self.diameter, plane=plane)
 
     def reflect_direction_exact(self, ray: Ray) -> np.ndarray:
         # Assumes self.outwards_normal is pointing towards the medium with n_2.
@@ -1426,8 +1513,8 @@ class CurvedRefractiveSurface(CurvedSurface, PhysicalSurface):
         if isinstance(n_orthogonal_norm, float) and n_orthogonal_norm < 1e-15:
             reflected_direction_vector = n_forwards
         else:
-            preactically_normal_incidences = n_orthogonal_norm < 1e-15
-            n_orthogonal[preactically_normal_incidences] = (
+            practically_normal_incidences = n_orthogonal_norm < 1e-15
+            n_orthogonal[practically_normal_incidences] = (
                 np.nan
             )  # This is done so that the normalization does not throw an error.
             n_orthogonal = normalize_vector(n_orthogonal)
@@ -1436,8 +1523,8 @@ class CurvedRefractiveSurface(CurvedSurface, PhysicalSurface):
                     n_forwards * stable_sqrt(1 - sin_theta_outgoing[..., np.newaxis] ** 2)
                     + n_orthogonal * sin_theta_outgoing[..., np.newaxis]
             )  # m_rays | 3
-            reflected_direction_vector[preactically_normal_incidences] = n_forwards[
-                preactically_normal_incidences
+            reflected_direction_vector[practically_normal_incidences] = n_forwards[
+                practically_normal_incidences
             ]  # For the nans we initiated before, we just want the normal to the surface to be the new direction of the ray
         return reflected_direction_vector
 
