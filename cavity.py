@@ -753,7 +753,7 @@ class AsphericSurface(Surface):
             t_min = t_max - self.thickness_center / cosine_theta_incidence_to_center_normal[i]  # Start from the plane that contains the center and is normal to the surface normal
 
             # When coming from the convex side, we might have t_min > t_max, so we need to swap them
-            t_min, t_max = min(t_min, t_max), max(t_min, t_max)
+            t_min, t_max = min(t_min, t_max) - 1e-4, max(t_min, t_max) + 1e-4  # add a small margin to avoid numerical issues
 
             try:
                 t_hit = brentq(F_i, t_min, t_max, xtol=1e-12, rtol=1e-12)
@@ -772,7 +772,7 @@ class AsphericSurface(Surface):
         # Convert a globar coordinate to it's cylindrical coordinates relative to the surface's optical axis (rho, x)
         r_relative = r - self.center  # r.shape, vector pointing from the center of the surface to the point r
         r_relative_projected_on_n = r_relative @ self.inwards_normal  # r.shape[:-1], longitudinal position of r relative to the center plane along the inwards normal (bigger value means more inwards)
-        r_relative_distance_from_center = np.sqrt(np.sum(r_relative**2, -1) - r_relative_projected_on_n**2)  # r.shape[:-1]  # distance of r from optical axis
+        r_relative_distance_from_center = np.sqrt(np.clip(np.sum(r_relative**2, -1) - r_relative_projected_on_n**2, a_min=0, a_max=np.inf))  # r.shape[:-1]  # distance of r from optical axis
         return np.stack([r_relative_distance_from_center, r_relative_projected_on_n], axis=-1)  # \rho, x
 
     def defining_equation(self, r: np.ndarray) -> Union[np.ndarray, float]:
@@ -912,14 +912,15 @@ class AsphericRefractiveSurface(AsphericSurface, PhysicalSurface):
         if plot_ax is not None:
             self.plot(ax=plot_ax)
             ray.plot(ax=plot_ax)
+            unit_vectors_length = self.diameter * 0.2
             plot_ax.plot(intersection_point[0], intersection_point[1], 'black', label='Intersection')
-            plot_ax.plot([intersection_point[0]-n_forwards[0] * 0.2, intersection_point[0] + n_forwards[0] * 0.2],
-                     [intersection_point[1]-n_forwards[1] * 0.2, intersection_point[1] + n_forwards[1] * 0.2], 'g--', label='Normal Vector')
-            plot_ax.plot([intersection_point[0]-n_orthogonal[0] * 1 * 0.2, intersection_point[0] + n_orthogonal[0] * 0.2],
-                     [intersection_point[1]-n_orthogonal[1] * 1 * 0.2, intersection_point[1] + n_orthogonal[1] * 1 * 0.2], color='orange', linestyle='--',
+            plot_ax.plot([intersection_point[0]-n_forwards[0] * unit_vectors_length, intersection_point[0] + n_forwards[0] * unit_vectors_length],
+                     [intersection_point[1]-n_forwards[1] * unit_vectors_length, intersection_point[1] + n_forwards[1] * unit_vectors_length], 'g--', label='Normal Vector')
+            plot_ax.plot([intersection_point[0]-n_orthogonal[0] * unit_vectors_length, intersection_point[0] + n_orthogonal[0] * unit_vectors_length],
+                     [intersection_point[1]-n_orthogonal[1] * unit_vectors_length, intersection_point[1] + n_orthogonal[1] * unit_vectors_length], color='orange', linestyle='--',
                      label='Tangent Vector')
-            plot_ax.plot([intersection_point[0], intersection_point[0] + reflected_direction_vector[0] * 0.2],
-                     [intersection_point[1], intersection_point[1] + reflected_direction_vector[1] * 0.2], 'r-',
+            plot_ax.plot([intersection_point[0], intersection_point[0] + reflected_direction_vector[0] * unit_vectors_length],
+                     [intersection_point[1], intersection_point[1] + reflected_direction_vector[1] * unit_vectors_length], 'r-',
                      label='Outgoing direction')
             plot_ax.axis('equal')
             plot_ax.legend()

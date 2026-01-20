@@ -1,50 +1,52 @@
-from matplotlib import use
-use('TkAgg')  # or 'Qt5Agg', 'Agg', etc. depending on your environment
+# from matplotlib import use
+# use('TkAgg')  # or 'Qt5Agg', 'Agg', etc. depending on your environment
 from cavity import *
 import cavity
 import importlib
 importlib.reload(cavity)
 
-globals().update({
-    name: obj
-    for name, obj in cavity.__dict__.items()
-    if not name.startswith("_")
-})
+# globals().update({
+#     name: obj
+#     for name, obj in cavity.__dict__.items()
+#     if not name.startswith("_")
+# })
 
+phi=0
+theta=0.1
 
-cos_phi = np.sqrt(1)
-cos_theta = np.sqrt(0.99)
-
-f=20.0
-T_c=3.0
+f = 20.0
+T_c = 3.0
 n_1 = 1
 n_2 = 1.5
-polynomial_coefficients = [0, 4.54546675e-02, -2.23050041e-05,  1.88752450e-08] # generated for f=20, Tc=3 in aspheric_lens_generator.py
+polynomial_coefficients = [0, 4.54546675e-02, -2.23050041e-05,
+                           1.88752450e-08]  # generated for f=20, Tc=3 in aspheric_lens_generator.py
 polynomial = Polynomial(polynomial_coefficients)
 
-diameter = 8
-back_center = np.array([f, 0, 0])
-front_center = back_center + np.array([T_c, 0, 0])
-forwards_normal = np.array([cos_phi, np.sqrt(1 - cos_phi**2), 0])
-fig, ax = plt.subplots()
-s_1 = FlatRefractiveSurface(outwards_normal=forwards_normal, center=back_center,n_1=n_1, n_2=n_2, diameter=diameter)
+optical_axis = np.array([np.cos(phi), np.sin(phi), 0])
+
+diameter = 15
+back_center = f * optical_axis
+front_center = back_center + T_c * optical_axis
+fig, ax = plt.subplots(figsize=(15, 15))
+s_1 = FlatRefractiveSurface(outwards_normal=optical_axis, center=back_center, n_1=n_1, n_2=n_2, diameter=diameter)
 
 s_2 = AsphericRefractiveSurface(center=front_center,
-                    outwards_normal = np.array([cos_phi, np.sqrt(1 - cos_phi**2), 0]),
-                    diameter=diameter,
-                    polynomial_coefficients=polynomial,
-                              n_1=n_2,
-                              n_2=n_1)
+                                outwards_normal=optical_axis,
+                                diameter=diameter,
+                                polynomial_coefficients=polynomial,
+                                n_1=n_2,
+                                n_2=n_1)
 
-ray_initial = Ray(origin=np.array([0, 0, 0]),
-          k_vector=np.array([cos_theta, np.sqrt(1 - cos_theta**2), 0]))
-
+ray_initial = Ray(origin=np.array([[0, 0, 0], [0, 0, 0]]),
+                  k_vector=np.array([[np.cos(-theta + phi), np.sin(-theta + phi), 0],
+                                     # [np.cos(phi), np.sin(phi), 0],
+                                     [np.cos(theta + phi), np.sin(theta + phi), 0]]))
 
 intersection_1 = s_1.find_intersection_with_ray_exact(ray_initial)
 ray_inner = s_1.reflect_ray(ray_initial)
 
 intersection_2 = s_2.find_intersection_with_ray_exact(ray_inner)
-output_direction = s_2.reflect_direction_exact(ray_inner, intersection_2, plot_ax=ax)
+output_direction = s_2.reflect_direction_exact(ray_inner, intersection_2)
 ray_output = s_2.reflect_ray(ray_inner)
 
 s_1.plot(ax=ax, label='Back Surface', color='black')
@@ -52,9 +54,10 @@ ray_initial.plot(ax=ax, label='Initial Ray', color='m')
 
 ray_inner.plot(ax=ax, label='Inner Ray', color='c')
 ax.legend()
+plt.axis('equal')
 ax.grid()
+ax.set_title(f"{ray_output.k_vector @ optical_axis}\n{ray_initial.k_vector @ optical_axis}")
 plt.show()
-print(ray_output.k_vector)
 
 # %%
 # fig, ax = plt.subplots()
