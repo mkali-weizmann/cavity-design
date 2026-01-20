@@ -373,6 +373,9 @@ class Surface:
     def inwards_normal(self):
         return -self.outwards_normal
 
+    def forwards_normal_at_a_point(self, r: np.ndarray, k_vector: Optional[np.ndarray]) -> np.ndarray:
+        raise NotImplementedError
+
     def find_intersection_with_ray(self, ray: Ray, paraxial: bool = False) -> np.ndarray:
         if paraxial:
             return self.find_intersection_with_ray_paraxial(ray)
@@ -694,6 +697,7 @@ class PhysicalSurface(Surface):
         output_direction_vector = component_t + component_p + component_n
         return output_direction_vector
 
+
     def reflect_direction_exact(self, ray: Ray) -> np.ndarray:
         raise NotImplementedError
 
@@ -702,6 +706,68 @@ class PhysicalSurface(Surface):
 
     def thermal_transformation(self, P_laser_power: float, w_spot_size: float, **kwargs):
         raise NotImplementedError
+
+def generalized_snells_law_oop(ray: Ray,
+                               intersection_point: Union[Callable[[Ray], np.ndarray], np.ndarray],
+                               n_forwards: Union[Callable[[np.ndarray], np.ndarray], np.ndarray],
+                               n_1: float = 1,
+                               n_2: float = 1,
+                               plot_ax: Optional[plt.Axes] = None,) -> np.ndarray:
+
+    if Callable(n_forwards):
+        if Callable(intersection_point):
+            intersection_point = intersection_point(ray)
+        n_forwards = n_forwards(intersection_point)
+    refracted_direction_vector, n_forwards, n_orthogonal = generalized_snells_law_geometry(
+        k_vector=ray.k_vector,
+        n_forwards=n_forwards,
+        n_1=n_1,
+        n_2=n_2,
+    )
+
+    if plot_ax is not None:
+        unit_vectors_plot_length = 1
+        plot_ax.plot(intersection_point[0], intersection_point[1], 'black', label='Intersection')
+        plot_ax.plot([intersection_point[0] - n_forwards[0] * unit_vectors_plot_length, intersection_point[0] + n_forwards[0] * unit_vectors_plot_length],
+                     [intersection_point[1] - n_forwards[1] * unit_vectors_plot_length, intersection_point[1] + n_forwards[1] * unit_vectors_plot_length], 'g--', label='Normal Vector')
+        plot_ax.plot([intersection_point[0] - n_orthogonal[0] * unit_vectors_plot_length, intersection_point[0] + n_orthogonal[0] * unit_vectors_plot_length],
+                     [intersection_point[1] - n_orthogonal[1] * unit_vectors_plot_length, intersection_point[1] + n_orthogonal[1] * unit_vectors_plot_length], color='orange', linestyle='--',
+                     label='Tangent Vector')
+        plot_ax.plot([intersection_point[0], intersection_point[0] + refracted_direction_vector[0] * unit_vectors_plot_length],
+                     [intersection_point[1], intersection_point[1] + refracted_direction_vector[1] * unit_vectors_plot_length], 'r-',
+                     label='Outgoing direction')
+        plot_ax.axis('equal')
+        plot_ax.legend()
+
+    return refracted_direction_vector
+
+def generalized_snells_law_geometry(k_vector: np.ndarray,
+                           n_forwards: np.ndarray,
+                           n_1: float,
+                           n_2: float,
+                                    ) -> np.ndarray:
+        cos_theta_incoming = np.clip(np.sum(k_vector * n_forwards, axis=-1), a_min=-1, a_max=1)  # m_rays
+        n_orthogonal = (
+                k_vector - cos_theta_incoming[..., np.newaxis] * n_forwards
+        )  # m_rays | 3  # This is the vector that is orthogonal to the normal to the surface and lives in the plane spanned by the ray and the normal to the surface (grahm-schmidt process).
+        n_orthogonal_norm = np.linalg.norm(n_orthogonal, axis=-1)  # m_rays
+        if isinstance(n_orthogonal_norm, float) and n_orthogonal_norm < 1e-15:
+            reflected_direction_vector = n_forwards
+        else:
+            practically_normal_incidences = n_orthogonal_norm < 1e-15
+            n_orthogonal[practically_normal_incidences] = (
+                np.nan
+            )  # This is done so that the normalization does not throw an error.
+            n_orthogonal = normalize_vector(n_orthogonal)
+            sin_theta_outgoing = np.sqrt((n_1 / n_2) ** 2 * (1 - cos_theta_incoming ** 2))  # m_rays
+            reflected_direction_vector = (
+                    n_forwards * stable_sqrt(1 - sin_theta_outgoing[..., np.newaxis] ** 2)
+                    + n_orthogonal * sin_theta_outgoing[..., np.newaxis]
+            )  # m_rays | 3
+            reflected_direction_vector[practically_normal_incidences] = n_forwards[
+                practically_normal_incidences
+            ]  # For the nans we initiated before, we just want the normal to the surface to be the new direction of the ray
+        return reflected_direction_vector  # , n_forwards, n_orthogonal
 
 
 class AsphericSurface(Surface):
@@ -806,7 +872,6 @@ class AsphericSurface(Surface):
     def find_intersection_with_ray_paraxial(self, ray: Ray) -> np.ndarray:
         raise NotImplementedError("No paraxial methods for spherical surfaces")
 
-
     def parameterization(self, t: Union[np.ndarray, float], p: Union[np.ndarray, float]) -> np.ndarray:
         # Take parameters and return points on the surface
         raise NotImplementedError
@@ -880,51 +945,18 @@ class AsphericRefractiveSurface(AsphericSurface, PhysicalSurface):
         raise NotImplementedError("no ABCD matrices for aspheric refractive surfaces - the whole point is to go beyond paraxial")
 
     def reflect_direction_exact(self, ray: Ray, intersection_point: Optional[np.ndarray] = None, plot_ax=None) -> np.ndarray:
-        # explanable derivation of the calculation in lab archives: https://mynotebook.labarchives.com/MTM3NjE3My41fDEwNTg1OTUvMTA1ODU5NS9Ob3RlYm9vay8zMjQzMzA0MzY1fDM0OTMzNjMuNQ==/page/11290221-33
-        # TODO: unify this with the one in CurvedRefractiveSurface.
-        if intersection_point is None:
-            intersection_point = self.find_intersection_with_ray(ray)
-        if np.isnan(intersection_point.flat[0]):
-            return np.full_like(ray.k_vector, np.nan)
+        # explainable derivation of the calculation in lab archives: https://mynotebook.labarchives.com/MTM3NjE3My41fDEwNTg1OTUvMTA1ODU5NS9Ob3RlYm9vay8zMjQzMzA0MzY1fDM0OTMzNjMuNQ==/page/11290221-33
+        intersection_point = self.find_intersection_with_ray(ray)
         point_normal_unsigned = self.normal_to_a_point(intersection_point)  # m_rays | 3
-        n_forwards = point_normal_unsigned * np.sign(ray.k_vector @ point_normal_unsigned)[..., np.newaxis]  # m_rays | 3
-        cos_theta_incoming = np.clip(np.sum(ray.k_vector * n_forwards, axis=-1), a_min=-1, a_max=1)  # m_rays
-        n_orthogonal = (
-                ray.k_vector - cos_theta_incoming[..., np.newaxis] * n_forwards
-        )  # m_rays | 3  # This is the vector that is orthogonal to the normal to the surface and lives in the plane spanned by the ray and the normal to the surface (grahm-schmidt process).
-        n_orthogonal_norm = np.linalg.norm(n_orthogonal, axis=-1)  # m_rays
-        if isinstance(n_orthogonal_norm, float) and n_orthogonal_norm < 1e-15:
-            reflected_direction_vector = n_forwards
-        else:
-            practically_normal_incidences = n_orthogonal_norm < 1e-15
-            n_orthogonal[practically_normal_incidences] = (
-                np.nan
-            )  # This is done so that the normalization does not throw an error.
-            n_orthogonal = normalize_vector(n_orthogonal)
-            sin_theta_outgoing = np.sqrt((self.n_1 / self.n_2) ** 2 * (1 - cos_theta_incoming ** 2))  # m_rays
-            reflected_direction_vector = (
-                    n_forwards * stable_sqrt(1 - sin_theta_outgoing[..., np.newaxis] ** 2)
-                    + n_orthogonal * sin_theta_outgoing[..., np.newaxis]
-            )  # m_rays | 3
-            reflected_direction_vector[practically_normal_incidences] = n_forwards[
-                practically_normal_incidences
-            ]  # For the nans we initiated before, we just want the normal to the surface to be the new direction of the ray
-        if plot_ax is not None:
-            self.plot(ax=plot_ax)
-            ray.plot(ax=plot_ax)
-            unit_vectors_length = self.diameter * 0.2
-            plot_ax.plot(intersection_point[0], intersection_point[1], 'black', label='Intersection')
-            plot_ax.plot([intersection_point[0]-n_forwards[0] * unit_vectors_length, intersection_point[0] + n_forwards[0] * unit_vectors_length],
-                     [intersection_point[1]-n_forwards[1] * unit_vectors_length, intersection_point[1] + n_forwards[1] * unit_vectors_length], 'g--', label='Normal Vector')
-            plot_ax.plot([intersection_point[0]-n_orthogonal[0] * unit_vectors_length, intersection_point[0] + n_orthogonal[0] * unit_vectors_length],
-                     [intersection_point[1]-n_orthogonal[1] * unit_vectors_length, intersection_point[1] + n_orthogonal[1] * unit_vectors_length], color='orange', linestyle='--',
-                     label='Tangent Vector')
-            plot_ax.plot([intersection_point[0], intersection_point[0] + reflected_direction_vector[0] * unit_vectors_length],
-                     [intersection_point[1], intersection_point[1] + reflected_direction_vector[1] * unit_vectors_length], 'r-',
-                     label='Outgoing direction')
-            plot_ax.axis('equal')
-            plot_ax.legend()
-        return reflected_direction_vector
+        n_forwards = point_normal_unsigned * np.sign(ray.k_vector @ point_normal_unsigned)[
+            ..., np.newaxis]  # m_rays | 3
+        refracted_direction_vector = generalized_snells_law_geometry(
+            k_vector=ray.k_vector,
+            n_forwards=n_forwards,
+            n_1=self.n_1,
+            n_2=self.n_2,
+        )
+        return refracted_direction_vector
 
     def thermal_transformation(self, P_laser_power: float, w_spot_size: float, **kwargs):
         raise NotImplementedError
@@ -1102,38 +1134,15 @@ class FlatRefractiveSurface(FlatSurface, PhysicalSurface):
         self.n_2 = n_2
 
     def reflect_direction_exact(self, ray: Ray) -> np.ndarray:
-        # Assumes self.outwards_normal is pointing towards the medium with n_2.
-        # This uses the same derivation as in https://mynotebook.labarchives.com/MTM3NjE3My41fDEwNTg1OTUvMTA1ODU5NS9Ob3RlYm9vay8zMjQzMzA0MzY1fDM0OTMzNjMuNQ==/page/11290221-33
-        # except that here n_forwards and n_backwards are constants.
-        cos_theta_incoming = np.clip(np.sum(ray.k_vector * self.outwards_normal, axis=-1), a_min=-1, a_max=1)  # m_rays
-        n_orthogonal = (
-            # This is the vector that is orthogonal to the normal to the surface and lives in the plane spanned by the ray and the normal to the surface (Grahm-Schmidt process).
-                ray.k_vector
-                - cos_theta_incoming[..., np.newaxis] * self.outwards_normal
-        )  # m_rays | 3
-        n_orthogonal_norm = np.linalg.norm(n_orthogonal, axis=-1)  # m_rays
-        if isinstance(n_orthogonal_norm, float) and n_orthogonal_norm < 1e-15:
-            reflected_direction_vector = self.outwards_normal
-        else:
-            practically_normal_incidences = n_orthogonal_norm < 1e-15
-            n_orthogonal[practically_normal_incidences] = (
-                np.nan
-            )  # This is done so that the normalization does not throw an error. those values will later be filled with
-            # the trivial solution, so no nans in the output.
-            n_orthogonal = normalize_vector(n_orthogonal)
-            sin_theta_incoming = np.sqrt(1 - cos_theta_incoming ** 2)
-            sin_theta_outgoing = (self.n_1 / self.n_2) * sin_theta_incoming  # m_rays  # Snell's law
-            cos_theta_outgoing = stable_sqrt(1 - sin_theta_outgoing ** 2)  # m_rays
-            reflected_direction_vector = (
-                    self.outwards_normal
-                    * cos_theta_outgoing[..., np.newaxis]  # outward_normal * cos(theta_o) + n_orthogonal * sin(theta_o)
-                    + n_orthogonal * sin_theta_outgoing[..., np.newaxis]
-            )  # m_rays | 3
-
-            reflected_direction_vector[practically_normal_incidences] = self.outwards_normal[
-                practically_normal_incidences
-            ]  # For the nans we initiated before, we just want the normal to the surface to be the new direction of the ray
-        return reflected_direction_vector
+        intersection_point = self.find_intersection_with_ray(ray)
+        n_forwards = self.outwards_normal * np.sign(ray.k_vector @ self.outwards_normal)[..., np.newaxis]
+        refracted_direction_vector = generalized_snells_law_geometry(
+            k_vector=ray.k_vector,
+            n_forwards=n_forwards,
+            n_1=self.n_1,
+            n_2=self.n_2,
+        )
+        return refracted_direction_vector
 
     def ABCD_matrix(self, cos_theta_incoming: float = None) -> np.ndarray:
         # Note ! this code assumes the ray is in the x-y plane! Until it is fixed, the only perturbations in x,y,phi should be calculated!
@@ -1323,6 +1332,16 @@ class CurvedSurface(Surface):
         # equal if the outwards_normal is in the x-y plane.
         return pseudo_y, pseudo_z
 
+    def radial_forward_direction(self, r: np.ndarray):
+        # Returns a unit vector that points radially with respect to the surface's center.
+        # The vector points radially inwards when the inner part is forwards with respect to the optical axis,
+        # and radially outwards when the outer part is forwards with respect to the optical axis.
+        n_forwards = (
+                              r - self.origin
+                      ) * self.curvature_sign
+        n_forwards = normalize_vector(n_forwards)
+        return n_forwards
+
     def plot(
             self,
             ax: Optional[plt.Axes] = None,
@@ -1495,39 +1514,23 @@ class CurvedRefractiveSurface(CurvedSurface, PhysicalSurface):
         self.n_2 = n_2
         self.thickness = thickness
 
+
+#        if intersection_point is None:
+#             intersection_point = self.find_intersection_with_ray(ray)
+#         reflected_direction = generalized_snells_law(ray=Ray,
+#                                                      intersection_point=intersection_point)
+#         return reflected_direction_vector
+
     def reflect_direction_exact(self, ray: Ray, intersection_point: Optional[np.ndarray] = None) -> np.ndarray:
-        # explanable derivation of the calculation in lab archives: https://mynotebook.labarchives.com/MTM3NjE3My41fDEwNTg1OTUvMTA1ODU5NS9Ob3RlYm9vay8zMjQzMzA0MzY1fDM0OTMzNjMuNQ==/page/11290221-33
-        if intersection_point is None:
-            intersection_point = self.find_intersection_with_ray(ray)
-        if np.isnan(intersection_point.flat[0]):
-            return np.full_like(ray.k_vector, np.nan)
-        n_backwards = (
-                              self.origin - intersection_point
-                      ) * self.curvature_sign  # m_rays | 3  # The normal to the surface
-        n_backwards = normalize_vector(n_backwards)
-        n_forwards = -n_backwards
-        cos_theta_incoming = np.clip(np.sum(ray.k_vector * n_forwards, axis=-1), a_min=-1, a_max=1)  # m_rays
-        n_orthogonal = (
-                ray.k_vector - cos_theta_incoming[..., np.newaxis] * n_forwards
-        )  # m_rays | 3  # This is the vector that is orthogonal to the normal to the surface and lives in the plane spanned by the ray and the normal to the surface (grahm-schmidt process).
-        n_orthogonal_norm = np.linalg.norm(n_orthogonal, axis=-1)  # m_rays
-        if isinstance(n_orthogonal_norm, float) and n_orthogonal_norm < 1e-15:
-            reflected_direction_vector = n_forwards
-        else:
-            practically_normal_incidences = n_orthogonal_norm < 1e-15
-            n_orthogonal[practically_normal_incidences] = (
-                np.nan
-            )  # This is done so that the normalization does not throw an error.
-            n_orthogonal = normalize_vector(n_orthogonal)
-            sin_theta_outgoing = np.sqrt((self.n_1 / self.n_2) ** 2 * (1 - cos_theta_incoming ** 2))  # m_rays
-            reflected_direction_vector = (
-                    n_forwards * stable_sqrt(1 - sin_theta_outgoing[..., np.newaxis] ** 2)
-                    + n_orthogonal * sin_theta_outgoing[..., np.newaxis]
-            )  # m_rays | 3
-            reflected_direction_vector[practically_normal_incidences] = n_forwards[
-                practically_normal_incidences
-            ]  # For the nans we initiated before, we just want the normal to the surface to be the new direction of the ray
-        return reflected_direction_vector
+        intersection_point = self.find_intersection_with_ray(ray)
+        n_forwards = self.radial_forward_direction(r=intersection_point)
+        refracted_direction_vector = generalized_snells_law_geometry(
+            k_vector=ray.k_vector,
+            n_forwards=n_forwards,
+            n_1=self.n_1,
+            n_2=self.n_2,
+        )
+        return refracted_direction_vector
 
     def ABCD_matrix(self, cos_theta_incoming: float = None) -> np.ndarray:
         cos_theta_outgoing = np.sqrt(1 - (self.n_1 / self.n_2) ** 2 * (1 - cos_theta_incoming ** 2))
