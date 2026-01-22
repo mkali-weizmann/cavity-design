@@ -1,6 +1,7 @@
 import numpy as np
 from numpy.polynomial import Polynomial
-
+#
+from aspheric_lens_generator import LensParams, solve_profile
 from cavity import (
     CurvedMirror,
     CurvatureSigns,
@@ -102,8 +103,7 @@ def test_aspheric_lens():
     T_c = 3.0
     n_1 = 1
     n_2 = 1.5
-    polynomial_coefficients = [0, 4.54546675e-02, -2.23050041e-05,
-                               1.88752450e-08]  # generated for f=20, Tc=3 in aspheric_lens_generator.py
+    polynomial_coefficients = [-5.47939897e-06, 4.54562088e-02, 4.02452659e-05, 5.53445352e-08, 6.96909906e-11]  # generated for f=20, Tc=3 in aspheric_lens_generator.py
     polynomial = Polynomial(polynomial_coefficients)
 
     optical_axis = np.array([np.cos(phi), np.sin(phi), 0])
@@ -129,7 +129,7 @@ def test_aspheric_lens():
 
     ray_output = s_2.interact_with_ray(ray_inner)
 
-    rays_are_collimated = np.allclose(ray_output.k_vector @ optical_axis, 1.0, atol=1e-4)
+    rays_are_collimated = np.allclose(ray_output.k_vector @ optical_axis, 1.0, atol=1e-7)
 
     # Plot results for visual inspection:
     # fig, ax = plt.subplots(figsize=(15, 15))
@@ -175,3 +175,15 @@ def test_aspheric_intersection():
     expected_intersections = np.array([[0, 2, -4],
                                        [0, 2, -4]])
     assert np.allclose(intersections, expected_intersections, atol=1e-6), f'Aspheric intersection test failed: expected {expected_intersections}, got {intersections}'
+
+
+def test_aspheric_comparison_to_edmunds():
+    params = LensParams(n=1.5168, f=45.23, Tc=7.24)
+
+    y, x, sol = solve_profile(params, y_max=12.5, n_points=1500)
+    # Specifically for n=1.511, f=0.04523, Tc=0.00724, edmunds optics element:
+    k, C, E, F = -8.00424e-1, 3.869969e-2, 1.643994e-6, 5.887865e-10  # This lens: https://www.edmundoptics.com/p/25mm-dia-x-50mm-fl-vis-ext-lambda40-aspheric-lens/49344/?srsltid=AfmBOopKmF77SQ5bhSl5JyfRk32CIzQF00e6hZqcFTehRTCqJRp8T1j_
+    x_edmund = C * y ** 2 / (1 + np.sqrt(1 - (1 + k) * C ** 2 * y ** 2)) + E * y ** 4 + F * y ** 6
+    residual = x_edmund - x
+    max_residual = np.max(np.abs(residual))
+    assert max_residual < 1e-4, f'Aspheric comparison to Edmunds failed: max residual {max_residual}'

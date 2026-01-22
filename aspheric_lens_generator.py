@@ -157,9 +157,10 @@ def solve_profile(
     return y, x, sol
 
 
+
 if __name__ == "__main__":
     # Example (edit to your values)
-    params = LensParams(n=1.5, f=20.0, Tc=3.0)  # (n=1.5168, f=45.23, Tc=7.24)
+    params = LensParams(n=1.5168, f=45.23, Tc=7.24)# (n=1.5, f=20.0, Tc=3.0)  #
 
     y, x, sol = solve_profile(params, y_max=12.5, n_points=1500)
 
@@ -174,8 +175,6 @@ if __name__ == "__main__":
         plt.show()
     except Exception:
         pass
-
-plt.plot()
 # %% validate results:
 if __name__ == "__main__":
     dx_dy = np.gradient(x, y)

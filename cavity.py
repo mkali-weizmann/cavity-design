@@ -18,7 +18,7 @@ from numpy.polynomial import Polynomial
 
 pd.set_option("display.max_rows", 500)
 pd.options.display.float_format = "{:.3e}".format
-np.seterr(all="raise")
+# np.seterr(all="raise")
 
 
 def params_to_perturbable_params_names(
