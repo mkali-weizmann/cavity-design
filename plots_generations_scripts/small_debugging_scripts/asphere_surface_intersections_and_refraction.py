@@ -29,11 +29,11 @@ ray_initial = Ray(origin=np.array([0, 0, 0]),
 
 
 intersection_1 = s_1.find_intersection_with_ray_exact(ray_initial)
-ray_inner = s_1.reflect_ray(ray_initial)
+ray_inner = s_1.interact_with_ray(ray_initial)
 
 intersection_2 = s_2.find_intersection_with_ray_exact(ray_inner)
-output_direction = s_2.reflect_direction_exact(ray_inner, intersection_2, plot_ax=ax)
-ray_output = s_2.reflect_ray(ray_inner)
+output_direction = s_2.scatter_direction_exact(ray_inner)
+ray_output = s_2.interact_with_ray(ray_inner)
 
 s_1.plot(ax=ax, label='Back Surface', color='black')
 ray_initial.plot(ax=ax, label='Initial Ray', color='m')

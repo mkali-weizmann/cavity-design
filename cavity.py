@@ -59,13 +59,15 @@ def params_to_perturbable_params_names(
 # physical_surfaces is calculated, then the ray starts at cavity.surfaces[-1].center (which is that plane) and hits first the
 # cavity.surfaces[0] which is the first mirror.
 
-# As a convention, the locations (parameterized usually by theta and phi) always appear before the angles (parameterized by
-# theta and phi). also, theta and theta appear before phi and phi.
-# If for example there is a parameter q both for theta axis and phi axis, then the first element of q will be the q of theta,
+# As a convention, the locations (parameterized usually by t and p) always appear before the angles (parameterized by
+# theta and phi). also, theta and t appear before phi and p.
+# If for example there is a gaussian parameter q both for theta axis and phi axis, then the first element of q will be the q of theta,
 # and the second element of q will be the q of phi.
 
 
 class LocalModeParameters:
+    # The gaussian mode parameters at a point, without global coordinates information like where it is and where is it
+    # pointing to.
     def __init__(
             self,
             z_minus_z_0: Optional[Union[np.ndarray, float]] = None,  # The actual distance should be multiplied by n
@@ -373,14 +375,32 @@ class Surface:
     def inwards_normal(self):
         return -self.outwards_normal
 
-    def forwards_normal_at_a_point(self, r: np.ndarray, k_vector: Optional[np.ndarray]) -> np.ndarray:
+    def normal_at_a_point(self, point: np.ndarray) -> np.ndarray:
         raise NotImplementedError
+
+    def forward_normal_at_a_point(self, point: np.ndarray, k_vector: Optional[np.ndarray]) -> np.ndarray:
+        # Normal to a point, pointing forwards along the ray if k_vector is given
+        normal = self.normal_at_a_point(point)
+        if k_vector is None:
+            return normal
+        else:
+            return normal * np.sign(np.sum(normal * k_vector, axis=-1))[..., np.newaxis]
 
     def find_intersection_with_ray(self, ray: Ray, paraxial: bool = False) -> np.ndarray:
         if paraxial:
             return self.find_intersection_with_ray_paraxial(ray)
         else:
             return self.find_intersection_with_ray_exact(ray)
+
+    def enrich_intersection_geometries(self, ray: Ray,
+                                       intersection_point: Optional[np.ndarray] = None,
+                                       forward_normal: Optional[np.ndarray] = None,
+                                       paraxial: bool = False) -> Tuple[np.ndarray, np.ndarray]:
+        if intersection_point is None:
+            intersection_point = self.find_intersection_with_ray(ray, paraxial=paraxial)
+        if forward_normal is None:
+            forward_normal = self.forward_normal_at_a_point(intersection_point, ray.k_vector)
+        return intersection_point, forward_normal
 
     def find_intersection_with_ray_paraxial(self, ray: Ray) -> np.ndarray:
         raise NotImplementedError
@@ -649,23 +669,24 @@ class PhysicalSurface(Surface):
     def get_parameterization(self, points: np.ndarray):
         raise NotImplementedError
 
-    def reflect_ray(self, ray: Ray, paraxial: bool = False) -> Ray:
-        intersection_point = self.find_intersection_with_ray(ray, paraxial=paraxial)
+    def interact_with_ray(self, ray: Ray, paraxial: bool = False) -> Ray:
+        # Scatters ray and updates it's length:
+        intersection_point, forward_normal = self.enrich_intersection_geometries(ray,
+                                                                                 paraxial=paraxial)
         ray.length = np.linalg.norm(intersection_point - ray.origin, axis=-1)
-        reflected_direction_vector = self.reflect_direction(ray, paraxial=paraxial)
-        return Ray(intersection_point, reflected_direction_vector)
+        scattered_direction_vector = self.scatter_direction(ray, forward_normal, paraxial=paraxial)
+        return Ray(intersection_point, scattered_direction_vector)
 
-    def reflect_direction(self, ray: Ray, paraxial: bool = False) -> np.ndarray:
+    def scatter_direction(self, ray: Ray,
+                          forward_normal: Optional[np.ndarray] = None,
+                          paraxial: bool = False) -> np.ndarray:
         if paraxial:
-            return self.reflect_direction_paraxial(ray)
+            return self.scatter_direction_paraxial(ray)
         else:
-            return self.reflect_direction_exact(ray)
+            return self.scatter_direction_exact(ray, forward_normal=forward_normal)
 
-    def reflect_direction_paraxial(self, ray: Ray) -> np.ndarray:
-        if ray.k_vector.reshape(-1)[0:3] @ self.outwards_normal > 0:
-            forwards_normal = self.outwards_normal
-        else:
-            forwards_normal = -self.outwards_normal
+    def scatter_direction_paraxial(self, ray: Ray) -> np.ndarray:
+        forwards_normal = self.forward_normal_at_a_point(self.center, ray.k_vector)
 
         flat_surface = FlatSurface(
             outwards_normal=forwards_normal,
@@ -697,8 +718,9 @@ class PhysicalSurface(Surface):
         output_direction_vector = component_t + component_p + component_n
         return output_direction_vector
 
-
-    def reflect_direction_exact(self, ray: Ray) -> np.ndarray:
+    def scatter_direction_exact(self, ray: Ray,
+                                intersection_point: Optional[np.ndarray] = None,
+                                forward_normal: Optional[np.ndarray] = None,) -> np.ndarray:
         raise NotImplementedError
 
     def ABCD_matrix(self, cos_theta_incoming: Optional[float] = None) -> np.ndarray:
@@ -707,68 +729,106 @@ class PhysicalSurface(Surface):
     def thermal_transformation(self, P_laser_power: float, w_spot_size: float, **kwargs):
         raise NotImplementedError
 
-def generalized_snells_law_oop(ray: Ray,
-                               intersection_point: Union[Callable[[Ray], np.ndarray], np.ndarray],
-                               n_forwards: Union[Callable[[np.ndarray], np.ndarray], np.ndarray],
-                               n_1: float = 1,
-                               n_2: float = 1,
-                               plot_ax: Optional[plt.Axes] = None,) -> np.ndarray:
+class ReflectiveSurface(PhysicalSurface):
+    def __init__(
+            self,
+            outwards_normal: np.ndarray,
+            radius: float,
+            name: Optional[str] = None,
+            diameter: Optional[float] = None,
+            material_properties: Optional[MaterialProperties] = None,
+            **kwargs,
+    ):
+        super().__init__(
+            outwards_normal=outwards_normal,
+            name=name,
+            radius=radius,
+            diameter=diameter,
+            material_properties=material_properties,
+            **kwargs,
+        )
 
-    if Callable(n_forwards):
-        if Callable(intersection_point):
-            intersection_point = intersection_point(ray)
-        n_forwards = n_forwards(intersection_point)
-    refracted_direction_vector, n_forwards, n_orthogonal = generalized_snells_law_geometry(
-        k_vector=ray.k_vector,
-        n_forwards=n_forwards,
-        n_1=n_1,
-        n_2=n_2,
-    )
+    def scatter_direction_exact(self, ray: Ray,
+                                intersection_point: Optional[np.ndarray] = None,
+                                forward_normal: Optional[np.ndarray] = None) -> np.ndarray:
+        # Notice that this function does not reflect along the normal of the mirror but along the normal projection
+        # of the ray on the mirror.
+        _, forward_normal = self.enrich_intersection_geometries(ray,
+                                                                intersection_point=intersection_point,
+                                                                forward_normal=forward_normal)
+        reflected_direction_vector = generalized_mirror_law(k_vector=ray.k_vector, n_forwards=forward_normal)
+        return reflected_direction_vector
 
-    if plot_ax is not None:
-        unit_vectors_plot_length = 1
-        plot_ax.plot(intersection_point[0], intersection_point[1], 'black', label='Intersection')
-        plot_ax.plot([intersection_point[0] - n_forwards[0] * unit_vectors_plot_length, intersection_point[0] + n_forwards[0] * unit_vectors_plot_length],
-                     [intersection_point[1] - n_forwards[1] * unit_vectors_plot_length, intersection_point[1] + n_forwards[1] * unit_vectors_plot_length], 'g--', label='Normal Vector')
-        plot_ax.plot([intersection_point[0] - n_orthogonal[0] * unit_vectors_plot_length, intersection_point[0] + n_orthogonal[0] * unit_vectors_plot_length],
-                     [intersection_point[1] - n_orthogonal[1] * unit_vectors_plot_length, intersection_point[1] + n_orthogonal[1] * unit_vectors_plot_length], color='orange', linestyle='--',
-                     label='Tangent Vector')
-        plot_ax.plot([intersection_point[0], intersection_point[0] + refracted_direction_vector[0] * unit_vectors_plot_length],
-                     [intersection_point[1], intersection_point[1] + refracted_direction_vector[1] * unit_vectors_plot_length], 'r-',
-                     label='Outgoing direction')
-        plot_ax.axis('equal')
-        plot_ax.legend()
 
-    return refracted_direction_vector
+class RefractiveSurface(PhysicalSurface):
+    def __init__(
+            self,
+            outwards_normal: np.ndarray,
+            radius: float,
+            n_1: float = 1,
+            n_2: float = 1,
+            name: Optional[str] = None,
+            diameter: Optional[float] = None,
+            material_properties: Optional[MaterialProperties] = None,
+            **kwargs,
+    ):
+        super().__init__(
+            outwards_normal=outwards_normal,
+            name=name,
+            radius=radius,
+            diameter=diameter,
+            material_properties=material_properties,
+            **kwargs,
+        )
+        self.n_1 = n_1
+        self.n_2 = n_2
 
-def generalized_snells_law_geometry(k_vector: np.ndarray,
-                           n_forwards: np.ndarray,
-                           n_1: float,
-                           n_2: float,
-                                    ) -> np.ndarray:
-        cos_theta_incoming = np.clip(np.sum(k_vector * n_forwards, axis=-1), a_min=-1, a_max=1)  # m_rays
-        n_orthogonal = (
-                k_vector - cos_theta_incoming[..., np.newaxis] * n_forwards
-        )  # m_rays | 3  # This is the vector that is orthogonal to the normal to the surface and lives in the plane spanned by the ray and the normal to the surface (grahm-schmidt process).
-        n_orthogonal_norm = np.linalg.norm(n_orthogonal, axis=-1)  # m_rays
-        if isinstance(n_orthogonal_norm, float) and n_orthogonal_norm < 1e-15:
-            reflected_direction_vector = n_forwards
-        else:
-            practically_normal_incidences = n_orthogonal_norm < 1e-15
-            n_orthogonal[practically_normal_incidences] = (
-                np.nan
-            )  # This is done so that the normalization does not throw an error.
-            n_orthogonal = normalize_vector(n_orthogonal)
-            sin_theta_outgoing = np.sqrt((n_1 / n_2) ** 2 * (1 - cos_theta_incoming ** 2))  # m_rays
-            reflected_direction_vector = (
-                    n_forwards * stable_sqrt(1 - sin_theta_outgoing[..., np.newaxis] ** 2)
-                    + n_orthogonal * sin_theta_outgoing[..., np.newaxis]
-            )  # m_rays | 3
-            reflected_direction_vector[practically_normal_incidences] = n_forwards[
-                practically_normal_incidences
-            ]  # For the nans we initiated before, we just want the normal to the surface to be the new direction of the ray
-        return reflected_direction_vector  # , n_forwards, n_orthogonal
+    def scatter_direction_exact(self,
+                                ray: Ray,
+                                intersection_point: Optional[np.ndarray] = None,
+                                forward_normal: Optional[np.ndarray] = None) -> np.ndarray:
+        # explainable derivation of the calculation in lab archives: https://mynotebook.labarchives.com/MTM3NjE3My41fDEwNTg1OTUvMTA1ODU5NS9Ob3RlYm9vay8zMjQzMzA0MzY1fDM0OTMzNjMuNQ==/page/11290221-33
+        _, n_forwards = self.enrich_intersection_geometries(ray,
+                                                             intersection_point=intersection_point,
+                                                             forward_normal=forward_normal)
+        refracted_direction_vector = generalized_snells_law(k_vector=ray.k_vector, n_forwards=n_forwards, n_1=self.n_1,
+                                                            n_2=self.n_2)
+        return refracted_direction_vector
 
+
+# def generalized_snells_law_oop(ray: Ray,
+#                                intersection_point: Union[Callable[[Ray], np.ndarray], np.ndarray],
+#                                n_forwards: Union[Callable[[np.ndarray], np.ndarray], np.ndarray],
+#                                n_1: float = 1,
+#                                n_2: float = 1,
+#                                plot_ax: Optional[plt.Axes] = None,) -> np.ndarray:
+#
+#     if Callable(n_forwards):
+#         if Callable(intersection_point):
+#             intersection_point = intersection_point(ray)
+#         n_forwards = n_forwards(intersection_point)
+#     refracted_direction_vector, n_forwards, n_orthogonal = generalized_snells_law_geometry(
+#         k_vector=ray.k_vector,
+#         n_forwards=n_forwards,
+#         n_1=n_1,
+#         n_2=n_2,
+#     )
+#
+#     if plot_ax is not None:
+#         unit_vectors_plot_length = 1
+#         plot_ax.plot(intersection_point[0], intersection_point[1], 'black', label='Intersection')
+#         plot_ax.plot([intersection_point[0] - n_forwards[0] * unit_vectors_plot_length, intersection_point[0] + n_forwards[0] * unit_vectors_plot_length],
+#                      [intersection_point[1] - n_forwards[1] * unit_vectors_plot_length, intersection_point[1] + n_forwards[1] * unit_vectors_plot_length], 'g--', label='Normal Vector')
+#         plot_ax.plot([intersection_point[0] - n_orthogonal[0] * unit_vectors_plot_length, intersection_point[0] + n_orthogonal[0] * unit_vectors_plot_length],
+#                      [intersection_point[1] - n_orthogonal[1] * unit_vectors_plot_length, intersection_point[1] + n_orthogonal[1] * unit_vectors_plot_length], color='orange', linestyle='--',
+#                      label='Tangent Vector')
+#         plot_ax.plot([intersection_point[0], intersection_point[0] + refracted_direction_vector[0] * unit_vectors_plot_length],
+#                      [intersection_point[1], intersection_point[1] + refracted_direction_vector[1] * unit_vectors_plot_length], 'r-',
+#                      label='Outgoing direction')
+#         plot_ax.axis('equal')
+#         plot_ax.legend()
+#
+#     return refracted_direction_vector
 
 class AsphericSurface(Surface):
     def __init__(
@@ -835,7 +895,7 @@ class AsphericSurface(Surface):
         return intersection
 
     def relative_coordinates(self, r: np.ndarray) -> np.ndarray:
-        # Convert a globar coordinate to it's cylindrical coordinates relative to the surface's optical axis (rho, x)
+        # Convert a global coordinate to it's cylindrical coordinates relative to the surface's optical axis (rho, x)
         r_relative = r - self.center  # r.shape, vector pointing from the center of the surface to the point r
         r_relative_projected_on_n = r_relative @ self.inwards_normal  # r.shape[:-1], longitudinal position of r relative to the center plane along the inwards normal (bigger value means more inwards)
         r_relative_distance_from_center = np.sqrt(np.clip(np.sum(r_relative**2, -1) - r_relative_projected_on_n**2, a_min=0, a_max=np.inf))  # r.shape[:-1]  # distance of r from optical axis
@@ -851,7 +911,7 @@ class AsphericSurface(Surface):
         equation_expression = x - polynomial_value  # y - P(x)
         return equation_expression
 
-    def normal_to_a_point(self, r: np.ndarray):
+    def normal_at_a_point(self, r: np.ndarray):
         relative_coordinates = self.relative_coordinates(r)
         rho = relative_coordinates[..., 0]
         dP_drho = self.polynomial.deriv()(rho**2) * 2 * rho  # r.shape[:-1]  # P is the polynomial of rho^2, so the derivative of P is dP/drho = dP/d(rho^2) * 2 * rho
@@ -861,7 +921,7 @@ class AsphericSurface(Surface):
         rho_vec = (r - self.center) - ((r - self.center) @ self.inwards_normal)[..., np.newaxis] * self.inwards_normal  # r.shape[:-1, 3]
         # rho_vec[np.linalg.norm(rho_vec, axis=-1) == 0, :] = self.inwards_normal  # It's either this or the True in the next line
         rho_hat = normalize_vector(rho_vec, ignore_null_vectors=True)  # r.shape[:-1, 3]
-        normal = normal_vector_in_surface_coordinates_normalized[..., 0] * rho_hat + normal_vector_in_surface_coordinates_normalized[..., 1] * self.inwards_normal
+        normal = normal_vector_in_surface_coordinates_normalized[..., 0, np.newaxis] * rho_hat + normal_vector_in_surface_coordinates_normalized[..., 1, np.newaxis] * self.inwards_normal
         return normal
 
 
@@ -915,7 +975,7 @@ class AsphericSurface(Surface):
         kwargs.pop("ls", None)
         ax.plot(r_back_side[:, 0], r_back_side[:, 1], linestyle='--', color=color if color is not None else 'blue', **kwargs)
 
-class AsphericRefractiveSurface(AsphericSurface, PhysicalSurface):
+class AsphericRefractiveSurface(AsphericSurface, RefractiveSurface):
     def __init__(
             self,
             center: np.ndarray,
@@ -935,32 +995,17 @@ class AsphericRefractiveSurface(AsphericSurface, PhysicalSurface):
             name=name,
             diameter=diameter,
             material_properties=material_properties,
+            n_1=n_1,
+            n_2=n_2,
             **kwargs,
         )
-        self.n_1 = n_1
-        self.n_2 = n_2
 
 
     def ABCD_matrix(self, cos_theta_incoming: Optional[float] = None) -> np.ndarray:
         raise NotImplementedError("no ABCD matrices for aspheric refractive surfaces - the whole point is to go beyond paraxial")
 
-    def reflect_direction_exact(self, ray: Ray, intersection_point: Optional[np.ndarray] = None, plot_ax=None) -> np.ndarray:
-        # explainable derivation of the calculation in lab archives: https://mynotebook.labarchives.com/MTM3NjE3My41fDEwNTg1OTUvMTA1ODU5NS9Ob3RlYm9vay8zMjQzMzA0MzY1fDM0OTMzNjMuNQ==/page/11290221-33
-        intersection_point = self.find_intersection_with_ray(ray)
-        point_normal_unsigned = self.normal_to_a_point(intersection_point)  # m_rays | 3
-        n_forwards = point_normal_unsigned * np.sign(ray.k_vector @ point_normal_unsigned)[
-            ..., np.newaxis]  # m_rays | 3
-        refracted_direction_vector = generalized_snells_law_geometry(
-            k_vector=ray.k_vector,
-            n_forwards=n_forwards,
-            n_1=self.n_1,
-            n_2=self.n_2,
-        )
-        return refracted_direction_vector
-
     def thermal_transformation(self, P_laser_power: float, w_spot_size: float, **kwargs):
         raise NotImplementedError
-
 
 
 class FlatSurface(Surface):
@@ -1050,7 +1095,11 @@ class FlatSurface(Surface):
         p = (points - self.center) @ pseudo_y
         return t, p
 
-class FlatMirror(FlatSurface, PhysicalSurface):
+    def normal_at_a_point(self, point: np.ndarray) -> np.ndarray:
+        outwards_normal_reshaped = np.broadcast_to(self.outwards_normal, point.shape).copy()
+        return outwards_normal_reshaped
+
+class FlatMirror(FlatSurface, ReflectiveSurface):
 
     def __init__(
             self,
@@ -1091,12 +1140,6 @@ class FlatMirror(FlatSurface, PhysicalSurface):
     def center(self):
         return super().center
 
-    def reflect_direction_exact(self, ray: Ray) -> np.ndarray:
-        dot_product = ray.k_vector @ self.outwards_normal  # m_rays
-        k_projection_on_normal = dot_product[..., np.newaxis] * self.outwards_normal
-        reflected_direction_test = ray.k_vector - 2 * k_projection_on_normal
-        return reflected_direction_test
-
     def ABCD_matrix(self, cos_theta_incoming: float = None) -> np.ndarray:
         # Assumes the ray is in the x-y plane, and the mirror is in the z-x plane
         return np.array([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, -1, 0], [0, 0, 0, -1]])
@@ -1105,11 +1148,11 @@ class FlatMirror(FlatSurface, PhysicalSurface):
     def radius(self):
         return np.inf
 
-    def thermal_transformation(self, P_laser_power: float, w_spot_size: float):
+    def thermal_transformation(self, P_laser_power: float, w_spot_size: float, **kwargs):
         raise NotImplementedError
 
 
-class FlatRefractiveSurface(FlatSurface, PhysicalSurface):
+class FlatRefractiveSurface(FlatSurface, RefractiveSurface):
 
     def __init__(
             self,
@@ -1133,16 +1176,6 @@ class FlatRefractiveSurface(FlatSurface, PhysicalSurface):
         self.n_1 = n_1
         self.n_2 = n_2
 
-    def reflect_direction_exact(self, ray: Ray) -> np.ndarray:
-        intersection_point = self.find_intersection_with_ray(ray)
-        n_forwards = self.outwards_normal * np.sign(ray.k_vector @ self.outwards_normal)[..., np.newaxis]
-        refracted_direction_vector = generalized_snells_law_geometry(
-            k_vector=ray.k_vector,
-            n_forwards=n_forwards,
-            n_1=self.n_1,
-            n_2=self.n_2,
-        )
-        return refracted_direction_vector
 
     def ABCD_matrix(self, cos_theta_incoming: float = None) -> np.ndarray:
         # Note ! this code assumes the ray is in the x-y plane! Until it is fixed, the only perturbations in x,y,phi should be calculated!
@@ -1200,8 +1233,14 @@ class IdealLens(FlatSurface, PhysicalSurface):
     def center(self):
         return super().center
 
-    def reflect_direction_exact(self, ray: Ray) -> np.ndarray:
-        intersection_point = self.find_intersection_with_ray(ray)
+    def scatter_direction_exact(self, ray: Ray,
+                                intersection_point: Optional[np.ndarray] = None,
+                                forward_normal: Optional[np.ndarray] = None, ) -> np.ndarray:
+        intersection_point, forward_normal = self.enrich_intersection_geometries(
+            ray,
+            intersection_point=intersection_point,
+            forward_normal=forward_normal,
+        )
         pseudo_z, pseudo_y = self.spanning_vectors()
         t, p = self.get_parameterization(intersection_point)  # Those are the coordinates of pseudo_z and pseudo_y
         t_projection, p_projection = ray.k_vector @ pseudo_z, ray.k_vector @ pseudo_y
@@ -1216,14 +1255,9 @@ class IdealLens(FlatSurface, PhysicalSurface):
             np.pi / 2 - output_vector[3, ...]
         )
         # ABCD_MATRIX METHOD
-        # Here I assume all rays come from the same direction to the lens
-        if ray.k_vector.reshape(-1)[0:3] @ self.outwards_normal > 0:
-            forwards_normal = self.outwards_normal
-        else:
-            forwards_normal = -self.outwards_normal
         component_t = np.multiply.outer(t_projection_out, pseudo_z)
         component_p = np.multiply.outer(p_projection_out, pseudo_y)
-        component_n = np.multiply.outer((1 - t_projection_out ** 2 - p_projection_out ** 2) ** 0.5, forwards_normal)
+        component_n = np.multiply.outer((1 - t_projection_out ** 2 - p_projection_out ** 2) ** 0.5, forward_normal)
         output_direction_vector = component_t + component_p + component_n
 
         return output_direction_vector
@@ -1332,15 +1366,13 @@ class CurvedSurface(Surface):
         # equal if the outwards_normal is in the x-y plane.
         return pseudo_y, pseudo_z
 
-    def radial_forward_direction(self, r: np.ndarray):
-        # Returns a unit vector that points radially with respect to the surface's center.
-        # The vector points radially inwards when the inner part is forwards with respect to the optical axis,
-        # and radially outwards when the outer part is forwards with respect to the optical axis.
-        n_forwards = (
-                              r - self.origin
-                      ) * self.curvature_sign
-        n_forwards = normalize_vector(n_forwards)
-        return n_forwards
+    def normal_at_a_point(self, point: np.ndarray) -> np.ndarray:
+        normal = (
+                point - self.origin
+                     )
+        normal = normalize_vector(normal)
+        return normal
+
 
     def plot(
             self,
@@ -1357,7 +1389,7 @@ class CurvedSurface(Surface):
         super().plot(ax, name, dim, diameter=diameter, plane=plane, fine_resolution=fine_resolution, **kwargs)
 
 
-class CurvedMirror(CurvedSurface, PhysicalSurface):
+class CurvedMirror(CurvedSurface, ReflectiveSurface):
     def __init__(
             self,
             radius: float,
@@ -1382,26 +1414,10 @@ class CurvedMirror(CurvedSurface, PhysicalSurface):
             curvature_sign=curvature_sign,
         )
 
-    def reflect_direction_exact(self, ray: Ray, intersection_point: Optional[np.ndarray] = None) -> np.ndarray:
-        # Notice that this function does not reflect along the normal of the mirror but along the normal projection
-        # of the ray on the mirror.
-        if intersection_point is None:
-            intersection_point = self.find_intersection_with_ray(ray)
-        mirror_normal_vector = (self.origin - intersection_point) * self.curvature_sign  # m_rays | 3
-        mirror_normal_vector = normalize_vector(mirror_normal_vector)
-        dot_product = np.sum(ray.k_vector * mirror_normal_vector, axis=-1)  # m_rays  # This dot product is written
-        # like so because both tensors have the same shape and the dot product is calculated along the last axis.
-        # you could also perform this product by transposing the second tensor and then dot multiplying the two tensors,
-        # but this it would be cumbersome to do so.
-        reflected_direction_vector = (
-                ray.k_vector - 2 * dot_product[..., np.newaxis] * mirror_normal_vector
-        )  # m_rays | 3
-        return reflected_direction_vector
-
-    def reflect_direction_paraxial(self, ray: Ray) -> np.ndarray:
+    def scatter_direction_paraxial(self, ray: Ray) -> np.ndarray:
         # This is maybe wrong but does not matter too much because anyway they are not used for the central line finding
         # ATTENTION - THIS SHOULD NOT BE HERE FOR NON-STANDING WAVES CAVITIES - BUT i AM DEALING ONLY WITH THOSE...
-        return self.reflect_direction_exact(ray)
+        return self.scatter_direction_exact(ray)
         # intersection_point = self.find_intersection_with_ray(ray, paraxial=True)
         # return self.reflect_direction_exact(ray, intersection_point=intersection_point)
 
@@ -1514,23 +1530,6 @@ class CurvedRefractiveSurface(CurvedSurface, PhysicalSurface):
         self.n_2 = n_2
         self.thickness = thickness
 
-
-#        if intersection_point is None:
-#             intersection_point = self.find_intersection_with_ray(ray)
-#         reflected_direction = generalized_snells_law(ray=Ray,
-#                                                      intersection_point=intersection_point)
-#         return reflected_direction_vector
-
-    def reflect_direction_exact(self, ray: Ray, intersection_point: Optional[np.ndarray] = None) -> np.ndarray:
-        intersection_point = self.find_intersection_with_ray(ray)
-        n_forwards = self.radial_forward_direction(r=intersection_point)
-        refracted_direction_vector = generalized_snells_law_geometry(
-            k_vector=ray.k_vector,
-            n_forwards=n_forwards,
-            n_1=self.n_1,
-            n_2=self.n_2,
-        )
-        return refracted_direction_vector
 
     def ABCD_matrix(self, cos_theta_incoming: float = None) -> np.ndarray:
         cos_theta_outgoing = np.sqrt(1 - (self.n_1 / self.n_2) ** 2 * (1 - cos_theta_incoming ** 2))
@@ -1776,7 +1775,7 @@ class Arm:
             # ATTENTION - THIS SHOULD NOT BE HERE FOR NON-STANDING WAVES CAVITIES - BUT I AM DEALING ONLY WITH THOSE...
             if isinstance(self.surface_1, CurvedMirror):
                 use_paraxial_ray_tracing = False
-            propagated_ray = self.surface_1.reflect_ray(ray, paraxial=use_paraxial_ray_tracing)
+            propagated_ray = self.surface_1.interact_with_ray(ray, paraxial=use_paraxial_ray_tracing)
         else:
             new_position = self.surface_1.find_intersection_with_ray(ray, paraxial=use_paraxial_ray_tracing)
             propagated_ray = Ray(new_position, ray.k_vector)

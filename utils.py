@@ -925,3 +925,44 @@ def m_total(r_source: np.ndarray, r_observer: np.ndarray, k: float, normal_funct
     M_total[..., 3:6, 0:3] = - 1 / (1j * k * C_LIGHT_SPEED * MU_0_PERMEABILITY) * M_EH_matrix
     M_total[..., 3:6, 3:6] = M_EE_matrix
     return M_total
+
+def generalized_snells_law(k_vector: np.ndarray,
+                                    n_forwards: np.ndarray,
+                                    n_1: float,
+                                    n_2: float,
+                                    ) -> np.ndarray:
+    cos_theta_incoming = np.clip(np.sum(k_vector * n_forwards, axis=-1), a_min=-1, a_max=1)  # m_rays
+    n_orthogonal = (
+            k_vector - cos_theta_incoming[..., np.newaxis] * n_forwards
+    )  # m_rays | 3  # This is the vector that is orthogonal to the normal to the surface and lives in the plane spanned by the ray and the normal to the surface (grahm-schmidt process).
+    n_orthogonal_norm = np.linalg.norm(n_orthogonal, axis=-1)  # m_rays
+    if isinstance(n_orthogonal_norm, float) and n_orthogonal_norm < 1e-15:
+        reflected_direction_vector = n_forwards
+    else:
+        practically_normal_incidences = n_orthogonal_norm < 1e-15
+        n_orthogonal[practically_normal_incidences] = (
+            np.nan
+        )  # This is done so that the normalization does not throw an error.
+        n_orthogonal = normalize_vector(n_orthogonal)
+        sin_theta_outgoing = np.sqrt((n_1 / n_2) ** 2 * (1 - cos_theta_incoming ** 2))  # m_rays
+        reflected_direction_vector = (
+                n_forwards * stable_sqrt(1 - sin_theta_outgoing[..., np.newaxis] ** 2)
+                + n_orthogonal * sin_theta_outgoing[..., np.newaxis]
+        )  # m_rays | 3
+        reflected_direction_vector[practically_normal_incidences] = n_forwards[
+            practically_normal_incidences
+        ]  # For the nans we initiated before, we just want the normal to the surface to be the new direction of the ray
+    return reflected_direction_vector  # , n_forwards, n_orthogonal
+
+
+def generalized_mirror_law(k_vector: np.ndarray, n_forwards: np.ndarray) -> np.ndarray:
+    # Notice that this function does not reflect along the normal of the mirror but along the normal projection
+    # of the ray on the mirror.
+    dot_product = np.sum(k_vector * n_forwards, axis=-1)  # m_rays  # This dot product is written
+    # like so because both tensors have the same shape and the dot product is calculated along the last axis.
+    # you could also perform this product by transposing the second tensor and then dot multiplying the two tensors,
+    # but this it would be cumbersome to do so.
+    reflected_direction_vector = (
+            k_vector - 2 * dot_product[..., np.newaxis] * n_forwards
+    )  # m_rays | 3
+    return reflected_direction_vector
