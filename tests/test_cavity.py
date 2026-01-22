@@ -34,5 +34,5 @@ def test_fabry_perot_mode_finding():
     actual_waist = cavity.arms[0].mode_parameters.w_0[0]
     # print(f'Theoretical Reighly range: {theoretical_reighly_range}, Actual Reighly range: {actual_reighly_range}')
     # print(f'Theoretical Waist: {theoretical_waist}, Actual Waist: {actual_waist}')
-    assert (theoretical_reighly_range / actual_reighly_range - 1) < 1e-6, f'Reighly range mismatch: theoretical {theoretical_reighly_range}, actual {actual_reighly_range}'
+    assert 1==2 # (theoretical_reighly_range / actual_reighly_range - 1) < 1e-6, f'Reighly range mismatch: theoretical {theoretical_reighly_range}, actual {actual_reighly_range}'
     assert (theoretical_waist / actual_waist - 1) < 1e-6, f'Waist mismatch: theoretical {theoretical_waist}, actual {actual_waist}'
