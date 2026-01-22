@@ -11,8 +11,8 @@ importlib.reload(cavity)
 #     if not name.startswith("_")
 # })
 
-phi=0
-theta=0.1
+phi=0.1
+theta=0.2
 
 f = 20.0
 T_c = 3.0
