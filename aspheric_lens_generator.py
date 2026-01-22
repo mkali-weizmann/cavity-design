@@ -1,4 +1,4 @@
-# %%  # Generate an aspheic lens, where the rays hit the flat surface first:
+# %%  # Generate an aspheric lens, where the rays hit the flat surface first:
 from matplotlib import use
 use('TkAgg')  # or 'Qt5Agg', 'Agg', etc. depending on your environment
 import numpy as np
@@ -32,7 +32,7 @@ def constraint_g(theta: float, y: float, x: float, p: LensParams) -> float:
         return np.sign(rad) * 1e6
 
     term1 = p.f * (p.n * s) / np.sqrt(rad)
-    term2 = (p.Tc + x) * (s / c)  # tanθ
+    term2 = (p.Tc - x) * (s / c)  # tanθ
     return term1 + term2 - y
 
 
@@ -159,9 +159,9 @@ def solve_profile(
 
 if __name__ == "__main__":
     # Example (edit to your values)
-    params = LensParams(n=1.5, f=20.0, Tc=3.0)
+    params = LensParams(n=1.5, f=20.0, Tc=3.0)  # (n=1.5168, f=45.23, Tc=7.24)
 
-    y, x, sol = solve_profile(params, y_max=10.0, n_points=1500)
+    y, x, sol = solve_profile(params, y_max=12.5, n_points=1500)
 
     # Optional plot
     try:
@@ -177,39 +177,53 @@ if __name__ == "__main__":
 
 plt.plot()
 # %% validate results:
-dx_dy = np.gradient(x, y)
-theta_vals = np.array([find_theta(yy, xx, params) for yy, xx in zip(y, x)])
-s_vals = np.sin(theta_vals)
-c_vals = np.cos(theta_vals)
-term1 = params.f * (params.n * s_vals) / np.sqrt(1.0 - (params.n * s_vals) ** 2)
-term2 = (params.Tc + x) * (s_vals / c_vals)
-g_vals = term1 + term2 - y
-# first is the extracted derivative from the results and second column
-# is the derivative's value according to the differential equation so they should
-# be equal. Third column is the relation between x, y, and theta and should be ~0 when the condition is met
-stacked = np.vstack([dx_dy, (params.n * s_vals) / (params.n * c_vals - 1.0), g_vals]).T
+if __name__ == "__main__":
+    dx_dy = np.gradient(x, y)
+    theta_vals = np.array([find_theta(yy, xx, params) for yy, xx in zip(y, x)])
+    s_vals = np.sin(theta_vals)
+    c_vals = np.cos(theta_vals)
+    term1 = params.f * (params.n * s_vals) / np.sqrt(1.0 - (params.n * s_vals) ** 2)
+    term2 = (params.Tc + x) * (s_vals / c_vals)
+    g_vals = term1 + term2 - y
+    # first is the extracted derivative from the results and second column
+    # is the derivative's value according to the differential equation so they should
+    # be equal. Third column is the relation between x, y, and theta and should be ~0 when the condition is met
+    stacked = np.vstack([dx_dy, (params.n * s_vals) / (params.n * c_vals - 1.0), g_vals]).T
 
-# %%
-# Fit a polynomial to x as a function of y^2, with only even powers:
-from numpy.polynomial import Polynomial
-y_squared = y**2
-degree = 8  # even degree
-# Fit only even powers: we fit a polynomial in y^2
-p_fit = Polynomial.fit(y_squared, x, deg=degree//2)
-x_fit = p_fit(y_squared)
+    # Specifically for n=1.511, f=0.04523, Tc=0.00724, edmunds optics element:
+    k, C, E, F = -8.00424e-1, 3.869969e-2, 1.643994e-6, 5.887865e-10
+    x_edmund = C * y**2 / (1 + np.sqrt(1 - (1 + k) * C**2 * y**2)) + E * y**4 + F * y**6
+
+# %% Fit a polynomial to x as a function of y^2, with only even powers:
+    from numpy.polynomial import Polynomial
+    y_squared = y**2
+    degree = 8  # even degree
+    # Fit only even powers: we fit a polynomial in y^2
+    p_fit = Polynomial.fit(y_squared, x, deg=degree//2)
+    x_fit = p_fit(y_squared)
+
+    plt.plot(x, y, label='Original Data')
+    plt.plot(x_fit, y, label='Fitted Polynomial', linestyle='--')
+
+    plt.plot(x_edmund, y, label='Edmunds face', linestyle='--')
+    # plt.plot(x_fit, -y, linestyle='--')  # Mirror for negative y
+    plt.xlabel("x")
+    plt.ylabel("y(x)")
+    plt.title("Aspheric Surface Fit with Even Polynomial")
+    plt.gca().set_aspect('equal', adjustable='box')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+    print(f"polynomial coefficients (even powers only): {p_fit.convert().coef}")
+    plt.close()
+    residual = x_edmund - x
+    residual_fit = Polynomial.fit(y_squared, residual, deg=degree//2)
+    plt.plot(y, x_edmund - x)
+    plt.plot(y, residual_fit(y_squared), linestyle='--')
+    print(f"Residual polynomial coefficients (even powers only):  = {residual_fit.convert().coef}")
+    plt.show()
 
 
-plt.plot(x, y, label='Original Data')
-plt.plot(x_fit, y, label='Fitted Polynomial', linestyle='--')
-# plt.plot(x_fit, -y, linestyle='--')  # Mirror for negative y
-plt.xlabel("x")
-plt.ylabel("y(x)")
-plt.title("Aspheric Surface Fit with Even Polynomial")
-plt.gca().set_aspect('equal', adjustable='box')
-plt.legend()
-plt.grid(True)
-plt.show()
-print(f"polynomial coefficients (even powers only): {p_fit.convert().coef}")
 
 
 

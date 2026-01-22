@@ -18,8 +18,7 @@ f = 20.0
 T_c = 3.0
 n_1 = 1
 n_2 = 1.5
-polynomial_coefficients = [0, 4.54546675e-02, -2.23050041e-05,
-                           1.88752450e-08]  # generated for f=20, Tc=3 in aspheric_lens_generator.py
+polynomial_coefficients = [-5.47939897e-06, 4.54562088e-02, 4.02452659e-05, 5.53445352e-08, 6.96909906e-11]  # generated for f=20, Tc=3 in aspheric_lens_generator.py
 polynomial = Polynomial(polynomial_coefficients)
 
 optical_axis = np.array([np.cos(phi), np.sin(phi), 0])

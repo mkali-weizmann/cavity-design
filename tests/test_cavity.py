@@ -125,14 +125,33 @@ def test_aspheric_lens():
                                          # [np.cos(phi), np.sin(phi), 0],
                                          [np.cos(theta / 2 + phi), np.sin(theta / 2 + phi), 0]]))
 
-    intersection_1 = s_1.find_intersection_with_ray_exact(ray_initial)
     ray_inner = s_1.interact_with_ray(ray_initial)
 
-    intersection_2, normals_2 = s_2.enrich_intersection_geometries(ray_inner)
-    output_direction = s_2.scatter_direction_exact(ray_inner)
     ray_output = s_2.interact_with_ray(ray_inner)
 
     rays_are_collimated = np.allclose(ray_output.k_vector @ optical_axis, 1.0, atol=1e-4)
+
+    # Plot results for visual inspection:
+    # fig, ax = plt.subplots(figsize=(15, 15))
+    # intersection_2, normals_2 = s_2.enrich_intersection_geometries(ray_inner)
+    # output_direction = s_2.scatter_direction_exact(ray_inner)
+    # s_1.plot(ax=ax, label='Back Surface', color='black')
+    # ray_initial.plot(ax=ax, label='Initial Ray', color='m')
+    # s_2.plot(ax=ax, label='Front Surface', color='orange')
+    # ray_inner.plot(ax=ax, label='Inner Ray', color='c')
+    # ray_output.plot(ax=ax, label='Output Ray', color='r', length=5)
+    # for i in range(intersection_2.shape[0]):
+    #     ax.plot([intersection_2[i, 0] - normals_2[i, 0]*2, intersection_2[i, 0] + normals_2[i, 0]*2],
+    #             [intersection_2[i, 1] - normals_2[i, 1]*2, intersection_2[i, 1] + normals_2[i, 1]*2],
+    #             'g--', label='Normal Vector' if i == 0 else "")
+    # for i in range(intersection_2.shape[0]):
+    #     ax.plot(intersection_2[i, 0], intersection_2[i, 1], 'ro', label='Intersection' if i == 0 else "")
+    # ax.legend()
+    # plt.axis('equal')
+    # ax.grid()
+    # ax.set_title(f"{ray_output.k_vector @ optical_axis}\n{ray_initial.k_vector @ optical_axis}")
+    # plt.show()
+
     assert rays_are_collimated, f'Aspheric lens test failed: output rays are not collimated, dot products: {ray_output.k_vector @ optical_axis}'
 
 
