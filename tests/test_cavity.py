@@ -134,3 +134,25 @@ def test_aspheric_lens():
 
     rays_are_collimated = np.allclose(ray_output.k_vector @ optical_axis, 1.0, atol=1e-4)
     assert rays_are_collimated, f'Aspheric lens test failed: output rays are not collimated, dot products: {ray_output.k_vector @ optical_axis}'
+
+
+def test_aspheric_intersection():
+    polynomial_coefficients = [0, 1]
+    polynomial = Polynomial(polynomial_coefficients)
+    optical_axis = np.array([0, 0, 1])
+    diameter = 4
+    center = np.array([0, 0, 0])
+    s = AsphericRefractiveSurface(center=center,
+                                  outwards_normal=optical_axis,
+                                  diameter=diameter,
+                                  polynomial_coefficients=polynomial,
+                                  n_1=1,
+                                  n_2=1.5)
+    ray_initial = Ray(origin=np.array([[0, 2, -6],
+                                       [0, 0, -6]]),
+                        k_vector=np.array([[0, 0, 1],
+                                           [0, np.sqrt(2)/2, np.sqrt(2)/2]]))
+    intersections, normals = s.enrich_intersection_geometries(ray_initial)
+    expected_intersections = np.array([[0, 2, -4],
+                                       [0, 2, -4]])
+    assert np.allclose(intersections, expected_intersections, atol=1e-6), f'Aspheric intersection test failed: expected {expected_intersections}, got {intersections}'

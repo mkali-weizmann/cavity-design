@@ -875,6 +875,13 @@ class AsphericSurface(Surface):
         ray_origin_relative_to_center = origin_flattened - self.center  # (N, 3) points from the origin of the ray to the tip of the surface.
         cosine_theta_incidence_to_center_normal = k_vector_flattened @ self.outwards_normal
 
+        t_1 = ray_origin_relative_to_center @ self.inwards_normal / cosine_theta_incidence_to_center_normal # end at the plane that is thickness_center away from the center along the surface normal
+        t_2 = t_1 - self.thickness_center / cosine_theta_incidence_to_center_normal  # Start from the plane that contains the center and is normal to the surface normal
+
+        # When coming from the convex side, we might have t_min > t_max, so we need to swap them
+        t_min = np.minimum(t_1, t_2) - 1e-4  # add a small margin to avoid numerical issues
+        t_max = np.maximum(t_1, t_2) + 1e-4
+
         results = np.full((origin_flattened.shape[0],), np.nan)
 
         for i in range(origin_flattened.shape[0]):
@@ -884,15 +891,8 @@ class AsphericSurface(Surface):
                 equation_expression = self.defining_equation(r_of_t)
                 return equation_expression
 
-            # Bracketing
-            t_max = ray_origin_relative_to_center[i] @ self.inwards_normal / cosine_theta_incidence_to_center_normal[i] # end at the plane that is thickness_center away from the center along the surface normal
-            t_min = t_max - self.thickness_center / cosine_theta_incidence_to_center_normal[i]  # Start from the plane that contains the center and is normal to the surface normal
-
-            # When coming from the convex side, we might have t_min > t_max, so we need to swap them
-            t_min, t_max = min(t_min, t_max) - 1e-4, max(t_min, t_max) + 1e-4  # add a small margin to avoid numerical issues
-
             try:
-                t_hit = brentq(F_i, t_min, t_max, xtol=1e-12, rtol=1e-12)
+                t_hit = brentq(F_i, t_min[i], t_max[i], xtol=1e-12, rtol=1e-12)
             except ValueError:
                 continue
 
