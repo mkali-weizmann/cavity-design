@@ -927,27 +927,27 @@ def m_total(r_source: np.ndarray, r_observer: np.ndarray, k: float, normal_funct
     return M_total
 
 def generalized_snells_law(k_vector: np.ndarray,
-                                    n_forwards: np.ndarray,
-                                    n_1: float,
-                                    n_2: float,
-                                    ) -> np.ndarray:
+                           n_forwards: np.ndarray,
+                           n_1: float,
+                           n_2: float,
+                           ) -> np.ndarray:
     cos_theta_incoming = np.clip(np.sum(k_vector * n_forwards, axis=-1), a_min=-1, a_max=1)  # m_rays
-    n_orthogonal = (
+    n_tangential = (
             k_vector - cos_theta_incoming[..., np.newaxis] * n_forwards
     )  # m_rays | 3  # This is the vector that is orthogonal to the normal to the surface and lives in the plane spanned by the ray and the normal to the surface (grahm-schmidt process).
-    n_orthogonal_norm = np.linalg.norm(n_orthogonal, axis=-1)  # m_rays
-    if isinstance(n_orthogonal_norm, float) and n_orthogonal_norm < 1e-15:
+    n_tangential_norm = np.linalg.norm(n_tangential, axis=-1)  # m_rays
+    if isinstance(n_tangential_norm, float) and n_tangential_norm < 1e-15:
         reflected_direction_vector = n_forwards
     else:
-        practically_normal_incidences = n_orthogonal_norm < 1e-15
-        n_orthogonal[practically_normal_incidences] = (
+        practically_normal_incidences = n_tangential_norm < 1e-15
+        n_tangential[practically_normal_incidences] = (
             np.nan
         )  # This is done so that the normalization does not throw an error.
-        n_orthogonal = normalize_vector(n_orthogonal)
+        n_tangential = normalize_vector(n_tangential)
         sin_theta_outgoing = np.sqrt((n_1 / n_2) ** 2 * (1 - cos_theta_incoming ** 2))  # m_rays
         reflected_direction_vector = (
                 n_forwards * stable_sqrt(1 - sin_theta_outgoing[..., np.newaxis] ** 2)
-                + n_orthogonal * sin_theta_outgoing[..., np.newaxis]
+                + n_tangential * sin_theta_outgoing[..., np.newaxis]
         )  # m_rays | 3
         reflected_direction_vector[practically_normal_incidences] = n_forwards[
             practically_normal_incidences

@@ -298,17 +298,21 @@ class Ray:
         else:
             return None
 
-    def plot(self, ax: Optional[plt.Axes] = None, dim=2, plane: str = "xy", **kwargs):
+    def plot(self, ax: Optional[plt.Axes] = None, dim=2, plane: str = "xy",
+             length: Optional[Union[np.ndarray, float]] = None,
+             **kwargs):
         if ax is None:
             fig = plt.figure()
             if dim == 3:
                 ax = fig.add_subplot(111, projection="3d")
             else:
                 ax = fig.add_subplot(111)
-        if self.length is None:
-            length = np.ones_like(self.origin[..., 0])
-        else:
+        if length is not None:
+                length = np.ones(self.origin.shape[:-1]) * length
+        elif self.length is not None:
             length = self.length
+        else:
+            length = np.ones_like(self.origin[..., 0])
         ray_origin_reshaped = self.origin.reshape(-1, 3)
         ray_k_vector_reshaped = self.k_vector.reshape(-1, 3)
         lengths_reshaped = length.reshape(-1)
