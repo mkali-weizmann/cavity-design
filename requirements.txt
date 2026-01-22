@@ -1,0 +1,18 @@
+# requirements.txt - exact pinned versions from current environment
+numpy==2.2.6
+scipy==1.15.3
+matplotlib==3.8.4
+pillow==11.2.1
+ipywidgets==8.1.2
+pandas==2.2.2
+openpyxl==3.1.5
+python-dotenv==0.21.1
+pytest==9.0.2
+black==24.4.2
+
+# Notes:
+# - These entries are the exact versions installed in the current Python environment
+#   (output of `pip freeze`). They include packages that the repository imports
+#   (numpy, scipy, matplotlib, pandas, pillow, ipywidgets, openpyxl, python-dotenv)
+#   and development tools requested by you (pytest, black).
+# - Internal modules (e.g., `cavity`, `utils`) are not included.
