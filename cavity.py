@@ -528,8 +528,14 @@ class Surface:
         return Ray(origin=origin, k_vector=k_vector)
 
     def spanning_vectors(self):
-        # Should change it to treat the case where inwards_normal is parallel to z_hat
-        pseudo_y = normalize_vector(np.cross(np.array([0, 0, 1]), self.inwards_normal))
+        # Returns to vectors that are perpendicular to the inwards normal and to each other.
+        # The optical axiMost optical elements, are approximately parallel to the x axis, and so pseudo_y and pseudo_z are approximately y and z.
+        parallel_to_actual_z = np.abs(self.inwards_normal @ np.array([0, 0, 1]))  > 0.9999
+        if not parallel_to_actual_z:
+            pseudo_x = np.array([0, 0, 1])
+        else:
+            pseudo_x = np.array([0, 1, 0])
+        pseudo_y = normalize_vector(np.cross(pseudo_x, self.inwards_normal))
         pseudo_z = normalize_vector(np.cross(self.inwards_normal, pseudo_y))
         return pseudo_z, pseudo_y
 

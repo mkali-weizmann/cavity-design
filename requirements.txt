@@ -9,7 +9,7 @@ openpyxl==3.1.5
 python-dotenv==0.21.1
 pytest==9.0.2
 black==24.4.2
-
+tqdm==4.67.1
 # Notes:
 # - These entries are the exact versions installed in the current Python environment
 #   (output of `pip freeze`). They include packages that the repository imports
