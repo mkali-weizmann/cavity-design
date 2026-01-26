@@ -46,8 +46,6 @@ For each NA:
         - Calculate their overlap integral.
       - Find `shift` such that `f(shift) = 0.9`.
 
-Formatting: `python -m black -l 120 cavity.py`
-
 Formatting: ```python -m black -l 120 cavity.py```
 
 

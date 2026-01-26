@@ -21,73 +21,82 @@ MU_0_PERMEABILITY = 1.256637e-6
 
 # Every optical element has a np.ndarray representation, and those two dictionaries defines the order and meaning of
 # the array columns.
-PRETTY_INDICES_NAMES = {'x': 'x [m]',
-                        'y': 'y [m]',
-                        'theta': 'Elevation angle [rads]',
-                        'phi': 'Azimuthal angle [rads]',
-                        'r_1': 'Radius of curvature 1 [m]',
-                        'r_2': 'Radius of curvature 2 [m]',
-                        'n_outside_or_before': 'Index of refraction (before the surface)',
-                        'T_c': 'Center thickness [m]',
-                        'n_inside_or_after': 'Index of refraction (after the surface)',
-                        'z': 'z [m]',
-                        'curvature_sign': 'Curvature sign',
-                        'material_refractive_index': 'Material refractive index',
-                        'alpha_expansion': 'Thermal expansion coefficient [1/K]',
-                        'beta_surface_absorption': 'Surface power absorption coefficient',
-                        'kappa_conductivity': 'Thermal conductivity coefficient [W/(m*K)]',
-                        'dn_dT': 'dn_dT [1/K]',
-                        'nu_poisson_ratio': 'Poisson ratio',
-                        'alpha_volume_absorption': 'Volume power absorption coefficient [1/m]',
-                        'intensity_reflectivity': 'Intensity reflectivity',
-                        'intensity_transmittance': 'Transmissivity',
-                        'temperature': 'Temperature increase [K]',
-                        'surface_type': 'Surface type'}
+PRETTY_INDICES_NAMES = {
+    "x": "x [m]",
+    "y": "y [m]",
+    "theta": "Elevation angle [rads]",
+    "phi": "Azimuthal angle [rads]",
+    "r_1": "Radius of curvature 1 [m]",
+    "r_2": "Radius of curvature 2 [m]",
+    "n_outside_or_before": "Index of refraction (before the surface)",
+    "T_c": "Center thickness [m]",
+    "n_inside_or_after": "Index of refraction (after the surface)",
+    "z": "z [m]",
+    "curvature_sign": "Curvature sign",
+    "material_refractive_index": "Material refractive index",
+    "alpha_expansion": "Thermal expansion coefficient [1/K]",
+    "beta_surface_absorption": "Surface power absorption coefficient",
+    "kappa_conductivity": "Thermal conductivity coefficient [W/(m*K)]",
+    "dn_dT": "dn_dT [1/K]",
+    "nu_poisson_ratio": "Poisson ratio",
+    "alpha_volume_absorption": "Volume power absorption coefficient [1/m]",
+    "intensity_reflectivity": "Intensity reflectivity",
+    "intensity_transmittance": "Transmissivity",
+    "temperature": "Temperature increase [K]",
+    "surface_type": "Surface type",
+}
 INDICES_DICT = {name: i for i, name in enumerate(PRETTY_INDICES_NAMES.keys())}
 
 INDICES_DICT_INVERSE = {v: k for k, v in INDICES_DICT.items()}
 # set numpy to raise an error on warnings:
-SURFACE_TYPES_DICT = {'curved_mirror': 0, 'thick_lens': 1, 'curved_refractive_surface': 2, 'ideal_lens': 3,
-                      'flat_mirror': 4, 'ideal_thick_lens': 5}
+SURFACE_TYPES_DICT = {
+    "curved_mirror": 0,
+    "thick_lens": 1,
+    "curved_refractive_surface": 2,
+    "ideal_lens": 3,
+    "flat_mirror": 4,
+    "ideal_thick_lens": 5,
+}
 SURFACE_TYPES_DICT_INVERSE = {v: k for k, v in SURFACE_TYPES_DICT.items()}
+
 
 @dataclass
 class ParamsNames:
-    x: str = 'x'
-    y: str = 'y'
-    theta: str = 'theta'
-    phi: str = 'phi'
-    r_1: str = 'r_1'
-    r_2: str = 'r_2'
-    n_outside_or_before: str = 'n_outside_or_before'
-    T_c: str = 'T_c'
-    n_inside_or_after: str = 'n_inside_or_after'
-    z: str = 'z'
-    curvature_sign: str = 'curvature_sign'
-    material_refractive_index: str = 'material_refractive_index'
-    alpha_expansion: str = 'alpha_expansion'
-    beta_surface_absorption: str = 'beta_surface_absorption'
-    kappa_conductivity: str = 'kappa_conductivity'
-    dn_dT: str = 'dn_dT'
-    nu_poisson_ratio: str = 'nu_poisson_ratio'
-    alpha_volume_absorption: str = 'alpha_volume_absorption'
-    intensity_reflectivity: str = 'intensity_reflectivity'
-    intensity_transmittance: str = 'intensity_transmittance'
-    temperature: str = 'temperature'
-    surface_type: str = 'surface_type'
+    x: str = "x"
+    y: str = "y"
+    theta: str = "theta"
+    phi: str = "phi"
+    r_1: str = "r_1"
+    r_2: str = "r_2"
+    n_outside_or_before: str = "n_outside_or_before"
+    T_c: str = "T_c"
+    n_inside_or_after: str = "n_inside_or_after"
+    z: str = "z"
+    curvature_sign: str = "curvature_sign"
+    material_refractive_index: str = "material_refractive_index"
+    alpha_expansion: str = "alpha_expansion"
+    beta_surface_absorption: str = "beta_surface_absorption"
+    kappa_conductivity: str = "kappa_conductivity"
+    dn_dT: str = "dn_dT"
+    nu_poisson_ratio: str = "nu_poisson_ratio"
+    alpha_volume_absorption: str = "alpha_volume_absorption"
+    intensity_reflectivity: str = "intensity_reflectivity"
+    intensity_transmittance: str = "intensity_transmittance"
+    temperature: str = "temperature"
+    surface_type: str = "surface_type"
 
 
 @dataclass
 class SurfacesTypes:
-    thick_lens = 'thick_lens'
-    curved_mirror = 'curved_mirror'
-    curved_refractive_surface = 'curved_refractive_surface'
-    ideal_lens = 'ideal_lens'
-    flat_mirror = 'flat_mirror'
-    ideal_thick_lens = 'ideal_thick_lens'
-    flat_surface = 'flat_surface'  # Not an optical element, just a helper for the central line.
-    aspheric_surface = 'aspheric_surface'
-    thick_aspheric_lens = 'thick_aspheric_lens'
+    thick_lens = "thick_lens"
+    curved_mirror = "curved_mirror"
+    curved_refractive_surface = "curved_refractive_surface"
+    ideal_lens = "ideal_lens"
+    flat_mirror = "flat_mirror"
+    ideal_thick_lens = "ideal_thick_lens"
+    flat_surface = "flat_surface"  # Not an optical element, just a helper for the central line.
+    aspheric_surface = "aspheric_surface"
+    thick_aspheric_lens = "thick_aspheric_lens"
 
     @staticmethod
     def from_integer_representation(integer_representation: int) -> str:
@@ -95,11 +104,14 @@ class SurfacesTypes:
 
     @staticmethod
     def has_refractive_index(surface_type: str) -> bool:
-        return surface_type in [SurfacesTypes.curved_refractive_surface,
-                                SurfacesTypes.thick_lens,
-                                SurfacesTypes.ideal_thick_lens,
-                                SurfacesTypes.aspheric_surface,
-                                SurfacesTypes.thick_aspheric_lens,]
+        return surface_type in [
+            SurfacesTypes.curved_refractive_surface,
+            SurfacesTypes.thick_lens,
+            SurfacesTypes.ideal_thick_lens,
+            SurfacesTypes.aspheric_surface,
+            SurfacesTypes.thick_aspheric_lens,
+        ]
+
 
 @dataclass
 class CurvatureSigns:
@@ -114,6 +126,7 @@ class CurvatureSigns:
             return CurvatureSigns.concave
         else:
             raise ValueError("Curvature sign must be either 1 or -1")
+
 
 @dataclass
 class MaterialProperties:
@@ -169,7 +182,8 @@ PHYSICAL_SIZES_DICT = {
         kappa_conductivity=46.06,  # https://www.google.com/search?q=sapphire+thermal+conductivity&rlz=1C1GCEB_enIL1023IL1023&oq=sapphire+thermal+c&aqs=chrome.0.35i39i650j69i57j0i20i263i512j0i22i30l3j0i10i15i22i30j0i22i30l3.3822j0j1&sourceid=chrome&ie=UTF-8, https://www.shinkosha.com/english/techinfo/feature/thermal-properties-of-sapphire/, https://www.shinkosha.com/english/techinfo/feature/thermal-properties-of-sapphire/
         dn_dT=11.7e-6,  # https://secwww.jhuapl.edu/techdigest/Content/techdigest/pdf/V14-N01/14-01-Lange.pdf
         nu_poisson_ratio=0.3,  # https://www.google.com/search?q=sapphire+poisson+ratio&rlz=1C1GCEB_enIL1023IL1023&sxsrf=AB5stBgEUZwh7l9RzN9GwxjMPCw_DcShAw%3A1688647440018&ei=ELemZI1h0-2SBaukk-AH&ved=0ahUKEwiNqcD2jfr_AhXTtqQKHSvSBHwQ4dUDCA8&uact=5&oq=sapphire+poisson+ratio&gs_lcp=Cgxnd3Mtd2l6LXNlcnAQAzIECAAQHjIICAAQigUQhgMyCAgAEIoFEIYDMggIABCKBRCGAzIICAAQigUQhgMyCAgAEIoFEIYDOgoIABBHENYEELADSgQIQRgAUJsFWJsFYNQJaAFwAXgAgAF5iAF5kgEDMC4xmAEAoAEBwAEByAEI&sclient=gws-wiz-serp
-        alpha_volume_absorption=100e-6 * 100,  # The data is in ppm/cm and I convert it to ppm/m, hence the "*100".  # https://labcit.ligo.caltech.edu/~ligo2/pdf/Gustafson2c.pdf  # https://www.nature.com/articles/s41598-020-80313-1  # https://www.crystran.co.uk/optical-materials/sapphire-al2o3,
+        alpha_volume_absorption=100e-6
+        * 100,  # The data is in ppm/cm and I convert it to ppm/m, hence the "*100".  # https://labcit.ligo.caltech.edu/~ligo2/pdf/Gustafson2c.pdf  # https://www.nature.com/articles/s41598-020-80313-1  # https://www.crystran.co.uk/optical-materials/sapphire-al2o3,
         intensity_reflectivity=100e-6,  # DUMMY - for lenses
         intensity_transmittance=1 - 100e-6 - 1e-6,
     ),  # DUMMY - for lenses
@@ -202,7 +216,8 @@ PHYSICAL_SIZES_DICT = {
     ),
     "material_properties_bk7": MaterialProperties(
         alpha_expansion=7.1e-6,  # https://www.pgo-online.com/intl/BK7.html
-        alpha_volume_absorption = 0.001285 * 100,  # The data is in 1/cm and I convert it to 1/m https://refractiveindex.info/?shelf=3d&book=glass&page=BK7
+        alpha_volume_absorption=0.001285
+        * 100,  # The data is in 1/cm and I convert it to 1/m https://refractiveindex.info/?shelf=3d&book=glass&page=BK7
         kappa_conductivity=1.114,  # https://www.pgo-online.com/intl/BK7.html
         refractive_index=1.507,  # https://www.pgo-online.com/intl/BK7.html
         nu_poisson_ratio=0.206,  # https://www.matweb.com/search/DataSheet.aspx?MatGUID=a8c2d05c7a6244399bbc2e15c0438cb9, https://www.pgo-online.com/intl/BK7.html
@@ -400,7 +415,7 @@ class PerturbationPointer:
             return PerturbationPointer(
                 element_index=self.element_index,
                 parameter_name=self.parameter_name,
-                perturbation_value=self.perturbation_value[index]
+                perturbation_value=self.perturbation_value[index],
             )
 
     def __iter__(self):
@@ -409,16 +424,12 @@ class PerturbationPointer:
         else:
             for value in self.perturbation_value:
                 yield PerturbationPointer(
-                    element_index=self.element_index,
-                    parameter_name=self.parameter_name,
-                    perturbation_value=value
+                    element_index=self.element_index, parameter_name=self.parameter_name, perturbation_value=value
                 )
 
     def __call__(self, perturbation_value: float):
         return PerturbationPointer(
-            element_index=self.element_index,
-            parameter_name=self.parameter_name,
-            perturbation_value=perturbation_value
+            element_index=self.element_index, parameter_name=self.parameter_name, perturbation_value=perturbation_value
         )
 
     def __len__(self):
@@ -429,38 +440,42 @@ class PerturbationPointer:
 
     def apply_to_params(self, params: List[OpticalElementParams]):
         # Changes the original params
-        current_value = getattr(
-            params[self.element_index], self.parameter_name
-        )
+        current_value = getattr(params[self.element_index], self.parameter_name)
         new_value = current_value + self.perturbation_value
-        setattr(
-            params[self.element_index], self.parameter_name, new_value
-        )
+        setattr(params[self.element_index], self.parameter_name, new_value)
 
 
 def pretty_print_array(array: np.ndarray):
     # Prints an array in a way that can be copy-pasted into the code.
-    print(f"np.{array=}".replace('array=', "").replace("nan", "np.nan").replace("\n", "").replace("],", "],\n").replace(",        ", ", ").replace(",      ", ", ").replace("       [", "          ["))
+    print(
+        f"np.{array=}".replace("array=", "")
+        .replace("nan", "np.nan")
+        .replace("\n", "")
+        .replace("],", "],\n")
+        .replace(",        ", ", ")
+        .replace(",      ", ", ")
+        .replace("       [", "          [")
+    )
 
 
 def pretty_print_number(number: Optional[float], represents_angle: bool = False):
     if number is None:
-        pre_padded = 'None'
+        pre_padded = "None"
     elif np.isnan(number):
-        pre_padded = 'np.nan'
+        pre_padded = "np.nan"
     elif number == 0:
-        pre_padded = '0'
+        pre_padded = "0"
     else:
         if represents_angle:
             number /= np.pi
         formatted = f"{number:.15e}"
         # Remove trailing zeros and the decimal point if not necessary
-        parts = formatted.split('e')
-        parts[0] = parts[0].rstrip('0').rstrip('.')
-        pre_padded = 'e'.join(parts)
+        parts = formatted.split("e")
+        parts[0] = parts[0].rstrip("0").rstrip(".")
+        pre_padded = "e".join(parts)
         if represents_angle:
-            pre_padded += ' * np.pi'
-    final_string = pre_padded.ljust(24, ' ')
+            pre_padded += " * np.pi"
+    final_string = pre_padded.ljust(24, " ")
     return final_string
 
 
@@ -471,13 +486,13 @@ def nvl(var, val: Any = np.nan):
 
 
 def plane_name_to_xy_indices(plane: str) -> Tuple[int, int]:
-    if plane in ['xy', 'yx']:
+    if plane in ["xy", "yx"]:
         x_index = 0
         y_index = 1
-    elif plane in ['xz', 'zx']:
+    elif plane in ["xz", "zx"]:
         x_index = 0
         y_index = 2
-    elif plane in ['yz', 'zy']:
+    elif plane in ["yz", "zy"]:
         x_index = 1
         y_index = 2
     else:
@@ -486,7 +501,7 @@ def plane_name_to_xy_indices(plane: str) -> Tuple[int, int]:
 
 
 def maximal_lens_height(R: float, w: float) -> float:
-    return R * np.sqrt(1 - ((R - w/2) / R) ** 2)
+    return R * np.sqrt(1 - ((R - w / 2) / R) ** 2)
 
 
 def safe_exponent(a: Union[float, np.ndarray]) -> Union[float, np.ndarray]:
@@ -495,10 +510,7 @@ def safe_exponent(a: Union[float, np.ndarray]) -> Union[float, np.ndarray]:
 
 
 def ABCD_free_space(length: float) -> np.ndarray:
-    return np.array([[1, length, 0, 0],
-                     [0, 1,      0, 0],
-                     [0, 0,      1, length],  # / cos_theta_between_planes
-                     [0, 0,      0, 1]])
+    return np.array([[1, length, 0, 0], [0, 1, 0, 0], [0, 0, 1, length], [0, 0, 0, 1]])  # / cos_theta_between_planes
 
 
 def normalize_vector(vector: Union[np.ndarray, list], ignore_null_vectors: bool = False) -> np.ndarray:
@@ -515,15 +527,35 @@ def normalize_vector(vector: Union[np.ndarray, list], ignore_null_vectors: bool 
 def rotation_matrix_around_n(n, theta):
     # Rotates a vector around the axis n by theta radians.
     # This funny stacked syntax is to allow theta to be of any dimension
-    A = np.stack([np.stack([np.cos(theta) + n[0] ** 2 * (1 - np.cos(theta)),
-                            n[0] * n[1] * (1 - np.cos(theta)) - n[2] * np.sin(theta),
-                            n[0] * n[2] * (1 - np.cos(theta)) + n[1] * np.sin(theta)], axis=-1),
-                  np.stack([n[1] * n[0] * (1 - np.cos(theta)) + n[2] * np.sin(theta),
-                            np.cos(theta) + n[1] ** 2 * (1 - np.cos(theta)),
-                            n[1] * n[2] * (1 - np.cos(theta)) - n[0] * np.sin(theta)], axis=-1),
-                  np.stack([n[2] * n[0] * (1 - np.cos(theta)) - n[1] * np.sin(theta),
-                            n[2] * n[1] * (1 - np.cos(theta)) + n[0] * np.sin(theta),
-                            np.cos(theta) + n[2] ** 2 * (1 - np.cos(theta))], axis=-1)], axis=-1)
+    A = np.stack(
+        [
+            np.stack(
+                [
+                    np.cos(theta) + n[0] ** 2 * (1 - np.cos(theta)),
+                    n[0] * n[1] * (1 - np.cos(theta)) - n[2] * np.sin(theta),
+                    n[0] * n[2] * (1 - np.cos(theta)) + n[1] * np.sin(theta),
+                ],
+                axis=-1,
+            ),
+            np.stack(
+                [
+                    n[1] * n[0] * (1 - np.cos(theta)) + n[2] * np.sin(theta),
+                    np.cos(theta) + n[1] ** 2 * (1 - np.cos(theta)),
+                    n[1] * n[2] * (1 - np.cos(theta)) - n[0] * np.sin(theta),
+                ],
+                axis=-1,
+            ),
+            np.stack(
+                [
+                    n[2] * n[0] * (1 - np.cos(theta)) - n[1] * np.sin(theta),
+                    n[2] * n[1] * (1 - np.cos(theta)) + n[0] * np.sin(theta),
+                    np.cos(theta) + n[2] ** 2 * (1 - np.cos(theta)),
+                ],
+                axis=-1,
+            ),
+        ],
+        axis=-1,
+    )
     return A
 
 
@@ -573,8 +605,9 @@ def unit_vector_of_angles(theta: Union[np.ndarray, float], phi: Union[np.ndarray
     return np.stack([cos_theta * cos_phi, cos_theta * sin_phi, sin_theta], axis=-1)
 
 
-def angles_of_unit_vector(unit_vector: Union[np.ndarray, float]) -> Union[Tuple[np.ndarray, np.ndarray],
-                                                                          Tuple[float, float]]:
+def angles_of_unit_vector(
+    unit_vector: Union[np.ndarray, float]
+) -> Union[Tuple[np.ndarray, np.ndarray], Tuple[float, float]]:
     # theta and phi are returned in radians
     theta = np.arcsin(unit_vector[..., 2])
     phi = np.arctan2(unit_vector[..., 1], unit_vector[..., 0])
@@ -599,12 +632,12 @@ def radius_of_f_and_n(f: float, n: float) -> float:
 
 def w_0_of_z_R(z_R: np.ndarray, lambda_0_laser: float, n: float) -> np.ndarray:
     # z_R_reduced is an array because of two transverse dimensions
-    return np.sqrt(z_R * lambda_0_laser / (np.pi * n ** 2))
+    return np.sqrt(z_R * lambda_0_laser / (np.pi * n**2))
 
 
 def z_R_of_w_0(w_0: np.ndarray, lambda_laser: float) -> np.ndarray:
     # lambda_laser is the wavelength of the laser in the medium = lambda_0 / n
-    return np.pi * w_0 ** 2 / lambda_laser
+    return np.pi * w_0**2 / lambda_laser
 
 
 def w_0_of_NA(NA: float, lambda_laser: float):
@@ -620,14 +653,14 @@ def spot_size(z: np.ndarray, z_R: np.ndarray, lambda_0_laser: float, n: float) -
 
 def stack_df_for_print(df):
     stacked_df = df.stack().reset_index()
-    stacked_df.columns = ['Parameter', 'Element', 'Value']
-    stacked_df = stacked_df[['Element', 'Parameter', 'Value']]
+    stacked_df.columns = ["Parameter", "Element", "Value"]
+    stacked_df = stacked_df[["Element", "Parameter", "Value"]]
     return stacked_df
 
 
 def signif(x, p):
     x = np.asarray(x)
-    x_positive = np.where(np.isfinite(x) & (x != 0), np.abs(x), 10**(p-1))
+    x_positive = np.where(np.isfinite(x) & (x != 0), np.abs(x), 10 ** (p - 1))
     mags = 10 ** (p - 1 - np.floor(np.log10(x_positive)))
     return np.round(x * mags) / mags
 
@@ -648,10 +681,15 @@ def gaussian_norm_log(A: np.ndarray, b: np.ndarray, c: float):
     return 1 / 2 * gaussian_integral_2d_log(A + np.conjugate(A), b + np.conjugate(b), c + np.conjugate(c))
 
 
-def gaussians_overlap_integral(A_1: np.ndarray, A_2: np.ndarray,
-                               # mu_1: np.ndarray, mu_2: np.ndarray, # Seems like I don't need the mus.
-                               b_1: np.ndarray, b_2: np.ndarray,
-                               c_1: float, c_2: float) -> float:
+def gaussians_overlap_integral(
+    A_1: np.ndarray,
+    A_2: np.ndarray,
+    # mu_1: np.ndarray, mu_2: np.ndarray, # Seems like I don't need the mus.
+    b_1: np.ndarray,
+    b_2: np.ndarray,
+    c_1: float,
+    c_2: float,
+) -> float:
     A_1_conjugate = np.conjugate(A_1)
     b_1_conjugate = np.conjugate(b_1)
     c_1_conjugate = np.conjugate(c_1)
@@ -673,8 +711,9 @@ def interval_parameterization(a: float, b: float, t: float) -> float:
     return a + t * (b - a)
 
 
-def functions_first_crossing(f: Callable, initial_step: float, crossing_value: float = 0.9,
-                             accuracy: float = 0.001, max_f_eval: int = 200) -> float:
+def functions_first_crossing(
+    f: Callable, initial_step: float, crossing_value: float = 0.9, accuracy: float = 0.001, max_f_eval: int = 200
+) -> float:
     # Finds the first x for which f(x) crosses crossing_value, with given accuracy, by evaluating f at different x values.
     # Better than scipy functions, as it assumes the function is decreasing, and getting nan means the function diverged, and need to step back.
     stopping_flag = False
@@ -690,7 +729,7 @@ def functions_first_crossing(f: Callable, initial_step: float, crossing_value: f
     if np.isnan(f_0):
         # warnings.warn('Function has no value at x_input=0, returning nan')
         f(0)
-        warnings.warn('Function has no value at x_input=0, returning nan')
+        warnings.warn("Function has no value at x_input=0, returning nan")
         return np.nan
     f_borders_min = f_0
     f_borders_max = np.nan
@@ -701,15 +740,17 @@ def functions_first_crossing(f: Callable, initial_step: float, crossing_value: f
         f_x = f(x)
         last_n_xs[np.mod(loop_counter, n)] = x
         last_n_evaluations[np.mod(loop_counter, n)] = f_x
-        if  loop_counter == max_f_eval and not np.isnan(borders_max_real):  # if it wasn't found but we know it's value
+        if loop_counter == max_f_eval and not np.isnan(borders_max_real):  # if it wasn't found but we know it's value
             # approximately, then interpolate it:
             x = (crossing_value - f_borders_min) / (f_borders_max - f_borders_min) * (
-                    borders_max_real - borders_min) + borders_min
+                borders_max_real - borders_min
+            ) + borders_min
             # warnings.warn(
             #     f"Did not find crossing value, interpolated it between ({borders_min:.8e}, {f_borders_min:.5e}) and ({borders_max:.8e}, {f_borders_max:.5e}) to be ({x:.8e}, {crossing_value:.5e})")
             stopping_flag = True
-        elif not np.any(np.invert(
-                np.abs(1-last_n_evaluations) < 1e-18)) or loop_counter > max_f_eval:  # if the function is not
+        elif (
+            not np.any(np.invert(np.abs(1 - last_n_evaluations) < 1e-18)) or loop_counter > max_f_eval
+        ):  # if the function is not
             # decreasing or we reached the max number of function evaluations:
             x = np.nan
             stopping_flag = True
@@ -742,12 +783,12 @@ def functions_first_crossing(f: Callable, initial_step: float, crossing_value: f
         elif crossing_value - accuracy < f_x < crossing_value + accuracy:
             stopping_flag = True
         else:
-            raise ValueError('This should not happen')
+            raise ValueError("This should not happen")
     return x
 
 
 def dT_c_of_a_lens(R, h):
-    dT_c = R * (1- np.sqrt(1 - h ** 2 / R ** 2))
+    dT_c = R * (1 - np.sqrt(1 - h**2 / R**2))
     return dT_c
 
 
@@ -759,7 +800,7 @@ def thick_lens_focal_length(T_c: float, R_1: float, R_2: float, n: float) -> flo
 
 def working_distance_of_a_lens(R_1, R_2, n, T_c):
     f = thick_lens_focal_length(T_c, R_1, R_2, n)
-    h_2 = -f * (n-1) * T_c / (n * R_1)
+    h_2 = -f * (n - 1) * T_c / (n * R_1)
     working_distance = f - h_2
     return working_distance
 
@@ -778,38 +819,46 @@ def stable_sqrt(x: Union[np.ndarray, float]) -> Union[np.ndarray, float]:
         else:
             return np.sqrt(x)
 
+
 def widget_convenient_exponent(x, base=10, scale=-10):
     y = base ** (x + scale) - base ** (-x + scale)
     return y
 
+
 def widget_convenient_exponent_inverse(y, base=10.0, scale=-10.0):
-    x = np.log((y * base ** - scale + np.sqrt(y**2 * base ** (-2*scale) + 4)) / 2) / np.log(base)
+    x = np.log((y * base**-scale + np.sqrt(y**2 * base ** (-2 * scale) + 4)) / 2) / np.log(base)
     return x
 
 
-def generate_initial_parameters_grid(center: np.ndarray,
-                                     range_limit: float,
-                                     N_resolution: int,
-                                     p_is_trivial: bool,
-                                     t_is_trivial: bool):
+def generate_initial_parameters_grid(
+    center: np.ndarray, range_limit: float, N_resolution: int, p_is_trivial: bool, t_is_trivial: bool
+):
     base_grid = np.linspace(-range_limit, range_limit, N_resolution)
     angle_factor = 100
     if p_is_trivial or t_is_trivial:
         if p_is_trivial:
-            POS, ANGLE = np.meshgrid(base_grid, base_grid * angle_factor + center[1], indexing='ij')
+            POS, ANGLE = np.meshgrid(base_grid, base_grid * angle_factor + center[1], indexing="ij")
             TRIVIAL_GRID = np.zeros_like(POS)
-            initial_parameters = np.stack([POS + center[0], ANGLE + center[1], TRIVIAL_GRID + center[2], TRIVIAL_GRID + center[3]], axis=-1)
+            initial_parameters = np.stack(
+                [POS + center[0], ANGLE + center[1], TRIVIAL_GRID + center[2], TRIVIAL_GRID + center[3]], axis=-1
+            )
         else:  # (if theta is trivial)
-            POS, ANGLE = np.meshgrid(base_grid, base_grid * angle_factor, indexing='ij')
+            POS, ANGLE = np.meshgrid(base_grid, base_grid * angle_factor, indexing="ij")
             TRIVIAL_GRID = np.zeros_like(POS)
-            initial_parameters = np.stack([TRIVIAL_GRID + center[0], TRIVIAL_GRID + center[1], POS + center[2], ANGLE + center[3]], axis=-1)
+            initial_parameters = np.stack(
+                [TRIVIAL_GRID + center[0], TRIVIAL_GRID + center[1], POS + center[2], ANGLE + center[3]], axis=-1
+            )
     else:
-        X, T, Y, P = np.meshgrid(base_grid + center[0],
-                                 base_grid * angle_factor + center[1],
-                                 base_grid + center[2],
-                                 base_grid * angle_factor + center[3], indexing='ij')
+        X, T, Y, P = np.meshgrid(
+            base_grid + center[0],
+            base_grid * angle_factor + center[1],
+            base_grid + center[2],
+            base_grid * angle_factor + center[3],
+            indexing="ij",
+        )
         initial_parameters = np.stack([X, T, Y, P], axis=-1)
     return initial_parameters
+
 
 # %% Wave equations functions:
 def green_function_free_space(r_source: np.ndarray, r_observer: np.ndarray, k: float) -> complex:
@@ -818,36 +867,49 @@ def green_function_free_space(r_source: np.ndarray, r_observer: np.ndarray, k: f
     G = np.exp(1j * k * r) / (4 * np.pi * r)
     return G
 
+
 def green_function_first_derivative(r_source: np.ndarray, r_observer: np.ndarray, k: float) -> np.ndarray:
     r_vector = r_observer - r_source
     r = np.linalg.norm(r_vector, axis=-1)
-    dG_dr = (1j * k - 1 / r) * np.exp(1j * k * r) / (4 * np.pi * r ** 2)
+    dG_dr = (1j * k - 1 / r) * np.exp(1j * k * r) / (4 * np.pi * r**2)
     dG_dvector = dG_dr[..., None] * r_vector
     return dG_dvector
+
 
 def green_function_second_derivative(r_source: np.ndarray, r_observer: np.ndarray, k: float) -> np.ndarray:
     r_vector = r_observer - r_source
     r = np.linalg.norm(r_vector, axis=-1)
-    common_coefficient = k * np.exp(1j * k * r) / (4 * np.pi * r ** 2)
+    common_coefficient = k * np.exp(1j * k * r) / (4 * np.pi * r**2)
     r_vector_outer_product = r_vector[..., :, None] * r_vector[..., None, :]
     diagonal_matrix = np.eye(3)
-    second_derivative = -common_coefficient[..., None, None] / r[..., None, None] * (2j / r[..., None, None] + k) * r_vector_outer_product
+    second_derivative = (
+        -common_coefficient[..., None, None]
+        / r[..., None, None]
+        * (2j / r[..., None, None] + k)
+        * r_vector_outer_product
+    )
     second_derivative += common_coefficient[..., None, None] * 1j * diagonal_matrix
     return second_derivative
+
 
 def normal_to_a_sphere(r_surface: np.ndarray, o_center: np.ndarray, sign: int) -> np.ndarray:
     normal_vector = r_surface - o_center
     normal_vector = normal_vector / np.linalg.norm(normal_vector, axis=-1)[..., np.newaxis] * sign
     return normal_vector
 
+
 def m_EE(r_source: np.ndarray, r_observer: np.ndarray, k: float, normal_function: Callable) -> np.ndarray:
     dG = green_function_first_derivative(r_source, r_observer, k)
     n = normal_function(r_source)
     if r_source.ndim == 1:
-        M = np.array([[-(dG[1] * n[1] + dG[2] * n[2]), dG[1] * n[0], dG[2] * n[0]],
-                     [dG[0] * n[1], -(dG[2] * n[2] + dG[0] * n[0]), dG[2] * n[1]],
-                     [dG[0] * n[2], dG[1] * n[2], -(dG[0] * n[0] + dG[1] * n[1])]],
-            dtype=complex)
+        M = np.array(
+            [
+                [-(dG[1] * n[1] + dG[2] * n[2]), dG[1] * n[0], dG[2] * n[0]],
+                [dG[0] * n[1], -(dG[2] * n[2] + dG[0] * n[0]), dG[2] * n[1]],
+                [dG[0] * n[2], dG[1] * n[2], -(dG[0] * n[0] + dG[1] * n[1])],
+            ],
+            dtype=complex,
+        )
     else:
         row0 = np.stack(
             [
@@ -878,6 +940,7 @@ def m_EE(r_source: np.ndarray, r_observer: np.ndarray, k: float, normal_function
 
         M = np.stack([row0, row1, row2], axis=-2)
     return M
+
 
 def m_EH(r_source: np.ndarray, r_observer: np.ndarray, k: float, normal_function: Callable):
     ddG = green_function_second_derivative(r_source, r_observer, k)
@@ -934,25 +997,28 @@ def m_EH(r_source: np.ndarray, r_observer: np.ndarray, k: float, normal_function
         M = np.stack([row0, row1, row2], axis=-2)
     return M
 
+
 def m_total(r_source: np.ndarray, r_observer: np.ndarray, k: float, normal_function: Callable, n_index) -> np.ndarray:
     M_EE_matrix = m_EE(r_source, r_observer, k, normal_function)
     M_EH_matrix = m_EH(r_source, r_observer, k, normal_function)
     M_total = np.zeros((*r_source.shape[0:-1], 6, 6), dtype=complex)
     M_total[..., 0:3, 0:3] = M_EE_matrix
     M_total[..., 0:3, 3:6] = 1 / (1j * k * C_LIGHT_SPEED * EPSILON_0_PERMITTIVITY) * M_EH_matrix
-    M_total[..., 3:6, 0:3] = - 1 / (1j * k * C_LIGHT_SPEED * MU_0_PERMEABILITY) * M_EH_matrix
+    M_total[..., 3:6, 0:3] = -1 / (1j * k * C_LIGHT_SPEED * MU_0_PERMEABILITY) * M_EH_matrix
     M_total[..., 3:6, 3:6] = M_EE_matrix
     return M_total
 
+
 # %% Ray optics functions:
-def generalized_snells_law(k_vector: np.ndarray,
-                           n_forwards: np.ndarray,
-                           n_1: float,
-                           n_2: float,
-                           ) -> np.ndarray:
+def generalized_snells_law(
+    k_vector: np.ndarray,
+    n_forwards: np.ndarray,
+    n_1: float,
+    n_2: float,
+) -> np.ndarray:
     cos_theta_incoming = np.clip(np.sum(k_vector * n_forwards, axis=-1), a_min=-1, a_max=1)  # m_rays
     n_tangential = (
-            k_vector - cos_theta_incoming[..., np.newaxis] * n_forwards
+        k_vector - cos_theta_incoming[..., np.newaxis] * n_forwards
     )  # m_rays | 3  # This is the vector that is orthogonal to the normal to the surface and lives in the plane spanned by the ray and the normal to the surface (grahm-schmidt process).
     n_tangential_norm = np.linalg.norm(n_tangential, axis=-1)  # m_rays
     if isinstance(n_tangential_norm, float) and n_tangential_norm < 1e-15:
@@ -963,10 +1029,10 @@ def generalized_snells_law(k_vector: np.ndarray,
             np.nan
         )  # This is done so that the normalization does not throw an error.
         n_tangential = normalize_vector(n_tangential)
-        sin_theta_outgoing = np.sqrt((n_1 / n_2) ** 2 * (1 - cos_theta_incoming ** 2))  # m_rays
+        sin_theta_outgoing = np.sqrt((n_1 / n_2) ** 2 * (1 - cos_theta_incoming**2))  # m_rays
         reflected_direction_vector = (
-                n_forwards * stable_sqrt(1 - sin_theta_outgoing[..., np.newaxis] ** 2)
-                + n_tangential * sin_theta_outgoing[..., np.newaxis]
+            n_forwards * stable_sqrt(1 - sin_theta_outgoing[..., np.newaxis] ** 2)
+            + n_tangential * sin_theta_outgoing[..., np.newaxis]
         )  # m_rays | 3
         reflected_direction_vector[practically_normal_incidences] = n_forwards[
             practically_normal_incidences
@@ -981,18 +1047,16 @@ def generalized_mirror_law(k_vector: np.ndarray, n_forwards: np.ndarray) -> np.n
     # like so because both tensors have the same shape and the dot product is calculated along the last axis.
     # you could also perform this product by transposing the second tensor and then dot multiplying the two tensors,
     # but this it would be cumbersome to do so.
-    reflected_direction_vector = (
-            k_vector - 2 * dot_product[..., np.newaxis] * n_forwards
-    )  # m_rays | 3
+    reflected_direction_vector = k_vector - 2 * dot_product[..., np.newaxis] * n_forwards  # m_rays | 3
     return reflected_direction_vector
 
 
 # %% Aspheric lens generator:
 @dataclass(frozen=True)
 class LensParams:
-    n: float      # refractive index (assumed > 1)
-    f: float      # distance outside the lens
-    T_c: float     # center thickness parameter in your equation
+    n: float  # refractive index (assumed > 1)
+    f: float  # distance outside the lens
+    T_c: float  # center thickness parameter in your equation
     eps: float = 1e-12  # numerical guard
 
 
@@ -1114,7 +1178,6 @@ def solve_aspheric_profile(
     method: str = "RK45",
     rtol: float = 1e-8,
     atol: float = 1e-11,
-
 ) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray, np.ndarray]]:
     """
     Solve x(y) for y in [0, y_max] with x(0)=0 using the coupled implicit theta constraint.
@@ -1138,7 +1201,7 @@ def solve_aspheric_profile(
     x = sol.sol(y)[0]
 
     # Fit only even powers: we fit a polynomial in y^2
-    y_squared = y ** 2
+    y_squared = y**2
     p_fit = Polynomial.fit(y_squared, x, deg=degree // 2)
     coefficients = p_fit.convert().coef
     if return_raw_values:
