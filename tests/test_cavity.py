@@ -1,7 +1,7 @@
 import numpy as np
 from numpy.polynomial import Polynomial
 #
-from aspheric_lens_generator import LensParams, solve_profile
+from simple_analysis_scripts.aspheric_lens_generator import LensParams, solve_profile
 from cavity import (
     CurvedMirror,
     CurvatureSigns,

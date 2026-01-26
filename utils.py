@@ -2,10 +2,12 @@ import copy
 
 import numpy as np
 from typing import List, Tuple, Optional, Union, Callable, Any
-import pickle as pkl
 import warnings
-# import dataclass:
 from dataclasses import dataclass
+
+from scipy.integrate import solve_ivp
+from numpy.polynomial import Polynomial
+from scipy.optimize import root_scalar
 
 # %% Constants
 CENTRAL_LINE_TOLERANCE = 1
@@ -84,6 +86,8 @@ class SurfacesTypes:
     flat_mirror = 'flat_mirror'
     ideal_thick_lens = 'ideal_thick_lens'
     flat_surface = 'flat_surface'  # Not an optical element, just a helper for the central line.
+    aspheric_surface = 'aspheric_surface'
+    thick_aspheric_lens = 'thick_aspheric_lens'
 
     @staticmethod
     def from_integer_representation(integer_representation: int) -> str:
@@ -93,7 +97,9 @@ class SurfacesTypes:
     def has_refractive_index(surface_type: str) -> bool:
         return surface_type in [SurfacesTypes.curved_refractive_surface,
                                 SurfacesTypes.thick_lens,
-                                SurfacesTypes.ideal_thick_lens]
+                                SurfacesTypes.ideal_thick_lens,
+                                SurfacesTypes.aspheric_surface,
+                                SurfacesTypes.thick_aspheric_lens,]
 
 @dataclass
 class CurvatureSigns:
@@ -256,6 +262,7 @@ class OpticalElementParams:
     )
     material_properties: MaterialProperties
     diameter: float = np.nan  # diameter of the optical element, None if not specified.
+    polynomial_coefficients: Optional[np.ndarray] = None  # For aspheric surfaces only.
 
     # def __post_init__(self):
     #     assert self.material_properties.refractive_index == self.n_inside_or_after or self.material_properties.refractive_index == self.n_outside_or_before or np.isnan(self.material_properties.refractive_index), "The refractive index of the material properties is neither of the refractive indices of the optical element!"
@@ -283,97 +290,101 @@ class OpticalElementParams:
             f"n_outside_or_before={pretty_print_number(self.n_outside_or_before)}, "
             f"diameter={pretty_print_number(self.diameter)}, "
             f"material_properties={self.material_properties})"
+            f"polynomial_coefficients={self.polynomial_coefficients})"
         )
 
     @property
     def to_array(self) -> np.ndarray:
-        # loses the name information, as it is string.
-        if isinstance(self.surface_type, str):
-            surface_type = SURFACE_TYPES_DICT[self.surface_type]
-        else:
-            surface_type = self.surface_type  # This should not happen
-        array = np.zeros(len(INDICES_DICT.keys())).astype(np.complex128)
-        array[
-            [
-                INDICES_DICT["surface_type"],
-                INDICES_DICT["x"],
-                INDICES_DICT["y"],
-                INDICES_DICT["z"],
-                INDICES_DICT["theta"],
-                INDICES_DICT["phi"],
-                INDICES_DICT["r_1"],
-                INDICES_DICT["r_2"],
-                INDICES_DICT["curvature_sign"],
-                INDICES_DICT["T_c"],
-                INDICES_DICT["n_inside_or_after"],
-                INDICES_DICT["n_outside_or_before"],
-                INDICES_DICT["diameter"],
-                INDICES_DICT["material_refractive_index"],
-                INDICES_DICT["alpha_expansion"],
-                INDICES_DICT["beta_surface_absorption"],
-                INDICES_DICT["kappa_conductivity"],
-                INDICES_DICT["dn_dT"],
-                INDICES_DICT["nu_poisson_ratio"],
-                INDICES_DICT["alpha_volume_absorption"],
-                INDICES_DICT["intensity_reflectivity"],
-                INDICES_DICT["intensity_transmittance"],
-                INDICES_DICT["temperature"],
-            ]
-        ] = [
-            surface_type,
-            self.x,
-            self.y,
-            self.z,
-            self.theta,
-            self.phi,
-            self.r_1,
-            self.r_2,
-            self.curvature_sign,
-            self.T_c,
-            self.n_inside_or_after,
-            self.n_outside_or_before,
-            self.diameter,
-            *self.material_properties.to_array,
-        ]
-        array[INDICES_DICT["theta"]] = 1j * array[INDICES_DICT["theta"]] / np.pi
-        array[INDICES_DICT["phi"]] = 1j * array[INDICES_DICT["phi"]] / np.pi
-        return array
+        # I don't want this feature, and therefore turning it off (26/01/26). If it causes not problems, it can be removed.
+        raise NotImplementedError("to_array is disabled")
+        # # loses the name information, as it is string.
+        # if isinstance(self.surface_type, str):
+        #     surface_type = SURFACE_TYPES_DICT[self.surface_type]
+        # else:
+        #     surface_type = self.surface_type  # This should not happen
+        # array = np.zeros(len(INDICES_DICT.keys())).astype(np.complex128)
+        # array[
+        #     [
+        #         INDICES_DICT["surface_type"],
+        #         INDICES_DICT["x"],
+        #         INDICES_DICT["y"],
+        #         INDICES_DICT["z"],
+        #         INDICES_DICT["theta"],
+        #         INDICES_DICT["phi"],
+        #         INDICES_DICT["r_1"],
+        #         INDICES_DICT["r_2"],
+        #         INDICES_DICT["curvature_sign"],
+        #         INDICES_DICT["T_c"],
+        #         INDICES_DICT["n_inside_or_after"],
+        #         INDICES_DICT["n_outside_or_before"],
+        #         INDICES_DICT["diameter"],
+        #         INDICES_DICT["material_refractive_index"],
+        #         INDICES_DICT["alpha_expansion"],
+        #         INDICES_DICT["beta_surface_absorption"],
+        #         INDICES_DICT["kappa_conductivity"],
+        #         INDICES_DICT["dn_dT"],
+        #         INDICES_DICT["nu_poisson_ratio"],
+        #         INDICES_DICT["alpha_volume_absorption"],
+        #         INDICES_DICT["intensity_reflectivity"],
+        #         INDICES_DICT["intensity_transmittance"],
+        #         INDICES_DICT["temperature"],
+        #     ]
+        # ] = [
+        #     surface_type,
+        #     self.x,
+        #     self.y,
+        #     self.z,
+        #     self.theta,
+        #     self.phi,
+        #     self.r_1,
+        #     self.r_2,
+        #     self.curvature_sign,
+        #     self.T_c,
+        #     self.n_inside_or_after,
+        #     self.n_outside_or_before,
+        #     self.diameter,
+        #     *self.material_properties.to_array,
+        # ]
+        # array[INDICES_DICT["theta"]] = 1j * array[INDICES_DICT["theta"]] / np.pi
+        # array[INDICES_DICT["phi"]] = 1j * array[INDICES_DICT["phi"]] / np.pi
+        # return array
 
     @staticmethod
     def from_array(params: np.ndarray):
-        params = np.real(params) + np.pi * np.imag(params)
-        material_properties = MaterialProperties(
-            refractive_index=nvl(
-                params[INDICES_DICT["material_refractive_index"]],
-                params[INDICES_DICT["n_inside_or_after"]],
-            ),
-            alpha_expansion=params[INDICES_DICT["alpha_expansion"]],
-            beta_surface_absorption=params[INDICES_DICT["beta_surface_absorption"]],
-            kappa_conductivity=params[INDICES_DICT["kappa_conductivity"]],
-            dn_dT=params[INDICES_DICT["dn_dT"]],
-            nu_poisson_ratio=params[INDICES_DICT["nu_poisson_ratio"]],
-            alpha_volume_absorption=params[INDICES_DICT["alpha_volume_absorption"]],
-            intensity_reflectivity=params[INDICES_DICT["intensity_reflectivity"]],
-            intensity_transmittance=params[INDICES_DICT["intensity_transmittance"]],
-            temperature=params[INDICES_DICT["temperature"]],
-        )
-        return OpticalElementParams(
-            name=None,  # This is not saved in the array
-            surface_type=SurfacesTypes.from_integer_representation(params[INDICES_DICT["surface_type"]]),
-            x=params[INDICES_DICT["x"]],
-            y=params[INDICES_DICT["y"]],
-            z=params[INDICES_DICT["z"]],
-            theta=params[INDICES_DICT["theta"]],
-            phi=params[INDICES_DICT["phi"]],
-            r_1=params[INDICES_DICT["r_1"]],
-            r_2=params[INDICES_DICT["r_2"]],
-            curvature_sign=params[INDICES_DICT["curvature_sign"]],
-            T_c=params[INDICES_DICT["T_c"]],
-            n_inside_or_after=params[INDICES_DICT["n_inside_or_after"]],
-            n_outside_or_before=params[INDICES_DICT["n_outside_or_before"]],
-            diameter=params[INDICES_DICT["diameter"]],
-            material_properties=material_properties,
-        )
+        raise NotImplementedError("from_array is disabled")
+        # params = np.real(params) + np.pi * np.imag(params)
+        # material_properties = MaterialProperties(
+        #     refractive_index=nvl(
+        #         params[INDICES_DICT["material_refractive_index"]],
+        #         params[INDICES_DICT["n_inside_or_after"]],
+        #     ),
+        #     alpha_expansion=params[INDICES_DICT["alpha_expansion"]],
+        #     beta_surface_absorption=params[INDICES_DICT["beta_surface_absorption"]],
+        #     kappa_conductivity=params[INDICES_DICT["kappa_conductivity"]],
+        #     dn_dT=params[INDICES_DICT["dn_dT"]],
+        #     nu_poisson_ratio=params[INDICES_DICT["nu_poisson_ratio"]],
+        #     alpha_volume_absorption=params[INDICES_DICT["alpha_volume_absorption"]],
+        #     intensity_reflectivity=params[INDICES_DICT["intensity_reflectivity"]],
+        #     intensity_transmittance=params[INDICES_DICT["intensity_transmittance"]],
+        #     temperature=params[INDICES_DICT["temperature"]],
+        # )
+        # return OpticalElementParams(
+        #     name=None,  # This is not saved in the array
+        #     surface_type=SurfacesTypes.from_integer_representation(params[INDICES_DICT["surface_type"]]),
+        #     x=params[INDICES_DICT["x"]],
+        #     y=params[INDICES_DICT["y"]],
+        #     z=params[INDICES_DICT["z"]],
+        #     theta=params[INDICES_DICT["theta"]],
+        #     phi=params[INDICES_DICT["phi"]],
+        #     r_1=params[INDICES_DICT["r_1"]],
+        #     r_2=params[INDICES_DICT["r_2"]],
+        #     curvature_sign=params[INDICES_DICT["curvature_sign"]],
+        #     T_c=params[INDICES_DICT["T_c"]],
+        #     n_inside_or_after=params[INDICES_DICT["n_inside_or_after"]],
+        #     n_outside_or_before=params[INDICES_DICT["n_outside_or_before"]],
+        #     diameter=params[INDICES_DICT["diameter"]],
+        #     material_properties=material_properties,
+        # )
 
 
 @dataclass
@@ -658,7 +669,8 @@ def interval_parameterization(a: float, b: float, t: float) -> float:
 
 def functions_first_crossing(f: Callable, initial_step: float, crossing_value: float = 0.9,
                              accuracy: float = 0.001, max_f_eval: int = 200) -> float:
-    # assumes f(0) == 1 and a decreasing function.
+    # Finds the first x for which f(x) crosses crossing_value, with given accuracy, by evaluating f at different x values.
+    # Better than scipy functions, as it assumes the function is decreasing, and getting nan means the function diverged, and need to step back.
     stopping_flag = False
     increasing_ratio = 2
     n = 10
@@ -926,6 +938,7 @@ def m_total(r_source: np.ndarray, r_observer: np.ndarray, k: float, normal_funct
     M_total[..., 3:6, 3:6] = M_EE_matrix
     return M_total
 
+# %% Ray optics functions:
 def generalized_snells_law(k_vector: np.ndarray,
                            n_forwards: np.ndarray,
                            n_1: float,
@@ -966,3 +979,163 @@ def generalized_mirror_law(k_vector: np.ndarray, n_forwards: np.ndarray) -> np.n
             k_vector - 2 * dot_product[..., np.newaxis] * n_forwards
     )  # m_rays | 3
     return reflected_direction_vector
+
+
+# %% Aspheric lens generator:
+@dataclass(frozen=True)
+class LensParams:
+    n: float      # refractive index (assumed > 1)
+    f: float      # distance outside the lens
+    T_c: float     # center thickness parameter in your equation
+    eps: float = 1e-12  # numerical guard
+
+
+def constraint_g(theta: float, y: float, x: float, p: LensParams) -> float:
+    """
+    Constraint equation:
+        f * (n sinθ)/sqrt(1 - n^2 sin^2θ) + (Tc + x) tanθ - y = 0
+    """
+    s = np.sin(theta)
+    c = np.cos(theta)
+
+    # Domain: 1 - n^2 sin^2θ > 0 (no TIR at the flat face in this model)
+    rad = 1.0 - (p.n * s) ** 2
+    if rad <= 0.0:
+        # Return a large value with consistent sign-ish behavior; root finder will avoid.
+        return np.sign(rad) * 1e6
+
+    term1 = p.f * (p.n * s) / np.sqrt(rad)
+    term2 = (p.T_c - x) * (s / c)  # tanθ
+    return term1 + term2 - y
+
+
+def find_theta(y: float, x: float, p: LensParams, theta_hint: float = 0.0) -> float:
+    """
+    Solve constraint_g(theta; y, x) = 0 for theta.
+
+    We restrict theta to (-theta_max, theta_max) where theta_max = arcsin(1/n) - margin,
+    to keep sqrt(1 - n^2 sin^2θ) real.
+
+    Uses bracketing + root_scalar(brentq) with an expanding bracket around theta_hint.
+    """
+    if abs(y) < p.eps:
+        return 0.0
+
+    # Maximum physically allowed |theta| in this model (avoids sqrt singularity)
+    theta_max = np.arcsin(min(1.0, 1.0 / p.n)) - 1e-9
+    theta_max = max(theta_max, 1e-6)  # guard in case n ~ 1
+
+    # Clamp hint into domain
+    theta_hint = float(np.clip(theta_hint, -theta_max, theta_max))
+
+    # If y>0 we typically want theta>0; if y<0, theta<0 (helps bracketing)
+    preferred_sign = 1.0 if y >= 0 else -1.0
+    if theta_hint == 0.0:
+        theta_hint = preferred_sign * min(0.1, 0.5 * theta_max)
+
+    def g(th):
+        return constraint_g(th, y, x, p)
+
+    # Build an expanding bracket around theta_hint until sign change
+    delta = min(0.05, 0.25 * theta_max)
+    a = np.clip(theta_hint - delta, -theta_max, theta_max)
+    b = np.clip(theta_hint + delta, -theta_max, theta_max)
+
+    ga = g(a)
+    gb = g(b)
+
+    # Expand bracket
+    for _ in range(60):
+        if np.isfinite(ga) and np.isfinite(gb) and ga * gb <= 0.0:
+            break
+        delta *= 1.5
+        a = np.clip(theta_hint - delta, -theta_max, theta_max)
+        b = np.clip(theta_hint + delta, -theta_max, theta_max)
+        ga = g(a)
+        gb = g(b)
+    else:
+        # As a fallback, try a global bracket over the full domain
+        a, b = -theta_max, theta_max
+        ga, gb = g(a), g(b)
+        if not (np.isfinite(ga) and np.isfinite(gb) and ga * gb <= 0.0):
+            raise RuntimeError(
+                "Could not bracket a root for theta. Likely no real solution for this (y, x) "
+                "under the constraint (e.g., beyond model domain / TIR / geometry mismatch)."
+            )
+
+    sol = root_scalar(g, bracket=(a, b), method="brentq", xtol=1e-12, rtol=1e-12, maxiter=200)
+    if not sol.converged:
+        raise RuntimeError("Theta solve did not converge.")
+    return float(sol.root)
+
+
+def rhs_factory(p: LensParams):
+    """
+    Returns an RHS function for solve_ivp that keeps a running theta hint for speed/stability.
+    """
+    state = {"theta_hint": 0.0}
+
+    def rhs(y: float, x_arr: np.ndarray) -> np.ndarray:
+        x = float(x_arr[0])
+
+        # User assumption: Tc + x > 0 (we enforce numerically)
+        if p.T_c + x <= p.eps:
+            raise RuntimeError("Encountered Tc + x <= 0; violates the stated assumption Tc + x > 0.")
+
+        theta = find_theta(y, x, p, theta_hint=state["theta_hint"])
+        state["theta_hint"] = theta
+
+        s = np.sin(theta)
+        c = np.cos(theta)
+
+        denom = p.n * c - 1.0
+        if abs(denom) < p.eps:
+            raise RuntimeError("Encountered n*cos(theta) - 1 ~ 0, slope diverges (model singularity).")
+
+        dxdy = (p.n * s) / denom
+        return np.array([dxdy])
+
+    return rhs
+
+
+def solve_aspheric_profile(
+    p: LensParams,
+    y_max: float,
+    degree: int = 6,
+    return_raw_values: bool = False,
+    *,
+    n_points: int = 1500,
+    method: str = "RK45",
+    rtol: float = 1e-8,
+    atol: float = 1e-11,
+
+) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray, np.ndarray]]:
+    """
+    Solve x(y) for y in [0, y_max] with x(0)=0 using the coupled implicit theta constraint.
+    """
+    rhs = rhs_factory(p)
+
+    sol = solve_ivp(
+        fun=rhs,
+        t_span=(0.0, float(y_max)),
+        y0=np.array([0.0]),
+        method=method,
+        rtol=rtol,
+        atol=atol,
+        dense_output=True,
+    )
+
+    if not sol.success:
+        raise RuntimeError(sol.message)
+
+    y = np.linspace(0.0, y_max, n_points)
+    x = sol.sol(y)[0]
+
+    # Fit only even powers: we fit a polynomial in y^2
+    y_squared = y ** 2
+    p_fit = Polynomial.fit(y_squared, x, deg=degree // 2)
+    coefficients = p_fit.convert().coef
+    if return_raw_values:
+        return coefficients, y, x
+    else:
+        return coefficients
