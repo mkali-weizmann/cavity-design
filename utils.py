@@ -564,6 +564,12 @@ def unit_vector_of_angles(theta: Union[np.ndarray, float], phi: Union[np.ndarray
     sin_theta = sin_without_trailing_epsilon(theta)
     cos_theta = cos_without_trailing_epsilon(theta)
 
+    # Broadcast theta-derived arrays to phi's shape when needed so stacking works
+    target_shape = np.broadcast(sin_theta, cos_phi).shape
+    if np.shape(sin_theta) != target_shape:
+        sin_theta = np.broadcast_to(sin_theta, target_shape)
+        cos_theta = np.broadcast_to(cos_theta, target_shape)
+
     return np.stack([cos_theta * cos_phi, cos_theta * sin_phi, sin_theta], axis=-1)
 
 

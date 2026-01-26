@@ -85,11 +85,11 @@ def find_wavefront_deviation(cavity: Cavity,
     initial_rays_origin = first_mirror.parameterization(np.zeros_like(initial_arc_lengths), -initial_arc_lengths)
     orthonormal_direction = unit_vector_of_angles(theta=np.zeros_like(tilt_angles), phi=tilt_angles + np.pi * (1 - first_mirror.inwards_normal[0])/2)  # Assume system is alligned with x axis
     orthonormal_ray = Ray(origin=initial_rays_origin, k_vector=orthonormal_direction)
-    ray_history = cavity.trace_ray(orthonormal_ray, n_arms=len(cavity.physical_surfaces) - 1)
+    ray_history = cavity.propagate_ray(orthonormal_ray, n_arms=len(cavity.physical_surfaces) - 1)
     if cavity.to_params[1].surface_type == SurfacesTypes.thick_lens:
         dummy_plane = FlatSurface(outwards_normal=np.array([1, 0, 0]), center=cavity.physical_surfaces[2].center)
         intersection_points_dummy = dummy_plane.find_intersection_with_ray_exact(ray=ray_history[2])
-        ray_history = cavity.trace_ray(orthonormal_ray, n_arms=len(cavity.physical_surfaces) - 1)
+        ray_history = cavity.propagate_ray(orthonormal_ray, n_arms=len(cavity.physical_surfaces) - 1)
     else:
         intersection_points_dummy = None
     intersection_points = ray_history[-1].origin

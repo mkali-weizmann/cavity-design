@@ -1,34 +1,36 @@
 from cavity import *
-from simple_analysis_scripts.small_debugging_scripts.asphere_surface_intersections_and_refraction import forwards_normal
 
-phi = 0
-theta = 0
+# Parameters
+phi = np.linspace(0, 0.1, 10)
+k_vectors = unit_vector_of_angles(theta=0, phi=phi)
+# %%
+ray_origin = np.array([0.0, 0.0, 0.0])
+optical_axis = np.array([1, 0, 0])
+f = 5e-3
+T_c = 3.0e-3
+n = 1.5
+diameter = 7.75e-3
+back_center = ray_origin + f * optical_axis
 
-f = 20.0
-T_c = 3.0
-n_1 = 1
-n_2 = 1.5
-polynomial_coefficients = [-5.47939897e-06, 4.54562088e-02, 4.02452659e-05, 5.53445352e-08, 6.96909906e-11]  # generated for f=20, Tc=3 in aspheric_lens_generator.py
-polynomial = Polynomial(polynomial_coefficients)
-
-optical_axis = np.array([np.cos(phi), np.sin(phi), 0])
-
-diameter = 25
-back_center = f * optical_axis
-front_center = back_center + T_c * optical_axis
-s_1 = FlatRefractiveSurface(outwards_normal=optical_axis, center=back_center, n_1=n_1, n_2=n_2, diameter=diameter)
-
-s_2 = AsphericRefractiveSurface(center=front_center,
-                                outwards_normal=optical_axis,
-                                diameter=diameter,
-                                polynomial_coefficients=polynomial,
-                                n_1=n_2,
-                                n_2=n_1)
-s_1_automatic, s_2_automatic = Surface.from_params(generate_aspheric_lens_params(f=f,
+# Objects:
+rays = Ray(origin=ray_origin, k_vector=k_vectors)
+flat_surface, aspheric_surface = Surface.from_params(generate_aspheric_lens_params(f=f,
                                                                               T_c=T_c,
-                                                                              n=n_2,
+                                                                              n=n,
                                                                               forward_normal=optical_axis,
                                                                               diameter=diameter,
                                                                               polynomial_degree=8,
                                                                               flat_faces_center=back_center,
                                                                               name="aspheric_lens_automatic"))
+# Trace rays through the lens:
+rays_after_flat_surface = flat_surface.propagate_ray(rays)
+rays_after_aspheric_surface = aspheric_surface.propagate_ray(rays_after_flat_surface)
+# %%
+fig, ax = plt.subplots()
+rays.plot(ax=ax, label='Before lens', color='black')
+rays_after_flat_surface.plot(ax=ax, label='After flat surface', color='blue')
+rays_after_aspheric_surface.plot(ax=ax, label='After aspheric surface', color='red')
+flat_surface.plot(ax=ax, color='green')
+aspheric_surface.plot(ax=ax, color='orange')
+ax.set_xlim(-1e-3, 50e-3)
+plt.show()

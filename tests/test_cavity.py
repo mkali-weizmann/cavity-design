@@ -125,9 +125,9 @@ def test_aspheric_lens():
                                          # [np.cos(phi), np.sin(phi), 0],
                                          [np.cos(theta / 2 + phi), np.sin(theta / 2 + phi), 0]]))
 
-    ray_inner = s_1.interact_with_ray(ray_initial)
+    ray_inner = s_1.propagate_ray(ray_initial)
 
-    ray_output = s_2.interact_with_ray(ray_inner)
+    ray_output = s_2.propagate_ray(ray_inner)
 
     rays_are_collimated = np.allclose(ray_output.k_vector @ optical_axis, 1.0, atol=1e-7)
 

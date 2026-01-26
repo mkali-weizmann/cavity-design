@@ -10,7 +10,7 @@ single_surface = FlatRefractiveSurface(outwards_normal=np.array([np.cos(beta), -
                                        center=np.array([1, 0, 0]),
                                        diameter=0.4)
 
-new_ray = single_surface.interact_with_ray(initial_ray, paraxial=False)
+new_ray = single_surface.propagate_ray(initial_ray, paraxial=False)
 
 fig, ax = plt.subplots()
 initial_ray.plot(ax=ax, label='Initial Ray')
@@ -34,7 +34,7 @@ single_surface = FlatRefractiveSurface(outwards_normal=np.array([np.cos(beta), n
                                        center=np.array([1, 0, 0]),
                                        diameter=0.7)
 
-new_ray = single_surface.interact_with_ray(initial_ray, paraxial=False)
+new_ray = single_surface.propagate_ray(initial_ray, paraxial=False)
 
 fig, ax = plt.subplots()
 initial_ray.plot(ax=ax, label='Initial Ray')

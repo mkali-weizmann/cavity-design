@@ -36,7 +36,7 @@ k_vector = unit_vector_of_angles(theta=theta, phi=phi + np.pi * (1 - first_mirro
 THETA, PHI = np.meshgrid(theta, phi)
 k_vector = unit_vector_of_angles(THETA, PHI)
 rays = Ray(origin=p_1, k_vector=k_vector)
-rays_history = cavity.trace_ray(rays)
+rays_history = cavity.propagate_ray(rays)
 cavity.plot(additional_rays=rays_history[:-1])
 plt.show()
 

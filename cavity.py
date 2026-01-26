@@ -691,7 +691,7 @@ class PhysicalSurface(Surface):
     def get_parameterization(self, points: np.ndarray):
         raise NotImplementedError
 
-    def interact_with_ray(self, ray: Ray, paraxial: bool = False) -> Ray:
+    def propagate_ray(self, ray: Ray, paraxial: bool = False) -> Ray:
         # Scatters ray and updates it's length:
         intersection_point, forward_normal = self.enrich_intersection_geometries(ray,
                                                                                  paraxial=paraxial)
@@ -1867,7 +1867,7 @@ class Arm:
             # ATTENTION - THIS SHOULD NOT BE HERE FOR NON-STANDING WAVES CAVITIES - BUT I AM DEALING ONLY WITH THOSE...
             if isinstance(self.surface_1, CurvedMirror):
                 use_paraxial_ray_tracing = False
-            propagated_ray = self.surface_1.interact_with_ray(ray, paraxial=use_paraxial_ray_tracing)
+            propagated_ray = self.surface_1.propagate_ray(ray, paraxial=use_paraxial_ray_tracing)
         else:
             new_position = self.surface_1.find_intersection_with_ray(ray, paraxial=use_paraxial_ray_tracing)
             propagated_ray = Ray(new_position, ray.k_vector)
@@ -2454,7 +2454,7 @@ class Cavity:
     def finesse(self):
         return np.pi * self.free_spectral_range / self.amplitude_decay_rate
 
-    def trace_ray(self, ray: Ray, n_arms: Optional[int] = None) -> List[Ray]:
+    def propagate_ray(self, ray: Ray, n_arms: Optional[int] = None) -> List[Ray]:
         ray_history = [ray]
         n_arms = nvl(n_arms, len(self.arms))
         for i in range(n_arms):
@@ -2468,7 +2468,7 @@ class Cavity:
         # surface, instead of the starting position and angles as a vector in 3D space.
 
         initial_ray = self.ray_of_initial_parameters(starting_position_and_angles)
-        ray_history = self.trace_ray(initial_ray)
+        ray_history = self.propagate_ray(initial_ray)
         final_intersection_point = ray_history[-1].origin
         t_o, p_o = self.arms[0].surface_0.get_parameterization(final_intersection_point)  # Here it is the initial
         # surface on purpose: the final ray's origin should be on the initial surface, after one round trip.
@@ -2498,7 +2498,7 @@ class Cavity:
         # 0 indexing.
         k_vector = unit_vector_of_angles(angles[0], angles[1])
         ray = Ray(self.physical_surfaces[0].origin, k_vector)
-        ray_history = self.trace_ray(ray)
+        ray_history = self.propagate_ray(ray)
         last_arms_ray = ray_history[last_ray_index]  # -2
 
         origins_plane = FlatSurface(
@@ -2712,7 +2712,7 @@ class Cavity:
             )  # theta, phi
             central_line = Ray(origin_solution, k_vector_solution)
             # This line is to save the central line in the ray history, so that it can be plotted later.
-            central_line = self.trace_ray(central_line)
+            central_line = self.propagate_ray(central_line)
             if self.standing_wave:
                 # If it is a standing wave - set the backward trip to be identical to the forwards, but reversed:
                 n_physical_arms = len(self.physical_surfaces) - 1
