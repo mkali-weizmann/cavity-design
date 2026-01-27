@@ -261,12 +261,11 @@ def local_mode_parameters_of_round_trip_ABCD(
 class Ray:
     def __init__(
         self,
-        origin: np.ndarray,  # [m_rays..., 3]
-        k_vector: np.ndarray,  # [m_rays..., 3]
-        length: Optional[Union[np.ndarray, float]] = None,  # [m_rays..., 3]
-        n: Optional[
-            Union[np.ndarray, float]
-        ] = None,  # [m_rays..., 3], the refractive index in the medium the ray is in
+        origin: np.ndarray,  # [m_rays..., 3]  # Last index is for x,y,z
+        k_vector: np.ndarray,  # [m_rays..., 3]  # Last index is for x,y,z
+        length: Union[np.ndarray, float] = np.nan,  # [m_rays...]
+        n: float = np.nan,  # [m_rays...], the refractive index in the medium the ray is in. Assumes all rays are in
+            # The same medium.
     ):
         if k_vector.ndim == 1 and origin.shape[0] > 1:
             k_vector = np.tile(k_vector, (*origin.shape[:-1], 1))
@@ -286,26 +285,33 @@ class Ray:
         )
         return subscripted_ray
 
-    def parameterization(self, t: Union[np.ndarray, float]) -> np.ndarray:
+    def parameterization(self, t: Union[np.ndarray, float], optical_path_length: bool = False) -> np.ndarray:
         # Currently this function allows only one t per ray. if needed it can be extended to allow multiple t per ray.
         # theta needs to be either a float or a numpy array with dimensions m_rays
         if isinstance(t, (float, int)):
             t = np.array(t)
-        return self.origin + t[..., np.newaxis] * self.k_vector
+        if optical_path_length:
+            if np.isnan(self.n):
+                raise ValueError("n is None, cannot use optical_path_length=True")
+            else:
+                n_temp = self.n
+        else:
+            n_temp = 1
+        return self.origin + t[..., np.newaxis] * self.k_vector / n_temp
 
     @property
     def optical_path_length(self) -> Optional[np.ndarray]:
         if self.length is not None and self.n is not None:
             return self.length * self.n
         else:
-            return None
+            return np.nan
 
     def plot(
         self,
         ax: Optional[plt.Axes] = None,
         dim=2,
         plane: str = "xy",
-        length: Optional[Union[np.ndarray, float]] = None,
+        length: Union[np.ndarray, float] = np.nan,
         **kwargs,
     ):
         if ax is None:
@@ -314,9 +320,9 @@ class Ray:
                 ax = fig.add_subplot(111, projection="3d")
             else:
                 ax = fig.add_subplot(111)
-        if length is not None:
+        if not np.isnan(length):
             length = np.ones(self.origin.shape[:-1]) * length
-        elif self.length is not None:
+        elif not np.any(np.isnan(self.length)):
             length = self.length
         else:
             length = np.ones_like(self.origin[..., 0])
@@ -361,6 +367,55 @@ class Ray:
 
         return ax
 
+class RaySequence:
+    def __init__(self, rays: List[Ray]):
+        self.origin = np.stack([ray.origin for ray in rays], axis=0)  # [n_rays, m_rays..., 3]
+        self.k_vector = np.stack([ray.k_vector for ray in rays], axis=0)  # [n_rays, m_rays..., 3]
+        self.n = np.array([ray.n for ray in rays])  # [n_rays]
+        length = np.stack([ray.length for ray in rays], axis=0)  # [n_rays, m_rays...]
+        length[np.isnan(length)] = np.inf
+        self.length = length  # [n_rays, m_rays...]
+
+    def __getitem__(self, key):
+        # If key is a tuple and the second-from-last element is a slice, this case is not implemented.
+        if isinstance(key, tuple) and len(key) >= 2 and isinstance(key[0], slice):
+            raise NotImplementedError("Slicing over the ray axis (key[-2]) is not implemented")
+        subscripted_ray = Ray(
+            self.origin[key], self.k_vector[key], self.length[key] if self.length is not None else None
+        )
+        return subscripted_ray
+
+    def parameterization(self, t: float, optical_path_length: bool = False) -> np.ndarray:
+        if isinstance(t, (float, int)):
+            t = np.array(t)
+        if optical_path_length:
+            relevant_lengths_array = self.cumulative_optical_path_length
+            relevant_n = self.n
+        else:
+            relevant_lengths_array = self.cumulative_length
+            relevant_n = np.ones_like(self.n)
+        output_points = np.zeros(self.origin.shape[1:])
+        for i in range(np.prod(self.origin.shape[1:-1])):
+            full_index = np.unravel_index(i, self.origin.shape[1:-1])
+            first_step_before_t = np.searchsorted(relevant_lengths_array[:, *full_index], t)
+            length_before_t = 0 if first_step_before_t == 0 else relevant_lengths_array[first_step_before_t-1, *full_index]
+            remaining_t = t - length_before_t
+            point_at_t = self.origin[first_step_before_t, *full_index] + remaining_t * self.k_vector[first_step_before_t, *full_index] / relevant_n[first_step_before_t]
+            output_points[full_index, :] = point_at_t
+        return output_points
+
+
+    @property
+    def optical_path_length(self) -> np.ndarray:
+        return self.length * self.n.reshape((self.n.shape[0],) + (1,) * (self.length.ndim - 1))
+
+    @property
+    def cumulative_length(self) -> np.ndarray:
+        return np.cumsum(self.length, axis=0)
+
+    @property
+    def cumulative_optical_path_length(self) -> np.ndarray:
+        return np.cumsum(self.optical_path_length, axis=0)
 
 class Surface:
     def __init__(
