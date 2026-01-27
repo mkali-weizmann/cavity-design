@@ -1208,3 +1208,16 @@ def solve_aspheric_profile(
         return coefficients, y, x
     else:
         return coefficients
+
+
+def extract_matching_sphere(p_1: np.ndarray, p_2: np.ndarray, k_1: np.ndarray):
+    # k_1 points away from the center of the sphere (odd but convenient due to the way rays are traced).
+    # derivation is here: https://mynotebook.labarchives.com/MTM3NjE3My41fDEwNTg1OTUvMTA1ODU5NS9Ob3RlYm9vay8zMjQzMzA0MzY1fDM0OTMzNjMuNQ==/page/11290221-219
+    if k_1 @ (p_2 - p_1) == 0:
+        return np.inf, -np.inf * k_1
+
+    numerator = np.linalg.norm(p_2 - p_1) ** 2
+    denominator = 2 * np.dot(k_1, p_2 - p_1)
+    R = numerator / denominator
+    center = p_1 - R * k_1
+    return R, center
