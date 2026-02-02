@@ -937,7 +937,6 @@ class AsphericSurface(Surface):
         self._center = center
         self.outwards_normal = normalize_vector(outwards_normal)
         self.name = name
-        self.radius = np.nan
         self.diameter = diameter
         self.material_properties = material_properties
         self.polynomial = (
@@ -946,6 +945,7 @@ class AsphericSurface(Surface):
             else Polynomial(polynomial_coefficients)
         )
         self.thickness_center = self.polynomial((self.diameter / 2) ** 2)  # thickness at the center of the surface
+        self.radius = 1 / (2 * self.polynomial.coef[1])
 
     def find_intersection_with_ray_exact(self, ray: Ray) -> np.ndarray:
         # For a sketch and a detalied explanation on the calculation, go to:

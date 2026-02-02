@@ -577,9 +577,6 @@ def image_of_a_point_with_thick_lens(distance_to_face_1, R_1, R_2, n, T_c):
         d_2 = (1 / f - 1 / (distance_to_face_1 + h_1)) ** -1 - h_2
     return d_2
 
-
-# %%
-
 def sin_without_trailing_epsilon(phi: Union[np.ndarray, float]) -> Union[np.ndarray, float]:
     pi_multiplications = np.mod(phi, np.pi)  # This is to avoid numerical trailing epsilon.
     sin_phi = np.sin(phi)

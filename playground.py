@@ -3,7 +3,10 @@ use('TkAgg')  # or 'Qt5Agg', 'GTK3Agg', etc. depending on your system
 from cavity import *
 
 # %%
-def analyze_potential(back_focal_length, defocus, T_c, n_design, diameter, unconcentricity: float = 0, n_actual = None, n_rays=100, dphi: Optional[float] =  None, phi_max: Optional[float] = None):
+def analyze_potential(back_focal_length, defocus, T_c, n_design, diameter, unconcentricity: float = 0, n_actual = None,
+                      n_rays=100, dphi: Optional[float] =  None, phi_max: Optional[float] = None,
+                      extract_R_analytically: bool = False
+                      ):
     # Enrich input arguments:
     if n_actual is None:
         n_actual = n_design
@@ -42,38 +45,49 @@ def analyze_potential(back_focal_length, defocus, T_c, n_design, diameter, uncon
     # Extract all wavefront features at the output surface of the lens.
     d_0 = ray_sequence.cumulative_optical_path_length[1, 0]  # Assumes the first ray is the optical axis ray.
     wavefront_points = ray_sequence.parameterization(d_0, optical_path_length=True)
-    R, center_of_curvature = extract_matching_sphere(wavefront_points[..., 0, :], wavefront_points[..., 1, :], rays_0.k_vector[..., 0, :])
+    if extract_R_analytically:
+        R = image_of_a_point_with_thick_lens(distance_to_face_1=back_focal_length - defocus, R_1=np.inf,
+                                             R_2=aspheric_surface.radius, n=n_actual,
+                                             T_c=T_c)  # Assumes cylindrical symmetry.
+        center_of_curvature = rays_2.parameterization(R, optical_path_length=False)[0, :]  # Along the optical axis.
+    else:
+        R, center_of_curvature = extract_matching_sphere(wavefront_points[..., 0, :], wavefront_points[..., 1, :], rays_0.k_vector[..., 0, :])
     points_rel = wavefront_points - center_of_curvature
     phi_dummy = np.linspace(0, np.arctan(points_rel[-1, 1] / points_rel[-1, 0]), 100)
     sphere_dummy_points = center_of_curvature - R * np.stack((np.cos(phi_dummy), np.sin(phi_dummy), np.zeros_like(phi_dummy)),
                                                              axis=-1)
-    points_residual_distances = np.linalg.norm(wavefront_points - center_of_curvature, axis=-1) - R
-    wavefront_polynomial_coeffs = np.polyfit(wavefront_points[:, 1]**2, points_residual_distances, 4)
-    wavefront_polynomial = np.poly1d(wavefront_polynomial_coeffs)
+    points_residual_distances = R - np.linalg.norm(wavefront_points - center_of_curvature, axis=-1)
+    wavefront_polynomial = Polynomial.fit(wavefront_points[:, 1]**2, points_residual_distances, 4)
 
     # Extract wavefront features at a far away plane (2*ROC - u from the lens):
     wavefront_points_opposite = ray_sequence.parameterization(d_0 + 2 * R - unconcentricity, optical_path_length=True)
-    R_opposite, center_of_curvature_opposite = extract_matching_sphere(
-        wavefront_points_opposite[..., 0, :], wavefront_points_opposite[..., 1, :], rays_0.k_vector[..., 0, :])  # Should be the same as the original center of curvature
+    if extract_R_analytically:
+        R_opposite = R - unconcentricity
+        center_of_curvature_opposite = center_of_curvature
+    else:
+        R_opposite, center_of_curvature_opposite = extract_matching_sphere(
+            wavefront_points_opposite[..., 0, :], wavefront_points_opposite[..., 1, :], rays_0.k_vector[..., 0, :])  # Should be the same as the original center of curvature
     if not np.allclose(center_of_curvature_opposite, center_of_curvature):
         print(f"Warning: center_of_curvature_opposite {center_of_curvature_opposite} is not equal to center_of_curvature {center_of_curvature}")
     if not np.allclose(R_opposite, R - unconcentricity):
         print(f"Warning: R_opposite {R_opposite} is not equal to R - unconcentricity {R - unconcentricity}")
-    center_of_mirror = center_of_curvature + np.array([-unconcentricity, 0, 0])
     sphere_dummy_points_opposite = center_of_curvature_opposite + R_opposite * np.stack((np.cos(phi_dummy), np.sin(phi_dummy), np.zeros_like(phi_dummy)),
                                                              axis=-1)
+    points_residual_distances_opposite = R_opposite - np.linalg.norm(wavefront_points_opposite - center_of_curvature_opposite, axis=-1)
+    wavefront_polynomial_opposite = Polynomial.fit(wavefront_points_opposite[:, 1]**2, points_residual_distances_opposite, 4)
 
-    sphere_dummy_points_mirror = center_of_mirror + R * np.stack((np.cos(phi_dummy), np.sin(phi_dummy), np.zeros_like(phi_dummy)),
-                                                                            axis=-1)  # Mirror has the radius of the original wavefront sphere, but centered at the shifted center.
-    points_residual_distances_opposite = np.linalg.norm(wavefront_points_opposite - center_of_curvature_opposite, axis=-1) - R_opposite
-    points_residual_distances_mirror = np.linalg.norm(wavefront_points_opposite - center_of_mirror, axis=-1) - R  # Mirror has a radius of R, not R_opposite.
-    # Fit a polynomial to the relative distances:
-    wavefront_polynomial_coeffs_opposite = np.polyfit(wavefront_points_opposite[:, 1]**2, points_residual_distances_opposite, 4)
-    wavefront_polynomial_opposite = np.poly1d(wavefront_polynomial_coeffs_opposite)
+    # Analyze unconcentric mirror case:
+    center_of_mirror = center_of_curvature + np.array([-unconcentricity, 0, 0])
+    sphere_dummy_points_mirror = center_of_mirror + R * np.stack(
+        (np.cos(phi_dummy), np.sin(phi_dummy), np.zeros_like(phi_dummy)),
+        axis=-1)  # Mirror has the radius of the original wavefront sphere, but centered at the shifted center.
+    points_residual_distances_mirror = R - np.linalg.norm(wavefront_points_opposite - center_of_mirror,
+                                                      axis=-1)  # Mirror has a radius of R, not R_opposite.
+    mirror_deviation_polynomial = Polynomial.fit(wavefront_points_opposite[:, 1] ** 2,
+                                         points_residual_distances_mirror, 4)
+    expected_second_order_term = 1/2 * (1 / R_opposite - 1 / R)
+    print(f"Expected second order term in mirror deviation polynomial due to unconcentricity: {expected_second_order_term:.3e}, actual: {mirror_deviation_polynomial.convert().coef[1]:.3e}")
 
-    mirror_deviation_coeffs = np.polyfit(wavefront_points_opposite[:, 1] ** 2,
-                                                        points_residual_distances_mirror, 4)
-    mirror_deviation_polynomial = np.poly1d(mirror_deviation_coeffs)
 
     results_dict = {
         'rays_0': rays_0,
@@ -164,7 +178,7 @@ def plot_results(results_dict, far_away_plane: bool = False):
     ax[1, 1].set_ylabel('wavefront difference (µm)')
     ax[1, 1].grid()
     # build polynomial term string with ascending powers and .1e formatting, include x^{n} terms
-    coeffs_asc = polynomial.coefficients[::-1]
+    coeffs_asc = polynomial.convert().coef
     terms_parts = []
     for i, c in enumerate(coeffs_asc):
         s = f"{c:.1e}"
@@ -177,7 +191,7 @@ def plot_results(results_dict, far_away_plane: bool = False):
     # Build terms for mirror deviation polynomial (if present)
     terms_parts_mirror = []
     if mirror_deviation_polynomial is not None:
-        coeffs_mirror_asc = mirror_deviation_polynomial.coefficients[::-1]
+        coeffs_mirror_asc = mirror_deviation_polynomial.convert().coef
         for i, c in enumerate(coeffs_mirror_asc):
             s = f"{c:.1e}"
             mant_str, exp_str = s.split('e')
@@ -200,32 +214,6 @@ def plot_results(results_dict, far_away_plane: bool = False):
     return fig, ax
 
 
-def choose_source_position_for_desired_focus(back_focal_length,
-                                               desired_focus,
-                                               T_c,
-                                               n_design,
-                                               diameter,
-                                               unconcentricity: float = 0,
-                                               n_actual = None,
-                                               n_rays=100,
-                                               dphi = 0.01):
-    def f_roots(defocus):
-        results = analyze_potential(back_focal_length=back_focal_length, defocus=defocus, T_c=T_c, n_design=n_design,
-                                    diameter=diameter, unconcentricity=unconcentricity, n_actual=n_actual,
-                                    n_rays=n_rays, dphi=dphi)
-        if np.abs(results['center_of_curvature'][0]) > 1e2:
-            R_inverse = 0
-        else:
-            R_inverse = 1 / (results['center_of_curvature'][0] - results['aspheric_surface'].center[0])
-        residual = R_inverse - 1 / desired_focus
-        return residual
-
-    defocus_solution = optimize.brentq(f_roots, -back_focal_length, back_focal_length)
-    results = analyze_potential(back_focal_length=back_focal_length, defocus=defocus_solution, T_c=T_c,
-                                n_design=n_design, diameter=diameter, n_actual=n_actual, n_rays=n_rays, dphi=dphi)
-    return defocus_solution, results
-
-
 def choose_source_position_for_desired_focus_analytic(back_focal_length,
                                                desired_focus,
                                                T_c,
@@ -246,18 +234,14 @@ diameter = 7.75e-3
 dn=0
 n_design = n_actual + dn
 n_rays = 30
-unconcentricity = 0
-phi_max = 0.1
-defocus, results_dict = choose_source_position_for_desired_focus(back_focal_length=back_focal_length, desired_focus=30e-3, T_c=T_c,
-                                                                 n_design=n_design, diameter=diameter,
-                                                                 n_actual=n_actual, n_rays=n_rays,
-                                                                 unconcentricity=unconcentricity, )
-defocus_2 = choose_source_position_for_desired_focus_analytic(back_focal_length=back_focal_length, desired_focus=30e-3, T_c=T_c, n_design=n_design, diameter=diameter)
+unconcentricity = 200e-6
+phi_max = 0.01
+defocus = choose_source_position_for_desired_focus_analytic(back_focal_length=back_focal_length, desired_focus=200e-3, T_c=T_c, n_design=n_design, diameter=diameter)
 # %%
-results_dict = analyze_potential(back_focal_length=back_focal_length, defocus=defocus_2, T_c=T_c,
+results_dict = analyze_potential(back_focal_length=back_focal_length, defocus=defocus, T_c=T_c,
                                                                    n_design=n_design, diameter=diameter,
                                                                    n_actual=n_actual, n_rays=n_rays,
-                                 unconcentricity=unconcentricity)
+                                 unconcentricity=unconcentricity, extract_R_analytically=True, phi_max=phi_max)
 print(f"Defocus solution for 30 mm focus: {defocus*1e3:.3f} mm, focal point distance: {(results_dict['center_of_curvature'][0] - results_dict['aspheric_surface'].center[0]) * 1e3:.2f} mm")
 # plt.close('all')
 fig, ax = plot_results(results_dict, far_away_plane=True)
