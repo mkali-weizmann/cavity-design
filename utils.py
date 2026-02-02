@@ -559,11 +559,26 @@ def rotation_matrix_around_n(n, theta):
     return A
 
 
-def focal_length_of_lens(R_1, R_2, n, width):
+def focal_length_of_lens(R_1, R_2, n, T_c):
+    # Both are assumed to be positive for convex surfaces. THIS IS NOT THE SIGN CONVENTION USUALLY USED IN OPTICS.
     # for R_1 = R_2 = 0.05, d=0.01, n=1.5, this function returns 1.5 [m]
-    one_over_f = (n - 1) * ((1 / R_1) + (1 / R_2) - ((n - 1) * width) / (n * R_1 * R_2))
+    one_over_f = (n - 1) * ((1 / R_1) + (1 / R_2) - ((n - 1) * T_c) / (n * R_1 * R_2))
     return 1 / one_over_f
 
+def image_of_a_point_with_thick_lens(distance_to_face_1, R_1, R_2, n, T_c):
+    # Both are assumed to be positive for convex surfaces. THIS IS NOT THE SIGN CONVENTION USUALLY USED IN OPTICS.
+    f = focal_length_of_lens(R_1, R_2, n, T_c)
+    h_2 = f * (n - 1) * T_c / (R_1 * n)
+    h_1 = f * (n - 1) * T_c / (R_2 * n)
+    one_over_v = 1 / f - 1 / (distance_to_face_1 + h_1)
+    if one_over_v == 0:
+        d_2 = np.inf
+    else:
+        d_2 = (1 / f - 1 / (distance_to_face_1 + h_1)) ** -1 - h_2
+    return d_2
+
+
+# %%
 
 def sin_without_trailing_epsilon(phi: Union[np.ndarray, float]) -> Union[np.ndarray, float]:
     pi_multiplications = np.mod(phi, np.pi)  # This is to avoid numerical trailing epsilon.
