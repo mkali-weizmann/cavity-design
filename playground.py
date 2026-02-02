@@ -3,10 +3,29 @@ use('TkAgg')  # or 'Qt5Agg', 'GTK3Agg', etc. depending on your system
 from cavity import *
 
 # %%
-def analyze_potential(back_focal_length, defocus, T_c, n_design, diameter, unconcentricity: float = 0, n_actual = None,
+def analyze_potential(R_1: Optional[float] = None, R_2: Optional[float] = None, back_focal_length: Optional[float] = None, defocus=0, T_c=3e-3, n_design=1.8, diameter=12.7e-3, unconcentricity: float = 0, n_actual = None,
                       n_rays=100, dphi: Optional[float] =  None, phi_max: Optional[float] = None,
                       extract_R_analytically: bool = False
                       ):
+    optical_axis = np.array([1, 0, 0])
+    if R_1 is not None and R_2 is not None:
+        f = focal_length_of_lens(R_1=R_1, R_2=R_2, n=n_design, T_c=T_c)
+        h_1 = f * (n_design - 1) * T_c / (n_design * R_2)
+        back_focal_length = f - h_1
+        first_surface, second_surface = CurvedRefractiveSurface(radius=R_1, outwards_normal=-optical_axis, center = back_focal_length * optical_axis, n_1=1, n_2=n_actual, curvature_sign=CurvatureSigns.convex, name='first surface', thickness=T_c / 2, diameter=diameter), \
+                                        CurvedRefractiveSurface(radius=R_2, outwards_normal=optical_axis, center=(back_focal_length + T_c) * optical_axis, n_1=n_actual, n_2=1, curvature_sign=CurvatureSigns.concave, name='second surface', thickness=T_c / 2, diameter=diameter)
+    elif back_focal_length is not None:
+        back_center = back_focal_length * optical_axis
+        first_surface, second_surface = Surface.from_params(generate_aspheric_lens_params(f=back_focal_length,
+                                                                                          T_c=T_c,
+                                                                                          n=n_design,
+                                                                                          forward_normal=optical_axis,
+                                                                                          diameter=diameter,
+                                                                                          polynomial_degree=8,
+                                                                                          flat_faces_center=back_center,
+                                                                                          name="aspheric_lens_automatic"))
+    else:
+        raise ValueError("Either R_1 and R_2, or back_focal_length must be provided.")
     # Enrich input arguments:
     if n_actual is None:
         n_actual = n_design
@@ -19,23 +38,13 @@ def analyze_potential(back_focal_length, defocus, T_c, n_design, diameter, uncon
         phi = np.linspace(0, phi_max, n_rays)
     # Generate objects:
     k_vectors = unit_vector_of_angles(theta=0, phi=phi)
-    optical_axis = np.array([1, 0, 0])
     ray_origin = optical_axis * defocus
-    back_center = back_focal_length * optical_axis
     rays_0 = Ray(origin=ray_origin, k_vector=k_vectors)
-    flat_surface, aspheric_surface = Surface.from_params(generate_aspheric_lens_params(f=back_focal_length,
-                                                                                       T_c=T_c,
-                                                                                       n=n_design,
-                                                                                       forward_normal=optical_axis,
-                                                                                       diameter=diameter,
-                                                                                       polynomial_degree=8,
-                                                                                       flat_faces_center=back_center,
-                                                                                       name="aspheric_lens_automatic"))
-    flat_surface.n_2 = n_actual
-    aspheric_surface.n_1 = n_actual
+    first_surface.n_2 = n_actual
+    second_surface.n_1 = n_actual
     # Trace rays through the lens, and add refractive index perturbation:
-    rays_1 = flat_surface.propagate_ray(rays_0)
-    rays_2 = aspheric_surface.propagate_ray(rays_1)
+    rays_1 = first_surface.propagate_ray(rays_0)
+    rays_2 = second_surface.propagate_ray(rays_1)
     rays_0.n = 1
     rays_1.n = n_actual
     rays_2.n = 1
@@ -46,8 +55,8 @@ def analyze_potential(back_focal_length, defocus, T_c, n_design, diameter, uncon
     d_0 = ray_sequence.cumulative_optical_path_length[1, 0]  # Assumes the first ray is the optical axis ray.
     wavefront_points = ray_sequence.parameterization(d_0, optical_path_length=True)
     if extract_R_analytically:
-        R = image_of_a_point_with_thick_lens(distance_to_face_1=back_focal_length - defocus, R_1=np.inf,
-                                             R_2=aspheric_surface.radius, n=n_actual,
+        R = image_of_a_point_with_thick_lens(distance_to_face_1=back_focal_length - defocus, R_1=first_surface.radius,
+                                             R_2=second_surface.radius, n=n_actual,
                                              T_c=T_c)  # Assumes cylindrical symmetry.
         center_of_curvature = rays_2.parameterization(R, optical_path_length=False)[0, :]  # Along the optical axis.
     else:
@@ -93,8 +102,8 @@ def analyze_potential(back_focal_length, defocus, T_c, n_design, diameter, uncon
         'rays_0': rays_0,
         'rays_1': rays_1,
         'rays_2': rays_2,
-        'flat_surface': flat_surface,
-        'aspheric_surface': aspheric_surface,
+        'first_surface': first_surface,
+        'second_surface': second_surface,
         'rays_history': rays_history,
         'ray_sequence': ray_sequence,
         'wavefront_points': wavefront_points,
@@ -116,9 +125,9 @@ def analyze_potential(back_focal_length, defocus, T_c, n_design, diameter, uncon
     return results_dict
 
 def plot_results(results_dict, far_away_plane: bool = False):
-    (rays_0, rays_1, rays_2, flat_surface, aspheric_surface, rays_history, ray_sequence, R,
-     center_of_curvature) = results_dict['rays_0'], results_dict['rays_1'], results_dict['rays_2'], results_dict['flat_surface'], \
-            results_dict['aspheric_surface'], results_dict['rays_history'], results_dict['ray_sequence'], \
+    (rays_0, rays_1, rays_2, first_surface, second_surface, rays_history, ray_sequence, R,
+     center_of_curvature) = results_dict['rays_0'], results_dict['rays_1'], results_dict['rays_2'], results_dict['first_surface'], \
+            results_dict['second_surface'], results_dict['rays_history'], results_dict['ray_sequence'], \
             results_dict['R'], results_dict['center_of_curvature']
     if far_away_plane:
         wavefront_points, points_residual_distances, sphere_dummy_points, polynomial, sphere_dummy_points_mirror, mirror_deviation_polynomial, points_residual_distances_mirror = results_dict['wavefront_points_opposite'], results_dict['points_residual_distances_opposite'], results_dict['sphere_dummy_points_opposite'], results_dict['wavefront_polynomial_opposite'], results_dict['sphere_dummy_points_mirror'], results_dict['mirror_deviation_polynomial'], results_dict['points_residual_distances_mirror']
@@ -130,10 +139,10 @@ def plot_results(results_dict, far_away_plane: bool = False):
     rays_0.plot(ax=ax[0, 0], label='Before lens', color='black', linewidth=0.5)
     rays_1.plot(ax=ax[0, 0], label='After flat surface', color='blue', linewidth=0.5)
     rays_2.plot(ax=ax[0, 0], label='After aspheric surface', color='red', linewidth=0.5)
-    flat_surface.plot(ax=ax[0, 0], color='green')
-    aspheric_surface.plot(ax=ax[0, 0], color='orange')
+    first_surface.plot(ax=ax[0, 0], color='green')
+    second_surface.plot(ax=ax[0, 0], color='orange')
     ax[0, 0].set_xlim(rays_0.origin[0, 0] - 0.01, center_of_curvature[0] * 2)  # (-1e-3, 100e-3)
-    ax[0, 0].set_ylim(-aspheric_surface.diameter / 2, aspheric_surface.diameter / 2)  # (-4.2e-3, 4.2e-3)
+    ax[0, 0].set_ylim(-second_surface.diameter / 2, second_surface.diameter / 2)  # (-4.2e-3, 4.2e-3)
     ax[0, 0].grid()
     ax[0, 0].scatter(wavefront_points[:, 0], wavefront_points[:, 1], s=8, color='purple')
     ax[0, 0].scatter(center_of_curvature[0], center_of_curvature[1], s=50, color='cyan', label='Center of curvature')
@@ -141,9 +150,9 @@ def plot_results(results_dict, far_away_plane: bool = False):
     rays_0.plot(ax=ax[0, 1], label='Before lens', color='black', linewidth=0.5)
     rays_1.plot(ax=ax[0, 1], label='After flat surface', color='blue', linewidth=0.5)
     rays_2.plot(ax=ax[0, 1], label='After aspheric surface', color='red', linewidth=0.5)
-    flat_surface.plot(ax=ax[0, 1], color='green')
-    aspheric_surface.plot(ax=ax[0, 1], color='orange')
-    ax[0, 1].set_xlim((aspheric_surface.center[0] + center_of_curvature[0]) / 2 - 0.002, center_of_curvature[0] + 0.005)#(-1e-3, 100e-3)
+    first_surface.plot(ax=ax[0, 1], color='green')
+    second_surface.plot(ax=ax[0, 1], color='orange')
+    ax[0, 1].set_xlim((second_surface.center[0] + center_of_curvature[0]) / 2 - 0.002, center_of_curvature[0] + 0.005)#(-1e-3, 100e-3)
     ax[0, 1].set_ylim(-rays_2.origin[1, 1]*0.5, 1*rays_2.origin[1, 1])#(-4.2e-3, 4.2e-3)
     ax[0, 1].grid()
     ax[0, 1].scatter(wavefront_points[:, 0], wavefront_points[:, 1], s=8, color='purple')
@@ -210,7 +219,6 @@ def plot_results(results_dict, far_away_plane: bool = False):
     ax[1, 1].set_title(title)
     ax[1, 1].plot(x_fit * 1e3, polynomial(x_fit**2) * 1e6, color='red', linestyle='dashed', label='Matching sphere residuals Polynomial fit', linewidth=0.5)
 
-
     ax[1, 1].legend()
     return fig, ax
 
@@ -244,7 +252,7 @@ results_dict = analyze_potential(back_focal_length=back_focal_length, defocus=de
                                                                    n_design=n_design, diameter=diameter,
                                                                    n_actual=n_actual, n_rays=n_rays,
                                  unconcentricity=unconcentricity, extract_R_analytically=True, phi_max=phi_max)
-print(f"Defocus solution for 30 mm focus: {defocus*1e3:.3f} mm, focal point distance: {(results_dict['center_of_curvature'][0] - results_dict['aspheric_surface'].center[0]) * 1e3:.2f} mm")
+print(f"Defocus solution for 30 mm focus: {defocus*1e3:.3f} mm, focal point distance: {(results_dict['center_of_curvature'][0] - results_dict['second_surface'].center[0]) * 1e3:.2f} mm")
 # plt.close('all')
 fig, ax = plot_results(results_dict, far_away_plane=True)
 center = results_dict['center_of_curvature']

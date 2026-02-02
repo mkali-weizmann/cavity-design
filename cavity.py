@@ -1894,7 +1894,7 @@ def generate_aspheric_lens_params(
         theta=angles_of_unit_vector(forward_normal)[0],
         phi=angles_of_unit_vector(forward_normal)[1],
         r_1=np.inf,
-        r_2=np.nan,
+        r_2=1/(2*coeffs[1]),
         curvature_sign=0,
         diameter=diameter,
         polynomial_coefficients=coeffs,
