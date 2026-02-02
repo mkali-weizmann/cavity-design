@@ -117,5 +117,5 @@ for i in range(0, 2):
     ax2.legend(lines_1 + lines_2, labels_1 + labels_2, loc='upper right')
 
     ax1.grid()
-    plt.savefig(f'figures/power_vs_radius_{R * 1e5:.0f}.svg', bbox_inches='tight')
+    # plt.savefig(f'outputs/figures/power_vs_radius_{R * 1e5:.0f}.svg', bbox_inches='tight')
     plt.show()

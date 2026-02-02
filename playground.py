@@ -173,6 +173,9 @@ def plot_results(results_dict, far_away_plane: bool = False):
                       zorder=2)
         ax[1, 0].legend()
 
+    ax[1, 1].plot(wavefront_points[:, 1] * 1e3, points_residual_distances * 1e6,
+                  label='wavefront residual from matching sphere', marker='o', linestyle='', color='blue', markersize=5,
+                  alpha=0.6)
     x_fit = np.linspace(np.min(wavefront_points[:, 1]), np.max(wavefront_points[:, 1]), 100)
     ax[1, 1].set_xlabel('y (mm)')
     ax[1, 1].set_ylabel('wavefront difference (µm)')
@@ -201,13 +204,11 @@ def plot_results(results_dict, far_away_plane: bool = False):
         terms_mirror = " + ".join(terms_parts_mirror)
         title += f"\nmirror deviation fit (unconcentricity = {unconcentricity*1e6:.1f} µm):\n" + terms_mirror
         ax[1, 1].plot(x_fit * 1e3, mirror_deviation_polynomial(x_fit ** 2) * 1e6, color='green', linestyle='dashed',
-                      label='Mirror deviation Polynomial fit',linewidth=0.5)
+                      label='Mirror residuals Polynomial fit',linewidth=0.5)
         ax[1, 1].plot(wavefront_points[:, 1] * 1e3, points_residual_distances_mirror * 1e6, marker='x', linestyle='', color='magenta', label='Mirror deviation data', markersize=5, alpha=0.6)
 
     ax[1, 1].set_title(title)
-    ax[1, 1].plot(wavefront_points[:, 1] * 1e3, points_residual_distances * 1e6)
-
-    ax[1, 1].plot(x_fit * 1e3, polynomial(x_fit**2) * 1e6, color='red', linestyle='dashed', label='Polynomial fit', linewidth=0.5)
+    ax[1, 1].plot(x_fit * 1e3, polynomial(x_fit**2) * 1e6, color='red', linestyle='dashed', label='Matching sphere residuals Polynomial fit', linewidth=0.5)
 
 
     ax[1, 1].legend()
@@ -226,17 +227,18 @@ def choose_source_position_for_desired_focus_analytic(back_focal_length,
     return back_focal_length - distance_to_flat_face
 
 # %%
-back_focal_length = 5e-3
+back_focal_length = 20e-3
 # defocus = -1.905e-3
-T_c = 3.0e-3
+T_c = 4.35e-3
 n_actual = 1.8
 diameter = 7.75e-3
 dn=0
 n_design = n_actual + dn
-n_rays = 30
+n_rays = 60
 unconcentricity = 200e-6
-phi_max = 0.01
-defocus = choose_source_position_for_desired_focus_analytic(back_focal_length=back_focal_length, desired_focus=200e-3, T_c=T_c, n_design=n_design, diameter=diameter)
+phi_max = 0.06
+desired_focus = 200e-3
+defocus = choose_source_position_for_desired_focus_analytic(back_focal_length=back_focal_length, desired_focus=desired_focus, T_c=T_c, n_design=n_design, diameter=diameter)
 # %%
 results_dict = analyze_potential(back_focal_length=back_focal_length, defocus=defocus, T_c=T_c,
                                                                    n_design=n_design, diameter=diameter,
