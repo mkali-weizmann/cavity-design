@@ -18,7 +18,7 @@ from numpy.polynomial import Polynomial
 
 pd.set_option("display.max_rows", 500)
 pd.options.display.float_format = "{:.3e}".format
-# np.seterr(all="raise")
+# np.seterr(all="raise") #TODO: some functions need it on and some need it off.
 
 
 def params_to_perturbable_params_names(
@@ -887,41 +887,6 @@ class RefractiveSurface(PhysicalSurface):
         return refracted_direction_vector
 
 
-# def generalized_snells_law_oop(ray: Ray,
-#                                intersection_point: Union[Callable[[Ray], np.ndarray], np.ndarray],
-#                                n_forwards: Union[Callable[[np.ndarray], np.ndarray], np.ndarray],
-#                                n_1: float = 1,
-#                                n_2: float = 1,
-#                                plot_ax: Optional[plt.Axes] = None,) -> np.ndarray:
-#
-#     if Callable(n_forwards):
-#         if Callable(intersection_point):
-#             intersection_point = intersection_point(ray)
-#         n_forwards = n_forwards(intersection_point)
-#     refracted_direction_vector, n_forwards, n_orthogonal = generalized_snells_law_geometry(
-#         k_vector=ray.k_vector,
-#         n_forwards=n_forwards,
-#         n_1=n_1,
-#         n_2=n_2,
-#     )
-#
-#     if plot_ax is not None:
-#         unit_vectors_plot_length = 1
-#         plot_ax.plot(intersection_point[0], intersection_point[1], 'black', label='Intersection')
-#         plot_ax.plot([intersection_point[0] - n_forwards[0] * unit_vectors_plot_length, intersection_point[0] + n_forwards[0] * unit_vectors_plot_length],
-#                      [intersection_point[1] - n_forwards[1] * unit_vectors_plot_length, intersection_point[1] + n_forwards[1] * unit_vectors_plot_length], 'g--', label='Normal Vector')
-#         plot_ax.plot([intersection_point[0] - n_orthogonal[0] * unit_vectors_plot_length, intersection_point[0] + n_orthogonal[0] * unit_vectors_plot_length],
-#                      [intersection_point[1] - n_orthogonal[1] * unit_vectors_plot_length, intersection_point[1] + n_orthogonal[1] * unit_vectors_plot_length], color='orange', linestyle='--',
-#                      label='Tangent Vector')
-#         plot_ax.plot([intersection_point[0], intersection_point[0] + refracted_direction_vector[0] * unit_vectors_plot_length],
-#                      [intersection_point[1], intersection_point[1] + refracted_direction_vector[1] * unit_vectors_plot_length], 'r-',
-#                      label='Outgoing direction')
-#         plot_ax.axis('equal')
-#         plot_ax.legend()
-#
-#     return refracted_direction_vector
-
-
 class AsphericSurface(Surface):
     def __init__(
         self,
@@ -1630,7 +1595,7 @@ class CurvedMirror(CurvedSurface, ReflectiveSurface):
             return new_mirror
 
 
-class CurvedRefractiveSurface(CurvedSurface, PhysicalSurface):
+class CurvedRefractiveSurface(CurvedSurface, RefractiveSurface):
     def __init__(
         self,
         radius: float,
