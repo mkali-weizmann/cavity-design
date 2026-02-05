@@ -19,7 +19,7 @@ def analyze_potential(R_1: Optional[float] = None, R_2: Optional[float] = None, 
     else:
         phi = np.linspace(0, phi_max, n_rays)
     if R_1 is not None and R_2 is not None:
-        back_focal_length = back_focal_length_of_lens(R_1=R_1, R_2=R_2, n=n_design, T_c=T_c)
+        back_focal_length = back_focal_length_of_lens(R_1=R_1, R_2=-R_2, n=n_design, T_c=T_c)
         surface_0, surface_1 = CurvedRefractiveSurface(radius=R_1, outwards_normal=-optical_axis, center =back_focal_length * optical_axis, n_1=1, n_2=n_actual, curvature_sign=CurvatureSigns.convex, name='first surface', thickness=T_c / 2, diameter=diameter), \
                                         CurvedRefractiveSurface(radius=R_2, outwards_normal=optical_axis, center=(back_focal_length + T_c) * optical_axis, n_1=n_actual, n_2=1, curvature_sign=CurvatureSigns.concave, name='second surface', thickness=T_c / 2, diameter=diameter)
     elif back_focal_length is not None:
@@ -56,7 +56,7 @@ def analyze_potential(R_1: Optional[float] = None, R_2: Optional[float] = None, 
     print(f"surface_1 center/optical axis output lens ray position: (should be the same for non-tilted case):\n{np.stack((surface_1.center, wavefront_points_initial[0, :]), axis=0)}")
 
     R = image_of_a_point_with_thick_lens(distance_to_face_1=back_focal_length - defocus, R_1=surface_0.radius,
-                                         R_2=surface_1.radius, n=n_actual,
+                                         R_2=-surface_1.radius, n=n_actual,
                                          T_c=T_c)  # Assumes cylindrical symmetry.
     center_of_curvature = rays_2.parameterization(R, optical_path_length=False)[0, :]  # Along the optical axis.
     R_numerical, center_of_curvature_numerical = extract_matching_sphere(wavefront_points_initial[..., 0, :], wavefront_points_initial[..., 1, :], rays_0.k_vector[..., 0, :])
@@ -68,7 +68,7 @@ def analyze_potential(R_1: Optional[float] = None, R_2: Optional[float] = None, 
     residual_distances_initial = R - np.linalg.norm(wavefront_points_initial - center_of_curvature, axis=-1)
     polynomial_residuals_initial = Polynomial.fit(wavefront_points_initial[:, 1] ** 2, residual_distances_initial, 4).convert()
     print(f"Initial wavefront residual from fitted sphere. 2nd order term should be singificantly smaller than 1/(2*R) = {1/(2*R):.3e}, actual: {polynomial_residuals_initial.coef[1]:.3e}")
-    print(f" Fourth order term: {polynomial_residuals_initial.coef[2]:.3e}, should be significantly larger than y_max ** -2 * second order term = {wavefront_points_initial[-1, 1] ** -2 * polynomial_residuals_initial.coef[1]}")
+    print(f" Fourth order term: {polynomial_residuals_initial.coef[2]:.3e}, should be significantly larger than y_max ** -2 * second order term = {wavefront_points_initial[-1, 1] ** -2 * polynomial_residuals_initial.coef[1]:.26e}")
 
     # Extract wavefront features at a far away plane (2*ROC - u from the lens):
     wavefront_points_opposite = ray_sequence.parameterization(d_0 + 2 * R - unconcentricity, optical_path_length=True)
@@ -251,11 +251,11 @@ def choose_source_position_for_desired_focus_analytic(back_focal_length,
         R_2 = 1 / (2*coeffs[1])
         R_1 = np.inf
     elif R_1 is not None and R_2 is not None:
-        back_focal_length = back_focal_length_of_lens(R_1=R_1, R_2=R_2, n=n_design, T_c=T_c)
+        back_focal_length = back_focal_length_of_lens(R_1=R_1, R_2=-R_2, n=n_design, T_c=T_c)
     else:
         raise ValueError("Either both R_1 and R_2 must be provided, or neither.")
     distance_to_flat_face = image_of_a_point_with_thick_lens(distance_to_face_1=desired_focus, R_1=R_2,
-                                                             R_2=R_1, n=n_design, T_c=T_c)
+                                                             R_2=-R_1, n=n_design, T_c=T_c)
     defocus = back_focal_length - distance_to_flat_face
     return defocus
 
@@ -263,35 +263,37 @@ def choose_source_position_for_desired_focus_analytic(back_focal_length,
 # For aspheric lens:
 aspheric = True
 if aspheric:
-    back_focal_length = back_focal_length_of_lens(R_1=24.22e-3, R_2=5.49e-3, n=1.8, T_c=2.91e-3)# 20e-3
+    back_focal_length = back_focal_length_of_lens(R_1=24.22e-3, R_2=-5.49e-3, n=1.8, T_c=2.91e-3)# 20e-3
     R_1 = None
     R_2 = None
+    R_2_signed = None
     T_c = 4.35e-3
     diameter = 7.75e-3
 else:
     R_1 = 24.22e-3
     R_2 = 5.49e-3
+    R_2_signed = -R_2
     T_c = 2.91e-3
     diameter = 7.75e-3
-    back_focal_length = back_focal_length_of_lens(R_1=R_1, R_2=R_2, n=1.8, T_c=T_c)
+    back_focal_length = back_focal_length_of_lens(R_1=R_1, R_2=-R_2, n=1.8, T_c=T_c)
 # rest of parameters
 n_actual = 1.8
 dn=0
 n_design = n_actual + dn
 n_rays = 200
-unconcentricity = 20e-6
-phi_max = 0.02
+unconcentricity = 5e-3
+phi_max = 0.3
 desired_focus = 200e-3
 
 defocus = choose_source_position_for_desired_focus_analytic(desired_focus=desired_focus, T_c=T_c, n_design=n_design, diameter=diameter,
                                                             back_focal_length=back_focal_length,
-                                                            R_1=R_1, R_2=R_2,
+                                                            R_1=R_1, R_2=R_2_signed,
 )
 
 
 # %%
 results_dict = analyze_potential(
-                                 back_focal_length=back_focal_length, R_1=R_1, R_2=R_2,
+                                 back_focal_length=back_focal_length, R_1=R_1, R_2=R_2_signed,
                                  defocus=defocus, T_c=T_c,
                                  n_design=n_design, diameter=diameter,
                                  n_actual=n_actual, n_rays=n_rays,
