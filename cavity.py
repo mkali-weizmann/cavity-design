@@ -5056,7 +5056,7 @@ def generate_mirror_lens_mirror_cavity_textual_summary(
     R_short_side = cavity.surfaces_ordered[lens_short_arm_surface_index].radius
     R_long_side = cavity.surfaces_ordered[lens_long_arm_surface_index].radius
     # try: # I should add a non-existent mode and initialize it with np.nan when there is no mode instead of this solution.
-    valid_mode = cavity.arms[1].mode_parameters_on_surfaces[lens_long_arm_surface_in_arm_index] is not None
+    valid_mode = not np.isnan(cavity.arms[1].mode_parameters_on_surfaces[lens_long_arm_surface_in_arm_index])
     if valid_mode:
         spot_size_lens_long_side = (
             cavity.arms[1].mode_parameters_on_surfaces[lens_long_arm_surface_in_arm_index].spot_size[0]
