@@ -1939,7 +1939,7 @@ class Arm:
                 surface_0.n_2 == surface_1.n_1
             ), "The refractive index according to first element is not the same as the refractive index according to the second element"
 
-    def propagate(self, ray: Ray, use_paraxial_ray_tracing: bool = False):
+    def propagate_ray(self, ray: Ray, use_paraxial_ray_tracing: bool = False):
         ray.n = self.n
 
         if isinstance(self.surface_1, PhysicalSurface):
@@ -2234,7 +2234,7 @@ def simple_mode_propagator(
     for arm in arms:
         arm.central_line = central_line
         arm.mode_principle_axes = complete_orthonormal_basis(central_line.k_vector)
-        central_line = arm.propagate(central_line)
+        central_line = arm.propagate_ray(central_line)
 
     local_mode_parameters_current = local_mode_parameters_initial
     for arm in arms:
@@ -2542,7 +2542,7 @@ class Cavity:
         n_arms = nvl(n_arms, len(self.arms))
         for i in range(n_arms):
             arm = self.arms[i % len(self.arms)]
-            ray = arm.propagate(ray, use_paraxial_ray_tracing=self.use_paraxial_ray_tracing)
+            ray = arm.propagate_ray(ray, use_paraxial_ray_tracing=self.use_paraxial_ray_tracing)
             ray_history.append(ray)
         return ray_history
 
