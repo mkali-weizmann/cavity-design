@@ -1,6 +1,7 @@
 from matplotlib import use
 use('TkAgg')  # or 'Qt5Agg', 'GTK3Agg', etc. depending on your system
 from cavity import *
+from matplotlib.lines import Line2D
 
 # %%
 def analyze_potential(R_1: Optional[float] = None, R_2: Optional[float] = None, back_focal_length: Optional[float] = None, defocus=0, T_c=3e-3, n_design=1.8, diameter=12.7e-3, unconcentricity: float = 0, n_actual = None,
@@ -83,11 +84,6 @@ def analyze_potential(R_1: Optional[float] = None, R_2: Optional[float] = None, 
 
     if not extract_R_analytically:
         R_opposite, center_of_curvature_opposite = R_opposite_numerical, center_of_curvature_opposite_numerical
-    # if not np.allclose(center_of_curvature_opposite, center_of_curvature):
-    #     print(f"Warning: center_of_curvature_opposite {center_of_curvature_opposite} is not equal to center_of_curvature {center_of_curvature}")
-    # if not np.allclose(R_opposite, R - unconcentricity):
-    #     print(f"Warning: R_opposite {R_opposite} is not equal to R - unconcentricity {R - unconcentricity}")
-
 
     residual_distances_opposite = R_opposite - np.linalg.norm(wavefront_points_opposite - center_of_curvature_opposite, axis=-1)
     polynomial_residuals_opposite = Polynomial.fit(wavefront_points_opposite[:, 1] ** 2, residual_distances_opposite, 4).convert()
@@ -113,6 +109,20 @@ def analyze_potential(R_1: Optional[float] = None, R_2: Optional[float] = None, 
     dummy_points_mirror = center_of_mirror + R * np.stack(
         (np.cos(phi_dummy), np.sin(phi_dummy), np.zeros_like(phi_dummy)),
         axis=-1)  # Mirror has the radius of the original wavefront sphere, but centered at the shifted center.
+    L_long_arm = 2 * R - unconcentricity
+    if unconcentricity > 0:
+        NA_paraxial = np.sqrt(2 * LAMBDA_0_LASER / np.pi) * (L_long_arm * unconcentricity) ** (-1/4)
+        spot_size_paraxial = NA_paraxial * (R - unconcentricity / 2)
+    else:
+        NA_paraxial, spot_size_paraxial = None, None
+
+    # find point of 0 derivative (other than 0) in residual_distances_mirror:
+    deriv_mirror = np.gradient(residual_distances_mirror, wavefront_points_opposite[:, 1])
+    first_zero_crossings = np.where(np.diff(np.sign(deriv_mirror)))[0]
+    if len(first_zero_crossings) > 0:
+        zero_derivative_points = wavefront_points_opposite[first_zero_crossings[0], 1]
+    else:
+        zero_derivative_points = None
 
 
     results_dict = {
@@ -138,18 +148,25 @@ def analyze_potential(R_1: Optional[float] = None, R_2: Optional[float] = None, 
         'residual_distances_mirror': residual_distances_mirror,
         'polynomial_residuals_opposite': polynomial_residuals_opposite,
         'polynomial_residuals_mirror': polynomial_residuals_mirror,
+        'NA_paraxial': NA_paraxial,
+        'spot_size_paraxial': spot_size_paraxial,
+        'zero_derivative_points': zero_derivative_points,
     }
     return results_dict
 
 def plot_results(results_dict, far_away_plane: bool = False):
     (rays_0, rays_1, rays_2, surface_0, surface_1, rays_history, ray_sequence, R,
-     center_of_curvature) = results_dict['rays_0'], results_dict['rays_1'], results_dict['rays_2'], results_dict['surface_0'], \
+     center_of_curvature, NA_paraxial, spot_size_paraxial, zero_derivative_points) = results_dict['rays_0'], results_dict['rays_1'], results_dict['rays_2'], results_dict['surface_0'], \
             results_dict['surface_1'], results_dict['rays_history'], results_dict['ray_sequence'], \
-            results_dict['R'], results_dict['center_of_curvature']
+            results_dict['R'], results_dict['center_of_curvature'], results_dict['NA_paraxial'], results_dict['spot_size_paraxial'], results_dict['zero_derivative_points']
     if far_away_plane:
         wavefront_points, residual_distances, dummy_points, polynomial, dummy_points_mirror, polynomial_residuals_mirror, residual_distances_mirror = results_dict['wavefront_points_opposite'], results_dict['residual_distances_opposite'], results_dict['dummy_points_curvature_opposite'], results_dict['polynomial_residuals_opposite'], results_dict['dummy_points_mirror'], results_dict['polynomial_residuals_mirror'], results_dict['residual_distances_mirror']
     else:
         wavefront_points, residual_distances, dummy_points, polynomial, dummy_points_mirror, polynomial_residuals_mirror, residual_distances_mirror = results_dict['wavefront_points_initial'], results_dict['residual_distances_initial'], results_dict['dummy_points_curvature_initial'], results_dict['polynomial_residuals_initial'], None, None, None
+    # Truncate polynomial_residuals_mirror to first 3 orders only:
+    # if polynomial_residuals_mirror is not None:
+    #     coeffs_mirror_truncated = polynomial_residuals_mirror.coef[:3]
+    #     polynomial_residuals_mirror = Polynomial(coeffs_mirror_truncated, domain=polynomial_residuals_mirror.domain, window=polynomial_residuals_mirror.window)
     # plot points:
     fig, ax = plt.subplots(2, 2, figsize=(20, 16), constrained_layout=True)
 
@@ -235,8 +252,19 @@ def plot_results(results_dict, far_away_plane: bool = False):
 
     ax[1, 1].set_title(title)
     ax[1, 1].plot(x_fit * 1e3, polynomial(x_fit**2) * 1e6, color='red', linestyle='dashed', label='Matching sphere residuals Polynomial fit', linewidth=0.5)
+    # Plot intensity profile on a new y axis for ax[1, 1] if NA_paraxial is not None: using the formula: e^{-y^{2} / (spot_size_paraxial / 2)^{2})}
+    if NA_paraxial is not None and spot_size_paraxial is not None:
+        ax2 = ax[1, 1].twinx()
+        intensity_profile = np.exp(-x_fit**2 / (spot_size_paraxial / 2)**2)
+        ax2.plot(x_fit * 1e3, intensity_profile, color='orange', linestyle='dashed', label='Paraxial Gaussian intensity profile', linewidth=1)
+        legend_line = Line2D([], [], color='orange', linestyle='dashed', linewidth=1, label='Paraxial Gaussian intensity profile')
+        handles, labels = ax[1, 1].get_legend_handles_labels()
+        handles.append(legend_line)
+        ax2.set_ylabel('Relative intensity (a.u.)')
+        ax2.grid(False)
 
-    ax[1, 1].legend()
+    ax[1, 1].axvline(zero_derivative_points * 1e3, label='2nd vs 4th order max', color='purple', linestyle='dotted')
+    ax[1, 1].legend(handles=handles)
     return fig, ax
 
 
@@ -306,4 +334,45 @@ ax[0, 1].set_xlim((center[0]-0.002, center[0]+0.002))
 plt.suptitle(f"aspheric={aspheric} n_design: {n_design:.3f}, n_actual: {n_actual:.3f}, Lens focal length: {back_focal_length * 1e3:.1f} mm, Defocus: z_lens -> z_lens + {defocus * 1e3:.1f} mm, T_c: {T_c * 1e3:.1f} mm, Diameter: {diameter * 1e3:.2f} mm")
 # Save image with suptitle in name:
 plt.savefig(f"outputs/figures/analyze_potential_n_design_aspheric={aspheric}_{n_design:.3f}_n_actual_{n_actual:.3f}_focal_length_{back_focal_length * 1e3:.1f}mm_defocus_{defocus * 1e3:.1f}mm_Tc_{T_c * 1e3:.1f}mm_diameter_{diameter * 1e3:.2f}mm.svg", dpi=300)
+plt.show()
+print(f"Paraxial spot size for unconcentricity of {unconcentricity*1e3:.1f} µm: {results_dict['spot_size_paraxial']*1e6:.2f} µm")
+print(f"Boundary of 2nd vs 4th order dominance for unconcentricity of {unconcentricity*1e3:.1f} µm: {results_dict['zero_derivative_points']*1e3:.2f} mm")
+# %%
+unconcentricities = np.linspace(0.1e-3, 10e-3, 30)
+paraxial_spot_sizes = np.zeros_like(unconcentricities)
+spot_size_boundaries = np.zeros_like(unconcentricities)
+paraxial_NAs = np.zeros_like(unconcentricities)
+for i, u in enumerate(unconcentricities):
+    results_dict = analyze_potential(
+        back_focal_length=back_focal_length, R_1=R_1, R_2=R_2_signed,
+        defocus=defocus, T_c=T_c,
+        n_design=n_design, diameter=diameter,
+        n_actual=n_actual, n_rays=n_rays,
+        unconcentricity=u, extract_R_analytically=True, phi_max=phi_max)
+    paraxial_spot_sizes[i] = results_dict['spot_size_paraxial']
+    paraxial_NAs[i] = results_dict['NA_paraxial']
+    try:
+        spot_size_boundaries[i] = np.abs(results_dict['zero_derivative_points'])
+    except TypeError:
+        spot_size_boundaries[i] = np.nan  # If zero_derivative_points is None
+
+fig, ax = plt.subplots(figsize=(10, 6))
+ax.plot(unconcentricities * 1e3, paraxial_spot_sizes * 1e6, label='Paraxial spot size', color='blue')
+ax.plot(unconcentricities * 1e3, spot_size_boundaries * 1e6, label='Boundary of 2nd vs 4th order dominance', color='red')
+ax.set_xlabel('Unconcentricity (mm)')
+ax.set_ylabel('Spot size / boundary (µm)')
+ax.set_title('Effect of Unconcentricity on Paraxial Spot Size and Residual Dominance Boundary')
+ax.grid()
+
+# twin y-axis for paraxial NAs
+ax2 = ax.twinx()
+ax2.plot(unconcentricities * 1e3, paraxial_NAs, label='Paraxial NA', color='orange', linestyle='--')
+ax2.set_ylabel('Paraxial NA (unitless)')
+
+# combined legend
+handles1, labels1 = ax.get_legend_handles_labels()
+handles2, labels2 = ax2.get_legend_handles_labels()
+ax.legend(handles1 + handles2, labels1 + labels2, loc='best')
+
+# plt.savefig(f"outputs/figures/unconcentricity_vs_spot_size_and_boundary_aspheric={aspheric}_n_design_{n_design:.3f}_n_actual_{n_actual:.3f}_focal_length_{back_focal_length * 1e3:.1f}mm_defocus_{defocus * 1e3:.1f}mm_Tc_{T_c * 1e3:.1f}mm_diameter_{diameter * 1e3:.2f}mm.svg", dpi=300)
 plt.show()
