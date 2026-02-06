@@ -2735,7 +2735,7 @@ class Cavity:
                     f_reduced,
                     x0=theta_default,
                     x1=theta_default + 1e-10,
-                    xtol=1e-12,
+                    xtol=1e-9,
                 )
                 solution_angles = np.array([solution.root, phi_default])
                 central_line_successfully_traced = solution.converged
@@ -2751,7 +2751,7 @@ class Cavity:
                     f_reduced,
                     x0=phi_default,
                     x1=phi_default + 1e-9,
-                    xtol=1e-12,
+                    xtol=1e-9,
                 )  # x0=np.array([self.default_initial_angles[1]])
                 # print(f"phi_solution = {solution.root}, y distance = {f_reduced(solution.root)}")
                 solution_angles = np.array([theta_default, solution.root])
@@ -4121,8 +4121,8 @@ def plot_2_cavity_perturbation_overlap(
     A_1, A_2, b_1, b_2, c_1, c_2, P1, correct_mode = evaluate_cavities_modes_on_surface(
         cavity, second_cavity, arm_index=arm_index
     )
-    overlap = gaussians_overlap_integral(A_1, A_2, b_1, b_2, c_1, c_2)
     if correct_mode:
+        overlap = gaussians_overlap_integral(A_1, A_2, b_1, b_2, c_1, c_2)
         plot_2_gaussians_colors(
             A_1,
             A_2,
@@ -5056,7 +5056,7 @@ def generate_mirror_lens_mirror_cavity_textual_summary(
     R_short_side = cavity.surfaces_ordered[lens_short_arm_surface_index].radius
     R_long_side = cavity.surfaces_ordered[lens_long_arm_surface_index].radius
     # try: # I should add a non-existent mode and initialize it with np.nan when there is no mode instead of this solution.
-    valid_mode = not np.isnan(cavity.arms[1].mode_parameters_on_surfaces[lens_long_arm_surface_in_arm_index])
+    valid_mode = cavity.resonating_mode_successfully_traced
     if valid_mode:
         spot_size_lens_long_side = (
             cavity.arms[1].mode_parameters_on_surfaces[lens_long_arm_surface_in_arm_index].spot_size[0]

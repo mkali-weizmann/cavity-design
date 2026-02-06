@@ -697,7 +697,6 @@ def signif(x, p):
 
 def gaussian_integral_2d_log(A: np.ndarray, b: np.ndarray, c):
     # The integral over exp( x.T A_2 x + b.T x + c):
-    eigen_values = np.linalg.eigvals(A)
     A_inv = np.linalg.inv(A)
     dim = A.shape[0]
     try:
