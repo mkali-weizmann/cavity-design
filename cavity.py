@@ -1405,12 +1405,10 @@ class CurvedSurface(Surface):
         Delta = ray.origin - self.origin  # m_rays | 3
         Delta_squared = np.sum(Delta**2, axis=-1)  # m_rays
         Delta_projection_on_k = np.sum(Delta * ray.k_vector, axis=-1)  # m_rays
-        try:
+        with np.errstate(invalid="ignore"):
             length = -Delta_projection_on_k + self.curvature_sign * np.sqrt(
-                Delta_projection_on_k**2 - Delta_squared + self.radius**2
-            )
-        except FloatingPointError:
-            return np.array([np.nan, np.nan, np.nan])
+            Delta_projection_on_k**2 - Delta_squared + self.radius**2
+        )
         intersection_point = ray.parameterization(length)
         return intersection_point
 
@@ -2193,7 +2191,7 @@ def simple_mode_propagator(
     ray_initial: Ray = None,
     mode_parameters_initial: Optional[ModeParameters] = None,
     initial_mode_on_first_surface: bool = False,
-):  # Calculate it manullay in refactored version
+):  # Calculate it manually in refactored version
     assert (surfaces is not None or arms is not None) and not (
         surfaces is not None and arms is not None
     ), "Either surfaces or arms must be provided, but not both."
@@ -2242,79 +2240,47 @@ def simple_mode_propagator(
         local_mode_parameters_current = arm.propagate_local_mode_parameters()
     return arms
 
-    # if local_mode_parameters_initial is None:
-    #     ray_initial = Ray(origin=mode_parameters_initial.center[0, :], k_vector=mode_parameters_initial.k_vector)
-    #     first_intersection = arms[0].surface_0.find_intersection_with_ray(ray_initial)
-    #     first_intersection_parameterization = (first_intersection - ray_initial.origin) @ ray_initial.k_vector
-    #     delta_r_initial = arms[0].surface_0.center - mode_parameters_initial.center[0, :]
-    #     delta_r_initial_along_k = mode_parameters_initial.k_vector @ delta_r_initial
-    #     local_mode_parameters_initial = mode_parameters_initial.local_mode_parameters(delta_r_initial_along_k)
-    # if first_intersection_parameterization > 0:
-    #     first_surface_dummy = FlatSurface(outwards_normal=-ray_initial.k_vector, center=mode_)
-    #     central_line_after_one_propagation = arms[0].surface_0.propagate(ray_initial)
-    #     arms[0].central_line = ray_initial
-    # else:
-    # central_line_initial = Ray(
-    #     origin=surface_0.find_intersection_with_ray(Ray(mode_parameters_initial.center[0
-    #
-    # local_mode_parameters_current = local_mode_parameters_initial
-    # for arm in arms:
-    #     arm.mode_parameters_on_surface_0 = local_mode_parameters_current
-    #     local_mode_parameters_current = arm.propagate_local_mode_parameters()
-    #
-    # return arms
 
-
-class Cavity:
+##############
+class OpticalSystem:
     def __init__(
         self,
         physical_surfaces: List[PhysicalSurface],
-        standing_wave: bool = False,
         lambda_0_laser: Optional[float] = None,
         params: Optional[List[OpticalElementParams]] = None,
         names: Optional[List[str]] = None,
-        set_central_line: bool = True,
-        set_mode_parameters: bool = True,
-        set_initial_surface: bool = False,
-        t_is_trivial: bool = False,
-        p_is_trivial: bool = False,
         power: Optional[float] = None,
-        initial_local_mode_parameters: Optional[LocalModeParameters] = None,
-        initial_mode_parameters: Optional[ModeParameters] = None,
-        use_brute_force_for_central_line: bool = False,  # remove it once we know it works
+        t_is_trivial: bool = True,
+        p_is_trivial: bool = True,
+        given_initial_central_line: Optional[Ray] = None,
+        given_initial_local_mode_parameters: Optional[LocalModeParameters] = None,
         debug_printing_level: int = 0,  # 0 for no prints, 1 for main prints, 2 for all prints
         use_paraxial_ray_tracing: bool = True,
     ):
-        self.standing_wave = standing_wave
         self.physical_surfaces = physical_surfaces
         self.arms: List[Arm] = [
             Arm(
-                self.physical_surfaces_ordered[i],
-                self.physical_surfaces_ordered[np.mod(i + 1, len(self.physical_surfaces_ordered))],
+                self.physical_surfaces[i],
+                self.physical_surfaces[i+1],
             )
-            for i in range(len(self.physical_surfaces_ordered))
+            for i in range(len(self.physical_surfaces) - 1)
         ]
         self.central_line_successfully_traced: Optional[bool] = None
         self.resonating_mode_successfully_traced: Optional[bool] = None
         self.lambda_0_laser: Optional[float] = lambda_0_laser
         self.params = params
         self.names_memory = names
-        self.t_is_trivial = t_is_trivial
-        self.p_is_trivial = p_is_trivial
         self.power = power
-        self.use_brute_force_for_central_line = use_brute_force_for_central_line
-        self.debug_printing_level = debug_printing_level
+        self.p_is_trivial = p_is_trivial
+        self.t_is_trivial = t_is_trivial
         self.use_paraxial_ray_tracing = use_paraxial_ray_tracing
 
-        if set_central_line:
-            self.set_central_line()
-        if set_mode_parameters:
-            self.set_mode_parameters(
-                mode_parameters_first_arm=initial_mode_parameters,
-                local_mode_parameters_first_surface=initial_local_mode_parameters,
+        if given_initial_central_line is not None:
+            self.set_given_central_line(given_initial_central_line=given_initial_central_line)
+        if given_initial_local_mode_parameters is not None:
+            self.set_given_mode_parameters(
+                given_initial_local_mode_parameters=given_initial_local_mode_parameters,
             )
-        if set_initial_surface:
-            self.set_initial_surface()
 
     @staticmethod
     def from_params(
@@ -2370,20 +2336,6 @@ class Cavity:
         return hashed_str
 
     @property
-    def physical_surfaces_ordered(self):
-        if self.standing_wave:
-            backwards_list = copy.deepcopy(self.physical_surfaces[-2:0:-1])
-            for surface in backwards_list:
-                if isinstance(surface, CurvedRefractiveSurface):
-                    surface.curvature_sign = -surface.curvature_sign
-                    n_1, n_2 = surface.n_1, surface.n_2
-                    surface.n_1 = n_2
-                    surface.n_2 = n_1
-            return self.physical_surfaces + backwards_list
-        else:
-            return self.physical_surfaces
-
-    @property
     def central_line(self) -> Optional[List[Ray]]:
         if self.arms[0].central_line is None:
             return None
@@ -2413,15 +2365,8 @@ class Cavity:
             return [arm.mode_parameters for arm in self.arms]
 
     @property
-    def surfaces_ordered(self):
-        return [arm.surface_0 for arm in self.arms]
-
-    @property
     def surfaces(self):
-        if self.standing_wave:
-            return [arm.surface_0 for arm in self.arms[: len(self.arms) // 2 + 1]]
-        else:
-            return [arm.surface_0 for arm in self.arms]
+        return [arm.surface_0 for arm in self.arms]
 
     @property
     def default_initial_k_vector(self) -> np.ndarray:
@@ -2454,13 +2399,6 @@ class Cavity:
         else:
             names_params = [p.name if p.name is not None else i for i, p in enumerate(self.to_params)]
             return names_params
-
-    @property
-    def perturbable_params_names(self):
-        perturbable_params_names_list = params_to_perturbable_params_names(
-            self.to_params, self.t_is_trivial and self.p_is_trivial
-        )
-        return perturbable_params_names_list
 
     @property
     def roundtrip_power_losses(self):
@@ -2545,6 +2483,344 @@ class Cavity:
             ray = arm.propagate_ray(ray, use_paraxial_ray_tracing=self.use_paraxial_ray_tracing)
             ray_history.append(ray)
         return ray_history
+
+    def set_given_central_line(self, initial_ray: Ray):
+        # This line is to save the central line in the ray history, so that it can be plotted later.
+        central_line = self.propagate_ray(initial_ray)
+        for i, arm in enumerate(self.arms):
+            arm.central_line = central_line[i]
+
+    def set_given_mode_parameters(
+        self,
+        local_mode_parameters_first_surface: Optional[LocalModeParameters] = None,
+    ):
+        # If there is a valid mode to start propagating, then propagate it through the cavity:
+        local_mode_parameters_current = local_mode_parameters_first_surface
+        for arm in self.arms:
+            arm.mode_parameters_on_surface_0 = local_mode_parameters_current
+            local_mode_parameters_current = arm.propagate_local_mode_parameters()
+            arm.mode_principle_axes = self.principle_axes(arm.central_line.k_vector)
+
+
+    def principle_axes(self, k_vector: np.ndarray):
+        # Returns two vectors that are orthogonal to k_vector and each other, one lives in the central line plane,
+        # the other is perpendicular to the central line plane.
+        # ATTENTION! THIS ASSUMES THAT ALL THE CENTRAL LINE arms ARE IN THE SAME PLANE.
+        # I find the biggest psuedo z because if the first two k_vector are parallel, the cross product is zero and the
+        # result of the cross product will be determined by arbitrary numerical errors.
+        possible_pseudo_zs = [
+            np.cross(self.central_line[0].k_vector, self.central_line[i].k_vector)
+            for i in range(1, len(self.central_line))
+        ]  # Points to the positive
+        biggest_psuedo_z = possible_pseudo_zs[np.argmax([np.linalg.norm(pseudo_z) for pseudo_z in possible_pseudo_zs])]
+        # biggest_psuedo_z = np.cross(self.central_line[0].k_vector, self.central_line[1].k_vector)
+        if np.linalg.norm(biggest_psuedo_z) < 1e-14:
+            pseudo_z = np.array([0, 0, 1])
+        else:
+            pseudo_z = normalize_vector(biggest_psuedo_z)
+        pseudo_x = np.cross(pseudo_z, k_vector)
+        principle_axes = np.stack([pseudo_z, pseudo_x], axis=-1).T  # [z_x, z_y, z_z], [x_x, x_y, x_z]
+        return principle_axes
+
+    def ray_of_initial_parameters(self, initial_parameters: np.ndarray):
+        # Assumes initial_parameters is of the shape [..., 4] where the last axis of size for represents theta, theta,
+        # (two numbers to represent the location and angle on the first surface) and theta, phi (two angles of the k_vector).
+        k_vector_i = unit_vector_of_angles(theta=initial_parameters[..., 1], phi=initial_parameters[..., 3])
+        origin_i = self.arms[0].surface_0.parameterization(t=initial_parameters[..., 0], p=initial_parameters[..., 2])
+        input_ray = Ray(origin=origin_i, k_vector=k_vector_i)
+        return input_ray  # input_ray.origin and input_ray.k_vector are of shape [..., 3] where the ... is the same as
+        # the first axis of initial_parameters.
+
+    def generate_spot_size_lines(self, dim=2, plane="xy"):
+        list_of_spot_size_lines = []
+        if not np.isnan(self.arms[0].mode_parameters.z_R[0]):
+            for arm in self.arms:
+                spot_size_lines_separated = generate_spot_size_lines(
+                    arm.mode_parameters,
+                    first_point=arm.central_line.origin,
+                    last_point=arm.central_line.origin + arm.central_line.k_vector * arm.central_line.length,
+                    principle_axes=arm.mode_principle_axes,
+                    dim=dim,
+                    plane=plane,
+                )
+                list_of_spot_size_lines.extend(spot_size_lines_separated)
+        return list_of_spot_size_lines
+
+
+    def plot(
+        self,
+        ax: Optional[plt.Axes] = None,
+        axis_span: Optional[Union[float, np.ndarray]] = None,
+        camera_center: Union[float, int] = -1,
+        dim: int = 2,
+        laser_color: str = "r",
+        plane: str = "xy",
+        plot_mode_lines: bool = True,
+        plot_central_line: bool = True,
+        additional_rays: Optional[List[Ray]] = None,
+        diameters: Optional[Union[float, np.ndarray]] = None,
+        fine_resolution=False,
+        **kwargs,
+    ) -> plt.Axes:
+        if axis_span is None:
+
+            axes_range = np.array(
+                [
+                    np.max([m.center[0] for m in self.physical_surfaces])
+                    - np.min([m.center[0] for m in self.physical_surfaces]),
+                    np.max([m.center[1] for m in self.physical_surfaces])
+                    - np.min([m.center[1] for m in self.physical_surfaces]),
+                    np.max([m.center[2] for m in self.physical_surfaces])
+                    - np.min([m.center[2] for m in self.physical_surfaces]),
+                ]
+            )
+
+            if self.t_is_trivial and self.p_is_trivial and dim == 2:
+                if (
+                    not np.isnan(self.arms[0].mode_parameters.z_R[0])
+                    and np.min(self.arms[0].mode_parameters_on_surface_0.z_R) > 0
+                ):
+                    maximal_spot_size = np.max([arm.mode_parameters_on_surface_0.spot_size[0] for arm in self.arms])
+                    axis_span = np.array([axes_range[0], 6 * maximal_spot_size])
+                else:
+                    axis_span = np.array([axes_range[0], 0.01])
+            else:
+                axes_range[axes_range == 0] = 5e-3
+                axis_span = axes_range
+        else:
+            axis_span = np.array([axis_span, axis_span, axis_span])
+
+        if ax is None:
+            fig = plt.figure(figsize=(10, 10))
+            if dim == 3:
+                ax = fig.add_subplot(111, projection="3d")
+            else:
+                ax = fig.add_subplot(111)
+
+        if camera_center == -1:
+            origin_camera = np.array(
+                [
+                    (
+                        np.max([m.center[0] for m in self.physical_surfaces])
+                        + np.min([m.center[0] for m in self.physical_surfaces])
+                    )
+                    / 2,
+                    (
+                        np.max([m.center[1] for m in self.physical_surfaces])
+                        + np.min([m.center[1] for m in self.physical_surfaces])
+                    )
+                    / 2,
+                    (
+                        np.max([m.center[2] for m in self.physical_surfaces])
+                        + np.min([m.center[2] for m in self.physical_surfaces])
+                    )
+                    / 2,
+                ]
+            )
+
+        else:
+            camera_center_int = int(np.floor(camera_center))
+            if np.mod(camera_center, 1) == 0.5:
+                origin_camera = (
+                    self.arms[camera_center_int].surface_0.center + self.arms[camera_center_int].surface_1.center
+                ) / 2
+            else:
+                origin_camera = self.surfaces[camera_center_int].center
+
+        x_index, y_index = plane_name_to_xy_indices(plane)
+        ax.set_xlim(
+            origin_camera[x_index] - axis_span[0] * 0.55,
+            origin_camera[x_index] + axis_span[0] * 0.55,
+        )
+        ax.set_ylim(
+            origin_camera[y_index] - axis_span[1] * 0.55,
+            origin_camera[y_index] + axis_span[1] * 0.55,
+        )
+
+        if self.central_line is not None and plot_central_line:
+            for ray in self.central_line:
+                ray.plot(
+                    ax=ax,
+                    dim=dim,
+                    color=laser_color,
+                    plane=plane,
+                    linestyle="--",
+                    alpha=0.8,
+                )
+
+        if additional_rays is not None:
+            for i, ray in enumerate(additional_rays):
+                ray.plot(ax=ax, dim=dim, plane=plane, linestyle="--", alpha=0.8, color="blue")
+
+        if diameters is not None:
+            if isinstance(diameters, float):
+                diameters = np.ones(len(self.surfaces)) * diameters
+        else:
+            diameters = [
+                (
+                    element.diameter
+                    if not np.isnan(element.diameter)
+                    else element.radius if isinstance(element, CurvedSurface) else 7.75e-3
+                )
+                for element in self.physical_surfaces
+            ]
+        laser_color = laser_color if self.resonating_mode_successfully_traced is True else "grey"
+
+        for i, surface in enumerate(self.surfaces):
+            surface.plot(ax=ax, dim=dim, plane=plane, diameter=diameters[i], fine_resolution=fine_resolution, **kwargs)
+            # If there is not information on the spot size of the element, plot it with default length:
+            if (
+                self.resonating_mode_successfully_traced
+                and not np.any(np.isnan(self.arms[0].mode_parameters.z_R))
+                and not np.any(self.arms[0].mode_parameters.z_R == 0)
+            ) and plot_mode_lines:
+                # If there is information on the spot size of the element, plot it with the spot size length*2.5:
+                spot_size = self.arms[i].mode_parameters_on_surface_0.spot_size
+                if plane == "xy":
+                    spot_size = spot_size[1]
+                else:
+                    spot_size = spot_size[0]
+                diameter = spot_size * 5
+                surface.plot(
+                    ax=ax,
+                    dim=dim,
+                    plane=plane,
+                    diameter=diameter,
+                    alpha=0.5,
+                    linestyle="--",
+                    color=laser_color,
+                    fine_resolution=fine_resolution,
+                )
+
+        if self.lambda_0_laser is not None and plot_mode_lines and self.arms[0].central_line is not None:
+            try:
+                spot_size_lines = self.generate_spot_size_lines(dim=dim, plane=plane)
+
+                for line in spot_size_lines:
+                    if dim == 2:
+                        ax.plot(
+                            line[0, :],
+                            line[1, :],
+                            color=laser_color,
+                            linestyle="--",
+                            alpha=0.8,
+                            linewidth=0.5,
+                        )
+                    else:
+                        ax.plot(
+                            line[0, :],
+                            line[1, :],
+                            line[2, :],
+                            color=laser_color,
+                            linestyle="--",
+                            alpha=0.8,
+                            linewidth=0.5,
+                        )
+            except (FloatingPointError, AttributeError):
+                # print("Mode was not successfully found, mode lines not plotted.")
+                pass
+        ax.grid()
+        if additional_rays is not None:
+            ax.legend()
+        return ax
+
+
+    @property
+    def total_acquired_gouy_phase(self):
+        if np.isnan(self.arms[0].mode_parameters.z_R[0]) or self.arms[0].mode_parameters_on_surface_0.z_R[0] == 0:
+            return None
+        gouy_phases = [arm.acquired_gouy_phase for arm in self.arms]
+        return sum(gouy_phases)
+
+##############
+
+
+class Cavity(OpticalSystem):
+    def __init__(
+        self,
+        physical_surfaces: List[PhysicalSurface],
+        standing_wave: bool = False,
+        lambda_0_laser: Optional[float] = None,
+        params: Optional[List[OpticalElementParams]] = None,
+        names: Optional[List[str]] = None,
+        set_central_line: bool = True,
+        set_mode_parameters: bool = True,
+        set_initial_surface: bool = False,
+        t_is_trivial: bool = False,
+        p_is_trivial: bool = False,
+        power: Optional[float] = None,
+        initial_local_mode_parameters: Optional[LocalModeParameters] = None,
+        initial_mode_parameters: Optional[ModeParameters] = None,
+        use_brute_force_for_central_line: bool = False,  # remove it once we know it works
+        debug_printing_level: int = 0,  # 0 for no prints, 1 for main prints, 2 for all prints
+        use_paraxial_ray_tracing: bool = False,
+    ):
+        super().__init__(physical_surfaces=physical_surfaces,
+                         lambda_0_laser=lambda_0_laser,
+                         params=params,
+                         names=names,
+                         t_is_trivial=t_is_trivial,
+                         p_is_trivial=p_is_trivial,
+                         power=power,
+                         use_paraxial_ray_tracing=use_paraxial_ray_tracing,
+                         )
+
+        self.standing_wave = standing_wave
+        self.arms: List[Arm] = [
+            Arm(
+                self.physical_surfaces_ordered[i],
+                self.physical_surfaces_ordered[np.mod(i + 1, len(self.physical_surfaces_ordered))],
+            )
+            for i in range(len(self.physical_surfaces_ordered))
+        ]
+        self.central_line_successfully_traced: Optional[bool] = None
+        self.resonating_mode_successfully_traced: Optional[bool] = None
+        self.use_brute_force_for_central_line = use_brute_force_for_central_line
+        self.debug_printing_level = debug_printing_level
+        self.use_paraxial_ray_tracing = use_paraxial_ray_tracing
+
+        if set_central_line:
+            self.set_central_line()
+        if set_mode_parameters:
+            self.set_mode_parameters(
+                mode_parameters_first_arm=initial_mode_parameters,
+                local_mode_parameters_first_surface=initial_local_mode_parameters,
+            )
+        if set_initial_surface:
+            self.set_initial_surface()
+
+    @property
+    def physical_surfaces_ordered(self):
+        if self.standing_wave:
+            backwards_list = copy.deepcopy(self.physical_surfaces[-2:0:-1])
+            for surface in backwards_list:
+                if isinstance(surface, CurvedRefractiveSurface):
+                    surface.curvature_sign = -surface.curvature_sign
+                    n_1, n_2 = surface.n_1, surface.n_2
+                    surface.n_1 = n_2
+                    surface.n_2 = n_1
+            return self.physical_surfaces + backwards_list
+        else:
+            return self.physical_surfaces
+
+    @property
+    def surfaces_ordered(self):
+        return [arm.surface_0 for arm in self.arms]
+
+    @property
+    def surfaces(self):
+        if self.standing_wave:
+            return [arm.surface_0 for arm in self.arms[: len(self.arms) // 2 + 1]]
+        else:
+            return [arm.surface_0 for arm in self.arms]
+
+    @property
+    def perturbable_params_names(self):
+        perturbable_params_names_list = params_to_perturbable_params_names(
+            self.to_params, self.t_is_trivial and self.p_is_trivial
+        )
+        return perturbable_params_names_list
+
 
     def trace_ray_parametric(self, starting_position_and_angles: np.ndarray) -> Tuple[np.ndarray, List[Ray]]:
         # Like trace ray, but works as a function of the starting position and angles as parameters on the starting
@@ -2874,48 +3150,14 @@ class Cavity:
         # the other is perpendicular to the central line plane.
         if self.central_line_successfully_traced is None:
             self.set_central_line()
-        # ATTENTION! THIS ASSUMES THAT ALL THE CENTRAL LINE arms ARE IN THE SAME PLANE.
-        # I find the biggest psuedo z because if the first two k_vector are parallel, the cross product is zero and the
-        # result of the cross product will be determined by arbitrary numerical errors.
-        possible_pseudo_zs = [
-            np.cross(self.central_line[0].k_vector, self.central_line[i].k_vector)
-            for i in range(1, len(self.central_line))
-        ]  # Points to the positive
-        biggest_psuedo_z = possible_pseudo_zs[np.argmax([np.linalg.norm(pseudo_z) for pseudo_z in possible_pseudo_zs])]
-        # biggest_psuedo_z = np.cross(self.central_line[0].k_vector, self.central_line[1].k_vector)
-        if np.linalg.norm(biggest_psuedo_z) < 1e-14:
-            pseudo_z = np.array([0, 0, 1])
-        else:
-            pseudo_z = normalize_vector(biggest_psuedo_z)
-        pseudo_x = np.cross(pseudo_z, k_vector)
-        principle_axes = np.stack([pseudo_z, pseudo_x], axis=-1).T  # [z_x, z_y, z_z], [x_x, x_y, x_z]
+        principle_axes = super().principle_axes(k_vector)
         return principle_axes
-
-    def ray_of_initial_parameters(self, initial_parameters: np.ndarray):
-        # Assumes initial_parameters is of the shape [..., 4] where the last axis of size for represents theta, theta,
-        # (two numbers to represent the location and angle on the first surface) and theta, phi (two angles of the k_vector).
-        k_vector_i = unit_vector_of_angles(theta=initial_parameters[..., 1], phi=initial_parameters[..., 3])
-        origin_i = self.arms[0].surface_0.parameterization(t=initial_parameters[..., 0], p=initial_parameters[..., 2])
-        input_ray = Ray(origin=origin_i, k_vector=k_vector_i)
-        return input_ray  # input_ray.origin and input_ray.k_vector are of shape [..., 3] where the ... is the same as
-        # the first axis of initial_parameters.
 
     def generate_spot_size_lines(self, dim=2, plane="xy"):
         if np.isnan(self.arms[0].mode_parameters.z_R[0]):
             self.set_mode_parameters()
-        list_of_spot_size_lines = []
-        if not np.isnan(self.arms[0].mode_parameters.z_R[0]):
-            for arm in self.arms:
-                spot_size_lines_separated = generate_spot_size_lines(
-                    arm.mode_parameters,
-                    first_point=arm.central_line.origin,
-                    last_point=arm.central_line.origin + arm.central_line.k_vector * arm.central_line.length,
-                    principle_axes=arm.mode_principle_axes,
-                    dim=dim,
-                    plane=plane,
-                )
-                list_of_spot_size_lines.extend(spot_size_lines_separated)
-        return list_of_spot_size_lines
+        spot_size_lines = super().generate_spot_size_lines(dim=dim, plane=plane)
+        return spot_size_lines
 
     def set_initial_surface(self) -> Optional[Surface]:
         # adds a virtual surface on the first arm that is perpendicular to the beam and centered between the first two
@@ -2979,182 +3221,6 @@ class Cavity:
         ABCD_matrix = optimize.approx_fprime(central_line_initial_parameters, trace_ray_parametric_parameters_only, dr)
         return ABCD_matrix
 
-    def plot(
-        self,
-        ax: Optional[plt.Axes] = None,
-        axis_span: Optional[Union[float, np.ndarray]] = None,
-        camera_center: Union[float, int] = -1,
-        dim: int = 2,
-        laser_color: str = "r",
-        plane: str = "xy",
-        plot_mode_lines: bool = True,
-        plot_central_line: bool = True,
-        additional_rays: Optional[List[Ray]] = None,
-        diameters: Optional[Union[float, np.ndarray]] = None,
-        fine_resolution=False,
-        **kwargs,
-    ) -> plt.Axes:
-        if axis_span is None:
-
-            axes_range = np.array(
-                [
-                    np.max([m.center[0] for m in self.physical_surfaces])
-                    - np.min([m.center[0] for m in self.physical_surfaces]),
-                    np.max([m.center[1] for m in self.physical_surfaces])
-                    - np.min([m.center[1] for m in self.physical_surfaces]),
-                    np.max([m.center[2] for m in self.physical_surfaces])
-                    - np.min([m.center[2] for m in self.physical_surfaces]),
-                ]
-            )
-
-            if self.t_is_trivial and self.p_is_trivial and dim == 2:
-                if (
-                    not np.isnan(self.arms[0].mode_parameters.z_R[0])
-                    and np.min(self.arms[0].mode_parameters_on_surface_0.z_R) > 0
-                ):
-                    maximal_spot_size = np.max([arm.mode_parameters_on_surface_0.spot_size[0] for arm in self.arms])
-                    axis_span = np.array([axes_range[0], 6 * maximal_spot_size])
-                else:
-                    axis_span = np.array([axes_range[0], 0.01])
-            else:
-                axes_range[axes_range == 0] = 5e-3
-                axis_span = axes_range
-        else:
-            axis_span = np.array([axis_span, axis_span, axis_span])
-
-        if ax is None:
-            fig = plt.figure(figsize=(10, 10))
-            if dim == 3:
-                ax = fig.add_subplot(111, projection="3d")
-            else:
-                ax = fig.add_subplot(111)
-
-        if camera_center == -1:
-            origin_camera = np.array(
-                [
-                    (
-                        np.max([m.center[0] for m in self.physical_surfaces])
-                        + np.min([m.center[0] for m in self.physical_surfaces])
-                    )
-                    / 2,
-                    (
-                        np.max([m.center[1] for m in self.physical_surfaces])
-                        + np.min([m.center[1] for m in self.physical_surfaces])
-                    )
-                    / 2,
-                    (
-                        np.max([m.center[2] for m in self.physical_surfaces])
-                        + np.min([m.center[2] for m in self.physical_surfaces])
-                    )
-                    / 2,
-                ]
-            )
-
-        else:
-            camera_center_int = int(np.floor(camera_center))
-            if np.mod(camera_center, 1) == 0.5:
-                origin_camera = (
-                    self.arms[camera_center_int].surface_0.center + self.arms[camera_center_int].surface_1.center
-                ) / 2
-            else:
-                origin_camera = self.surfaces_ordered[camera_center_int].center
-
-        x_index, y_index = plane_name_to_xy_indices(plane)
-        ax.set_xlim(
-            origin_camera[x_index] - axis_span[0] * 0.55,
-            origin_camera[x_index] + axis_span[0] * 0.55,
-        )
-        ax.set_ylim(
-            origin_camera[y_index] - axis_span[1] * 0.55,
-            origin_camera[y_index] + axis_span[1] * 0.55,
-        )
-
-        if self.central_line is not None and plot_central_line:
-            for ray in self.central_line:
-                ray.plot(
-                    ax=ax,
-                    dim=dim,
-                    color=laser_color,
-                    plane=plane,
-                    linestyle="--",
-                    alpha=0.8,
-                )
-
-        if additional_rays is not None:
-            for i, ray in enumerate(additional_rays):
-                ray.plot(ax=ax, dim=dim, plane=plane, linestyle="--", alpha=0.8, color="blue")
-
-        if diameters is not None:
-            if isinstance(diameters, float):
-                diameters = np.ones(len(self.surfaces_ordered)) * diameters
-        else:
-            diameters = [
-                (
-                    element.diameter
-                    if not np.isnan(element.diameter)
-                    else element.radius if isinstance(element, CurvedSurface) else 7.75e-3
-                )
-                for element in self.physical_surfaces
-            ]
-        laser_color = laser_color if self.resonating_mode_successfully_traced is True else "grey"
-
-        for i, surface in enumerate(self.surfaces):
-            surface.plot(ax=ax, dim=dim, plane=plane, diameter=diameters[i], fine_resolution=fine_resolution, **kwargs)
-            # If there is not information on the spot size of the element, plot it with default length:
-            if (
-                self.resonating_mode_successfully_traced
-                and not np.any(np.isnan(self.arms[0].mode_parameters.z_R))
-                and not np.any(self.arms[0].mode_parameters.z_R == 0)
-            ) and plot_mode_lines:
-                # If there is information on the spot size of the element, plot it with the spot size length*2.5:
-                spot_size = self.arms[i].mode_parameters_on_surface_0.spot_size
-                if plane == "xy":
-                    spot_size = spot_size[1]
-                else:
-                    spot_size = spot_size[0]
-                diameter = spot_size * 5
-                surface.plot(
-                    ax=ax,
-                    dim=dim,
-                    plane=plane,
-                    diameter=diameter,
-                    alpha=0.5,
-                    linestyle="--",
-                    color=laser_color,
-                    fine_resolution=fine_resolution,
-                )
-
-        if self.lambda_0_laser is not None and plot_mode_lines and self.arms[0].central_line is not None:
-            try:
-                spot_size_lines = self.generate_spot_size_lines(dim=dim, plane=plane)
-
-                for line in spot_size_lines:
-                    if dim == 2:
-                        ax.plot(
-                            line[0, :],
-                            line[1, :],
-                            color=laser_color,
-                            linestyle="--",
-                            alpha=0.8,
-                            linewidth=0.5,
-                        )
-                    else:
-                        ax.plot(
-                            line[0, :],
-                            line[1, :],
-                            line[2, :],
-                            color=laser_color,
-                            linestyle="--",
-                            alpha=0.8,
-                            linewidth=0.5,
-                        )
-            except (FloatingPointError, AttributeError):
-                # print("Mode was not successfully found, mode lines not plotted.")
-                pass
-        ax.grid()
-        if additional_rays is not None:
-            ax.legend()
-        return ax
 
     def calculated_shifted_cavity_overlap_integral(
         self, perturbation_pointer: Union[PerturbationPointer, List[PerturbationPointer]]
@@ -3582,13 +3648,6 @@ class Cavity:
             print(whole_df, end="\n\n")
 
         return whole_df
-
-    @property
-    def total_acquired_gouy_phase(self):
-        if np.isnan(self.arms[0].mode_parameters.z_R[0]) or self.arms[0].mode_parameters_on_surface_0.z_R[0] == 0:
-            return None
-        gouy_phases = [arm.acquired_gouy_phase for arm in self.arms]
-        return sum(gouy_phases)
 
     @property
     def delta_f_frequency_transversal_modes(self):
