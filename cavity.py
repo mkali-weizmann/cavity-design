@@ -323,7 +323,7 @@ class Ray:
         if not np.isnan(length):
             length = np.ones(self.origin.shape[:-1]) * length
         elif not np.any(np.isnan(self.length)):
-            length = self.length
+            length = np.where(np.isinf(self.length), 1, self.length)  # If length is inf, we take it to be 0 for plotting purposes
         else:
             length = np.ones_like(self.origin[..., 0])
         ray_origin_reshaped = self.origin.reshape(-1, 3)
