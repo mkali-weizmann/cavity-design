@@ -168,21 +168,62 @@ def generate_one_lens_optical_system(R_1: Optional[float] = None, R_2: Optional[
     else:
         raise ValueError("Either R_1 and R_2, or back_focal_length must be provided.")
 
-    surfaces = [surface_0, surface_1]
-    return surfaces, optical_axis
+    optical_system = OpticalSystem(physical_surfaces=[surface_0, surface_1],
+                                   lambda_0_laser=LAMBDA_0_LASER,
+                                   given_initial_central_line=True,
+                                   use_paraxial_ray_tracing=False)
+
+    return optical_system, optical_axis
+
+
+def complete_optical_system_to_cavity(results_dict: dict):
+    # Generate cavity for mode analysis:
+    optical_system = results_dict['optical_system']
+    mode_parameters_lens_right_outer_side = LocalModeParameters(z_minus_z_0=results_dict['R'] - unconcentricity / 2,
+                                                                lambda_0_laser=LAMBDA_0_LASER, n=1,
+                                                                z_R=z_R_of_NA(NA=results_dict['NA_paraxial'],
+                                                                              lambda_laser=LAMBDA_0_LASER))
+    optical_system_inverted = optical_system.invert()
+    mode_parameters_lens_right_inner_side = propagate_local_mode_parameter_through_ABCD(
+        local_mode_parameters=mode_parameters_lens_right_outer_side,
+        ABCD=optical_system_inverted.physical_surfaces[0].ABCD_matrix(cos_theta_incoming=1),
+        n_1=1, n_2=n_actual
+    )
+
+    optical_system_inverted.set_given_mode_parameters(mode_parameters_lens_right_inner_side)
+    output_mode_local = propagate_local_mode_parameter_through_ABCD(
+        optical_system_inverted.arms[-1].mode_parameters_on_surface_1,
+        optical_system_inverted.arms[-1].surface_1.ABCD_matrix(cos_theta_incoming=1), n_1=n_actual, n_2=1)
+    output_mode = output_mode_local.to_mode_parameters(
+        location_of_local_mode_parameter=optical_system_inverted.arms[-1].surface_1.center, k_vector=LEFT)
+
+    mirror_left = match_a_mirror_to_mode(mode=output_mode, R=5e-3, name='LaserOptik mirror',
+                                         material_properties=PHYSICAL_SIZES_DICT['material_properties_fused_silica'])
+
+    cavity = Cavity(physical_surfaces=[mirror_left, *optical_system.physical_surfaces, results_dict['mirror_object']],
+                    lambda_0_laser=LAMBDA_0_LASER, t_is_trivial=True, p_is_trivial=True, use_paraxial_ray_tracing=False,
+                    standing_wave=True)
+
+    #
+    print(
+        f"NA in the right arm - analytical calculation and numerical cavity solution\n{results_dict['NA_paraxial']:.3e}\n"
+        f"{cavity.arms[3].mode_parameters.NA[0]:.3e}")
+
+    print(f"center of curvature of output wave and mode center in cavity:\n"
+          f"{results_dict['center_of_curvature'] - unconcentricity / 2 * RIGHT}\n{cavity.mode_parameters[2].center[0, :]}")
+
+    print("Spot size in the right mirror - analytical calculation and numerical cavity solution\n"
+          f"{results_dict['spot_size_paraxial'] * 1e3:.3e} mm\n{w_of_q(cavity.arms[3].mode_parameters_on_surface_0.q[0], lambda_laser=LAMBDA_0_LASER) * 1e3:.3e} mm")
+    return cavity
 
 def analyze_potential(R_1: Optional[float] = None, R_2: Optional[float] = None, back_focal_length: Optional[float] = None, defocus=0, T_c=3e-3, n_design=1.8, diameter=12.7e-3, unconcentricity: float = 0, n_actual = None,
                       n_rays=100, dphi: Optional[float] =  None, phi_max: Optional[float] = None,
                       extract_R_analytically: bool = False
                       ):
-    surfaces, optical_axis = generate_one_lens_optical_system(R_1=R_1, R_2=R_2, back_focal_length=back_focal_length, defocus=defocus, T_c=T_c, n_design=n_design, diameter=diameter, n_actual=n_actual)
-    surface_0, surface_1 = surfaces
+    optical_system, optical_axis = generate_one_lens_optical_system(R_1=R_1, R_2=R_2, back_focal_length=back_focal_length, defocus=defocus, T_c=T_c, n_design=n_design, diameter=diameter, n_actual=n_actual)
+
     # Generate objects:
     rays_0 = initialize_rays(defocus=defocus, n_rays=n_rays, dphi=dphi, phi_max=phi_max)
-    optical_system = OpticalSystem(physical_surfaces=[surface_0, surface_1],
-                                   lambda_0_laser=LAMBDA_0_LASER,
-                                   given_initial_central_line=True,
-                                   use_paraxial_ray_tracing=False)
     ray_history = optical_system.propagate_ray(rays_0, propagate_with_first_surface_first=True)
     ray_sequence = RaySequence(ray_history)
 
@@ -197,41 +238,17 @@ def analyze_potential(R_1: Optional[float] = None, R_2: Optional[float] = None, 
         R_analytical = None
 
     results_dict = analyze_output_wavefront(ray_sequence, unconcentricity=unconcentricity, R_analytical=R_analytical)
-    results_dict['surfaces'] = surfaces
-
-    # Generate cavity for mode analysis:
-    mode_parameters_lens_right_outer_side = LocalModeParameters(z_minus_z_0=results_dict['R'] - unconcentricity / 2, lambda_0_laser=LAMBDA_0_LASER, n=1, z_R=z_R_of_NA(NA=results_dict['NA_paraxial'], lambda_laser=LAMBDA_0_LASER))
-    optical_system_inverted = optical_system.invert()
-    mode_parameters_lens_right_inner_side = propagate_local_mode_parameter_through_ABCD(
-            local_mode_parameters=mode_parameters_lens_right_outer_side,
-        ABCD=optical_system_inverted.physical_surfaces[0].ABCD_matrix(cos_theta_incoming=1),
-        n_1=1, n_2=n_actual
-        )
-
-    optical_system_inverted.set_given_mode_parameters(mode_parameters_lens_right_inner_side)
-    output_mode_local = propagate_local_mode_parameter_through_ABCD( optical_system_inverted.arms[-1].mode_parameters_on_surface_1, optical_system_inverted.arms[-1].surface_1.ABCD_matrix(cos_theta_incoming=1), n_1=n_actual, n_2=1)
-    output_mode = output_mode_local.to_mode_parameters(location_of_local_mode_parameter=optical_system_inverted.arms[-1].surface_1.center, k_vector=LEFT)
-
-    mirror_left = match_a_mirror_to_mode(mode=output_mode, R=5e-3, name='LaserOptik mirror', material_properties=PHYSICAL_SIZES_DICT['material_properties_fused_silica'])
-
-    cavity = Cavity(physical_surfaces=[mirror_left, surface_0, surface_1, results_dict['mirror_object']],
-                    lambda_0_laser=LAMBDA_0_LASER, t_is_trivial=True, p_is_trivial=True, use_paraxial_ray_tracing=False, standing_wave=True)
+    results_dict['optical_system'] = optical_system
+    cavity = complete_optical_system_to_cavity(results_dict)
     results_dict['cavity'] = cavity
 
-    #
-    print(f"NA in the right arm - analytical calculation and numerical cavity solution\n{results_dict['NA_paraxial']:.3e}\n"
-          f"{cavity.arms[3].mode_parameters.NA[0]:.3e}")
-
-    print(f"center of curvature of output wave and mode center in cavity:\n"
-          f"{results_dict['center_of_curvature'] - unconcentricity / 2 * RIGHT}\n{cavity.mode_parameters[2].center[0, :]}")
-
-    print("Spot size in the right mirror - analytical calculation and numerical cavity solution\n"
-          f"{results_dict['spot_size_paraxial']*1e3:.3e} mm\n{w_of_q(cavity.arms[3].mode_parameters_on_surface_0.q[0], lambda_laser=LAMBDA_0_LASER)*1e3:.3e} mm")
     return results_dict
 
+
+
 def plot_results(results_dict, far_away_plane: bool = False):
-    (surfaces, ray_sequence, R, center_of_curvature, NA_paraxial, spot_size_paraxial, zero_derivative_points) = \
-        (results_dict['surfaces'], results_dict['ray_sequence'], results_dict['R'], results_dict['center_of_curvature'],
+    (optical_system, ray_sequence, R, center_of_curvature, NA_paraxial, spot_size_paraxial, zero_derivative_points) = \
+        (results_dict['optical_system'], results_dict['ray_sequence'], results_dict['R'], results_dict['center_of_curvature'],
          results_dict['NA_paraxial'], results_dict['spot_size_paraxial'], results_dict['zero_derivative_points'])
     if far_away_plane:
         wavefront_points, residual_distances, dummy_points, polynomial, dummy_points_mirror, polynomial_residuals_mirror, residual_distances_mirror = results_dict['wavefront_points_opposite'], results_dict['residual_distances_opposite'], results_dict['dummy_points_curvature_opposite'], results_dict['polynomial_residuals_opposite'], results_dict['dummy_points_mirror'], results_dict['polynomial_residuals_mirror'], results_dict['residual_distances_mirror']
@@ -244,7 +261,7 @@ def plot_results(results_dict, far_away_plane: bool = False):
     # plot points:
     fig, ax = plt.subplots(2, 2, figsize=(20, 16), constrained_layout=True)
     rays_0, rays_1, rays_2 = ray_sequence
-    surface_0, surface_1 = surfaces
+    surface_0, surface_1 = optical_system.physical_surfaces[0], optical_system.physical_surfaces[-1]
     rays_0.plot(ax=ax[0, 0], label='Before lens', color='black', linewidth=0.5)
     rays_1.plot(ax=ax[0, 0], label='After flat surface', color='blue', linewidth=0.5)
     rays_2.plot(ax=ax[0, 0], label='After aspheric surface', color='red', linewidth=0.5)
@@ -362,9 +379,7 @@ def choose_source_position_for_desired_focus_analytic(back_focal_length,
     defocus = back_focal_length - distance_to_flat_face
     return defocus
 
-def complete_optical_system_to_cavity(results_dict: dict):
-    existing_surfaces = results_dict['surfaces']
-    final_mirror = results_dict['mirror_object']
+
 # %%
 # For aspheric lens:
 aspheric = True
@@ -405,7 +420,7 @@ results_dict = analyze_potential(
                                  n_design=n_design, diameter=diameter,
                                  n_actual=n_actual, n_rays=n_rays,
                                  unconcentricity=unconcentricity, extract_R_analytically=True, phi_max=phi_max)
-print(f"Defocus solution for 30 mm focus: {defocus*1e3:.3f} mm, focal point distance: {(results_dict['center_of_curvature'][0] - results_dict['surfaces'][1].center[0]) * 1e3:.2f} mm")
+print(f"Defocus solution for 30 mm focus: {defocus*1e3:.3f} mm, focal point distance: {(results_dict['center_of_curvature'][0] - results_dict['optical_system'].physical_surfaces[1].center[0]) * 1e3:.2f} mm")
 # plt.close('all')
 fig, ax = plot_results(results_dict, far_away_plane=True)
 center = results_dict['center_of_curvature']
