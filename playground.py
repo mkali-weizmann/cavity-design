@@ -18,7 +18,7 @@ def initialize_rays(defocus: float=0, n_rays=100, dphi: Optional[float] =  None,
     rays_0 = Ray(origin=ray_origin, k_vector=unit_vector_of_angles(theta=0, phi=phi))
     return rays_0
 
-def analyze_output_wavefront(ray_sequence: RaySequence, R_analytical: Optional[float] = None):
+def analyze_output_wavefront(ray_sequence: RaySequence, unconcentricity: float, R_analytical: Optional[float] = None):
     output_ray = ray_sequence[-1]
     # Extract all wavefront features at the output surface of the lens.
     d_0 = ray_sequence.cumulative_optical_path_length[1, 0]  # Assumes the first ray is the optical axis ray.
@@ -94,7 +94,8 @@ def analyze_output_wavefront(ray_sequence: RaySequence, R_analytical: Optional[f
         NA_paraxial = np.sqrt(2 * LAMBDA_0_LASER / np.pi) * (L_long_arm * unconcentricity) ** (-1 / 4)
         spot_size_paraxial = NA_paraxial * (R - unconcentricity / 2)
     else:
-        NA_paraxial, spot_size_paraxial = None, None
+        NA_paraxial, spot_size_paraxial = np.nan, np.nan
+    mirror_object = CurvedMirror(radius=R, center=center_of_mirror + R * RIGHT, outwards_normal=RIGHT, curvature_sign=CurvatureSigns.concave, name='big mirror')
 
     # find point of 0 derivative (other than 0) in residual_distances_mirror:
     deriv_mirror = np.gradient(residual_distances_mirror, wavefront_points_opposite[:, 1])
@@ -124,15 +125,16 @@ def analyze_output_wavefront(ray_sequence: RaySequence, R_analytical: Optional[f
         'NA_paraxial': NA_paraxial,
         'spot_size_paraxial': spot_size_paraxial,
         'zero_derivative_points': zero_derivative_points,
+        'mirror_object': mirror_object,
     }
 
     return results_dict
 
 
-def analyze_potential_general(optical_system: OpticalSystem, rays_0: Ray):
+def analyze_potential_general(optical_system: OpticalSystem, rays_0: Ray, unconcentricity):
     ray_history = optical_system.propagate_ray(rays_0)
     ray_sequence = RaySequence(ray_history)
-    results_dict = analyze_output_wavefront(ray_sequence)
+    results_dict = analyze_output_wavefront(ray_sequence, unconcentricity=unconcentricity)
     results_dict['surfaces'] = optical_system.surfaces
     return results_dict
 
@@ -158,39 +160,69 @@ def analyze_potential(R_1: Optional[float] = None, R_2: Optional[float] = None, 
                                                                                  polynomial_degree=8,
                                                                                  flat_faces_center=back_center,
                                                                                  name="aspheric_lens_automatic"))
+        surface_0.n_2 = n_actual
+        surface_1.n_1 = n_actual
     else:
         raise ValueError("Either R_1 and R_2, or back_focal_length must be provided.")
 
     # Generate objects:
     rays_0 = initialize_rays(defocus=defocus, n_rays=n_rays, dphi=dphi, phi_max=phi_max)
-    surface_0.n_2 = n_actual
-    surface_1.n_1 = n_actual
-    # Trace rays through the lens, and add refractive index perturbation:
-    rays_1 = surface_0.propagate_ray(rays_0)
-    rays_2 = surface_1.propagate_ray(rays_1)
-    rays_0.n = 1
-    rays_1.n = n_actual
-    rays_2.n = 1
-    rays_history = [rays_0, rays_1, rays_2]
-    ray_sequence = RaySequence(rays_history)
+    null_surface = FlatSurface(center=rays_0.origin[0, :], outwards_normal=-optical_axis, name='null surface')
+    optical_system = OpticalSystem(physical_surfaces=[null_surface, surface_0, surface_1],
+                                   lambda_0_laser=LAMBDA_0_LASER,
+                                   given_initial_central_line=True,
+                                   use_paraxial_ray_tracing=False)
+    ray_history = optical_system.propagate_ray(rays_0)
+    ray_sequence = RaySequence(ray_history)
+
     if extract_R_analytically:
         # R_analytical = image_of_a_point_with_thick_lens(distance_to_face_1=back_focal_length - defocus, R_1=surface_0.radius,
         #                                      R_2=-surface_1.radius, n=n_actual,
         #                                      T_c=T_c)  # Assumes cylindrical symmetry.
-        optical_system = OpticalSystem(physical_surfaces=[surface_0, surface_1],
-                                       lambda_0_laser=LAMBDA_0_LASER,
-                                       given_initial_central_line=True,
-                                       use_paraxial_ray_tracing=False)
 
-        R_analytical = optical_system.output_radius_of_curvature(initial_distance=surface_0.center[0] - defocus)
+        R_analytical = optical_system.output_radius_of_curvature(initial_distance=0)
     else:
         R_analytical = None
-    # DELETE ME START
 
-
-    results_dict = analyze_output_wavefront(ray_sequence, R_analytical=R_analytical)
-    # DELETE ME END
+    results_dict = analyze_output_wavefront(ray_sequence, unconcentricity=unconcentricity, R_analytical=R_analytical)
     results_dict['surfaces'] = [surface_0, surface_1]
+
+    mode_parameters_lens_right_outer_side = LocalModeParameters(z_minus_z_0=results_dict['R'] - unconcentricity / 2, lambda_0_laser=LAMBDA_0_LASER, n=1, z_R=z_R_of_NA(NA=results_dict['NA_paraxial'], lambda_laser=LAMBDA_0_LASER))
+    optical_system_inverted = optical_system.invert()
+    mode_parameters_lens_right_inner_side = propagate_local_mode_parameter_through_ABCD(
+            local_mode_parameters=mode_parameters_lens_right_outer_side,
+        ABCD=optical_system_inverted.physical_surfaces[0].ABCD_matrix(cos_theta_incoming=1),
+        n_1=1, n_2=n_actual
+        )
+
+    optical_system_inverted.set_given_mode_parameters(mode_parameters_lens_right_inner_side)
+    results_dict['original_side_mode_parameters'] = optical_system_inverted.arms[-1].mode_parameters
+
+    mirror_left = match_a_mirror_to_mode(mode=results_dict['original_side_mode_parameters'], R=5e-3, name='LaserOptik mirror', material_properties=PHYSICAL_SIZES_DICT['material_properties_fused_silica'])
+
+    # DELETE ME - START
+    mode_parameters_large_mirror = LocalModeParameters(z_minus_z_0=-(results_dict['R'] - unconcentricity / 2), lambda_0_laser=LAMBDA_0_LASER, n=1, z_R=z_R_of_NA(NA=results_dict['NA_paraxial'], lambda_laser=LAMBDA_0_LASER))
+    large_mirror, lens_right, lens_left, small_mirror = results_dict['mirror_object'], optical_system_inverted.physical_surfaces[0], optical_system_inverted.physical_surfaces[1], mirror_left
+    arm_right_dummy = Arm(surface_0=large_mirror, surface_1=lens_right, central_line=Ray(origin=large_mirror.center, k_vector=LEFT, length=np.linalg.norm(large_mirror.center - lens_right.center)))
+    arm_right_dummy.mode_parameters_on_surface_0 = mode_parameters_large_mirror
+    arm_lens_dummy = Arm(surface_0=lens_right, surface_1=lens_left, central_line=optical_system_inverted.central_line[0])
+    arm_lens_dummy.mode_parameters_on_surface_0 = mode_parameters_lens_right_inner_side
+    arm_left_dummy = Arm(surface_0=mirror_left, surface_1=mirror_left,
+                              central_line=Ray(origin=lens_left.center, k_vector=LEFT, length=np.linalg.norm(lens_left.center - mirror_left.center)))
+    mode_parameter_lens_left_outer = arm_lens_dummy.propagate_local_mode_parameters()
+    arm_left_dummy.mode_parameters_on_surface_0 = mode_parameter_lens_left_outer
+    mode_parameters_left_mirror_to_right = arm_left_dummy.propagate_local_mode_parameters()
+
+    mode_parameters_left_to_left = mode_parameter_lens_left_outer.to_mode_parameters(location_of_local_mode_parameter=lens_left.center, k_vector=LEFT)
+    mode_parameters_left_to_left_optical_system = results_dict['original_side_mode_parameters']
+    mode_parameters_left_to_right = mode_parameters_left_mirror_to_right.to_mode_parameters(location_of_local_mode_parameter=mirror_left.center, k_vector=RIGHT)
+    mode_parameters_lens_right_outer_side_from_mirror = propagate_local_mode_parameter_through_ABCD(local_mode_parameters=mode_parameters_large_mirror, ABCD=arm_right_dummy.ABCD_matrix_free_space, n_1=1, n_2=1)
+    mode_parameters_lens_right_inner_side_from_mirror = arm_right_dummy.propagate_local_mode_parameters()
+
+
+    # DELETE ME - END
+
+    cavity = Cavity(physical_surfaces=[mirror_left, surface_0, surface_1, results_dict['mirror_object']], lambda_0_laser=LAMBDA_0_LASER, t_is_trivial=True, p_is_trivial=True, use_paraxial_ray_tracing=False, standing_wave=True)
 
     return results_dict
 
@@ -327,16 +359,22 @@ def choose_source_position_for_desired_focus_analytic(back_focal_length,
     defocus = back_focal_length - distance_to_flat_face
     return defocus
 
+def complete_optical_system_to_cavity(results_dict: dict):
+    existing_surfaces = results_dict['surfaces']
+    final_mirror = results_dict['mirror_object']
 # %%
 # For aspheric lens:
-aspheric = False
+aspheric = True
 if aspheric:
-    back_focal_length = back_focal_length_of_lens(R_1=24.22e-3, R_2=-5.49e-3, n=1.8, T_c=2.91e-3)# 20e-3
+    # back_focal_length = back_focal_length_of_lens(R_1=24.22e-3, R_2=-5.49e-3, n=1.8, T_c=2.91e-3)# 20e-3
+    # diameter = 7.75e-3
+    back_focal_length = 20e-3
+    diameter = 12.7e-3
     R_1 = None
     R_2 = None
     R_2_signed = None
     T_c = 4.35e-3
-    diameter = 7.75e-3
+
 else:
     R_1 = 24.22e-3
     R_2 = 5.49e-3
@@ -349,8 +387,8 @@ n_actual = 1.8
 dn=0
 n_design = n_actual + dn
 n_rays = 30
-unconcentricity = 5e-3
-phi_max = 0.05
+unconcentricity = 5e-4
+phi_max = 0.23
 desired_focus = 200e-3
 
 defocus = choose_source_position_for_desired_focus_analytic(desired_focus=desired_focus, T_c=T_c, n_design=n_design, diameter=diameter,
@@ -358,8 +396,6 @@ defocus = choose_source_position_for_desired_focus_analytic(desired_focus=desire
                                                             R_1=R_1, R_2=R_2_signed,
 )
 
-
-# %%
 results_dict = analyze_potential(
                                  back_focal_length=back_focal_length, R_1=R_1, R_2=R_2_signed,
                                  defocus=defocus, T_c=T_c,
@@ -375,44 +411,47 @@ plt.suptitle(f"aspheric={aspheric} n_design: {n_design:.3f}, n_actual: {n_actual
 # Save image with suptitle in name:
 plt.savefig(f"outputs/figures/analyze_potential_n_design_aspheric={aspheric}_{n_design:.3f}_n_actual_{n_actual:.3f}_focal_length_{back_focal_length * 1e3:.1f}mm_defocus_{defocus * 1e3:.1f}mm_Tc_{T_c * 1e3:.1f}mm_diameter_{diameter * 1e3:.2f}mm.svg", dpi=300)
 plt.show()
-print(f"Paraxial spot size for unconcentricity of {unconcentricity*1e3:.1f} µm: {results_dict['spot_size_paraxial']*1e6:.2f} µm")
-print(f"Boundary of 2nd vs 4th order dominance for unconcentricity of {unconcentricity*1e3:.1f} µm: {results_dict['zero_derivative_points']*1e3:.2f} mm")
+print(f"Paraxial spot size for unconcentricity of {unconcentricity*1e6:.1f} μm: {results_dict['spot_size_paraxial']*1e3:.2f} mm")
+print(f"Boundary of 2nd vs 4th order dominance for unconcentricity of {unconcentricity*1e6:.1f} µm: {np.abs(results_dict['zero_derivative_points']*1e3):.2f} mm")
+# %% Generate a cavity with the same parameters:
+
+
 # %%
-# unconcentricities = np.linspace(0.1e-3, 10e-3, 30)
-# paraxial_spot_sizes = np.zeros_like(unconcentricities)
-# spot_size_boundaries = np.zeros_like(unconcentricities)
-# paraxial_NAs = np.zeros_like(unconcentricities)
-# for i, u in enumerate(unconcentricities):
-#     results_dict = analyze_potential(
-#         back_focal_length=back_focal_length, R_1=R_1, R_2=R_2_signed,
-#         defocus=defocus, T_c=T_c,
-#         n_design=n_design, diameter=diameter,
-#         n_actual=n_actual, n_rays=n_rays,
-#         unconcentricity=u, extract_R_analytically=True, phi_max=phi_max)
-#     paraxial_spot_sizes[i] = results_dict['spot_size_paraxial']
-#     paraxial_NAs[i] = results_dict['NA_paraxial']
-#     try:
-#         spot_size_boundaries[i] = np.abs(results_dict['zero_derivative_points'])
-#     except TypeError:
-#         spot_size_boundaries[i] = np.nan  # If zero_derivative_points is None
-#
-# fig, ax = plt.subplots(figsize=(10, 6))
-# ax.plot(unconcentricities * 1e3, paraxial_spot_sizes * 1e6, label='Paraxial spot size', color='blue')
-# ax.plot(unconcentricities * 1e3, spot_size_boundaries * 1e6, label='Boundary of 2nd vs 4th order dominance', color='red')
-# ax.set_xlabel('Unconcentricity (mm)')
-# ax.set_ylabel('Spot size / boundary (µm)')
-# ax.set_title('Effect of Unconcentricity on Paraxial Spot Size and Residual Dominance Boundary')
-# ax.grid()
-#
-# # twin y-axis for paraxial NAs
-# ax2 = ax.twinx()
-# ax2.plot(unconcentricities * 1e3, paraxial_NAs, label='Paraxial NA', color='orange', linestyle='--')
-# ax2.set_ylabel('Paraxial NA (unitless)')
-#
-# # combined legend
-# handles1, labels1 = ax.get_legend_handles_labels()
-# handles2, labels2 = ax2.get_legend_handles_labels()
-# ax.legend(handles1 + handles2, labels1 + labels2, loc='best')
-#
-# # plt.savefig(f"outputs/figures/unconcentricity_vs_spot_size_and_boundary_aspheric={aspheric}_n_design_{n_design:.3f}_n_actual_{n_actual:.3f}_focal_length_{back_focal_length * 1e3:.1f}mm_defocus_{defocus * 1e3:.1f}mm_Tc_{T_c * 1e3:.1f}mm_diameter_{diameter * 1e3:.2f}mm.svg", dpi=300)
-# plt.show()
+unconcentricities = np.linspace(0.1e-3, 10e-3, 30)
+paraxial_spot_sizes = np.zeros_like(unconcentricities)
+spot_size_boundaries = np.zeros_like(unconcentricities)
+paraxial_NAs = np.zeros_like(unconcentricities)
+for i, u in enumerate(unconcentricities):
+    results_dict = analyze_potential(
+        back_focal_length=back_focal_length, R_1=R_1, R_2=R_2_signed,
+        defocus=defocus, T_c=T_c,
+        n_design=n_design, diameter=diameter,
+        n_actual=n_actual, n_rays=n_rays,
+        unconcentricity=u, extract_R_analytically=True, phi_max=phi_max)
+    paraxial_spot_sizes[i] = results_dict['spot_size_paraxial']
+    paraxial_NAs[i] = results_dict['NA_paraxial']
+    try:
+        spot_size_boundaries[i] = np.abs(results_dict['zero_derivative_points'])
+    except TypeError:
+        spot_size_boundaries[i] = np.nan  # If zero_derivative_points is None
+
+fig, ax = plt.subplots(figsize=(10, 6))
+ax.plot(unconcentricities * 1e6, paraxial_spot_sizes * 1e3, label='Paraxial spot size', color='blue')
+ax.plot(unconcentricities * 1e6, spot_size_boundaries * 1e3, label='Boundary of 2nd vs 4th order dominance', color='red')
+ax.set_xlabel('Unconcentricity (µm)')
+ax.set_ylabel('Spot size / boundary (mm)')
+ax.set_title('Effect of Unconcentricity on Paraxial Spot Size and Residual Dominance Boundary')
+ax.grid()
+
+# twin y-axis for paraxial NAs
+ax2 = ax.twinx()
+ax2.plot(unconcentricities * 1e6, paraxial_NAs, label='Paraxial NA', color='orange', linestyle='--')
+ax2.set_ylabel('Paraxial NA (unitless)')
+
+# combined legend
+handles1, labels1 = ax.get_legend_handles_labels()
+handles2, labels2 = ax2.get_legend_handles_labels()
+ax.legend(handles1 + handles2, labels1 + labels2, loc='best')
+
+# plt.savefig(f"outputs/figures/unconcentricity_vs_spot_size_and_boundary_aspheric={aspheric}_n_design_{n_design:.3f}_n_actual_{n_actual:.3f}_focal_length_{back_focal_length * 1e3:.1f}mm_defocus_{defocus * 1e3:.1f}mm_Tc_{T_c * 1e3:.1f}mm_diameter_{diameter * 1e3:.2f}mm.svg", dpi=300)
+plt.show()

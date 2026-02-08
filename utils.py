@@ -99,6 +99,7 @@ class SurfacesTypes:
     flat_surface = "flat_surface"  # Not an optical element, just a helper for the central line.
     aspheric_surface = "aspheric_surface"
     thick_aspheric_lens = "thick_aspheric_lens"
+    flat_refractive_surface = "flat_refractive_surface"
 
     @staticmethod
     def from_integer_representation(integer_representation: int) -> str:
@@ -306,7 +307,7 @@ class OpticalElementParams:
             f"n_inside_or_after={pretty_print_number(self.n_inside_or_after)}, "
             f"n_outside_or_before={pretty_print_number(self.n_outside_or_before)}, "
             f"diameter={pretty_print_number(self.diameter)}, "
-            f"material_properties={self.material_properties})"
+            f"material_properties={self.material_properties}, "
             f"polynomial_coefficients={self.polynomial_coefficients})"
         )
 
@@ -660,18 +661,36 @@ def radius_of_f_and_n(f: float, n: float) -> float:
     return 2 * f * (n - 1)
 
 
-def w_0_of_z_R(z_R: np.ndarray, lambda_0_laser: float, n: float) -> np.ndarray:
+def w_0_of_z_R(z_R: Union[np.ndarray, float], lambda_0_laser: float, n: float) -> np.ndarray:
     # z_R_reduced is an array because of two transverse dimensions
     return np.sqrt(z_R * lambda_0_laser / (np.pi * n**2))
 
 
-def z_R_of_w_0(w_0: np.ndarray, lambda_laser: float) -> np.ndarray:
+def z_R_of_w_0(w_0: Union[np.ndarray, float], lambda_laser: float) -> np.ndarray:
     # lambda_laser is the wavelength of the laser in the medium = lambda_0 / n
     return np.pi * w_0**2 / lambda_laser
 
 
-def w_0_of_NA(NA: float, lambda_laser: float):
+def z_R_of_NA(NA: Union[np.ndarray, float], lambda_laser: float):
+    w_0 = w_0_of_NA(NA, lambda_laser)
+    z_R = z_R_of_w_0(w_0, lambda_laser)
+    return z_R
+
+
+def w_0_of_NA(NA: Union[np.ndarray, float], lambda_laser: float):
     return lambda_laser / (np.pi * NA)
+
+def R_of_q(q: Union[np.ndarray, float]) -> np.ndarray:
+    q_inverse = 1 / q
+    R_inverse = np.real(q_inverse)
+    R = np.where(R_inverse != 0, 1 / R_inverse, np.inf)
+    return R
+
+def w_of_q(q: Union[np.ndarray, float], lambda_laser: float) -> np.ndarray:
+    q_inverse = 1 / q
+    w_squared_inverse = -np.pi * np.imag(q_inverse) / lambda_laser
+    w = w_squared_inverse ** (-1 / 2)
+    return w
 
 
 def spot_size(z: np.ndarray, z_R: np.ndarray, lambda_0_laser: float, n: float) -> np.ndarray:  # AKA w(z)

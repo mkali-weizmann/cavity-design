@@ -666,6 +666,16 @@ class Surface:
             )
         elif p.surface_type == SurfacesTypes.thick_aspheric_lens:
             return generate_aspheric_lens_from_params(p)
+        elif p.surface_type == SurfacesTypes.flat_refractive_surface:
+            surface = FlatRefractiveSurface(
+                outwards_normal=outwards_normal,
+                center=center,
+                n_1=p.n_outside_or_before,
+                n_2=p.n_inside_or_after,
+                name=p.name,
+                thermal_properties=p.material_properties,
+                diameter=p.diameter,
+            )
         else:
             raise ValueError(f"Unknown surface type {p.surface_type}")
         return surface
@@ -699,11 +709,25 @@ class Surface:
         elif isinstance(self, FlatMirror):
             surface_type = SurfacesTypes.flat_mirror
             curvature_sign = 0
-        elif isinstance(self, FlatSurface):
-            surface_type = (SurfacesTypes.flat_surface,)
+        elif isinstance(self, FlatRefractiveSurface):
+            surface_type = SurfacesTypes.flat_refractive_surface
+            n_1 = self.n_1
+            n_2 = self.n_2
             curvature_sign = 0
+        elif isinstance(self, FlatSurface):
+            surface_type = SurfacesTypes.flat_surface
+            curvature_sign = 0
+        elif isinstance(self, AsphericRefractiveSurface):
+            surface_type = SurfacesTypes.aspheric_surface
+            n_1 = self.n_1
+            n_2 = self.n_2
+            curvature_sign = self.curvature_sign
         else:
             raise ValueError(f"Unknown surface type {type(self)}")
+        if isinstance(self, AsphericSurface):
+            polynomial_coefficients = self.polynomial.coef
+        else:
+            polynomial_coefficients = None
         if self.material_properties is None:
             self.material_properties = MaterialProperties()
 
@@ -723,6 +747,7 @@ class Surface:
             n_outside_or_before=n_1,
             diameter=self.diameter,
             material_properties=self.material_properties,
+            polynomial_coefficients=polynomial_coefficients
         )
         return params
 
@@ -762,7 +787,8 @@ class PhysicalSurface(Surface):
         intersection_point, forward_normal = self.enrich_intersection_geometries(ray, paraxial=paraxial)
         ray.length = np.linalg.norm(intersection_point - ray.origin, axis=-1)
         scattered_direction_vector = self.scatter_direction(ray, forward_normal, paraxial=paraxial)
-        return Ray(intersection_point, scattered_direction_vector)
+        n_output = getattr(self, 'n_2', ray.n)
+        return Ray(origin=intersection_point, k_vector=scattered_direction_vector, n=n_output)
 
     def scatter_direction(
         self, ray: Ray, forward_normal: Optional[np.ndarray] = None, paraxial: bool = False
@@ -1940,7 +1966,6 @@ class Arm:
 
     def propagate_ray(self, ray: Ray, use_paraxial_ray_tracing: bool = False):
         ray.n = self.n
-
         if isinstance(self.surface_1, PhysicalSurface):
             # ATTENTION - THIS SHOULD NOT BE HERE FOR NON-STANDING WAVES CAVITIES - BUT I AM DEALING ONLY WITH THOSE...
             if isinstance(self.surface_1, CurvedMirror):
@@ -1948,7 +1973,8 @@ class Arm:
             propagated_ray = self.surface_1.propagate_ray(ray, paraxial=use_paraxial_ray_tracing)
         else:
             new_position = self.surface_1.find_intersection_with_ray(ray, paraxial=use_paraxial_ray_tracing)
-            propagated_ray = Ray(new_position, ray.k_vector)
+            ray.length = np.linalg.norm(new_position - ray.origin, axis=-1)
+            propagated_ray = Ray(new_position, ray.k_vector, n=ray.n)
 
         return propagated_ray
 
@@ -2739,7 +2765,11 @@ class OpticalSystem:
 
     def output_radius_of_curvature(self, initial_distance: float) -> float:
         # Currently assume 1d problem for simplicty, if required it can be expanded
-        ABCD = self.ABCD_round_trip[:2, :2] @ self.physical_surfaces[0].ABCD_matrix(cos_theta_incoming=1)[:2, :2]
+        if isinstance(self.physical_surfaces[0], PhysicalSurface):  # Bad implementation. to correct it, I need to make sure that OpticalSystem can actually accept a surface that is not a PhysicalSurface, and allow for General surfaces in general. Also - better decompose the self.ABCD matrices to the propagation and reflection ABCD matrices.
+            first_ABCD = self.physical_surfaces[0].ABCD_matrix(cos_theta_incoming=1)[:2, :2]
+        else:
+            first_ABCD = np.eye(2)
+        ABCD = self.ABCD_round_trip[:2, :2] @ first_ABCD
         A, B, C, D = ABCD[0, 0], ABCD[0, 1], ABCD[1, 0], ABCD[1, 1]
         R_out = -(A * initial_distance + B) / (C * initial_distance + D)
         return R_out
@@ -2750,6 +2780,27 @@ class OpticalSystem:
         initial_distance = -(B + D * desired_R_out) / (A + C * desired_R_out)
         return initial_distance
 
+    def invert(self):
+        inverted_physical_surfaces = []
+        for surface in self.physical_surfaces[::-1]:
+            inverted_surface = copy.deepcopy(surface)
+            if isinstance(surface, RefractiveSurface):
+                n_1, n_2 = inverted_surface.n_1, inverted_surface.n_2
+                inverted_surface.n_1 = n_2
+                inverted_surface.n_2 = n_1
+            if isinstance(surface, (CurvedSurface, AsphericSurface)):
+                inverted_surface.curvature_sign *= -1
+            inverted_physical_surfaces.append(inverted_surface)
+
+        if self.central_line is not None:
+            origin_inverted = self.physical_surfaces[-1].find_intersection_with_ray(self.central_line[-1])
+            k_vector_inverted = -self.central_line[-1].k_vector
+            initial_ray_inverted = Ray(origin=origin_inverted, k_vector=k_vector_inverted)
+        else:
+            initial_ray_inverted = None
+
+        inverted_system = OpticalSystem(physical_surfaces=inverted_physical_surfaces, lambda_0_laser=self.lambda_0_laser, given_initial_central_line=initial_ray_inverted)
+        return inverted_system
 
 ##############
 
@@ -2813,11 +2864,19 @@ class Cavity(OpticalSystem):
         if self.standing_wave:
             backwards_list = copy.deepcopy(self.physical_surfaces[-2:0:-1])
             for surface in backwards_list:
-                if isinstance(surface, CurvedRefractiveSurface):
-                    surface.curvature_sign = -surface.curvature_sign
+                # if isinstance(surface, (CurvedRefractiveSurface, AsphericRefractiveSurface)):
+                #     surface.curvature_sign = -surface.curvature_sign
+                #     n_1, n_2 = surface.n_1, surface.n_2
+                #     surface.n_1 = n_2
+                #     surface.n_2 = n_1
+                if isinstance(surface, RefractiveSurface):
                     n_1, n_2 = surface.n_1, surface.n_2
                     surface.n_1 = n_2
                     surface.n_2 = n_1
+                if isinstance(surface, (CurvedSurface, AsphericSurface)):
+                    surface.curvature_sign *= -1
+
+
             return self.physical_surfaces + backwards_list
         else:
             return self.physical_surfaces
