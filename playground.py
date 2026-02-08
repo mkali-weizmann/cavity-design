@@ -176,7 +176,7 @@ def generate_one_lens_optical_system(R_1: Optional[float] = None, R_2: Optional[
     return optical_system, optical_axis
 
 
-def complete_optical_system_to_cavity(results_dict: dict):
+def complete_optical_system_to_cavity(results_dict: dict, unconcentricity: float):
     # Generate cavity for mode analysis:
     optical_system = results_dict['optical_system']
     mode_parameters_lens_right_outer_side = LocalModeParameters(z_minus_z_0=results_dict['R'] - unconcentricity / 2,
@@ -238,7 +238,7 @@ def analyze_potential(R_1: Optional[float] = None, R_2: Optional[float] = None, 
 
     results_dict = analyze_output_wavefront(ray_sequence, unconcentricity=unconcentricity, R_analytical=R_analytical)
     results_dict['optical_system'] = optical_system
-    cavity = complete_optical_system_to_cavity(results_dict)
+    cavity = complete_optical_system_to_cavity(results_dict, unconcentricity=unconcentricity)
     results_dict['cavity'] = cavity
 
     return results_dict
@@ -379,7 +379,7 @@ def choose_source_position_for_desired_focus_analytic(back_focal_length,
     return defocus
 
 
-# %%
+# %% SINGLE SET-UP ANALYSIS:
 # For aspheric lens:
 aspheric = True
 if aspheric:
@@ -404,10 +404,9 @@ n_actual = 1.8
 dn=0
 n_design = n_actual + dn
 n_rays = 30
-unconcentricity = 5e-4
+unconcentricity = 0.00044137931034482665
 phi_max = 0.23
 desired_focus = 200e-3
-
 defocus = choose_source_position_for_desired_focus_analytic(desired_focus=desired_focus, T_c=T_c, n_design=n_design, diameter=diameter,
                                                             back_focal_length=back_focal_length,
                                                             R_1=R_1, R_2=R_2_signed,
@@ -421,26 +420,27 @@ results_dict = analyze_potential(
                                  unconcentricity=unconcentricity, extract_R_analytically=True, phi_max=phi_max)
 print(f"Defocus solution for 30 mm focus: {defocus*1e3:.3f} mm, focal point distance: {(results_dict['center_of_curvature'][0] - results_dict['optical_system'].physical_surfaces[1].center[0]) * 1e3:.2f} mm")
 # plt.close('all')
-fig, ax = plot_results(results_dict, far_away_plane=True)
-center = results_dict['center_of_curvature']
-ax[0, 1].set_xlim((center[0]-0.002, center[0]+0.002))
-plt.suptitle(f"aspheric={aspheric} n_design: {n_design:.3f}, n_actual: {n_actual:.3f}, Lens focal length: {back_focal_length * 1e3:.1f} mm, Defocus: z_lens -> z_lens + {defocus * 1e3:.1f} mm, T_c: {T_c * 1e3:.1f} mm, Diameter: {diameter * 1e3:.2f} mm")
-# Save image with suptitle in name:
-plt.savefig(f"outputs/figures/analyze_potential_n_design_aspheric={aspheric}_{n_design:.3f}_n_actual_{n_actual:.3f}_focal_length_{back_focal_length * 1e3:.1f}mm_defocus_{defocus * 1e3:.1f}mm_Tc_{T_c * 1e3:.1f}mm_diameter_{diameter * 1e3:.2f}mm.svg", dpi=300)
-plt.show()
+# fig, ax = plot_results(results_dict, far_away_plane=True)
+# center = results_dict['center_of_curvature']
+# ax[0, 1].set_xlim((center[0]-0.002, center[0]+0.002))
+# plt.suptitle(f"aspheric={aspheric} n_design: {n_design:.3f}, n_actual: {n_actual:.3f}, Lens focal length: {back_focal_length * 1e3:.1f} mm, Defocus: z_lens -> z_lens + {defocus * 1e3:.1f} mm, T_c: {T_c * 1e3:.1f} mm, Diameter: {diameter * 1e3:.2f} mm")
+# # Save image with suptitle in name:
+# plt.savefig(f"outputs/figures/analyze_potential_n_design_aspheric={aspheric}_{n_design:.3f}_n_actual_{n_actual:.3f}_focal_length_{back_focal_length * 1e3:.1f}mm_defocus_{defocus * 1e3:.1f}mm_Tc_{T_c * 1e3:.1f}mm_diameter_{diameter * 1e3:.2f}mm.svg", dpi=300)
+# plt.show()
 print(f"Paraxial spot size for unconcentricity of {unconcentricity*1e6:.1f} μm: {results_dict['spot_size_paraxial']*1e3:.2f} mm")
 print(f"Boundary of 2nd vs 4th order dominance for unconcentricity of {unconcentricity*1e6:.1f} µm: {np.abs(results_dict['zero_derivative_points']*1e3):.2f} mm")
 # %% Generate a cavity with the same parameters:
-cavity = results_dict['cavity']
-cavity.plot()
-plt.show()
-# %%
-unconcentricities = np.linspace(0.1e-3, 10e-3, 30)
+# cavity = results_dict['cavity']
+# cavity.plot()
+# plt.show()
+# %% FOR-LOOP ANALYSIS:
+unconcentricities = np.linspace(10e-3, 0.1e-3, 30)
 paraxial_spot_sizes = np.zeros_like(unconcentricities)
 spot_size_boundaries = np.zeros_like(unconcentricities)
 paraxial_NAs = np.zeros_like(unconcentricities)
 left_NAs = np.zeros_like(unconcentricities)
 for i, u in enumerate(unconcentricities):
+    print(f"\n\n\nu={u:.10e} µm")
     results_dict = analyze_potential(
         back_focal_length=back_focal_length, R_1=R_1, R_2=R_2_signed,
         defocus=defocus, T_c=T_c,
@@ -450,6 +450,9 @@ for i, u in enumerate(unconcentricities):
     paraxial_spot_sizes[i] = results_dict['spot_size_paraxial']
     paraxial_NAs[i] = results_dict['NA_paraxial']
     left_NAs[i] = results_dict['cavity'].arms[0].mode_parameters.NA[0]
+    # paraxial_spot_sizes_cavity = results_dict['cavity'].arms[2].mode_parameters_on_surface_1.radius_of_curvature[0]  # results_dict['spot_size_paraxial']
+    # paraxial_NAs_cavity = results_dict['cavity'].arms[2].mode_parameters.NA[0]  # results_dict['NA_paraxial']
+    # left_NAs[i] = results_dict['cavity'].arms[0].mode_parameters.NA[0]
     try:
         spot_size_boundaries[i] = np.abs(results_dict['zero_derivative_points'])
     except TypeError:
@@ -465,8 +468,8 @@ ax.grid()
 
 # twin y-axis for paraxial NAs
 ax2 = ax.twinx()
-ax2.plot(unconcentricities * 1e6, paraxial_NAs, label='Paraxial NA', color='orange', linestyle='--')
-ax2.plot(unconcentricities * 1e6, left_NAs, label='NA from cavity mode', color='green', linestyle='--')
+ax2.plot(unconcentricities * 1e6, paraxial_NAs, label='Right NA', color='orange', linestyle='--')
+ax2.plot(unconcentricities * 1e6, left_NAs, label='Left NAE', color='green', linestyle='--')
 ax2.set_ylabel('Paraxial NA (unitless)')
 
 # combined legend

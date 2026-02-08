@@ -136,6 +136,14 @@ class LocalModeParameters:
             w_z = spot_size(z=self.z_minus_z_0, z_R=self.z_R, lambda_0_laser=self.lambda_0_laser, n=self.n)  # spot_size
         return w_z
 
+    @property
+    def radius_of_curvature(self):
+        if np.any(self.z_R == 0):
+            R = np.array([np.nan, np.nan])
+        else:
+            R = R_of_q(self.q)
+        return R
+
 
 @dataclass
 class ModeParameters:
