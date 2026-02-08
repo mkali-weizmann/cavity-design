@@ -92,7 +92,7 @@ def analyze_output_wavefront(ray_sequence: RaySequence, unconcentricity: float, 
     L_long_arm = 2 * R - unconcentricity
     if unconcentricity > 0:
         NA_paraxial = np.sqrt(2 * LAMBDA_0_LASER / np.pi) * (L_long_arm * unconcentricity) ** (-1 / 4)
-        spot_size_paraxial = NA_paraxial * (R - unconcentricity / 2)
+        spot_size_paraxial = w_of_q(R - unconcentricity / 2 + 1j * z_R_of_NA(NA=NA_paraxial, lambda_laser=LAMBDA_0_LASER), lambda_laser=LAMBDA_0_LASER) #w_of_q(R + 1j * z_R_of_NA(NA=NA_paraxial, lambda_laser=LAMBDA_0_LASER), lambda_laser=LAMBDA_0_LASER)#  NA_paraxial * (R - unconcentricity / 2)
     else:
         NA_paraxial, spot_size_paraxial = np.nan, np.nan
     mirror_object = CurvedMirror(radius=R, center=center_of_mirror + R * RIGHT, outwards_normal=RIGHT, curvature_sign=CurvatureSigns.concave, name='big mirror')
@@ -138,18 +138,21 @@ def analyze_potential_general(optical_system: OpticalSystem, rays_0: Ray, unconc
     results_dict['surfaces'] = optical_system.surfaces
     return results_dict
 
-def analyze_potential(R_1: Optional[float] = None, R_2: Optional[float] = None, back_focal_length: Optional[float] = None, defocus=0, T_c=3e-3, n_design=1.8, diameter=12.7e-3, unconcentricity: float = 0, n_actual = None,
-                      n_rays=100, dphi: Optional[float] =  None, phi_max: Optional[float] = None,
-                      extract_R_analytically: bool = False
-                      ):
+def generate_one_lens_optical_system(R_1: Optional[float] = None, R_2: Optional[float] = None, back_focal_length: Optional[float] = None, defocus=0, T_c=3e-3, n_design=1.8, diameter=12.7e-3, n_actual = None,):
     optical_axis = RIGHT
     # Enrich input arguments:
     if n_actual is None:
         n_actual = n_design
     if R_1 is not None and R_2 is not None:
         back_focal_length = back_focal_length_of_lens(R_1=R_1, R_2=R_2, n=n_design, T_c=T_c)
-        surface_0, surface_1 = CurvedRefractiveSurface(radius=np.abs(R_1), outwards_normal=-optical_axis, center=back_focal_length * optical_axis, n_1=1, n_2=n_actual, curvature_sign=CurvatureSigns.convex, name='first surface', thickness=T_c / 2, diameter=diameter), \
-                               CurvedRefractiveSurface(radius=np.abs(R_2), outwards_normal=optical_axis, center=(back_focal_length + T_c) * optical_axis, n_1=n_actual, n_2=1, curvature_sign=CurvatureSigns.concave, name='second surface', thickness=T_c / 2, diameter=diameter)
+        surface_0, surface_1 = CurvedRefractiveSurface(radius=np.abs(R_1), outwards_normal=-optical_axis,
+                                                       center=back_focal_length * optical_axis, n_1=1, n_2=n_actual,
+                                                       curvature_sign=CurvatureSigns.convex, name='first surface',
+                                                       thickness=T_c / 2, diameter=diameter), \
+            CurvedRefractiveSurface(radius=np.abs(R_2), outwards_normal=optical_axis,
+                                    center=(back_focal_length + T_c) * optical_axis, n_1=n_actual, n_2=1,
+                                    curvature_sign=CurvatureSigns.concave, name='second surface', thickness=T_c / 2,
+                                    diameter=diameter)
     elif back_focal_length is not None:
         back_center = back_focal_length * optical_axis
         surface_0, surface_1 = Surface.from_params(generate_aspheric_lens_params(f=back_focal_length,
@@ -165,6 +168,15 @@ def analyze_potential(R_1: Optional[float] = None, R_2: Optional[float] = None, 
     else:
         raise ValueError("Either R_1 and R_2, or back_focal_length must be provided.")
 
+    surfaces = [surface_0, surface_1]
+    return surfaces, optical_axis
+
+def analyze_potential(R_1: Optional[float] = None, R_2: Optional[float] = None, back_focal_length: Optional[float] = None, defocus=0, T_c=3e-3, n_design=1.8, diameter=12.7e-3, unconcentricity: float = 0, n_actual = None,
+                      n_rays=100, dphi: Optional[float] =  None, phi_max: Optional[float] = None,
+                      extract_R_analytically: bool = False
+                      ):
+    surfaces, optical_axis = generate_one_lens_optical_system(R_1=R_1, R_2=R_2, back_focal_length=back_focal_length, defocus=defocus, T_c=T_c, n_design=n_design, diameter=diameter, n_actual=n_actual)
+    surface_0, surface_1 = surfaces
     # Generate objects:
     rays_0 = initialize_rays(defocus=defocus, n_rays=n_rays, dphi=dphi, phi_max=phi_max)
     null_surface = FlatSurface(center=rays_0.origin[0, :], outwards_normal=-optical_axis, name='null surface')
@@ -185,7 +197,7 @@ def analyze_potential(R_1: Optional[float] = None, R_2: Optional[float] = None, 
         R_analytical = None
 
     results_dict = analyze_output_wavefront(ray_sequence, unconcentricity=unconcentricity, R_analytical=R_analytical)
-    results_dict['surfaces'] = [surface_0, surface_1]
+    results_dict['surfaces'] = surfaces
 
     # Generate cavity for mode analysis:
     mode_parameters_lens_right_outer_side = LocalModeParameters(z_minus_z_0=results_dict['R'] - unconcentricity / 2, lambda_0_laser=LAMBDA_0_LASER, n=1, z_R=z_R_of_NA(NA=results_dict['NA_paraxial'], lambda_laser=LAMBDA_0_LASER))
@@ -203,12 +215,14 @@ def analyze_potential(R_1: Optional[float] = None, R_2: Optional[float] = None, 
     results_dict['cavity'] = cavity
 
     #
-    print(f"NA in the right mirror - analytical calculation and numerical cavity solution\n{results_dict['NA_paraxial']:.3e}\n"
+    print(f"NA in the right arm - analytical calculation and numerical cavity solution\n{results_dict['NA_paraxial']:.3e}\n"
           f"{cavity.arms[3].mode_parameters.NA[0]:.3e}")
+
+    print(f"center of curvature of output wave and mode center in cavity:\n"
+          f"{results_dict['center_of_curvature'] - unconcentricity / 2 * RIGHT}\n{cavity.mode_parameters[2].center[0, :]}")
 
     print("Spot size in the right mirror - analytical calculation and numerical cavity solution\n"
           f"{results_dict['spot_size_paraxial']*1e3:.3e} mm\n{w_of_q(cavity.arms[3].mode_parameters_on_surface_0.q[0], lambda_laser=LAMBDA_0_LASER)*1e3:.3e} mm")
-    
     return results_dict
 
 def plot_results(results_dict, far_away_plane: bool = False):
@@ -399,7 +413,8 @@ plt.show()
 print(f"Paraxial spot size for unconcentricity of {unconcentricity*1e6:.1f} μm: {results_dict['spot_size_paraxial']*1e3:.2f} mm")
 print(f"Boundary of 2nd vs 4th order dominance for unconcentricity of {unconcentricity*1e6:.1f} µm: {np.abs(results_dict['zero_derivative_points']*1e3):.2f} mm")
 # %% Generate a cavity with the same parameters:
-
+cavity = results_dict['cavity']
+cavity.plot()
 
 # %%
 unconcentricities = np.linspace(0.1e-3, 10e-3, 30)
