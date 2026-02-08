@@ -15,7 +15,7 @@ def initialize_rays(defocus: float=0, n_rays=100, dphi: Optional[float] =  None,
     else:
         phi = np.linspace(0, phi_max, n_rays)
     ray_origin = optical_axis * defocus
-    rays_0 = Ray(origin=ray_origin, k_vector=unit_vector_of_angles(theta=0, phi=phi))
+    rays_0 = Ray(origin=ray_origin, k_vector=unit_vector_of_angles(theta=0, phi=phi), n=1)
     return rays_0
 
 def analyze_output_wavefront(ray_sequence: RaySequence, unconcentricity: float, R_analytical: Optional[float] = None):
@@ -179,12 +179,11 @@ def analyze_potential(R_1: Optional[float] = None, R_2: Optional[float] = None, 
     surface_0, surface_1 = surfaces
     # Generate objects:
     rays_0 = initialize_rays(defocus=defocus, n_rays=n_rays, dphi=dphi, phi_max=phi_max)
-    null_surface = FlatSurface(center=rays_0.origin[0, :], outwards_normal=-optical_axis, name='null surface')
-    optical_system = OpticalSystem(physical_surfaces=[null_surface, surface_0, surface_1],
+    optical_system = OpticalSystem(physical_surfaces=[surface_0, surface_1],
                                    lambda_0_laser=LAMBDA_0_LASER,
                                    given_initial_central_line=True,
                                    use_paraxial_ray_tracing=False)
-    ray_history = optical_system.propagate_ray(rays_0)
+    ray_history = optical_system.propagate_ray(rays_0, propagate_with_first_surface_first=True)
     ray_sequence = RaySequence(ray_history)
 
     if extract_R_analytically:
@@ -192,7 +191,8 @@ def analyze_potential(R_1: Optional[float] = None, R_2: Optional[float] = None, 
         #                                      R_2=-surface_1.radius, n=n_actual,
         #                                      T_c=T_c)  # Assumes cylindrical symmetry.
 
-        R_analytical = optical_system.output_radius_of_curvature(initial_distance=0)
+        # R_analytical = optical_system.output_radius_of_curvature(initial_distance=0)
+        R_analytical = optical_system.output_radius_of_curvature(initial_distance=np.linalg.norm(rays_0.origin[0, :] - optical_system.arms[0].surface_0.center))
     else:
         R_analytical = None
 
@@ -209,7 +209,11 @@ def analyze_potential(R_1: Optional[float] = None, R_2: Optional[float] = None, 
         )
 
     optical_system_inverted.set_given_mode_parameters(mode_parameters_lens_right_inner_side)
-    mirror_left = match_a_mirror_to_mode(mode=optical_system_inverted.arms[-1].mode_parameters, R=5e-3, name='LaserOptik mirror', material_properties=PHYSICAL_SIZES_DICT['material_properties_fused_silica'])
+    output_mode_local = propagate_local_mode_parameter_through_ABCD( optical_system_inverted.arms[-1].mode_parameters_on_surface_1, optical_system_inverted.arms[-1].surface_1.ABCD_matrix(cos_theta_incoming=1), n_1=n_actual, n_2=1)
+    output_mode = output_mode_local.to_mode_parameters(location_of_local_mode_parameter=optical_system_inverted.arms[-1].surface_1.center, k_vector=LEFT)
+
+    mirror_left = match_a_mirror_to_mode(mode=output_mode, R=5e-3, name='LaserOptik mirror', material_properties=PHYSICAL_SIZES_DICT['material_properties_fused_silica'])
+
     cavity = Cavity(physical_surfaces=[mirror_left, surface_0, surface_1, results_dict['mirror_object']],
                     lambda_0_laser=LAMBDA_0_LASER, t_is_trivial=True, p_is_trivial=True, use_paraxial_ray_tracing=False, standing_wave=True)
     results_dict['cavity'] = cavity
@@ -415,7 +419,7 @@ print(f"Boundary of 2nd vs 4th order dominance for unconcentricity of {unconcent
 # %% Generate a cavity with the same parameters:
 cavity = results_dict['cavity']
 cavity.plot()
-
+plt.show()
 # %%
 unconcentricities = np.linspace(0.1e-3, 10e-3, 30)
 paraxial_spot_sizes = np.zeros_like(unconcentricities)

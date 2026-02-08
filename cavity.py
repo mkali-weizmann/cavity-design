@@ -2506,9 +2506,19 @@ class OpticalSystem:
     def finesse(self):
         return np.pi * self.free_spectral_range / self.amplitude_decay_rate
 
-    def propagate_ray(self, ray: Ray, n_arms: Optional[int] = None) -> List[Ray]:
+    def propagate_ray(self,
+                      ray: Ray,
+                      n_arms: Optional[int] = None,
+                      propagate_with_first_surface_first: bool = False) -> List[Ray]:
         ray_history = [ray]
         n_arms = nvl(n_arms, len(self.arms))
+
+        if propagate_with_first_surface_first:
+            # For cavities the ray usually starts from first surface and so the first propagation is by the second surface.
+            # For other optical systems, the ray starts before the first surface and so the first propagation is by the first surface.
+            ray = self.arms[0].surface_0.propagate_ray(ray, paraxial=self.use_paraxial_ray_tracing)
+            ray_history.append(ray)
+
         for i in range(n_arms):
             arm = self.arms[i % len(self.arms)]
             ray = arm.propagate_ray(ray, use_paraxial_ray_tracing=self.use_paraxial_ray_tracing)
@@ -2541,7 +2551,7 @@ class OpticalSystem:
         # result of the cross product will be determined by arbitrary numerical errors.
         possible_pseudo_zs = [
             np.cross(self.central_line[0].k_vector, self.central_line[i].k_vector)
-            for i in range(1, len(self.central_line))
+            for i in range(0, len(self.central_line))
         ]  # Points to the positive
         biggest_psuedo_z = possible_pseudo_zs[np.argmax([np.linalg.norm(pseudo_z) for pseudo_z in possible_pseudo_zs])]
         # biggest_psuedo_z = np.cross(self.central_line[0].k_vector, self.central_line[1].k_vector)
