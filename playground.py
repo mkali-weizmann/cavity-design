@@ -205,6 +205,7 @@ def complete_optical_system_to_cavity(results_dict: dict):
                     standing_wave=True)
 
     #
+
     print(
         f"NA in the right arm - analytical calculation and numerical cavity solution\n{results_dict['NA_paraxial']:.3e}\n"
         f"{cavity.arms[3].mode_parameters.NA[0]:.3e}")
@@ -214,6 +215,9 @@ def complete_optical_system_to_cavity(results_dict: dict):
 
     print("Spot size in the right mirror - analytical calculation and numerical cavity solution\n"
           f"{results_dict['spot_size_paraxial'] * 1e3:.3e} mm\n{w_of_q(cavity.arms[3].mode_parameters_on_surface_0.q[0], lambda_laser=LAMBDA_0_LASER) * 1e3:.3e} mm")
+
+    print("mode radius of curvature after the optical system - analytical calculation and numerical cavity solution\n"
+          f"{results_dict['R']*1e3:.3e} mm\n{R_of_q(cavity.arms[2].mode_parameters_on_surface_0.q[0])*1e3:.3e} mm")
     return cavity
 
 def analyze_potential(R_1: Optional[float] = None, R_2: Optional[float] = None, back_focal_length: Optional[float] = None, defocus=0, T_c=3e-3, n_design=1.8, diameter=12.7e-3, unconcentricity: float = 0, n_actual = None,
@@ -228,11 +232,6 @@ def analyze_potential(R_1: Optional[float] = None, R_2: Optional[float] = None, 
     ray_sequence = RaySequence(ray_history)
 
     if extract_R_analytically:
-        # R_analytical = image_of_a_point_with_thick_lens(distance_to_face_1=back_focal_length - defocus, R_1=surface_0.radius,
-        #                                      R_2=-surface_1.radius, n=n_actual,
-        #                                      T_c=T_c)  # Assumes cylindrical symmetry.
-
-        # R_analytical = optical_system.output_radius_of_curvature(initial_distance=0)
         R_analytical = optical_system.output_radius_of_curvature(initial_distance=np.linalg.norm(rays_0.origin[0, :] - optical_system.arms[0].surface_0.center))
     else:
         R_analytical = None
@@ -243,7 +242,6 @@ def analyze_potential(R_1: Optional[float] = None, R_2: Optional[float] = None, 
     results_dict['cavity'] = cavity
 
     return results_dict
-
 
 
 def plot_results(results_dict, far_away_plane: bool = False):
@@ -349,6 +347,7 @@ def plot_results(results_dict, far_away_plane: bool = False):
         ax2 = ax[1, 1].twinx()
         intensity_profile = np.exp(-x_fit**2 / (spot_size_paraxial / 2)**2)
         ax2.plot(x_fit * 1e3, intensity_profile, color='orange', linestyle='dashed', label='Paraxial Gaussian intensity profile', linewidth=1)
+        ax2.axvline(spot_size_paraxial*1e3 * np.sign(x_fit[0]), color='orange', linestyle='dashed', linewidth=1, label='Paraxial spot size ($w_{0}$)')
         legend_line = Line2D([], [], color='orange', linestyle='dashed', linewidth=1, label='Paraxial Gaussian intensity profile')
         handles, labels = ax[1, 1].get_legend_handles_labels()
         handles.append(legend_line)
