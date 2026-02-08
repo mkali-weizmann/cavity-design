@@ -75,7 +75,7 @@ def analyze_output_wavefront(ray_sequence: RaySequence, R_analytical: Optional[f
                                                  residual_distances_mirror, 4).convert()
     expected_second_order_term = 1 / 2 * (1 / R_opposite - 1 / R)
     print(
-        f"Expected second order term in mirror deviation polynomial due to unconcentricity: {expected_second_order_term:.3e}, actual: {polynomial_residuals_mirror.coef[1]:.3e}")
+        f"Expected second order term in mirror deviation polynomial due to unconcentricity: {expected_second_order_term:.3e}, actual: {polynomial_residuals_mirror.coef[1]:.3e} (TRY LOWER MAXIMAL NA IF THEY DON'T MATCH)")
 
     # Generate dummy points for fitted spheres:
     points_rel = wavefront_points_initial - center_of_curvature
@@ -129,19 +129,25 @@ def analyze_output_wavefront(ray_sequence: RaySequence, R_analytical: Optional[f
     return results_dict
 
 
+def analyze_potential_general(optical_system: OpticalSystem, rays_0: Ray):
+    ray_history = optical_system.propagate_ray(rays_0)
+    ray_sequence = RaySequence(ray_history)
+    results_dict = analyze_output_wavefront(ray_sequence)
+    results_dict['surfaces'] = optical_system.surfaces
+    return results_dict
+
 def analyze_potential(R_1: Optional[float] = None, R_2: Optional[float] = None, back_focal_length: Optional[float] = None, defocus=0, T_c=3e-3, n_design=1.8, diameter=12.7e-3, unconcentricity: float = 0, n_actual = None,
                       n_rays=100, dphi: Optional[float] =  None, phi_max: Optional[float] = None,
                       extract_R_analytically: bool = False
                       ):
-
     optical_axis = RIGHT
     # Enrich input arguments:
     if n_actual is None:
         n_actual = n_design
     if R_1 is not None and R_2 is not None:
-        back_focal_length = back_focal_length_of_lens(R_1=R_1, R_2=-R_2, n=n_design, T_c=T_c)
-        surface_0, surface_1 = CurvedRefractiveSurface(radius=R_1, outwards_normal=-optical_axis, center=back_focal_length * optical_axis, n_1=1, n_2=n_actual, curvature_sign=CurvatureSigns.convex, name='first surface', thickness=T_c / 2, diameter=diameter), \
-                                        CurvedRefractiveSurface(radius=R_2, outwards_normal=optical_axis, center=(back_focal_length + T_c) * optical_axis, n_1=n_actual, n_2=1, curvature_sign=CurvatureSigns.concave, name='second surface', thickness=T_c / 2, diameter=diameter)
+        back_focal_length = back_focal_length_of_lens(R_1=R_1, R_2=R_2, n=n_design, T_c=T_c)
+        surface_0, surface_1 = CurvedRefractiveSurface(radius=np.abs(R_1), outwards_normal=-optical_axis, center=back_focal_length * optical_axis, n_1=1, n_2=n_actual, curvature_sign=CurvatureSigns.convex, name='first surface', thickness=T_c / 2, diameter=diameter), \
+                               CurvedRefractiveSurface(radius=np.abs(R_2), outwards_normal=optical_axis, center=(back_focal_length + T_c) * optical_axis, n_1=n_actual, n_2=1, curvature_sign=CurvatureSigns.concave, name='second surface', thickness=T_c / 2, diameter=diameter)
     elif back_focal_length is not None:
         back_center = back_focal_length * optical_axis
         surface_0, surface_1 = Surface.from_params(generate_aspheric_lens_params(f=back_focal_length,
@@ -168,13 +174,22 @@ def analyze_potential(R_1: Optional[float] = None, R_2: Optional[float] = None, 
     rays_history = [rays_0, rays_1, rays_2]
     ray_sequence = RaySequence(rays_history)
     if extract_R_analytically:
-        R_analytical = image_of_a_point_with_thick_lens(distance_to_face_1=back_focal_length - defocus, R_1=surface_0.radius,
-                                             R_2=-surface_1.radius, n=n_actual,
-                                             T_c=T_c)  # Assumes cylindrical symmetry.
+        # R_analytical = image_of_a_point_with_thick_lens(distance_to_face_1=back_focal_length - defocus, R_1=surface_0.radius,
+        #                                      R_2=-surface_1.radius, n=n_actual,
+        #                                      T_c=T_c)  # Assumes cylindrical symmetry.
+        optical_system = OpticalSystem(physical_surfaces=[surface_0, surface_1],
+                                       lambda_0_laser=LAMBDA_0_LASER,
+                                       given_initial_central_line=True,
+                                       use_paraxial_ray_tracing=False)
+
+        R_analytical = optical_system.output_radius_of_curvature(initial_distance=surface_0.center[0] - defocus)
     else:
         R_analytical = None
-    results_dict = analyze_output_wavefront(ray_sequence, R_analytical=R_analytical)
+    # DELETE ME START
 
+
+    results_dict = analyze_output_wavefront(ray_sequence, R_analytical=R_analytical)
+    # DELETE ME END
     results_dict['surfaces'] = [surface_0, surface_1]
 
     return results_dict
@@ -301,20 +316,20 @@ def choose_source_position_for_desired_focus_analytic(back_focal_length,
     if R_1 is None and R_2 is None:
         p = LensParams(n=n_design, f=back_focal_length, T_c=T_c)
         coeffs = solve_aspheric_profile(p, y_max=diameter / 2, degree=8)
-        R_2 = 1 / (2*coeffs[1])
+        R_2 = -1 / (2*coeffs[1])
         R_1 = np.inf
     elif R_1 is not None and R_2 is not None:
-        back_focal_length = back_focal_length_of_lens(R_1=R_1, R_2=-R_2, n=n_design, T_c=T_c)
+        back_focal_length = back_focal_length_of_lens(R_1=R_1, R_2=R_2, n=n_design, T_c=T_c)
     else:
         raise ValueError("Either both R_1 and R_2 must be provided, or neither.")
-    distance_to_flat_face = image_of_a_point_with_thick_lens(distance_to_face_1=desired_focus, R_1=R_2,
+    distance_to_flat_face = image_of_a_point_with_thick_lens(distance_to_face_1=desired_focus, R_1=-R_2,
                                                              R_2=-R_1, n=n_design, T_c=T_c)
     defocus = back_focal_length - distance_to_flat_face
     return defocus
 
 # %%
 # For aspheric lens:
-aspheric = True
+aspheric = False
 if aspheric:
     back_focal_length = back_focal_length_of_lens(R_1=24.22e-3, R_2=-5.49e-3, n=1.8, T_c=2.91e-3)# 20e-3
     R_1 = None
@@ -333,9 +348,9 @@ else:
 n_actual = 1.8
 dn=0
 n_design = n_actual + dn
-n_rays = 50
+n_rays = 30
 unconcentricity = 5e-3
-phi_max = 0.3
+phi_max = 0.05
 desired_focus = 200e-3
 
 defocus = choose_source_position_for_desired_focus_analytic(desired_focus=desired_focus, T_c=T_c, n_design=n_design, diameter=diameter,
@@ -363,41 +378,41 @@ plt.show()
 print(f"Paraxial spot size for unconcentricity of {unconcentricity*1e3:.1f} µm: {results_dict['spot_size_paraxial']*1e6:.2f} µm")
 print(f"Boundary of 2nd vs 4th order dominance for unconcentricity of {unconcentricity*1e3:.1f} µm: {results_dict['zero_derivative_points']*1e3:.2f} mm")
 # %%
-unconcentricities = np.linspace(0.1e-3, 10e-3, 30)
-paraxial_spot_sizes = np.zeros_like(unconcentricities)
-spot_size_boundaries = np.zeros_like(unconcentricities)
-paraxial_NAs = np.zeros_like(unconcentricities)
-for i, u in enumerate(unconcentricities):
-    results_dict = analyze_potential(
-        back_focal_length=back_focal_length, R_1=R_1, R_2=R_2_signed,
-        defocus=defocus, T_c=T_c,
-        n_design=n_design, diameter=diameter,
-        n_actual=n_actual, n_rays=n_rays,
-        unconcentricity=u, extract_R_analytically=True, phi_max=phi_max)
-    paraxial_spot_sizes[i] = results_dict['spot_size_paraxial']
-    paraxial_NAs[i] = results_dict['NA_paraxial']
-    try:
-        spot_size_boundaries[i] = np.abs(results_dict['zero_derivative_points'])
-    except TypeError:
-        spot_size_boundaries[i] = np.nan  # If zero_derivative_points is None
-
-fig, ax = plt.subplots(figsize=(10, 6))
-ax.plot(unconcentricities * 1e3, paraxial_spot_sizes * 1e6, label='Paraxial spot size', color='blue')
-ax.plot(unconcentricities * 1e3, spot_size_boundaries * 1e6, label='Boundary of 2nd vs 4th order dominance', color='red')
-ax.set_xlabel('Unconcentricity (mm)')
-ax.set_ylabel('Spot size / boundary (µm)')
-ax.set_title('Effect of Unconcentricity on Paraxial Spot Size and Residual Dominance Boundary')
-ax.grid()
-
-# twin y-axis for paraxial NAs
-ax2 = ax.twinx()
-ax2.plot(unconcentricities * 1e3, paraxial_NAs, label='Paraxial NA', color='orange', linestyle='--')
-ax2.set_ylabel('Paraxial NA (unitless)')
-
-# combined legend
-handles1, labels1 = ax.get_legend_handles_labels()
-handles2, labels2 = ax2.get_legend_handles_labels()
-ax.legend(handles1 + handles2, labels1 + labels2, loc='best')
-
-# plt.savefig(f"outputs/figures/unconcentricity_vs_spot_size_and_boundary_aspheric={aspheric}_n_design_{n_design:.3f}_n_actual_{n_actual:.3f}_focal_length_{back_focal_length * 1e3:.1f}mm_defocus_{defocus * 1e3:.1f}mm_Tc_{T_c * 1e3:.1f}mm_diameter_{diameter * 1e3:.2f}mm.svg", dpi=300)
-plt.show()
+# unconcentricities = np.linspace(0.1e-3, 10e-3, 30)
+# paraxial_spot_sizes = np.zeros_like(unconcentricities)
+# spot_size_boundaries = np.zeros_like(unconcentricities)
+# paraxial_NAs = np.zeros_like(unconcentricities)
+# for i, u in enumerate(unconcentricities):
+#     results_dict = analyze_potential(
+#         back_focal_length=back_focal_length, R_1=R_1, R_2=R_2_signed,
+#         defocus=defocus, T_c=T_c,
+#         n_design=n_design, diameter=diameter,
+#         n_actual=n_actual, n_rays=n_rays,
+#         unconcentricity=u, extract_R_analytically=True, phi_max=phi_max)
+#     paraxial_spot_sizes[i] = results_dict['spot_size_paraxial']
+#     paraxial_NAs[i] = results_dict['NA_paraxial']
+#     try:
+#         spot_size_boundaries[i] = np.abs(results_dict['zero_derivative_points'])
+#     except TypeError:
+#         spot_size_boundaries[i] = np.nan  # If zero_derivative_points is None
+#
+# fig, ax = plt.subplots(figsize=(10, 6))
+# ax.plot(unconcentricities * 1e3, paraxial_spot_sizes * 1e6, label='Paraxial spot size', color='blue')
+# ax.plot(unconcentricities * 1e3, spot_size_boundaries * 1e6, label='Boundary of 2nd vs 4th order dominance', color='red')
+# ax.set_xlabel('Unconcentricity (mm)')
+# ax.set_ylabel('Spot size / boundary (µm)')
+# ax.set_title('Effect of Unconcentricity on Paraxial Spot Size and Residual Dominance Boundary')
+# ax.grid()
+#
+# # twin y-axis for paraxial NAs
+# ax2 = ax.twinx()
+# ax2.plot(unconcentricities * 1e3, paraxial_NAs, label='Paraxial NA', color='orange', linestyle='--')
+# ax2.set_ylabel('Paraxial NA (unitless)')
+#
+# # combined legend
+# handles1, labels1 = ax.get_legend_handles_labels()
+# handles2, labels2 = ax2.get_legend_handles_labels()
+# ax.legend(handles1 + handles2, labels1 + labels2, loc='best')
+#
+# # plt.savefig(f"outputs/figures/unconcentricity_vs_spot_size_and_boundary_aspheric={aspheric}_n_design_{n_design:.3f}_n_actual_{n_actual:.3f}_focal_length_{back_focal_length * 1e3:.1f}mm_defocus_{defocus * 1e3:.1f}mm_Tc_{T_c * 1e3:.1f}mm_diameter_{diameter * 1e3:.2f}mm.svg", dpi=300)
+# plt.show()

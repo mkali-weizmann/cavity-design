@@ -1011,7 +1011,7 @@ class AsphericSurface(Surface):
         return self._center
 
     def find_intersection_with_ray_paraxial(self, ray: Ray) -> np.ndarray:
-        raise NotImplementedError("No paraxial methods for spherical surfaces")
+        raise NotImplementedError("No paraxial methods for aspherical surfaces")
 
     def parameterization(self, t: Union[np.ndarray, float], p: Union[np.ndarray, float]) -> np.ndarray:
         # Take parameters and return points on the surface
@@ -1076,6 +1076,7 @@ class AsphericRefractiveSurface(AsphericSurface, RefractiveSurface):
         n_2: float,
         name: Optional[str] = None,
         diameter: Optional[float] = None,
+        curvature_sign: int = CurvatureSigns.concave,  # With respect to the incoming beam.
         material_properties: MaterialProperties = None,
         **kwargs,
     ):
@@ -1090,11 +1091,11 @@ class AsphericRefractiveSurface(AsphericSurface, RefractiveSurface):
             n_2=n_2,
             **kwargs,
         )
+        self.curvature_sign = curvature_sign
 
     def ABCD_matrix(self, cos_theta_incoming: Optional[float] = None) -> np.ndarray:
-        raise NotImplementedError(
-            "no ABCD matrices for aspheric refractive surfaces - the whole point is to go beyond paraxial"
-        )
+        paraxial_approximation_surface = CurvedRefractiveSurface(radius=self.radius, outwards_normal=RIGHT, center=ORIGIN, n_1=self.n_1, n_2=self.n_2, curvature_sign=self.curvature_sign)
+        return paraxial_approximation_surface.ABCD_matrix(cos_theta_incoming=cos_theta_incoming)
 
     def thermal_transformation(self, P_laser_power: float, w_spot_size: float, **kwargs):
         raise NotImplementedError
@@ -1277,9 +1278,9 @@ class FlatRefractiveSurface(FlatSurface, RefractiveSurface):
         return np.array(
             [
                 [1, 0, 0, 0],
-                [0, self.n_1 / self.n_2, 0],
+                [0, self.n_1 / self.n_2, 0, 0],
                 [0, 0, cos_theta_outgoing / cos_theta_incoming, 0],
-                [0, 0, 0, (self.n_2 * cos_theta_incoming) / (self.n_1 * cos_theta_outgoing)],
+                [0, 0, 0, (self.n_1 * cos_theta_incoming) / (self.n_2 * cos_theta_outgoing)],
             ]
         )
 
@@ -1910,9 +1911,9 @@ class Arm:
         mode_parameters_on_surface_1: Optional[LocalModeParameters] = None,
         mode_principle_axes: Optional[np.ndarray] = None,
     ):
-        if isinstance(surface_0, CurvedRefractiveSurface):
+        if isinstance(surface_0, RefractiveSurface):
             self.n: float = surface_0.n_2
-        elif isinstance(surface_1, CurvedRefractiveSurface):
+        elif isinstance(surface_1, RefractiveSurface):
             self.n: float = surface_1.n_1
         else:
             self.n: float = 1.0
@@ -2252,9 +2253,8 @@ class OpticalSystem:
         power: Optional[float] = None,
         t_is_trivial: bool = True,
         p_is_trivial: bool = True,
-        given_initial_central_line: Optional[Ray] = None,
+        given_initial_central_line: Optional[Union[Ray, bool]] = None,
         given_initial_local_mode_parameters: Optional[LocalModeParameters] = None,
-        debug_printing_level: int = 0,  # 0 for no prints, 1 for main prints, 2 for all prints
         use_paraxial_ray_tracing: bool = True,
     ):
         self.physical_surfaces = physical_surfaces
@@ -2276,10 +2276,13 @@ class OpticalSystem:
         self.use_paraxial_ray_tracing = use_paraxial_ray_tracing
 
         if given_initial_central_line is not None:
-            self.set_given_central_line(given_initial_central_line=given_initial_central_line)
+            if isinstance(given_initial_central_line, Ray):
+                self.set_given_central_line(initial_ray=given_initial_central_line)
+            elif given_initial_central_line is True:
+                self.set_given_central_line(initial_ray=self.default_initial_ray)
         if given_initial_local_mode_parameters is not None:
             self.set_given_mode_parameters(
-                given_initial_local_mode_parameters=given_initial_local_mode_parameters,
+                local_mode_parameters_first_surface=given_initial_local_mode_parameters,
             )
 
     @staticmethod
@@ -2354,6 +2357,8 @@ class OpticalSystem:
     def ABCD_round_trip(self):
         if self.arms[0].central_line is None:
             return None
+        elif len(self.ABCD_matrices) == 1:
+            return self.ABCD_matrices[0]
         else:
             return np.linalg.multi_dot(self.ABCD_matrices[::-1])
 
@@ -2731,6 +2736,20 @@ class OpticalSystem:
             return None
         gouy_phases = [arm.acquired_gouy_phase for arm in self.arms]
         return sum(gouy_phases)
+
+    def output_radius_of_curvature(self, initial_distance: float) -> float:
+        # Currently assume 1d problem for simplicty, if required it can be expanded
+        ABCD = self.ABCD_round_trip[:2, :2] @ self.physical_surfaces[0].ABCD_matrix(cos_theta_incoming=1)[:2, :2]
+        A, B, C, D = ABCD[0, 0], ABCD[0, 1], ABCD[1, 0], ABCD[1, 1]
+        R_out = -(A * initial_distance + B) / (C * initial_distance + D)
+        return R_out
+
+    def required_initial_distance_for_desired_output_radius_of_curvature(self, desired_R_out: float) -> float:
+        ABCD = self.ABCD_round_trip[:2, :2] @ self.physical_surfaces[0].ABCD_matrix(cos_theta_incoming=1)[:2, :2]
+        A, B, C, D = ABCD[0, 0], ABCD[0, 1], ABCD[1, 0], ABCD[1, 1]
+        initial_distance = -(B + D * desired_R_out) / (A + C * desired_R_out)
+        return initial_distance
+
 
 ##############
 
