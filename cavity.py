@@ -176,8 +176,6 @@ class ModeParameters:
                 if self.center.ndim == 1:  # If it has only one axis instead of two:
                     self.center = np.tile(self.center, (2, 1))  # Make it two...
 
-
-
     @property
     def ray(self):
         return Ray(self.center, self.k_vector)
@@ -237,12 +235,14 @@ class ModeParameters:
 
     def invert_direction(self):
         # good for standing waves, where the mode go both ways:
-        inverted_direction_mode = ModeParameters(center=self.center,
-                                                 k_vector=-self.k_vector,
-                                                 lambda_0_laser=self.lambda_0_laser,
-                                                 w_0=self.w_0,
-                                                 principle_axes=self.principle_axes,
-                                                 n=self.n)
+        inverted_direction_mode = ModeParameters(
+            center=self.center,
+            k_vector=-self.k_vector,
+            lambda_0_laser=self.lambda_0_laser,
+            w_0=self.w_0,
+            principle_axes=self.principle_axes,
+            n=self.n,
+        )
         return inverted_direction_mode
 
 
@@ -2091,7 +2091,9 @@ class Arm:
     def set_local_mode_parameters(self) -> LocalModeParameters:
         if self.mode_parameters_on_surface_0 is None:
             raise ValueError("Mode parameters on surface 0 not set")
-        mode_parameters_on_surface_1, mode_parameters_after_surface_1 = self.propagate_local_mode_parameters(self.mode_parameters_on_surface_0)
+        mode_parameters_on_surface_1, mode_parameters_after_surface_1 = self.propagate_local_mode_parameters(
+            self.mode_parameters_on_surface_0
+        )
         self.mode_parameters_on_surface_1 = mode_parameters_on_surface_1
         return mode_parameters_after_surface_1
 
@@ -2601,11 +2603,13 @@ class OpticalSystem:
             ray_history.append(ray)
         return ray_history
 
-    def propagate_mode_parameters(self,
-                                  local_mode_parameters_on_first_surface: Optional[LocalModeParameters] = None,
-                                  mode_parameters: Optional[ModeParameters] = None,
-                                  n_arms: Optional[int] = None,
-                                  propagate_with_first_surface_first: bool = False):
+    def propagate_mode_parameters(
+        self,
+        local_mode_parameters_on_first_surface: Optional[LocalModeParameters] = None,
+        mode_parameters: Optional[ModeParameters] = None,
+        n_arms: Optional[int] = None,
+        propagate_with_first_surface_first: bool = False,
+    ):
         n_arms = nvl(n_arms, len(self.arms))
         local_mode_parameters_history = []
 
@@ -2614,20 +2618,29 @@ class OpticalSystem:
             local_mode_parameters_history.append(local_mode_parameters_current)
         else:
             if propagate_with_first_surface_first:
-                local_mode_parameters_before_first_surface = mode_parameters.local_mode_parameters_at_a_point(p=self.surfaces[0].center)
-                local_mode_parameters_current = propagate_local_mode_parameter_through_ABCD(local_mode_parameters=local_mode_parameters_before_first_surface,
-                                                                                                     ABCD=self.surfaces[0].ABCD_matrix(cos_theta_incoming=1),
-                                                                                                     n_1=mode_parameters.n,
-                                                                                                     n_2=self.arms[0].n)
-                local_mode_parameters_history.extend([local_mode_parameters_before_first_surface, local_mode_parameters_current])
+                local_mode_parameters_before_first_surface = mode_parameters.local_mode_parameters_at_a_point(
+                    p=self.surfaces[0].center
+                )
+                local_mode_parameters_current = propagate_local_mode_parameter_through_ABCD(
+                    local_mode_parameters=local_mode_parameters_before_first_surface,
+                    ABCD=self.surfaces[0].ABCD_matrix(cos_theta_incoming=1),
+                    n_1=mode_parameters.n,
+                    n_2=self.arms[0].n,
+                )
+                local_mode_parameters_history.extend(
+                    [local_mode_parameters_before_first_surface, local_mode_parameters_current]
+                )
             else:
-                local_mode_parameters_current = mode_parameters.local_mode_parameters_at_a_point(p=self.surfaces[0].center)
+                local_mode_parameters_current = mode_parameters.local_mode_parameters_at_a_point(
+                    p=self.surfaces[0].center
+                )
                 local_mode_parameters_history.append(local_mode_parameters_current)
 
         for i in range(n_arms):
             arm = self.arms[i % len(self.arms)]
-            mode_parameters_on_next_surface, local_mode_parameters_current = \
-            arm.propagate_local_mode_parameters(local_mode_parameters_current)
+            mode_parameters_on_next_surface, local_mode_parameters_current = arm.propagate_local_mode_parameters(
+                local_mode_parameters_current
+            )
             local_mode_parameters_history.extend([mode_parameters_on_next_surface, local_mode_parameters_current])
         return local_mode_parameters_history
 
@@ -2639,19 +2652,21 @@ class OpticalSystem:
 
     def set_given_mode_parameters(
         self,
-            local_mode_parameters_on_first_surface: Optional[LocalModeParameters] = None,
-            mode_parameters: Optional[ModeParameters] = None,
-            propagate_with_first_surface_first: bool = False
+        local_mode_parameters_on_first_surface: Optional[LocalModeParameters] = None,
+        mode_parameters: Optional[ModeParameters] = None,
+        propagate_with_first_surface_first: bool = False,
     ):
         # If there is a valid mode to start propagating, then propagate it through the cavity:
         mode_parameters_history = self.propagate_mode_parameters(
             local_mode_parameters_on_first_surface=local_mode_parameters_on_first_surface,
             mode_parameters=mode_parameters,
             n_arms=None,
-            propagate_with_first_surface_first=propagate_with_first_surface_first
+            propagate_with_first_surface_first=propagate_with_first_surface_first,
         )
         if propagate_with_first_surface_first:
-            mode_parameters_history = mode_parameters_history[1:]  # Remove the first one which is before the first surface
+            mode_parameters_history = mode_parameters_history[
+                1:
+            ]  # Remove the first one which is before the first surface
         for i, arm in enumerate(self.arms):
             arm.mode_parameters_on_surface_0 = mode_parameters_history[2 * i]
             arm.mode_parameters_on_surface_1 = mode_parameters_history[2 * i + 1]

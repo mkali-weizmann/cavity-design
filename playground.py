@@ -4,6 +4,7 @@ use("TkAgg")  # or 'Qt5Agg', 'GTK3Agg', etc. depending on your system
 from cavity import *
 from matplotlib.lines import Line2D
 
+
 # %%
 def initialize_rays(
     defocus: float = 0,
@@ -113,9 +114,13 @@ def analyze_output_wavefront(ray_sequence: RaySequence, unconcentricity: float, 
     if unconcentricity > 0:
         reighley_range_paraxial = np.sqrt(L_long_arm * unconcentricity) / 2
         center_mode_right_outer_side = ray_sequence[-1].origin[0, :] + (R - unconcentricity / 2) * RIGHT
-        mode_parameters_right_arm = ModeParameters(center=center_mode_right_outer_side, k_vector=RIGHT,
-                                                   z_R=np.array([reighley_range_paraxial, reighley_range_paraxial]),
-                                                   lambda_0_laser=LAMBDA_0_LASER, n=1)
+        mode_parameters_right_arm = ModeParameters(
+            center=center_mode_right_outer_side,
+            k_vector=RIGHT,
+            z_R=np.array([reighley_range_paraxial, reighley_range_paraxial]),
+            lambda_0_laser=LAMBDA_0_LASER,
+            n=1,
+        )
         NA_paraxial = mode_parameters_right_arm.NA[0]
         spot_size_paraxial = mode_parameters_right_arm.local_mode_parameters(R - unconcentricity / 2).spot_size[0]
     else:
@@ -157,7 +162,7 @@ def analyze_output_wavefront(ray_sequence: RaySequence, unconcentricity: float, 
         "spot_size_paraxial": spot_size_paraxial,
         "zero_derivative_points": zero_derivative_points,
         "mirror_object": mirror_object,
-        "mode_parameters_right_arm": mode_parameters_right_arm
+        "mode_parameters_right_arm": mode_parameters_right_arm,
     }
 
     return results_dict
@@ -248,8 +253,9 @@ def complete_optical_system_to_cavity(results_dict: dict, unconcentricity: float
     )
     optical_system_inverted = optical_system.invert()
     mode_parameters_right_arm = results_dict["mode_parameters_right_arm"].invert_direction()
-    modes_history = optical_system_inverted.propagate_mode_parameters(mode_parameters=mode_parameters_right_arm,
-                                                                      propagate_with_first_surface_first=True)
+    modes_history = optical_system_inverted.propagate_mode_parameters(
+        mode_parameters=mode_parameters_right_arm, propagate_with_first_surface_first=True
+    )
     output_mode_local = modes_history[-1]
     output_mode = output_mode_local.to_mode_parameters(
         location_of_local_mode_parameter=optical_system_inverted.arms[-1].surface_1.center, k_vector=LEFT
@@ -494,8 +500,10 @@ def plot_results(results_dict, far_away_plane: bool = False):
         if spot_size_paraxial is not None:
             mode_terms = f"\n Paraxial spot size: {spot_size_paraxial * 1e3:.2f} mm, NA long arm: {NA_paraxial:.2e}, NA short arm: {results_dict['cavity'].arms[0].mode_parameters.NA[0]:.2e}"
         else:
-            mode_terms=""
-        title += f"\nmirror deviation fit (unconcentricity = {unconcentricity*1e6:.1f} µm):\n" + terms_mirror + mode_terms
+            mode_terms = ""
+        title += (
+            f"\nmirror deviation fit (unconcentricity = {unconcentricity*1e6:.1f} µm):\n" + terms_mirror + mode_terms
+        )
         ax[1, 1].plot(
             x_fit * 1e3,
             polynomial_residuals_mirror(x_fit**2) * 1e6,
@@ -583,7 +591,7 @@ n_actual = 1.8
 dn = 0
 n_design = n_actual + dn
 n_rays = 30
-unconcentricity = 30e-4# np.float64(0.007610344827586207)  # ,  np.float64(0.007268965517241379)
+unconcentricity = 30e-4  # np.float64(0.007610344827586207)  # ,  np.float64(0.007268965517241379)
 phi_max = 0.25
 desired_focus = 200e-3
 T_c = 4.35e-3
@@ -599,7 +607,9 @@ if aspheric:
     R_2_signed = None
     # This results in this value of R_2: -0.017933320598319306
 else:
-    f_lens = focal_length_of_lens(R_1=np.inf, R_2=-0.017933320598319306, n=1.8, T_c=4.35e-3)  # Same as the aspheric ones.
+    f_lens = focal_length_of_lens(
+        R_1=np.inf, R_2=-0.017933320598319306, n=1.8, T_c=4.35e-3
+    )  # Same as the aspheric ones.
     R = f_lens * (n_design - 1) * (1 + np.sqrt(1 - T_c / (f_lens * n_design)))
     R_1 = R
     R_2 = R
@@ -645,11 +655,16 @@ print(
 if plot:
     # plt.close('all')
     fig, ax = plot_results(results_dict, far_away_plane=True)
-    center = results_dict['center_of_curvature']
-    ax[0, 1].set_xlim((center[0]-0.002, center[0]+0.002))
-    plt.suptitle(f"aspheric={aspheric}, desired_focus = {desired_focus:.3e}m, n_design: {n_design:.3f}, n_actual: {n_actual:.3f}, Lens focal length: {back_focal_length * 1e3:.1f} mm, Defocus: z_lens -> z_lens + {defocus * 1e3:.1f} mm, T_c: {T_c * 1e3:.1f} mm, Diameter: {diameter * 1e3:.2f} mm")
+    center = results_dict["center_of_curvature"]
+    ax[0, 1].set_xlim((center[0] - 0.002, center[0] + 0.002))
+    plt.suptitle(
+        f"aspheric={aspheric}, desired_focus = {desired_focus:.3e}m, n_design: {n_design:.3f}, n_actual: {n_actual:.3f}, Lens focal length: {back_focal_length * 1e3:.1f} mm, Defocus: z_lens -> z_lens + {defocus * 1e3:.1f} mm, T_c: {T_c * 1e3:.1f} mm, Diameter: {diameter * 1e3:.2f} mm"
+    )
     # Save image with suptitle in name:
-    plt.savefig(f"outputs/figures/analyze_potential_n_design_aspheric={aspheric}_{n_design:.3f}_n_actual_{n_actual:.3f}_focal_length_{back_focal_length * 1e3:.1f}mm_defocus_{defocus * 1e3:.1f}mm_Tc_{T_c * 1e3:.1f}mm_diameter_{diameter * 1e3:.2f}mm.svg", dpi=300)
+    plt.savefig(
+        f"outputs/figures/analyze_potential_n_design_aspheric={aspheric}_{n_design:.3f}_n_actual_{n_actual:.3f}_focal_length_{back_focal_length * 1e3:.1f}mm_defocus_{defocus * 1e3:.1f}mm_Tc_{T_c * 1e3:.1f}mm_diameter_{diameter * 1e3:.2f}mm.svg",
+        dpi=300,
+    )
     plt.show()
 print(
     f"Paraxial spot size for unconcentricity of {unconcentricity*1e6:.1f} μm: {results_dict['spot_size_paraxial']*1e3:.2f} mm"
