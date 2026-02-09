@@ -98,7 +98,7 @@ def analyze_output_wavefront(ray_sequence: RaySequence, unconcentricity: float, 
         f"Expected second order term in mirror deviation polynomial due to unconcentricity: {expected_second_order_term:.3e}, actual: {polynomial_residuals_mirror.coef[1]:.3e} (TRY LOWER MAXIMAL NA IF THEY DON'T MATCH)"
     )
 
-    # Generate dummy points for fitted spheres:
+    # Generate dummy points for fitted spheres (used only for plotting, not for calculations):
     points_rel = wavefront_points_initial - center_of_curvature
     phi_dummy = np.linspace(0, np.arctan(points_rel[-1, 1] / points_rel[-1, 0]), 100)
     dummy_points_curvature_initial = center_of_curvature - R * np.stack(
@@ -110,6 +110,7 @@ def analyze_output_wavefront(ray_sequence: RaySequence, unconcentricity: float, 
     dummy_points_mirror = center_of_mirror + R * np.stack(
         (np.cos(phi_dummy), np.sin(phi_dummy), np.zeros_like(phi_dummy)), axis=-1
     )  # Mirror has the radius of the original wavefront sphere, but centered at the shifted center.
+
     L_long_arm = 2 * R - unconcentricity
     if unconcentricity > 0:
         NA_paraxial = np.sqrt(2 * LAMBDA_0_LASER / np.pi) * (L_long_arm * unconcentricity) ** (-1 / 4)
@@ -583,7 +584,7 @@ def choose_source_position_for_desired_focus_analytic(
 
 # %% SINGLE SET-UP ANALYSIS:
 # For aspheric lens:
-aspheric = False
+aspheric = True
 if aspheric:
     # back_focal_length = back_focal_length_of_lens(R_1=24.22e-3, R_2=-5.49e-3, n=1.8, T_c=2.91e-3)# 20e-3
     # diameter = 7.75e-3
@@ -608,7 +609,7 @@ n_design = n_actual + dn
 n_rays = 30
 unconcentricity = 0.00044137931034482665
 phi_max = 0.23
-desired_focus = 100e-3
+desired_focus = 200e-3
 defocus = choose_source_position_for_desired_focus_analytic(
     desired_focus=desired_focus,
     T_c=T_c,
