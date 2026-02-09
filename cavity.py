@@ -153,12 +153,21 @@ class ModeParameters:
         np.ndarray
     )  # First dimension is theta or phi (the two transversal axes of the mode), second dimension is x, y, z
     k_vector: np.ndarray
-    w_0: np.ndarray
-    principle_axes: np.ndarray  # First dimension is theta or phi, second dimension is x, y, z
     lambda_0_laser: Optional[float]
+    w_0: Optional[np.ndarray] = None
+    z_R: Optional[np.ndarray] = None
+    principle_axes: Optional[np.ndarray] = None  # First dimension is theta or phi, second dimension is x, y, z
     n: float = 1  # refractive index
 
     def __post_init__(self):
+
+        if self.w_0 is None and self.z_R is not None:
+            self.w_0 = w_0_of_z_R(z_R=self.z_R, lambda_0_laser=self.lambda_0_laser, n=self.n)
+        elif self.z_R is None and self.w_0 is not None:
+            self.z_R = z_R_of_w_0(w_0=self.w_0, lambda_laser=self.lambda_laser)
+        elif self.w_0 is None and self.z_R is None:
+            raise ValueError("Either w_0 or z_R must be provided")
+
         if not isinstance(self.w_0, np.ndarray):
             raise TypeError(f"waist must be np.ndarray, for both axes, got {type(self.w_0)}")
 
@@ -167,16 +176,11 @@ class ModeParameters:
                 if self.center.ndim == 1:  # If it has only one axis instead of two:
                     self.center = np.tile(self.center, (2, 1))  # Make it two...
 
+
+
     @property
     def ray(self):
         return Ray(self.center, self.k_vector)
-
-    @property
-    def z_R(self):  # The Rayleigh range in vacuum
-        if self.lambda_0_laser is None:
-            return None
-        else:
-            return np.pi * self.w_0**2 / self.lambda_0_laser
 
     @property
     def lambda_laser(self):
@@ -230,6 +234,16 @@ class ModeParameters:
             raise ValueError("output_type must be either np.ndarray or float")
 
         return p
+
+    def invert_direction(self):
+        # good for standing waves, where the mode go both ways:
+        inverted_direction_mode = ModeParameters(center=self.center,
+                                                 k_vector=-self.k_vector,
+                                                 lambda_0_laser=self.lambda_0_laser,
+                                                 w_0=self.w_0,
+                                                 principle_axes=self.principle_axes,
+                                                 n=self.n)
+        return inverted_direction_mode
 
 
 def decompose_ABCD_matrix(
@@ -516,7 +530,7 @@ class Surface:
         raise NotImplementedError
 
     @property
-    def ABCD_matrix(self):
+    def ABCD_matrix(self, cos_theta_incoming=1):
         # Will be overriden by physical surfaces that actually affect the rays/modes.
         return np.eye(4)
 
@@ -2602,7 +2616,7 @@ class OpticalSystem:
             if propagate_with_first_surface_first:
                 local_mode_parameters_before_first_surface = mode_parameters.local_mode_parameters_at_a_point(p=self.surfaces[0].center)
                 local_mode_parameters_current = propagate_local_mode_parameter_through_ABCD(local_mode_parameters=local_mode_parameters_before_first_surface,
-                                                                                                     ABCD=self.surfaces[0].ABCD_matrix,
+                                                                                                     ABCD=self.surfaces[0].ABCD_matrix(cos_theta_incoming=1),
                                                                                                      n_1=mode_parameters.n,
                                                                                                      n_2=self.arms[0].n)
                 local_mode_parameters_history.extend([local_mode_parameters_before_first_surface, local_mode_parameters_current])
@@ -2895,7 +2909,7 @@ class OpticalSystem:
         initial_distance = -(B + D * desired_R_out) / (A + C * desired_R_out)
         return initial_distance
 
-    def invert(self):
+    def invert(self) -> OpticalSystem:
         inverted_surfaces = []
         for surface in self.physical_surfaces[::-1]:
             inverted_surface = copy.deepcopy(surface)

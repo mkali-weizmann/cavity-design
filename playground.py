@@ -113,13 +113,15 @@ def analyze_output_wavefront(ray_sequence: RaySequence, unconcentricity: float, 
 
     L_long_arm = 2 * R - unconcentricity
     if unconcentricity > 0:
-        NA_paraxial = np.sqrt(2 * LAMBDA_0_LASER / np.pi) * (L_long_arm * unconcentricity) ** (-1 / 4)
-        spot_size_paraxial = w_of_q(
-            R - unconcentricity / 2 + 1j * z_R_of_NA(NA=NA_paraxial, lambda_laser=LAMBDA_0_LASER),
-            lambda_laser=LAMBDA_0_LASER,
-        )  # w_of_q(R + 1j * z_R_of_NA(NA=NA_paraxial, lambda_laser=LAMBDA_0_LASER), lambda_laser=LAMBDA_0_LASER)#  NA_paraxial * (R - unconcentricity / 2)
+        reighley_range_paraxial = np.sqrt(L_long_arm * unconcentricity) / 2
+        center_mode_right_outer_side = ray_sequence[-1].origin[0, :] + (R - unconcentricity / 2) * RIGHT
+        mode_parameters_right_arm = ModeParameters(center=center_mode_right_outer_side, k_vector=RIGHT,
+                                                   z_R=np.array([reighley_range_paraxial, reighley_range_paraxial]),
+                                                   lambda_0_laser=LAMBDA_0_LASER, n=1)
+        NA_paraxial = mode_parameters_right_arm.NA[0]
+        spot_size_paraxial = mode_parameters_right_arm.local_mode_parameters(R - unconcentricity / 2).spot_size[0]
     else:
-        NA_paraxial, spot_size_paraxial = np.nan, np.nan
+        NA_paraxial, spot_size_paraxial, mode_parameters_right_arm = np.nan, np.nan, None
     mirror_object = CurvedMirror(
         radius=R,
         center=center_of_mirror + R * RIGHT,
@@ -157,6 +159,7 @@ def analyze_output_wavefront(ray_sequence: RaySequence, unconcentricity: float, 
         "spot_size_paraxial": spot_size_paraxial,
         "zero_derivative_points": zero_derivative_points,
         "mirror_object": mirror_object,
+        "mode_parameters_right_arm": mode_parameters_right_arm
     }
 
     return results_dict
@@ -246,20 +249,10 @@ def complete_optical_system_to_cavity(results_dict: dict, unconcentricity: float
         z_R=z_R_of_NA(NA=results_dict["NA_paraxial"], lambda_laser=LAMBDA_0_LASER),
     )
     optical_system_inverted = optical_system.invert()
-    mode_parameters_lens_right_inner_side = propagate_local_mode_parameter_through_ABCD(
-        local_mode_parameters=mode_parameters_lens_right_outer_side,
-        ABCD=optical_system_inverted.physical_surfaces[0].ABCD_matrix(cos_theta_incoming=1),
-        n_1=1,
-        n_2=n_actual,
-    )
-
-    optical_system_inverted.set_given_mode_parameters(mode_parameters_lens_right_inner_side)
-    output_mode_local = propagate_local_mode_parameter_through_ABCD(
-        optical_system_inverted.arms[-1].mode_parameters_on_surface_1,
-        optical_system_inverted.arms[-1].surface_1.ABCD_matrix(cos_theta_incoming=1),
-        n_1=n_actual,
-        n_2=1,
-    )
+    mode_parameters_right_arm = results_dict["mode_parameters_right_arm"].invert_direction()
+    modes_history = optical_system_inverted.propagate_mode_parameters(mode_parameters=mode_parameters_right_arm,
+                                                                      propagate_with_first_surface_first=True)
+    output_mode_local = modes_history[-1]
     output_mode = output_mode_local.to_mode_parameters(
         location_of_local_mode_parameter=optical_system_inverted.arms[-1].surface_1.center, k_vector=LEFT
     )

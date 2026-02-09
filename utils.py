@@ -679,8 +679,7 @@ def radius_of_f_and_n(f: float, n: float) -> float:
 
 
 def w_0_of_z_R(z_R: Union[np.ndarray, float], lambda_0_laser: float, n: float) -> np.ndarray:
-    # z_R_reduced is an array because of two transverse dimensions
-    return np.sqrt(z_R * lambda_0_laser / (np.pi * n**2))
+    return np.sqrt(z_R * lambda_0_laser / (np.pi * n))
 
 
 def z_R_of_w_0(w_0: Union[np.ndarray, float], lambda_laser: float) -> np.ndarray:
