@@ -273,7 +273,7 @@ class Ray:
         k_vector: np.ndarray,  # [m_rays..., 3]  # Last index is for x,y,z
         length: Union[np.ndarray, float] = np.nan,  # [m_rays...]
         n: float = np.nan,  # [m_rays...], the refractive index in the medium the ray is in. Assumes all rays are in
-            # The same medium.
+        # The same medium.
     ):
         if k_vector.ndim == 1 and origin.shape[0] > 1:
             k_vector = np.tile(k_vector, (*origin.shape[:-1], 1))
@@ -331,7 +331,9 @@ class Ray:
         if not np.isnan(length):
             length = np.ones(self.origin.shape[:-1]) * length
         elif not np.any(np.isnan(self.length)):
-            length = np.where(np.isinf(self.length), 1, self.length)  # If length is inf, we take it to be 0 for plotting purposes
+            length = np.where(
+                np.isinf(self.length), 1, self.length
+            )  # If length is inf, we take it to be 0 for plotting purposes
         else:
             length = np.ones_like(self.origin[..., 0])
         ray_origin_reshaped = self.origin.reshape(-1, 3)
@@ -375,6 +377,7 @@ class Ray:
 
         return ax
 
+
 class RaySequence:
     def __init__(self, rays: List[Ray]):
         self.origin = np.stack([ray.origin for ray in rays], axis=0)  # [n_rays, m_rays..., 3]
@@ -406,12 +409,16 @@ class RaySequence:
         for i in range(np.prod(self.origin.shape[1:-1])):
             full_index = np.unravel_index(i, self.origin.shape[1:-1])
             first_step_before_t = np.searchsorted(relevant_lengths_array[:, *full_index], t)
-            length_before_t = 0 if first_step_before_t == 0 else relevant_lengths_array[first_step_before_t-1, *full_index]
+            length_before_t = (
+                0 if first_step_before_t == 0 else relevant_lengths_array[first_step_before_t - 1, *full_index]
+            )
             remaining_t = t - length_before_t
-            point_at_t = self.origin[first_step_before_t, *full_index] + remaining_t * self.k_vector[first_step_before_t, *full_index] / relevant_n[first_step_before_t]
+            point_at_t = (
+                self.origin[first_step_before_t, *full_index]
+                + remaining_t * self.k_vector[first_step_before_t, *full_index] / relevant_n[first_step_before_t]
+            )
             output_points[full_index, :] = point_at_t
         return output_points
-
 
     @property
     def optical_path_length(self) -> np.ndarray:
@@ -424,6 +431,7 @@ class RaySequence:
     @property
     def cumulative_optical_path_length(self) -> np.ndarray:
         return np.cumsum(self.optical_path_length, axis=0)
+
 
 class Surface:
     def __init__(
@@ -755,7 +763,7 @@ class Surface:
             n_outside_or_before=n_1,
             diameter=self.diameter,
             material_properties=self.material_properties,
-            polynomial_coefficients=polynomial_coefficients
+            polynomial_coefficients=polynomial_coefficients,
         )
         return params
 
@@ -806,7 +814,7 @@ class PhysicalSurface(Surface):
         intersection_point, forward_normal = self.enrich_intersection_geometries(ray, paraxial=paraxial)
         ray.length = np.linalg.norm(intersection_point - ray.origin, axis=-1)
         scattered_direction_vector = self.scatter_direction(ray, forward_normal, paraxial=paraxial)
-        n_output = getattr(self, 'n_2', ray.n)
+        n_output = getattr(self, "n_2", ray.n)
         return Ray(origin=intersection_point, k_vector=scattered_direction_vector, n=n_output)
 
     def scatter_direction(
@@ -1139,7 +1147,14 @@ class AsphericRefractiveSurface(AsphericSurface, RefractiveSurface):
         self.curvature_sign = curvature_sign
 
     def ABCD_matrix(self, cos_theta_incoming: Optional[float] = None) -> np.ndarray:
-        paraxial_approximation_surface = CurvedRefractiveSurface(radius=self.radius, outwards_normal=RIGHT, center=ORIGIN, n_1=self.n_1, n_2=self.n_2, curvature_sign=self.curvature_sign)
+        paraxial_approximation_surface = CurvedRefractiveSurface(
+            radius=self.radius,
+            outwards_normal=RIGHT,
+            center=ORIGIN,
+            n_1=self.n_1,
+            n_2=self.n_2,
+            curvature_sign=self.curvature_sign,
+        )
         return paraxial_approximation_surface.ABCD_matrix(cos_theta_incoming=cos_theta_incoming)
 
     def thermal_transformation(self, P_laser_power: float, w_spot_size: float, **kwargs):
@@ -1453,8 +1468,8 @@ class CurvedSurface(Surface):
         Delta_projection_on_k = np.sum(Delta * ray.k_vector, axis=-1)  # m_rays
         with np.errstate(invalid="ignore"):
             length = -Delta_projection_on_k + self.curvature_sign * np.sqrt(
-            Delta_projection_on_k**2 - Delta_squared + self.radius**2
-        )
+                Delta_projection_on_k**2 - Delta_squared + self.radius**2
+            )
         intersection_point = ray.parameterization(length)
         return intersection_point
 
@@ -1903,7 +1918,7 @@ def generate_aspheric_lens_params(
         theta=angles_of_unit_vector(forward_normal)[0],
         phi=angles_of_unit_vector(forward_normal)[1],
         r_1=np.inf,
-        r_2=1/(2*coeffs[1]),
+        r_2=1 / (2 * coeffs[1]),
         curvature_sign=0,
         diameter=diameter,
         polynomial_coefficients=coeffs,
@@ -2305,7 +2320,7 @@ class OpticalSystem:
         self.arms: List[Arm] = [
             Arm(
                 surfaces[i],
-                surfaces[i+1],
+                surfaces[i + 1],
             )
             for i in range(len(surfaces) - 1)
         ]
@@ -2530,10 +2545,9 @@ class OpticalSystem:
     def finesse(self):
         return np.pi * self.free_spectral_range / self.amplitude_decay_rate
 
-    def propagate_ray(self,
-                      ray: Ray,
-                      n_arms: Optional[int] = None,
-                      propagate_with_first_surface_first: bool = False) -> List[Ray]:
+    def propagate_ray(
+        self, ray: Ray, n_arms: Optional[int] = None, propagate_with_first_surface_first: bool = False
+    ) -> List[Ray]:
         ray_history = [ray]
         n_arms = nvl(n_arms, len(self.arms))
 
@@ -2565,7 +2579,6 @@ class OpticalSystem:
             arm.mode_parameters_on_surface_0 = local_mode_parameters_current
             local_mode_parameters_current = arm.propagate_local_mode_parameters()
             arm.mode_principle_axes = self.principle_axes(arm.central_line.k_vector)
-
 
     def principle_axes(self, k_vector: np.ndarray):
         # Returns two vectors that are orthogonal to k_vector and each other, one lives in the central line plane,
@@ -2610,7 +2623,6 @@ class OpticalSystem:
                 )
                 list_of_spot_size_lines.extend(spot_size_lines_separated)
         return list_of_spot_size_lines
-
 
     def plot(
         self,
@@ -2789,7 +2801,6 @@ class OpticalSystem:
             ax.legend()
         return ax
 
-
     @property
     def total_acquired_gouy_phase(self):
         if np.isnan(self.arms[0].mode_parameters.z_R[0]) or self.arms[0].mode_parameters_on_surface_0.z_R[0] == 0:
@@ -2799,7 +2810,9 @@ class OpticalSystem:
 
     def output_radius_of_curvature(self, initial_distance: float) -> float:
         # Currently assume 1d problem for simplicty, if required it can be expanded
-        if isinstance(self.surfaces[0], PhysicalSurface):  # Bad implementation. to correct it, I need to make sure that OpticalSystem can actually accept a surface that is not a PhysicalSurface, and allow for General surfaces in general. Also - better decompose the self.ABCD matrices to the propagation and reflection ABCD matrices.
+        if isinstance(
+            self.surfaces[0], PhysicalSurface
+        ):  # Bad implementation. to correct it, I need to make sure that OpticalSystem can actually accept a surface that is not a PhysicalSurface, and allow for General surfaces in general. Also - better decompose the self.ABCD matrices to the propagation and reflection ABCD matrices.
             first_ABCD = self.physical_surfaces[0].ABCD_matrix(cos_theta_incoming=1)[:2, :2]
         else:
             first_ABCD = np.eye(2)
@@ -2809,7 +2822,9 @@ class OpticalSystem:
         return R_out
 
     def required_initial_distance_for_desired_output_radius_of_curvature(self, desired_R_out: float) -> float:
-        if isinstance(self.surfaces[0], PhysicalSurface):  # Bad implementation. to correct it, I need to make sure that OpticalSystem can actually accept a surface that is not a PhysicalSurface, and allow for General surfaces in general. Also - better decompose the self.ABCD matrices to the propagation and reflection ABCD matrices.
+        if isinstance(
+            self.surfaces[0], PhysicalSurface
+        ):  # Bad implementation. to correct it, I need to make sure that OpticalSystem can actually accept a surface that is not a PhysicalSurface, and allow for General surfaces in general. Also - better decompose the self.ABCD matrices to the propagation and reflection ABCD matrices.
             first_ABCD = self.physical_surfaces[0].ABCD_matrix(cos_theta_incoming=1)[:2, :2]
         else:
             first_ABCD = np.eye(2)
@@ -2837,8 +2852,13 @@ class OpticalSystem:
         else:
             initial_ray_inverted = None
 
-        inverted_system = OpticalSystem(surfaces=inverted_surfaces, lambda_0_laser=self.lambda_0_laser, given_initial_central_line=initial_ray_inverted)
+        inverted_system = OpticalSystem(
+            surfaces=inverted_surfaces,
+            lambda_0_laser=self.lambda_0_laser,
+            given_initial_central_line=initial_ray_inverted,
+        )
         return inverted_system
+
 
 ##############
 
@@ -2865,15 +2885,16 @@ class Cavity(OpticalSystem):
     ):
         ordered_surfaces = self._order_surfaces_for_initialization(surfaces, standing_wave=standing_wave)
 
-        super().__init__(surfaces=ordered_surfaces,
-                         lambda_0_laser=lambda_0_laser,
-                         params=params,
-                         names=names,
-                         t_is_trivial=t_is_trivial,
-                         p_is_trivial=p_is_trivial,
-                         power=power,
-                         use_paraxial_ray_tracing=use_paraxial_ray_tracing,
-                         )
+        super().__init__(
+            surfaces=ordered_surfaces,
+            lambda_0_laser=lambda_0_laser,
+            params=params,
+            names=names,
+            t_is_trivial=t_is_trivial,
+            p_is_trivial=p_is_trivial,
+            power=power,
+            use_paraxial_ray_tracing=use_paraxial_ray_tracing,
+        )
 
         self.standing_wave = standing_wave
         self.central_line_successfully_traced: Optional[bool] = None
@@ -2911,7 +2932,9 @@ class Cavity(OpticalSystem):
 
     @property
     def physical_surfaces_ordered(self):
-        physical_surfaces_ordered_list = [surface for surface in self.surfaces_ordered if isinstance(surface, PhysicalSurface)]
+        physical_surfaces_ordered_list = [
+            surface for surface in self.surfaces_ordered if isinstance(surface, PhysicalSurface)
+        ]
         return physical_surfaces_ordered_list
 
     @property
@@ -3329,7 +3352,6 @@ class Cavity(OpticalSystem):
 
         ABCD_matrix = optimize.approx_fprime(central_line_initial_parameters, trace_ray_parametric_parameters_only, dr)
         return ABCD_matrix
-
 
     def calculated_shifted_cavity_overlap_integral(
         self, perturbation_pointer: Union[PerturbationPointer, List[PerturbationPointer]]

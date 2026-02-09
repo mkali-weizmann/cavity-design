@@ -18,7 +18,15 @@ LAMBDA_0_LASER = 1064e-9
 LAMBDA_1_LASER = 532e-9
 EPSILON_0_PERMITTIVITY = 8.854187e-12  # [F/m]
 MU_0_PERMEABILITY = 1.256637e-6
-LEFT, RIGHT, UP, DOWN, INWARD, OUTWARD, ORIGIN = np.array([-1, 0, 0]), np.array([1, 0, 0]), np.array([0, 1, 0]), np.array([0, -1, 0]), np.array([0, 0, -1]), np.array([0, 0, 1]), np.array([0, 0, 0])
+LEFT, RIGHT, UP, DOWN, INWARD, OUTWARD, ORIGIN = (
+    np.array([-1, 0, 0]),
+    np.array([1, 0, 0]),
+    np.array([0, 1, 0]),
+    np.array([0, -1, 0]),
+    np.array([0, 0, -1]),
+    np.array([0, 0, 1]),
+    np.array([0, 0, 0]),
+)
 
 
 # Every optical element has a np.ndarray representation, and those two dictionaries defines the order and meaning of
@@ -561,21 +569,29 @@ def rotation_matrix_around_n(n, theta):
     )
     return A
 
+
 def dT_c_of_a_lens(R, h):
     dT_c = R * (1 - np.sqrt(1 - h**2 / R**2))
     return dT_c
+
 
 def focal_length_of_lens(R_1, R_2, n, T_c):
     # http://hyperphysics.phy-astr.gsu.edu/hbase/geoopt/priplan.html
     one_over_f = (n - 1) * ((1 / R_1) - (1 / R_2) + ((n - 1) * T_c) / (n * R_1 * R_2))
     return 1 / one_over_f
 
+
 def principal_planes_of_lens(R_1, R_2, n, T_c):
     # http://hyperphysics.phy-astr.gsu.edu/hbase/geoopt/priplan.html
     f = focal_length_of_lens(R_1, R_2, n, T_c)
-    h_2 = -f * (n - 1) * T_c / (R_1 * n) # z_principal_plane_2 - z_face_2, negative for biconvex lens, as it is to the left of the second face.
-    h_1 = -f * (n - 1) * T_c / (R_2 * n) # z_principal_plane_1 - z_face_1, positive for biconvex lens, as it is to the right of the first face.
+    h_2 = (
+        -f * (n - 1) * T_c / (R_1 * n)
+    )  # z_principal_plane_2 - z_face_2, negative for biconvex lens, as it is to the left of the second face.
+    h_1 = (
+        -f * (n - 1) * T_c / (R_2 * n)
+    )  # z_principal_plane_1 - z_face_1, positive for biconvex lens, as it is to the right of the first face.
     return h_1, h_2
+
 
 def image_of_a_point_with_thick_lens(distance_to_face_1, R_1, R_2, n, T_c):
     # For biconvex, R_1 > 0, R_2 < 0
@@ -588,6 +604,7 @@ def image_of_a_point_with_thick_lens(distance_to_face_1, R_1, R_2, n, T_c):
     else:
         d_2 = (1 / f - 1 / (distance_to_face_1 + h_1)) ** -1 + h_2
     return d_2
+
 
 def back_focal_length_of_lens(R_1, R_2, n, T_c):
     f = focal_length_of_lens(R_1=R_1, R_2=R_2, n=n, T_c=T_c)
@@ -680,11 +697,13 @@ def z_R_of_NA(NA: Union[np.ndarray, float], lambda_laser: float):
 def w_0_of_NA(NA: Union[np.ndarray, float], lambda_laser: float):
     return lambda_laser / (np.pi * NA)
 
+
 def R_of_q(q: Union[np.ndarray, float]) -> np.ndarray:
     q_inverse = 1 / q
     R_inverse = np.real(q_inverse)
     R = np.where(R_inverse != 0, 1 / R_inverse, np.inf)
     return R
+
 
 def w_of_q(q: Union[np.ndarray, float], lambda_laser: float) -> np.ndarray:
     q_inverse = 1 / q
