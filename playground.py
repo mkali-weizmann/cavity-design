@@ -273,8 +273,6 @@ def complete_optical_system_to_cavity(results_dict: dict, unconcentricity: float
         standing_wave=True,
     )
 
-    #
-
     print(
         f"NA in the right arm - analytical calculation and numerical cavity solution\n{results_dict['NA_paraxial']:.3e}\n"
         f"{cavity.arms[3].mode_parameters.NA[0]:.3e}"
@@ -495,7 +493,11 @@ def plot_results(results_dict, far_away_plane: bool = False):
             exp = int(exp_str)
             terms_parts_mirror.append(rf"${mant:.1f}\cdot10^{{{exp}}}\,x^{{{2 * i}}}$")
         terms_mirror = " + ".join(terms_parts_mirror)
-        title += f"\nmirror deviation fit (unconcentricity = {unconcentricity*1e6:.1f} µm):\n" + terms_mirror
+        if spot_size_paraxial is not None:
+            mode_terms = f"\n Paraxial spot size: {spot_size_paraxial * 1e3:.2f} mm, NA long arm: {NA_paraxial:.2e}, NA short arm: {results_dict['cavity'].arms[0].mode_parameters.NA[0]:.2e}"
+        else:
+            mode_terms=""
+        title += f"\nmirror deviation fit (unconcentricity = {unconcentricity*1e6:.1f} µm):\n" + terms_mirror + mode_terms
         ax[1, 1].plot(
             x_fit * 1e3,
             polynomial_residuals_mirror(x_fit**2) * 1e6,
@@ -577,32 +579,44 @@ def choose_source_position_for_desired_focus_analytic(
 
 # %% SINGLE SET-UP ANALYSIS:
 # For aspheric lens:
-aspheric = True
-if aspheric:
-    # back_focal_length = back_focal_length_of_lens(R_1=24.22e-3, R_2=-5.49e-3, n=1.8, T_c=2.91e-3)# 20e-3
-    # diameter = 7.75e-3
-    back_focal_length = 20e-3
-    diameter = 12.7e-3
-    R_1 = None
-    R_2 = None
-    R_2_signed = None
-    T_c = 4.35e-3
 
-else:
-    R_1 = 24.22e-3
-    R_2 = 5.49e-3
-    R_2_signed = -R_2
-    T_c = 2.91e-3
-    diameter = 7.75e-3
-    back_focal_length = back_focal_length_of_lens(R_1=R_1, R_2=-R_2, n=1.8, T_c=T_c)
 # rest of parameters
 n_actual = 1.8
 dn = 0
 n_design = n_actual + dn
 n_rays = 30
-unconcentricity = 0.00044137931034482665
-phi_max = 0.23
+unconcentricity = 30e-4# np.float64(0.007610344827586207)  # ,  np.float64(0.007268965517241379)
+phi_max = 0.25
 desired_focus = 200e-3
+T_c = 4.35e-3
+diameter = 12.7e-3
+plot = True
+aspheric = True
+if aspheric:
+    # back_focal_length = back_focal_length_of_lens(R_1=24.22e-3, R_2=-5.49e-3, n=1.8, T_c=2.91e-3)
+    # diameter = 7.75e-3
+    back_focal_length = 20e-3
+    R_1 = None
+    R_2 = None
+    R_2_signed = None
+    # This results in this value of R_2: -0.017933320598319306
+else:
+    f_lens = focal_length_of_lens(R_1=np.inf, R_2=-0.017933320598319306, n=1.8, T_c=4.35e-3)  # Same as the aspheric ones.
+    R = f_lens * (n_design - 1) * (1 + np.sqrt(1 - T_c / (f_lens * n_design)))
+    R_1 = R
+    R_2 = R
+    R_2_signed = -R_2
+    back_focal_length = back_focal_length_of_lens(R_1=R_1, R_2=-R_2, n=n_design, T_c=T_c)
+
+    # Avantier lenses:
+    # R_1 = 24.22e-3
+    # R_2 = 5.49e-3
+    # R_2_signed = -R_2
+    # T_c = 2.91e-3
+    # diameter = 7.75e-3
+    # back_focal_length = back_focal_length_of_lens(R_1=R_1, R_2=-R_2, n=1.8, T_c=T_c)
+
+
 defocus = choose_source_position_for_desired_focus_analytic(
     desired_focus=desired_focus,
     T_c=T_c,
@@ -630,14 +644,15 @@ results_dict = analyze_potential(
 print(
     f"Defocus solution for 30 mm focus: {defocus*1e3:.3f} mm, focal point distance: {(results_dict['center_of_curvature'][0] - results_dict['optical_system'].physical_surfaces[1].center[0]) * 1e3:.2f} mm"
 )
-# plt.close('all')
-# fig, ax = plot_results(results_dict, far_away_plane=True)
-# center = results_dict['center_of_curvature']
-# ax[0, 1].set_xlim((center[0]-0.002, center[0]+0.002))
-# plt.suptitle(f"aspheric={aspheric} n_design: {n_design:.3f}, n_actual: {n_actual:.3f}, Lens focal length: {back_focal_length * 1e3:.1f} mm, Defocus: z_lens -> z_lens + {defocus * 1e3:.1f} mm, T_c: {T_c * 1e3:.1f} mm, Diameter: {diameter * 1e3:.2f} mm")
-# # Save image with suptitle in name:
-# plt.savefig(f"outputs/figures/analyze_potential_n_design_aspheric={aspheric}_{n_design:.3f}_n_actual_{n_actual:.3f}_focal_length_{back_focal_length * 1e3:.1f}mm_defocus_{defocus * 1e3:.1f}mm_Tc_{T_c * 1e3:.1f}mm_diameter_{diameter * 1e3:.2f}mm.svg", dpi=300)
-# plt.show()
+if plot:
+    # plt.close('all')
+    fig, ax = plot_results(results_dict, far_away_plane=True)
+    center = results_dict['center_of_curvature']
+    ax[0, 1].set_xlim((center[0]-0.002, center[0]+0.002))
+    plt.suptitle(f"aspheric={aspheric}, desired_focus = {desired_focus:.3e}m, n_design: {n_design:.3f}, n_actual: {n_actual:.3f}, Lens focal length: {back_focal_length * 1e3:.1f} mm, Defocus: z_lens -> z_lens + {defocus * 1e3:.1f} mm, T_c: {T_c * 1e3:.1f} mm, Diameter: {diameter * 1e3:.2f} mm")
+    # Save image with suptitle in name:
+    plt.savefig(f"outputs/figures/analyze_potential_n_design_aspheric={aspheric}_{n_design:.3f}_n_actual_{n_actual:.3f}_focal_length_{back_focal_length * 1e3:.1f}mm_defocus_{defocus * 1e3:.1f}mm_Tc_{T_c * 1e3:.1f}mm_diameter_{diameter * 1e3:.2f}mm.svg", dpi=300)
+    plt.show()
 print(
     f"Paraxial spot size for unconcentricity of {unconcentricity*1e6:.1f} μm: {results_dict['spot_size_paraxial']*1e3:.2f} mm"
 )
@@ -673,22 +688,19 @@ for i, u in enumerate(unconcentricities):
     paraxial_spot_sizes[i] = results_dict["spot_size_paraxial"]
     paraxial_NAs[i] = results_dict["NA_paraxial"]
     left_NAs[i] = results_dict["cavity"].arms[0].mode_parameters.NA[0]
-    # paraxial_spot_sizes_cavity = results_dict['cavity'].arms[2].mode_parameters_on_surface_1.radius_of_curvature[0]  # results_dict['spot_size_paraxial']
-    # paraxial_NAs_cavity = results_dict['cavity'].arms[2].mode_parameters.NA[0]  # results_dict['NA_paraxial']
-    # left_NAs[i] = results_dict['cavity'].arms[0].mode_parameters.NA[0]
     try:
         spot_size_boundaries[i] = np.abs(results_dict["zero_derivative_points"])
     except TypeError:
         spot_size_boundaries[i] = np.nan  # If zero_derivative_points is None
 # %%
 fig, ax = plt.subplots(figsize=(10, 6))
-ax.plot(unconcentricities * 1e6, paraxial_spot_sizes * 1e3, label="Paraxial spot size", color="blue")
-ax.plot(
+ax.scatter(unconcentricities * 1e6, paraxial_spot_sizes * 1e3, label="Paraxial spot size", color="blue")
+ax.scatter(
     unconcentricities * 1e6, spot_size_boundaries * 1e3, label="Boundary of 2nd vs 4th order dominance", color="red"
 )
 ax.set_xlabel("Unconcentricity (µm)")
 ax.set_ylabel("Spot size / boundary (mm)")
-ax.set_title("paraxial spot size vs. aberrations limit")
+ax.set_title(f"paraxial spot size vs. aberrations limit\naspheric={aspheric}, Lens focal length: ")
 ax.grid()
 
 # twin y-axis for paraxial NAs
