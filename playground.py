@@ -401,31 +401,31 @@ def plot_results(results_dict, far_away_plane: bool = False):
     fig, ax = plt.subplots(2, 2, figsize=(20, 16), constrained_layout=True)
     rays_0, rays_1, rays_2 = ray_sequence
     surface_0, surface_1 = optical_system.physical_surfaces[0], optical_system.physical_surfaces[-1]
-    rays_0.plot(ax=ax[0, 0], label="Before lens", color="black", linewidth=0.5)
-    rays_1.plot(ax=ax[0, 0], label="After flat surface", color="blue", linewidth=0.5)
-    rays_2.plot(ax=ax[0, 0], label="After aspheric surface", color="red", linewidth=0.5)
-    surface_0.plot(ax=ax[0, 0], color="green")
-    surface_1.plot(ax=ax[0, 0], color="orange")
-    ax[0, 0].set_xlim(rays_0.origin[0, 0] - 0.01, center_of_curvature[0] * 2)  # (-1e-3, 100e-3)
-    ax[0, 0].set_ylim(-surface_1.diameter / 2, surface_1.diameter / 2)  # (-4.2e-3, 4.2e-3)
-    ax[0, 0].grid()
-    ax[0, 0].scatter(wavefront_points[:, 0], wavefront_points[:, 1], s=8, color="purple")
-    ax[0, 0].scatter(center_of_curvature[0], center_of_curvature[1], s=50, color="cyan", label="Center of curvature")
+    rays_0.plot(ax=ax[1, 0], label="Before lens", color="black", linewidth=0.5)
+    rays_1.plot(ax=ax[1, 0], label="After flat surface", color="blue", linewidth=0.5)
+    rays_2.plot(ax=ax[1, 0], label="After aspheric surface", color="red", linewidth=0.5)
+    surface_0.plot(ax=ax[1, 0], color="green")
+    surface_1.plot(ax=ax[1, 0], color="orange")
+    ax[1, 0].set_xlim(rays_0.origin[0, 0] - 0.01, center_of_curvature[0] * 2)  # (-1e-3, 100e-3)
+    ax[1, 0].set_ylim(-surface_1.diameter / 2, surface_1.diameter / 2)  # (-4.2e-3, 4.2e-3)
+    ax[1, 0].grid()
+    ax[1, 0].scatter(wavefront_points[:, 0], wavefront_points[:, 1], s=8, color="purple")
+    ax[1, 0].scatter(center_of_curvature[0], center_of_curvature[1], s=50, color="cyan", label="Center of curvature")
 
-    rays_0.plot(ax=ax[0, 1], label="Before lens", color="black", linewidth=0.5)
-    rays_1.plot(ax=ax[0, 1], label="After flat surface", color="blue", linewidth=0.5)
-    rays_2.plot(ax=ax[0, 1], label="After aspheric surface", color="red", linewidth=0.5)
-    surface_0.plot(ax=ax[0, 1], color="green")
-    surface_1.plot(ax=ax[0, 1], color="orange")
-    ax[0, 1].set_xlim(
+    rays_0.plot(ax=ax[1, 1], label="Before lens", color="black", linewidth=0.5)
+    rays_1.plot(ax=ax[1, 1], label="After flat surface", color="blue", linewidth=0.5)
+    rays_2.plot(ax=ax[1, 1], label="After aspheric surface", color="red", linewidth=0.5)
+    surface_0.plot(ax=ax[1, 1], color="green")
+    surface_1.plot(ax=ax[1, 1], color="orange")
+    ax[1, 1].set_xlim(
         (surface_1.center[0] + center_of_curvature[0]) / 2 - 0.002, center_of_curvature[0] + 0.005
     )  # (-1e-3, 100e-3)
-    ax[0, 1].set_ylim(-rays_2.origin[1, 1] * 0.5, 1 * rays_2.origin[1, 1])  # (-4.2e-3, 4.2e-3)
-    ax[0, 1].grid()
-    ax[0, 1].scatter(wavefront_points[:, 0], wavefront_points[:, 1], s=8, color="purple")
-    ax[0, 1].scatter(center_of_curvature[0], center_of_curvature[1], s=50, color="cyan", label="Center of curvature")
+    ax[1, 1].set_ylim(-rays_2.origin[1, 1] * 0.5, 1 * rays_2.origin[1, 1])  # (-4.2e-3, 4.2e-3)
+    ax[1, 1].grid()
+    ax[1, 1].scatter(wavefront_points[:, 0], wavefront_points[:, 1], s=8, color="purple")
+    ax[1, 1].scatter(center_of_curvature[0], center_of_curvature[1], s=50, color="cyan", label="Center of curvature")
 
-    ax[1, 0].plot(
+    ax[0, 0].plot(
         wavefront_points[:, 0] * 1e3,
         wavefront_points[:, 1] * 1e3,
         label="wavefront points",
@@ -436,7 +436,7 @@ def plot_results(results_dict, far_away_plane: bool = False):
         zorder=1,
         alpha=0.4,
     )
-    ax[1, 0].plot(
+    ax[0, 0].plot(
         dummy_points[:, 0] * 1e3,
         dummy_points[:, 1] * 1e3,
         linestyle="dashdot",
@@ -446,12 +446,12 @@ def plot_results(results_dict, far_away_plane: bool = False):
         alpha=0.95,
         zorder=3,
     )
-    ax[1, 0].set_xlabel("x (mm)")
-    ax[1, 0].set_ylabel("y (mm)")
-    ax[1, 0].grid()
-    ax[1, 0].set_title(f"wavefront and fitted sphere: {R*1e3:.2f} mm")
+    ax[0, 0].set_xlabel("x (mm)")
+    ax[0, 0].set_ylabel("y (mm)")
+    ax[0, 0].grid()
+    ax[0, 0].set_title(f"wavefront and fitted sphere: {R*1e3:.2f} mm")
     if dummy_points_mirror is not None:
-        ax[1, 0].plot(
+        ax[0, 0].plot(
             dummy_points_mirror[:, 0] * 1e3,
             dummy_points_mirror[:, 1] * 1e3,
             linestyle="dashed",
@@ -461,9 +461,9 @@ def plot_results(results_dict, far_away_plane: bool = False):
             alpha=0.5,
             zorder=2,
         )
-        ax[1, 0].legend()
+        ax[0, 0].legend()
 
-    ax[1, 1].plot(
+    ax[0, 1].plot(
         wavefront_points[:, 1] * 1e3,
         residual_distances * 1e6,
         label="wavefront residual from matching sphere",
@@ -474,9 +474,9 @@ def plot_results(results_dict, far_away_plane: bool = False):
         alpha=0.6,
     )
     x_fit = np.linspace(np.min(wavefront_points[:, 1]), np.max(wavefront_points[:, 1]), 100)
-    ax[1, 1].set_xlabel("y (mm)")
-    ax[1, 1].set_ylabel("wavefront difference (µm)")
-    ax[1, 1].grid()
+    ax[0, 1].set_xlabel("y (mm)")
+    ax[0, 1].set_ylabel("wavefront difference (µm)")
+    ax[0, 1].grid()
     # build polynomial term string with ascending powers and .1e formatting, include x^{n} terms
     coeffs_asc = polynomial.coef
     terms_parts = []
@@ -506,7 +506,7 @@ def plot_results(results_dict, far_away_plane: bool = False):
         title += (
             f"\nmirror deviation fit (unconcentricity = {unconcentricity*1e6:.1f} µm):\n" + terms_mirror + mode_terms
         )
-        ax[1, 1].plot(
+        ax[0, 1].plot(
             x_fit * 1e3,
             polynomial_residuals_mirror(x_fit**2) * 1e6,
             color="green",
@@ -514,7 +514,7 @@ def plot_results(results_dict, far_away_plane: bool = False):
             label="Mirror residuals Polynomial fit",
             linewidth=0.5,
         )
-        ax[1, 1].plot(
+        ax[0, 1].plot(
             wavefront_points[:, 1] * 1e3,
             residual_distances_mirror * 1e6,
             marker="x",
@@ -525,8 +525,8 @@ def plot_results(results_dict, far_away_plane: bool = False):
             alpha=0.6,
         )
 
-    ax[1, 1].set_title(title)
-    ax[1, 1].plot(
+    ax[0, 1].set_title(title)
+    ax[0, 1].plot(
         x_fit * 1e3,
         polynomial(x_fit**2) * 1e6,
         color="red",
@@ -534,9 +534,9 @@ def plot_results(results_dict, far_away_plane: bool = False):
         label="Matching sphere residuals Polynomial fit",
         linewidth=0.5,
     )
-    # Plot intensity profile on a new y axis for ax[1, 1] if NA_paraxial is not None: using the formula: e^{-y^{2} / (spot_size_paraxial / 2)^{2})}
+    # Plot intensity profile on a new y axis for ax[0, 1] if NA_paraxial is not None: using the formula: e^{-y^{2} / (spot_size_paraxial / 2)^{2})}
     if NA_paraxial is not None and spot_size_paraxial is not None:
-        ax2 = ax[1, 1].twinx()
+        ax2 = ax[0, 1].twinx()
         intensity_profile = np.exp(-(x_fit**2) / (spot_size_paraxial / 2) ** 2)
         ax2.plot(
             x_fit * 1e3,
@@ -556,13 +556,13 @@ def plot_results(results_dict, far_away_plane: bool = False):
         legend_line = Line2D(
             [], [], color="orange", linestyle="dashed", linewidth=1, label="Paraxial Gaussian intensity profile"
         )
-        handles, labels = ax[1, 1].get_legend_handles_labels()
+        handles, labels = ax[0, 1].get_legend_handles_labels()
         handles.append(legend_line)
         ax2.set_ylabel("Relative intensity (a.u.)")
         ax2.grid(False)
 
-    ax[1, 1].axvline(zero_derivative_points * 1e3, label="2nd vs 4th order max", color="purple", linestyle="dotted")
-    ax[1, 1].legend(handles=handles)
+    ax[0, 1].axvline(zero_derivative_points * 1e3, label="2nd vs 4th order max", color="purple", linestyle="dotted")
+    ax[0, 1].legend(handles=handles)
     return fig, ax
 
 
@@ -658,7 +658,7 @@ if plot:
     # plt.close('all')
     fig, ax = plot_results(results_dict, far_away_plane=True)
     center = results_dict["center_of_curvature"]
-    ax[0, 1].set_xlim((center[0] - 0.002, center[0] + 0.002))
+    ax[1, 1].set_xlim((center[0] - 0.002, center[0] + 0.002))
     plt.suptitle(
         f"aspheric={aspheric}, desired_focus = {desired_focus:.3e}m, n_design: {n_design:.3f}, n_actual: {n_actual:.3f}, Lens focal length: {back_focal_length * 1e3:.1f} mm, Defocus: z_lens -> z_lens + {defocus * 1e3:.1f} mm, T_c: {T_c * 1e3:.1f} mm, Diameter: {diameter * 1e3:.2f} mm"
     )
