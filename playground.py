@@ -5,8 +5,6 @@ from cavity import *
 from matplotlib.lines import Line2D
 
 # %%
-
-
 def initialize_rays(
     defocus: float = 0,
     n_rays=100,

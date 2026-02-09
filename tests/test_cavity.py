@@ -320,3 +320,67 @@ def test_cavity_smart_generation():
                                                                           0.00000000e+00]]))), f'cavity_smart_generation_test failed: center should be approximately [[8.67361738e-19, 0.00000000e+00, 0.00000000e+00], [8.67361738e-19, 0.00000000e+00, 0.00000000e+00]], instead got {cavity.mode_parameters[0].center}'
     assert np.all(np.isclose(cavity.mode_parameters[0].z_R, np.array([1.50525208e-05,
                                                                       1.50525208e-05]))), f'cavity_smart_generation_test failed: z_R should be approximately 1.50525208e-05, instead got {cavity.mode_parameters[0].z_R}'
+
+
+def test_fabry_perot_perturbation():
+    power_laser = 5.0000000000e+04
+    element_index_0 = 0
+    param_name_0 = 'x'
+    perturbation_value_special_log_0 = -2.6766707630e+00
+    perturbation_value_special_log_0_fine = 0.0000000000e+00
+    element_index_1 = 1
+    param_name_1 = 'phi'
+    perturbation_value_special_log_1 = -2.0200114290e+00
+    perturbation_value_special_log_1_fine = 1.7763568394e-15
+    eval_box = ''
+    params = [
+        OpticalElementParams(name='None', surface_type='curved_mirror', x=-4.999964994473332e-03, y=0, z=0, theta=0,
+                             phi=-1e+00 * np.pi, r_1=5e-03, r_2=np.nan, curvature_sign=CurvatureSigns.concave,
+                             T_c=np.nan, n_inside_or_after=1e+00, n_outside_or_before=1e+00, diameter=np.nan,
+                             material_properties=MaterialProperties(refractive_index=1.45e+00, alpha_expansion=5.2e-07,
+                                                                    beta_surface_absorption=1e-06,
+                                                                    kappa_conductivity=1.38e+00, dn_dT=1.2e-05,
+                                                                    nu_poisson_ratio=1.6e-01,
+                                                                    alpha_volume_absorption=1e-03,
+                                                                    intensity_reflectivity=1e-04,
+                                                                    intensity_transmittance=9.99899e-01,
+                                                                    temperature=np.nan)),
+        OpticalElementParams(name='None', surface_type='curved_mirror', x=4.999964994473332e-03, y=0, z=0, theta=0,
+                             phi=0, r_1=5e-03, r_2=np.nan, curvature_sign=CurvatureSigns.concave, T_c=np.nan,
+                             n_inside_or_after=1e+00, n_outside_or_before=1e+00, diameter=np.nan,
+                             material_properties=MaterialProperties(refractive_index=1.45e+00, alpha_expansion=5.2e-07,
+                                                                    beta_surface_absorption=1e-06,
+                                                                    kappa_conductivity=1.38e+00, dn_dT=1.2e-05,
+                                                                    nu_poisson_ratio=1.6e-01,
+                                                                    alpha_volume_absorption=1e-03,
+                                                                    intensity_reflectivity=1e-04,
+                                                                    intensity_transmittance=9.99899e-01,
+                                                                    temperature=np.nan)), ]
+    perturbation_value_0 = widget_convenient_exponent(perturbation_value_special_log_0, base=10, scale=-10)
+    perturbation_value_1 = widget_convenient_exponent(perturbation_value_special_log_1, base=10, scale=-10)
+
+    perturbation_value_0_fine = widget_convenient_exponent(perturbation_value_special_log_0_fine, base=10, scale=-10)
+    perturbation_value_1_fine = widget_convenient_exponent(perturbation_value_special_log_1_fine, base=10, scale=-10)
+
+    perturbation_value_0 += perturbation_value_0_fine
+    perturbation_value_1 += perturbation_value_1_fine
+
+    cavity = Cavity.from_params(params=params, standing_wave=True,
+                                lambda_0_laser=LAMBDA_0_LASER, power=power_laser, p_is_trivial=True, t_is_trivial=True,
+                                use_paraxial_ray_tracing=False, set_central_line=True, set_mode_parameters=True)
+    perturbation_pointers = [
+        PerturbationPointer(element_index=element_index_0, parameter_name=param_name_0,
+                            perturbation_value=perturbation_value_0),
+        PerturbationPointer(element_index=element_index_1, parameter_name=param_name_1,
+                            perturbation_value=perturbation_value_1)
+    ]
+    perturbed_cavity = perturb_cavity(cavity=cavity, perturbation_pointer=perturbation_pointers)
+    if eval_box != '':
+        try:
+            exec(f"print({eval_box})")
+        except (NameError, AttributeError) as e:
+            print(f'invalid expression: {e}')
+    u = np.linalg.norm(perturbed_cavity.physical_surfaces[0].origin - perturbed_cavity.physical_surfaces[1].origin)
+    NA_numerical = np.sqrt(2 * LAMBDA_0_LASER / np.pi) * (perturbed_cavity.arms[0].central_line.length * u) ** (-1 / 4)
+    NA_numerical = perturbed_cavity.mode_parameters[0].NA[0]
+    assert np.isclose(NA_numerical, NA_numerical, rtol=0.0001), f'Fabry-Perot perturbation test failed: expected NA of approximately {NA_of_u} but got {NA_numerical}'
