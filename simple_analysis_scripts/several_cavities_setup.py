@@ -164,7 +164,7 @@ outwards_normal_3 = normalize_vector(center_3 - center_2)
 mirror_1 = CurvedMirror(radius=r_1, outwards_normal=outwards_normal_1, center=center_1)
 mirror_2 = CurvedMirror(radius=r_2, outwards_normal=outwards_normal_2, center=center_2)
 mirror_3 = CurvedMirror(radius=r_3, outwards_normal=outwards_normal_3, center=center_3)
-cavity_checkmark = Cavity(physical_surfaces=[mirror_1, mirror_2, mirror_3], standing_wave=True,
+cavity_checkmark = Cavity(surfaces=[mirror_1, mirror_2, mirror_3], standing_wave=True,
                           lambda_0_laser=lambda_0_laser,
                           set_central_line=True,
                           set_mode_parameters=True)

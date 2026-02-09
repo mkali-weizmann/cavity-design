@@ -759,6 +759,17 @@ class Surface:
         )
         return params
 
+    @property
+    def inverse(self):
+        inverted_surface = copy.deepcopy(self)
+        if isinstance(self, RefractiveSurface):
+            n_1, n_2 = self.n_1, self.n_2
+            inverted_surface.n_1 = n_2
+            inverted_surface.n_2 = n_1
+        if isinstance(self, (CurvedSurface, AsphericSurface)) and not isinstance(self, ReflectiveSurface):
+            inverted_surface.curvature_sign *= -1
+        return inverted_surface
+
 
 class PhysicalSurface(Surface):
     def __init__(
@@ -2280,7 +2291,7 @@ def simple_mode_propagator(
 class OpticalSystem:
     def __init__(
         self,
-        physical_surfaces: List[PhysicalSurface],
+        surfaces: List[Surface],
         lambda_0_laser: Optional[float] = None,
         params: Optional[List[OpticalElementParams]] = None,
         names: Optional[List[str]] = None,
@@ -2291,13 +2302,12 @@ class OpticalSystem:
         given_initial_local_mode_parameters: Optional[LocalModeParameters] = None,
         use_paraxial_ray_tracing: bool = True,
     ):
-        self.physical_surfaces = physical_surfaces
         self.arms: List[Arm] = [
             Arm(
-                self.physical_surfaces[i],
-                self.physical_surfaces[i+1],
+                surfaces[i],
+                surfaces[i+1],
             )
-            for i in range(len(self.physical_surfaces) - 1)
+            for i in range(len(surfaces) - 1)
         ]
         self.central_line_successfully_traced: Optional[bool] = None
         self.resonating_mode_successfully_traced: Optional[bool] = None
@@ -2319,6 +2329,16 @@ class OpticalSystem:
                 local_mode_parameters_first_surface=given_initial_local_mode_parameters,
             )
 
+    @property
+    def surfaces(self):
+        surfaces = [arm.surface_0 for arm in self.arms] + [self.arms[-1].surface_1]
+        return surfaces
+
+    @property
+    def physical_surfaces(self):
+        physical_surfaces = [surface for surface in self.surfaces if isinstance(surface, PhysicalSurface)]
+        return physical_surfaces
+
     @staticmethod
     def from_params(
         params: Union[np.ndarray, List[OpticalElementParams]],
@@ -2329,17 +2349,17 @@ class OpticalSystem:
                 "Cavity.from_params no longer supports np.ndarray input. Please provide a list of OpticalElementParams."
             )
             # params = [OpticalElementParams.from_array(params[i, :]) for i in range(len(params))]
-        physical_surfaces = []
+        surfaces = []
         for i, p in enumerate(params):
             if p.name is None:
                 p.name = f"Surface_{i}"
             surface_temp = Surface.from_params(p)
             if isinstance(surface_temp, tuple):
-                physical_surfaces.extend(surface_temp)
+                surfaces.extend(surface_temp)
             else:
-                physical_surfaces.append(surface_temp)
+                surfaces.append(surface_temp)
         cavity = Cavity(
-            physical_surfaces,
+            surfaces,
             params=params,
             **kwargs,
         )
@@ -2348,7 +2368,7 @@ class OpticalSystem:
     @property
     def to_params(self) -> List[OpticalElementParams]:
         if self.params is None:
-            params = [surface.to_params for surface in self.physical_surfaces]
+            params = [surface.to_params for surface in self.surfaces]
         else:
             params = self.params
         return params
@@ -2402,10 +2422,6 @@ class OpticalSystem:
             return None
         else:
             return [arm.mode_parameters for arm in self.arms]
-
-    @property
-    def surfaces(self):
-        return [arm.surface_0 for arm in self.arms]
 
     @property
     def default_initial_k_vector(self) -> np.ndarray:
@@ -2783,7 +2799,7 @@ class OpticalSystem:
 
     def output_radius_of_curvature(self, initial_distance: float) -> float:
         # Currently assume 1d problem for simplicty, if required it can be expanded
-        if isinstance(self.physical_surfaces[0], PhysicalSurface):  # Bad implementation. to correct it, I need to make sure that OpticalSystem can actually accept a surface that is not a PhysicalSurface, and allow for General surfaces in general. Also - better decompose the self.ABCD matrices to the propagation and reflection ABCD matrices.
+        if isinstance(self.surfaces[0], PhysicalSurface):  # Bad implementation. to correct it, I need to make sure that OpticalSystem can actually accept a surface that is not a PhysicalSurface, and allow for General surfaces in general. Also - better decompose the self.ABCD matrices to the propagation and reflection ABCD matrices.
             first_ABCD = self.physical_surfaces[0].ABCD_matrix(cos_theta_incoming=1)[:2, :2]
         else:
             first_ABCD = np.eye(2)
@@ -2793,13 +2809,17 @@ class OpticalSystem:
         return R_out
 
     def required_initial_distance_for_desired_output_radius_of_curvature(self, desired_R_out: float) -> float:
-        ABCD = self.ABCD_round_trip[:2, :2] @ self.physical_surfaces[0].ABCD_matrix(cos_theta_incoming=1)[:2, :2]
+        if isinstance(self.surfaces[0], PhysicalSurface):  # Bad implementation. to correct it, I need to make sure that OpticalSystem can actually accept a surface that is not a PhysicalSurface, and allow for General surfaces in general. Also - better decompose the self.ABCD matrices to the propagation and reflection ABCD matrices.
+            first_ABCD = self.physical_surfaces[0].ABCD_matrix(cos_theta_incoming=1)[:2, :2]
+        else:
+            first_ABCD = np.eye(2)
+        ABCD = self.ABCD_round_trip[:2, :2] @ first_ABCD
         A, B, C, D = ABCD[0, 0], ABCD[0, 1], ABCD[1, 0], ABCD[1, 1]
         initial_distance = -(B + D * desired_R_out) / (A + C * desired_R_out)
         return initial_distance
 
     def invert(self):
-        inverted_physical_surfaces = []
+        inverted_surfaces = []
         for surface in self.physical_surfaces[::-1]:
             inverted_surface = copy.deepcopy(surface)
             if isinstance(surface, RefractiveSurface):
@@ -2808,7 +2828,7 @@ class OpticalSystem:
                 inverted_surface.n_2 = n_1
             if isinstance(surface, (CurvedSurface, AsphericSurface)):
                 inverted_surface.curvature_sign *= -1
-            inverted_physical_surfaces.append(inverted_surface)
+            inverted_surfaces.append(inverted_surface)
 
         if self.central_line is not None:
             origin_inverted = self.physical_surfaces[-1].find_intersection_with_ray(self.central_line[-1])
@@ -2817,7 +2837,7 @@ class OpticalSystem:
         else:
             initial_ray_inverted = None
 
-        inverted_system = OpticalSystem(physical_surfaces=inverted_physical_surfaces, lambda_0_laser=self.lambda_0_laser, given_initial_central_line=initial_ray_inverted)
+        inverted_system = OpticalSystem(surfaces=inverted_surfaces, lambda_0_laser=self.lambda_0_laser, given_initial_central_line=initial_ray_inverted)
         return inverted_system
 
 ##############
@@ -2826,7 +2846,7 @@ class OpticalSystem:
 class Cavity(OpticalSystem):
     def __init__(
         self,
-        physical_surfaces: List[PhysicalSurface],
+        surfaces: List[Surface],
         standing_wave: bool = False,
         lambda_0_laser: Optional[float] = None,
         params: Optional[List[OpticalElementParams]] = None,
@@ -2843,7 +2863,9 @@ class Cavity(OpticalSystem):
         debug_printing_level: int = 0,  # 0 for no prints, 1 for main prints, 2 for all prints
         use_paraxial_ray_tracing: bool = False,
     ):
-        super().__init__(physical_surfaces=physical_surfaces,
+        ordered_surfaces = self._order_surfaces_for_initialization(surfaces, standing_wave=standing_wave)
+
+        super().__init__(surfaces=ordered_surfaces,
                          lambda_0_laser=lambda_0_laser,
                          params=params,
                          names=names,
@@ -2854,13 +2876,6 @@ class Cavity(OpticalSystem):
                          )
 
         self.standing_wave = standing_wave
-        self.arms: List[Arm] = [
-            Arm(
-                self.physical_surfaces_ordered[i],
-                self.physical_surfaces_ordered[np.mod(i + 1, len(self.physical_surfaces_ordered))],
-            )
-            for i in range(len(self.physical_surfaces_ordered))
-        ]
         self.central_line_successfully_traced: Optional[bool] = None
         self.resonating_mode_successfully_traced: Optional[bool] = None
         self.use_brute_force_for_central_line = use_brute_force_for_central_line
@@ -2877,37 +2892,36 @@ class Cavity(OpticalSystem):
         if set_initial_surface:
             self.set_initial_surface()
 
-    @property
-    def physical_surfaces_ordered(self):
-        if self.standing_wave:
-            backwards_list = copy.deepcopy(self.physical_surfaces[-2:0:-1])
-            for surface in backwards_list:
-                # if isinstance(surface, (CurvedRefractiveSurface, AsphericRefractiveSurface)):
-                #     surface.curvature_sign = -surface.curvature_sign
-                #     n_1, n_2 = surface.n_1, surface.n_2
-                #     surface.n_1 = n_2
-                #     surface.n_2 = n_1
-                if isinstance(surface, RefractiveSurface):
-                    n_1, n_2 = surface.n_1, surface.n_2
-                    surface.n_1 = n_2
-                    surface.n_2 = n_1
-                if isinstance(surface, (CurvedSurface, AsphericSurface)):
-                    surface.curvature_sign *= -1
-
-
-            return self.physical_surfaces + backwards_list
+    @staticmethod
+    def _order_surfaces_for_initialization(surfaces: List[Surface], standing_wave) -> List[Surface]:
+        # Suppose the surfaces are A, B, C, D:
+        if standing_wave:
+            backwards_list = surfaces[-2::-1]  # not including last  #  C -> B -> A
+            backwards_list_inverted = [surface.inverse for surface in backwards_list]  # C^-1 -> B^-1 -> A^-1
+            ordered_list = surfaces + backwards_list_inverted  # A -> B -> C -> D -> C^-1 -> B^-1 -> A^-1
         else:
-            return self.physical_surfaces
+            ordered_list = surfaces + [surfaces[0]]  # A -> B -> C -> D -> A
+        return ordered_list
 
     @property
     def surfaces_ordered(self):
-        return [arm.surface_0 for arm in self.arms]
+        # For standing wave: A -> B -> C -> D -> C^-1 -> B^-1 -> A^-1
+        # For ring cavity: A -> B -> C -> D -> A
+        return [arm.surface_0 for arm in self.arms] + [self.arms[-1].surface_1]
+
+    @property
+    def physical_surfaces_ordered(self):
+        physical_surfaces_ordered_list = [surface for surface in self.surfaces_ordered if isinstance(surface, PhysicalSurface)]
+        return physical_surfaces_ordered_list
 
     @property
     def surfaces(self):
+        # Overrides OpticalSystem.surfaces
         if self.standing_wave:
+            # A -> B -> C -> D
             return [arm.surface_0 for arm in self.arms[: len(self.arms) // 2 + 1]]
         else:
+            # A -> B -> C -> D
             return [arm.surface_0 for arm in self.arms]
 
     @property
@@ -2916,7 +2930,6 @@ class Cavity(OpticalSystem):
             self.to_params, self.t_is_trivial and self.p_is_trivial
         )
         return perturbable_params_names_list
-
 
     def trace_ray_parametric(self, starting_position_and_angles: np.ndarray) -> Tuple[np.ndarray, List[Ray]]:
         # Like trace ray, but works as a function of the starting position and angles as parameters on the starting
@@ -3564,15 +3577,15 @@ class Cavity(OpticalSystem):
             self.power is not None
         ), "The power of the laser is not defined. It must be defined for thermal calculations"
 
-        for i, surface in enumerate(self.physical_surfaces):
-            # if isinstance(unheated_surface, CurvedRefractiveSurface):
-            #     unheated_surface = surface
-            # else:
-            unheated_surface = surface.thermal_transformation(
-                P_laser_power=-self.power,
-                w_spot_size=self.arms[i].mode_parameters_on_surface_0.spot_size[0],
-                **kwargs,
-            )
+        for i, surface in enumerate(self.surfaces):
+            if isinstance(surface, PhysicalSurface):
+                unheated_surface = surface.thermal_transformation(
+                    P_laser_power=-self.power,
+                    w_spot_size=self.arms[i].mode_parameters_on_surface_0.spot_size[0],
+                    **kwargs,
+                )
+            else:
+                unheated_surface = surface
             unheated_surfaces.append(unheated_surface)
 
         # After heating the lens is not necessarily symmetrical, and so we have to decompose it to two surfaces.
@@ -3586,7 +3599,7 @@ class Cavity(OpticalSystem):
                     names[i] = names[i] + "_1"
 
         unheated_cavity = Cavity(
-            physical_surfaces=unheated_surfaces,
+            surfaces=unheated_surfaces,
             standing_wave=self.standing_wave,
             lambda_0_laser=self.lambda_0_laser,
             names=names,
@@ -5157,7 +5170,7 @@ def fabry_perot_generator(
     else:
         raise ValueError("Either NA or unconcentricity must be provided.")
     return Cavity(
-        physical_surfaces=[mirror_1, mirror_2],
+        surfaces=[mirror_1, mirror_2],
         lambda_0_laser=lambda_0_laser,
         t_is_trivial=True,
         p_is_trivial=True,

@@ -168,7 +168,7 @@ def generate_one_lens_optical_system(R_1: Optional[float] = None, R_2: Optional[
     else:
         raise ValueError("Either R_1 and R_2, or back_focal_length must be provided.")
 
-    optical_system = OpticalSystem(physical_surfaces=[surface_0, surface_1],
+    optical_system = OpticalSystem(surfaces=[surface_0, surface_1],
                                    lambda_0_laser=LAMBDA_0_LASER,
                                    given_initial_central_line=True,
                                    use_paraxial_ray_tracing=False)
@@ -200,7 +200,7 @@ def complete_optical_system_to_cavity(results_dict: dict, unconcentricity: float
     mirror_left = match_a_mirror_to_mode(mode=output_mode, R=5e-3, name='LaserOptik mirror',
                                          material_properties=PHYSICAL_SIZES_DICT['material_properties_fused_silica'])
 
-    cavity = Cavity(physical_surfaces=[mirror_left, *optical_system.physical_surfaces, results_dict['mirror_object']],
+    cavity = Cavity(surfaces=[mirror_left, *optical_system.physical_surfaces, results_dict['mirror_object']],
                     lambda_0_laser=LAMBDA_0_LASER, t_is_trivial=True, p_is_trivial=True, use_paraxial_ray_tracing=False,
                     standing_wave=True)
 

@@ -23,13 +23,11 @@ mirrors_fixed_properties = 'ULE'
 T_edge = 1.0000000000e-03
 h = 3.8750000000e-03
 
-
 big_mirror_radius = None if auto_set_big_mirror_radius else big_mirror_radius
 right_arm_length = None if auto_set_right_arm_length else right_arm_length
 waist_to_lens += widget_convenient_exponent(waist_to_lens_fine)
 R_left += widget_convenient_exponent(R_left_fine)
 R_right += widget_convenient_exponent(R_right_fine)
-
 
 cavity = mirror_lens_mirror_cavity_generator(
     NA_left=NA_left, waist_to_lens=waist_to_lens, h=h,
@@ -48,7 +46,4 @@ cavity = mirror_lens_mirror_cavity_generator(
     set_R_left_to_collimate=set_R_left_to_collimate,
     set_R_right_to_collimate=set_R_right_to_collimate
 )
-
-
-assert np.all(np.isclose(cavity.mode_parameters[0].center, np.array([[0, 0.00000000e+00, 0.00000000e+00], [0, 0.00000000e+00, 0.00000000e+00]]))), f'cavity_smart_generation_test failed: center should be approximately [[8.67361738e-19, 0.00000000e+00, 0.00000000e+00], [8.67361738e-19, 0.00000000e+00, 0.00000000e+00]], instead got {cavity.mode_parameters[0].center}'
-assert np.all(np.isclose(cavity.mode_parameters[0].z_R, np.array([1.50525208e-05, 1.50525208e-05]))), f'cavity_smart_generation_test failed: z_R should be approximately 1.50525208e-05, instead got {cavity.mode_parameters[0].z_R}'
+cavity.surfaces

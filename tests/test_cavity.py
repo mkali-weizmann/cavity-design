@@ -28,7 +28,7 @@ def test_fabry_perot_mode_finding():
                                     radius=R_2,
                                     curvature_sign=CurvatureSigns.concave,
                                     diameter=0.01)
-    cavity = Cavity(physical_surfaces=[surface_1, surface_2],
+    cavity = Cavity(surfaces=[surface_1, surface_2],
                     standing_wave=True,
                     lambda_0_laser=LAMBDA_0_LASER,
                     power=1e3,

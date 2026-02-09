@@ -57,7 +57,7 @@ def fabry_perot_generator(radii: Tuple[float, float], NA: float, lambda_0_laser=
     mirror_2 = match_a_mirror_to_mode(mode=mode_0,
                                       material_properties=PHYSICAL_SIZES_DICT['material_properties_fused_silica'],
                                       R=-radii[1])
-    return Cavity(physical_surfaces=[mirror_1, mirror_2],
+    return Cavity(surfaces=[mirror_1, mirror_2],
                   lambda_0_laser=lambda_0_laser,
                   t_is_trivial=True,
                   p_is_trivial=True,
