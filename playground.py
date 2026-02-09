@@ -381,7 +381,7 @@ def choose_source_position_for_desired_focus_analytic(back_focal_length,
 
 # %% SINGLE SET-UP ANALYSIS:
 # For aspheric lens:
-aspheric = True
+aspheric = False
 if aspheric:
     # back_focal_length = back_focal_length_of_lens(R_1=24.22e-3, R_2=-5.49e-3, n=1.8, T_c=2.91e-3)# 20e-3
     # diameter = 7.75e-3
@@ -406,7 +406,7 @@ n_design = n_actual + dn
 n_rays = 30
 unconcentricity = 0.00044137931034482665
 phi_max = 0.23
-desired_focus = 200e-3
+desired_focus = 100e-3
 defocus = choose_source_position_for_desired_focus_analytic(desired_focus=desired_focus, T_c=T_c, n_design=n_design, diameter=diameter,
                                                             back_focal_length=back_focal_length,
                                                             R_1=R_1, R_2=R_2_signed,
@@ -469,7 +469,7 @@ ax.grid()
 # twin y-axis for paraxial NAs
 ax2 = ax.twinx()
 ax2.plot(unconcentricities * 1e6, paraxial_NAs, label='Right NA', color='orange', linestyle='--')
-ax2.plot(unconcentricities * 1e6, left_NAs, label='Left NAE', color='green', linestyle='--')
+ax2.plot(unconcentricities * 1e6, left_NAs, label='Left NA', color='green', linestyle='--')
 ax2.set_ylabel('Paraxial NA (unitless)')
 
 # combined legend
@@ -477,5 +477,5 @@ handles1, labels1 = ax.get_legend_handles_labels()
 handles2, labels2 = ax2.get_legend_handles_labels()
 ax.legend(handles1 + handles2, labels1 + labels2, loc='best')
 
-plt.savefig(f"outputs/figures/spot_size_limit={aspheric}_n_design_{n_design:.3f}_n_actual_{n_actual:.3f}_focal_length_{back_focal_length * 1e3:.1f}mm_defocus_{defocus * 1e3:.1f}mm_Tc_{T_c * 1e3:.1f}mm_diameter_{diameter * 1e3:.2f}mm.svg")
+plt.savefig(f"outputs/figures/spot_size_limit_aspheric={aspheric}_n_design_{n_design:.3f}_n_actual_{n_actual:.3f}_focal_length_{back_focal_length * 1e3:.1f}mm_defocus_{defocus * 1e3:.1f}mm_Tc_{T_c * 1e3:.1f}mm_diameter_{diameter * 1e3:.2f}mm.svg")
 plt.show()
