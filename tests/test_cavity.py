@@ -381,6 +381,6 @@ def test_fabry_perot_perturbation():
         except (NameError, AttributeError) as e:
             print(f'invalid expression: {e}')
     u = np.linalg.norm(perturbed_cavity.physical_surfaces[0].origin - perturbed_cavity.physical_surfaces[1].origin)
-    NA_numerical = np.sqrt(2 * LAMBDA_0_LASER / np.pi) * (perturbed_cavity.arms[0].central_line.length * u) ** (-1 / 4)
+    NA_analytical = np.sqrt(2 * LAMBDA_0_LASER / np.pi) * (perturbed_cavity.arms[0].central_line.length * u) ** (-1 / 4)
     NA_numerical = perturbed_cavity.mode_parameters[0].NA[0]
-    assert np.isclose(NA_numerical, NA_numerical, rtol=0.0001), f'Fabry-Perot perturbation test failed: expected NA of approximately {NA_of_u} but got {NA_numerical}'
+    assert np.isclose(NA_numerical, NA_analytical, rtol=0.0001), f'Fabry-Perot perturbation test failed: expected NA of approximately {NA_of_u} but got {NA_numerical}'
