@@ -11,6 +11,8 @@ def initialize_rays(
     n_rays=100,
     dphi: Optional[float] = None,
     phi_max: Optional[float] = None,
+    diameter: Optional[float] = None,
+    back_focal_length: Optional[float] = None,
 ):
     optical_axis = RIGHT
     if phi_max is None and dphi is not None:
@@ -326,7 +328,7 @@ def analyze_potential(
     )
 
     # Generate objects:
-    rays_0 = initialize_rays(defocus=defocus, n_rays=n_rays, dphi=dphi, phi_max=phi_max)
+    rays_0 = initialize_rays(defocus=defocus, n_rays=n_rays, dphi=dphi, phi_max=phi_max, diameter=diameter, back_focal_length=back_focal_length)
     ray_history = optical_system.propagate_ray(rays_0, propagate_with_first_surface_first=True)
     ray_sequence = RaySequence(ray_history)
 

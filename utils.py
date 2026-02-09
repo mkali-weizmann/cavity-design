@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from scipy.integrate import solve_ivp
 from numpy.polynomial import Polynomial
 from scipy.optimize import root_scalar
+import pyperclip
 
 # %% Constants
 CENTRAL_LINE_TOLERANCE = 1
@@ -1269,3 +1270,18 @@ def extract_matching_sphere(p_1: np.ndarray, p_2: np.ndarray, k_1: np.ndarray):
     R = numerator / denominator
     center = p_1 + R * k_1
     return np.abs(R), center
+
+
+def copy_parameters_func(local_parameters):
+    l = []
+    for key, value in local_parameters.items():
+        # if key.startswith("t_") or key.startswith("p_") or key in ["t", "p"]:
+            # print(f"{key} = 1j*{value/np.pi:.10e}")
+        if isinstance(value, float):
+            l.append(f"{key} = {value:.10e}")
+        elif isinstance(value, str):
+            l.append(f"{key} = '{value}'")
+        else:
+            l.append(f"{key} = {value}")
+    final_expression = '\n'.join(l)
+    pyperclip.copy(final_expression)
