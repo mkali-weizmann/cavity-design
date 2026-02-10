@@ -218,16 +218,9 @@ def generate_one_lens_optical_system(
     elif back_focal_length is not None:
         back_center = back_focal_length * optical_axis
         surface_0, surface_1 = Surface.from_params(
-            generate_aspheric_lens_params(
-                f=back_focal_length,
-                T_c=T_c,
-                n=n_design,
-                forward_normal=optical_axis,
-                diameter=diameter,
-                polynomial_degree=8,
-                flat_faces_center=back_center,
-                name="aspheric_lens_automatic",
-            )
+            generate_aspheric_lens_params(back_focal_length=back_focal_length, T_c=T_c, n=n_design,
+                                          forward_normal=optical_axis, flat_faces_center=back_center, diameter=diameter,
+                                          polynomial_degree=8, name="aspheric_lens_automatic")
         )
         surface_0.n_2 = n_actual
         surface_1.n_1 = n_actual
@@ -591,7 +584,7 @@ def choose_source_position_for_desired_focus_analytic(
 # rest of parameters
 n_actual = 1.8
 dn = 0
-n_design = n_actual + dn
+
 n_rays = 30
 unconcentricity = 30e-4  # np.float64(0.007610344827586207)  # ,  np.float64(0.007268965517241379)
 phi_max = 0.25
@@ -600,31 +593,48 @@ T_c = 4.35e-3
 diameter = 12.7e-3
 plot = True
 aspheric = True
-if aspheric:
+
+lens_type = 'aspheric - lab'  # 'aspheric - lab', 'spherical', 'avantier'
+if lens_type == 'aspheric - lab':
     # back_focal_length = back_focal_length_of_lens(R_1=24.22e-3, R_2=-5.49e-3, n=1.8, T_c=2.91e-3)
     # diameter = 7.75e-3
     back_focal_length = 20e-3
     R_1 = None
     R_2 = None
     R_2_signed = None
-    # This results in this value of R_2: -0.017933320598319306
-else:
+    n_actual=1.45
+    n_design = n_actual + dn
+    # This results in this value of R_2: -0.017933320598319306 for n=1.8 and -0.010350017052321312 for n=1.45
+elif lens_type == 'spherical - like labs aspheric':
+    n_actual=1.45
+    n_design = n_actual + dn
     f_lens = focal_length_of_lens(
-        R_1=np.inf, R_2=-0.017933320598319306, n=1.8, T_c=4.35e-3
+        R_1=np.inf, R_2=-0.010350017052321312, n=1.45, T_c=4.35e-3
     )  # Same as the aspheric ones.
-    R = f_lens * (n_design - 1) * (1 + np.sqrt(1 - T_c / (f_lens * n_design)))
+    R = f_lens * (n_design - 1) * (1 + np.sqrt(1 - T_c / (f_lens * n_design)))  # This is the R value that results in f=f_lens
     R_1 = R
     R_2 = R
     R_2_signed = -R_2
     back_focal_length = back_focal_length_of_lens(R_1=R_1, R_2=-R_2, n=n_design, T_c=T_c)
-
+elif lens_type == 'avantier':
     # Avantier lenses:
-    # R_1 = 24.22e-3
-    # R_2 = 5.49e-3
-    # R_2_signed = -R_2
-    # T_c = 2.91e-3
-    # diameter = 7.75e-3
-    # back_focal_length = back_focal_length_of_lens(R_1=R_1, R_2=-R_2, n=1.8, T_c=T_c)
+    n_actual=1.8
+    n_design = n_actual + dn
+    R_1 = 24.22e-3
+    R_2 = 5.49e-3
+    R_2_signed = -R_2
+    T_c = 2.91e-3
+    diameter = 7.75e-3
+    back_focal_length = back_focal_length_of_lens(R_1=R_1, R_2=-R_2, n=1.8, T_c=T_c)
+elif lens_type == 'aspheric - like avantier':
+    n_actual=1.8
+    n_design = n_actual + dn
+    back_focal_length = 0.0042325  # This results in the save focal length as the avantier lens.
+    R_1 = None
+    R_2 = None
+    R_2_signed = None
+else:
+    raise ValueError("lens_type must be either aspheric, spherical, avantier")
 
 
 defocus = choose_source_position_for_desired_focus_analytic(

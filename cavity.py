@@ -1929,7 +1929,7 @@ def generate_aspheric_lens_from_params(params: OpticalElementParams):
 
 
 def generate_aspheric_lens_params(
-    f: float,
+    back_focal_length: float,
     T_c: float,
     n: float,
     forward_normal: np.ndarray,
@@ -1940,7 +1940,7 @@ def generate_aspheric_lens_params(
     material_properties: Optional[MaterialProperties] = None,
     name: Optional[str] = None,
 ):
-    p = LensParams(n=n, f=f, T_c=T_c)
+    p = LensParams(n=n, f=back_focal_length, T_c=T_c)
     coeffs = solve_aspheric_profile(p, y_max=diameter / 2, degree=polynomial_degree)
     params = OpticalElementParams(
         name=name,
