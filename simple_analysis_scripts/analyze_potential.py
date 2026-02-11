@@ -1,6 +1,3 @@
-from matplotlib import use
-
-use("TkAgg")  # or 'Qt5Agg', 'GTK3Agg', etc. depending on your system
 from cavity import *
 from matplotlib.lines import Line2D
 
@@ -27,7 +24,7 @@ def initialize_rays(
     return rays_0
 
 
-def analyze_output_wavefront(ray_sequence: RaySequence, unconcentricity: float, R_analytical: Optional[float] = None):
+def analyze_output_wavefront(ray_sequence: RaySequence, unconcentricity: float, R_analytical: Optional[float] = None, print_tests: bool = True):
     output_ray = ray_sequence[-1]
     # Extract all wavefront features at the output surface of the lens.
     d_0 = ray_sequence.cumulative_optical_path_length[1, 0]  # Assumes the first ray is the optical axis ray.
@@ -41,12 +38,13 @@ def analyze_output_wavefront(ray_sequence: RaySequence, unconcentricity: float, 
         center_of_curvature = ray_sequence[-1].parameterization(R_analytical, optical_path_length=False)[
             0, :
         ]  # Along the optical axis.
-        print(
-            f"Analytical/numerical output ROC:\n{R:.6e}\n{R_numerical:.6e} (inaccurate for large or extremeley small dphi)"
-        )
-        print(
-            f"Analytical/numerical center of curvature:\n{np.stack((center_of_curvature, center_of_curvature_numerical), axis=0)} (inacurate for large or extremeley small dphi)"
-        )
+        if print_tests:
+            print(
+                f"Analytical/numerical output ROC:\n{R:.6e}\n{R_numerical:.6e} (inaccurate for large or extremeley small dphi)"
+            )
+            print(
+                f"Analytical/numerical center of curvature:\n{np.stack((center_of_curvature, center_of_curvature_numerical), axis=0)} (inacurate for large or extremeley small dphi)"
+            )
     else:
         R, center_of_curvature = R_numerical, center_of_curvature_numerical
 
@@ -54,12 +52,13 @@ def analyze_output_wavefront(ray_sequence: RaySequence, unconcentricity: float, 
     polynomial_residuals_initial = Polynomial.fit(
         wavefront_points_initial[:, 1] ** 2, residual_distances_initial, 4
     ).convert()
-    print(
-        f"Initial wavefront residual from fitted sphere. 2nd order term should be singificantly smaller than 1/(2*R) = {1 / (2 * R):.3e}, actual: {polynomial_residuals_initial.coef[1]:.3e}"
-    )
-    print(
-        f" Fourth order term: {polynomial_residuals_initial.coef[2]:.3e}, should be significantly larger than y_max ** -2 * second order term = {wavefront_points_initial[-1, 1] ** -2 * polynomial_residuals_initial.coef[1]:.26e}"
-    )
+    if print_tests:
+        print(
+            f"Initial wavefront residual from fitted sphere. 2nd order term should be singificantly smaller than 1/(2*R) = {1 / (2 * R):.3e}, actual: {polynomial_residuals_initial.coef[1]:.3e}"
+        )
+        print(
+            f" Fourth order term: {polynomial_residuals_initial.coef[2]:.3e}, should be significantly larger than y_max ** -2 * second order term = {wavefront_points_initial[-1, 1] ** -2 * polynomial_residuals_initial.coef[1]:.26e}"
+        )
 
     # Extract wavefront features at a far away plane (2*ROC - u from the lens):
     wavefront_points_opposite = ray_sequence.parameterization(d_0 + 2 * R - unconcentricity, optical_path_length=True)
@@ -69,12 +68,13 @@ def analyze_output_wavefront(ray_sequence: RaySequence, unconcentricity: float, 
     R_opposite_numerical, center_of_curvature_opposite_numerical = extract_matching_sphere(
         wavefront_points_opposite[..., 0, :], wavefront_points_opposite[..., 1, :], ray_sequence[-1].k_vector[..., 0, :]
     )  # Should be the same as the original center of curvature
-    print(
-        f"Far away plane analytical/numerical output ROC:\n{R_opposite:.6e}\n{R_opposite_numerical:.6e} (inaccurate for large or extremeley small dphi)"
-    )
-    print(
-        f"Far away plane analytical/numerical center of curvature:\n{np.stack((center_of_curvature_opposite, center_of_curvature_opposite_numerical), axis=0)} (inacurate for large or extremeley small dphi)"
-    )
+    if print_tests:
+        print(
+            f"Far away plane analytical/numerical output ROC:\n{R_opposite:.6e}\n{R_opposite_numerical:.6e} (inaccurate for large or extremeley small dphi)"
+        )
+        print(
+            f"Far away plane analytical/numerical center of curvature:\n{np.stack((center_of_curvature_opposite, center_of_curvature_opposite_numerical), axis=0)} (inacurate for large or extremeley small dphi)"
+        )
 
     if R_analytical is None:
         R_opposite, center_of_curvature_opposite = R_opposite_numerical, center_of_curvature_opposite_numerical
@@ -95,9 +95,10 @@ def analyze_output_wavefront(ray_sequence: RaySequence, unconcentricity: float, 
         wavefront_points_opposite[:, 1] ** 2, residual_distances_mirror, 4
     ).convert()
     expected_second_order_term = 1 / 2 * (1 / R_opposite - 1 / R)
-    print(
-        f"Expected second order term in mirror deviation polynomial due to unconcentricity: {expected_second_order_term:.3e}, actual: {polynomial_residuals_mirror.coef[1]:.3e} (TRY LOWER MAXIMAL NA IF THEY DON'T MATCH)"
-    )
+    if print_tests:
+        print(
+            f"Expected second order term in mirror deviation polynomial due to unconcentricity: {expected_second_order_term:.3e}, actual: {polynomial_residuals_mirror.coef[1]:.3e} (TRY LOWER MAXIMAL NA IF THEY DON'T MATCH)"
+        )
 
     # Generate dummy points for fitted spheres (used only for plotting, not for calculations):
     points_rel = wavefront_points_initial - center_of_curvature
@@ -237,7 +238,7 @@ def generate_one_lens_optical_system(
     return optical_system, optical_axis
 
 
-def complete_optical_system_to_cavity(results_dict: dict, unconcentricity: float):
+def complete_optical_system_to_cavity(results_dict: dict, unconcentricity: float, print_tests: bool = True):
     # Generate cavity for mode analysis:
     optical_system = results_dict["optical_system"]
     mode_parameters_lens_right_outer_side = LocalModeParameters(
@@ -271,26 +272,26 @@ def complete_optical_system_to_cavity(results_dict: dict, unconcentricity: float
         use_paraxial_ray_tracing=False,
         standing_wave=True,
     )
+    if print_tests:
+        print(
+            f"NA in the right arm - analytical calculation and numerical cavity solution\n{results_dict['NA_paraxial']:.3e}\n"
+            f"{cavity.arms[3].mode_parameters.NA[0]:.3e}"
+        )
 
-    print(
-        f"NA in the right arm - analytical calculation and numerical cavity solution\n{results_dict['NA_paraxial']:.3e}\n"
-        f"{cavity.arms[3].mode_parameters.NA[0]:.3e}"
-    )
+        print(
+            f"center of curvature of output wave and mode center in cavity:\n"
+            f"{results_dict['center_of_curvature'] - unconcentricity / 2 * RIGHT}\n{cavity.mode_parameters[2].center[0, :]}"
+        )
 
-    print(
-        f"center of curvature of output wave and mode center in cavity:\n"
-        f"{results_dict['center_of_curvature'] - unconcentricity / 2 * RIGHT}\n{cavity.mode_parameters[2].center[0, :]}"
-    )
+        print(
+            "Spot size in the right mirror - analytical calculation and numerical cavity solution\n"
+            f"{results_dict['spot_size_paraxial'] * 1e3:.3e} mm\n{w_of_q(cavity.arms[3].mode_parameters_on_surface_0.q[0], lambda_laser=LAMBDA_0_LASER) * 1e3:.3e} mm"
+        )
 
-    print(
-        "Spot size in the right mirror - analytical calculation and numerical cavity solution\n"
-        f"{results_dict['spot_size_paraxial'] * 1e3:.3e} mm\n{w_of_q(cavity.arms[3].mode_parameters_on_surface_0.q[0], lambda_laser=LAMBDA_0_LASER) * 1e3:.3e} mm"
-    )
-
-    print(
-        "mode radius of curvature after the optical system - analytical calculation and numerical cavity solution\n"
-        f"{results_dict['R']*1e3:.3e} mm\n{R_of_q(cavity.arms[2].mode_parameters_on_surface_0.q[0])*1e3:.3e} mm"
-    )
+        print(
+            "mode radius of curvature after the optical system - analytical calculation and numerical cavity solution\n"
+            f"{results_dict['R']*1e3:.3e} mm\n{R_of_q(cavity.arms[2].mode_parameters_on_surface_0.q[0])*1e3:.3e} mm"
+        )
     return cavity
 
 
@@ -308,6 +309,7 @@ def analyze_potential(
     dphi: Optional[float] = None,
     phi_max: Optional[float] = None,
     extract_R_analytically: bool = False,
+    print_tests: bool = True,
 ):
     optical_system, optical_axis = generate_one_lens_optical_system(
         R_1=R_1,
@@ -332,15 +334,15 @@ def analyze_potential(
     else:
         R_analytical = None
 
-    results_dict = analyze_output_wavefront(ray_sequence, unconcentricity=unconcentricity, R_analytical=R_analytical)
+    results_dict = analyze_output_wavefront(ray_sequence, unconcentricity=unconcentricity, R_analytical=R_analytical, print_tests=print_tests)
     results_dict["optical_system"] = optical_system
-    cavity = complete_optical_system_to_cavity(results_dict, unconcentricity=unconcentricity)
+    cavity = complete_optical_system_to_cavity(results_dict, unconcentricity=unconcentricity, print_tests=print_tests)
     results_dict["cavity"] = cavity
 
     return results_dict
 
 
-def plot_results(results_dict, far_away_plane: bool = False):
+def plot_results(results_dict, far_away_plane: bool = False, unconcentricity: Optional[float] = None):
     (optical_system, ray_sequence, R, center_of_curvature, NA_paraxial, spot_size_paraxial, zero_derivative_points) = (
         results_dict["optical_system"],
         results_dict["ray_sequence"],
@@ -577,169 +579,52 @@ def choose_source_position_for_desired_focus_analytic(
     defocus = back_focal_length - distance_to_flat_face
     return defocus
 
-
-# %% SINGLE SET-UP ANALYSIS:
-# For aspheric lens:
-
-# rest of parameters
-n_actual = 1.8
-dn = 0
-
-n_rays = 30
-unconcentricity = 30e-4  # np.float64(0.007610344827586207)  # ,  np.float64(0.007268965517241379)
-phi_max = 0.25
-desired_focus = 200e-3
-T_c = 4.35e-3
-diameter = 12.7e-3
-plot = True
-aspheric = True
-
-lens_type = 'aspheric - lab'  # 'aspheric - lab', 'spherical', 'avantier'
-if lens_type == 'aspheric - lab':
-    # back_focal_length = back_focal_length_of_lens(R_1=24.22e-3, R_2=-5.49e-3, n=1.8, T_c=2.91e-3)
-    # diameter = 7.75e-3
-    back_focal_length = 20e-3
-    R_1 = None
-    R_2 = None
-    R_2_signed = None
-    n_actual=1.45
-    n_design = n_actual + dn
-    # This results in this value of R_2: -0.017933320598319306 for n=1.8 and -0.010350017052321312 for n=1.45
-elif lens_type == 'spherical - like labs aspheric':
-    n_actual=1.45
-    n_design = n_actual + dn
-    f_lens = focal_length_of_lens(
-        R_1=np.inf, R_2=-0.010350017052321312, n=1.45, T_c=4.35e-3
-    )  # Same as the aspheric ones.
-    R = f_lens * (n_design - 1) * (1 + np.sqrt(1 - T_c / (f_lens * n_design)))  # This is the R value that results in f=f_lens
-    R_1 = R
-    R_2 = R
-    R_2_signed = -R_2
-    back_focal_length = back_focal_length_of_lens(R_1=R_1, R_2=-R_2, n=n_design, T_c=T_c)
-elif lens_type == 'avantier':
-    # Avantier lenses:
-    n_actual=1.8
-    n_design = n_actual + dn
-    R_1 = 24.22e-3
-    R_2 = 5.49e-3
-    R_2_signed = -R_2
-    T_c = 2.91e-3
-    diameter = 7.75e-3
-    back_focal_length = back_focal_length_of_lens(R_1=R_1, R_2=-R_2, n=1.8, T_c=T_c)
-elif lens_type == 'aspheric - like avantier':
-    n_actual=1.8
-    n_design = n_actual + dn
-    back_focal_length = 0.0042325  # This results in the save focal length as the avantier lens.
-    R_1 = None
-    R_2 = None
-    R_2_signed = None
-else:
-    raise ValueError("lens_type must be either aspheric, spherical, avantier")
-
-
-defocus = choose_source_position_for_desired_focus_analytic(
-    desired_focus=desired_focus,
-    T_c=T_c,
-    n_design=n_design,
-    diameter=diameter,
-    back_focal_length=back_focal_length,
-    R_1=R_1,
-    R_2=R_2_signed,
-)
-
-results_dict = analyze_potential(
-    back_focal_length=back_focal_length,
-    R_1=R_1,
-    R_2=R_2_signed,
-    defocus=defocus,
-    T_c=T_c,
-    n_design=n_design,
-    diameter=diameter,
-    n_actual=n_actual,
-    n_rays=n_rays,
-    unconcentricity=unconcentricity,
-    extract_R_analytically=True,
-    phi_max=phi_max,
-)
-print(
-    f"Defocus solution for 30 mm focus: {defocus*1e3:.3f} mm, focal point distance: {(results_dict['center_of_curvature'][0] - results_dict['optical_system'].physical_surfaces[1].center[0]) * 1e3:.2f} mm"
-)
-if plot:
-    # plt.close('all')
-    fig, ax = plot_results(results_dict, far_away_plane=True)
-    center = results_dict["center_of_curvature"]
-    ax[1, 1].set_xlim((center[0] - 0.002, center[0] + 0.002))
-    plt.suptitle(
-        f"aspheric={aspheric}, desired_focus = {desired_focus:.3e}m, n_design: {n_design:.3f}, n_actual: {n_actual:.3f}, Lens focal length: {back_focal_length * 1e3:.1f} mm, Defocus: z_lens -> z_lens + {defocus * 1e3:.1f} mm, T_c: {T_c * 1e3:.1f} mm, Diameter: {diameter * 1e3:.2f} mm"
-    )
-    # Save image with suptitle in name:
-    plt.savefig(
-        f"outputs/figures/analyze_potential_n_design_aspheric={aspheric}_{n_design:.3f}_n_actual_{n_actual:.3f}_focal_length_{back_focal_length * 1e3:.1f}mm_defocus_{defocus * 1e3:.1f}mm_Tc_{T_c * 1e3:.1f}mm_diameter_{diameter * 1e3:.2f}mm.svg",
-        dpi=300,
-    )
-    plt.show()
-print(
-    f"Paraxial spot size for unconcentricity of {unconcentricity*1e6:.1f} μm: {results_dict['spot_size_paraxial']*1e3:.2f} mm"
-)
-print(
-    f"Boundary of 2nd vs 4th order dominance for unconcentricity of {unconcentricity*1e6:.1f} µm: {np.abs(results_dict['zero_derivative_points']*1e3):.2f} mm"
-)
-# %% Generate a cavity with the same parameters:
-# cavity = results_dict['cavity']
-# cavity.plot()
-# plt.show()
-# %% FOR-LOOP ANALYSIS:
-unconcentricities = np.linspace(10e-3, 0.1e-3, 30)
-paraxial_spot_sizes = np.zeros_like(unconcentricities)
-spot_size_boundaries = np.zeros_like(unconcentricities)
-paraxial_NAs = np.zeros_like(unconcentricities)
-left_NAs = np.zeros_like(unconcentricities)
-for i, u in enumerate(unconcentricities):
-    print(f"\n\n\nu={u:.10e} µm")
-    results_dict = analyze_potential(
-        back_focal_length=back_focal_length,
-        R_1=R_1,
-        R_2=R_2_signed,
-        defocus=defocus,
-        T_c=T_c,
-        n_design=n_design,
-        diameter=diameter,
-        n_actual=n_actual,
-        n_rays=n_rays,
-        unconcentricity=u,
-        extract_R_analytically=True,
-        phi_max=phi_max,
-    )
-    paraxial_spot_sizes[i] = results_dict["spot_size_paraxial"]
-    paraxial_NAs[i] = results_dict["NA_paraxial"]
-    left_NAs[i] = results_dict["cavity"].arms[0].mode_parameters.NA[0]
-    try:
-        spot_size_boundaries[i] = np.abs(results_dict["zero_derivative_points"])
-    except TypeError:
-        spot_size_boundaries[i] = np.nan  # If zero_derivative_points is None
-# %%
-fig, ax = plt.subplots(figsize=(10, 6))
-ax.scatter(unconcentricities * 1e6, paraxial_spot_sizes * 1e3, label="Paraxial spot size", color="blue")
-ax.scatter(
-    unconcentricities * 1e6, spot_size_boundaries * 1e3, label="Boundary of 2nd vs 4th order dominance", color="red"
-)
-ax.set_xlabel("Unconcentricity (µm)")
-ax.set_ylabel("Spot size / boundary (mm)")
-ax.set_title(f"paraxial spot size vs. aberrations limit\naspheric={aspheric}, Lens focal length: ")
-ax.grid()
-
-# twin y-axis for paraxial NAs
-ax2 = ax.twinx()
-ax2.plot(unconcentricities * 1e6, paraxial_NAs, label="Right NA", color="orange", linestyle="--")
-ax2.plot(unconcentricities * 1e6, left_NAs, label="Left NA", color="green", linestyle="--")
-ax2.set_ylabel("Paraxial NA (unitless)")
-
-# combined legend
-handles1, labels1 = ax.get_legend_handles_labels()
-handles2, labels2 = ax2.get_legend_handles_labels()
-ax.legend(handles1 + handles2, labels1 + labels2, loc="best")
-
-plt.savefig(
-    f"outputs/figures/spot_size_limit_aspheric={aspheric}_n_design_{n_design:.3f}_n_actual_{n_actual:.3f}_focal_length_{back_focal_length * 1e3:.1f}mm_defocus_{defocus * 1e3:.1f}mm_Tc_{T_c * 1e3:.1f}mm_diameter_{diameter * 1e3:.2f}mm.svg"
-)
-plt.show()
+def generate_input_parameters_for_lenses(lens_type, dn):
+    if lens_type == 'aspheric - lab':
+        # back_focal_length = back_focal_length_of_lens(R_1=24.22e-3, R_2=-5.49e-3, n=1.8, T_c=2.91e-3)
+        # diameter = 7.75e-3
+        back_focal_length = 20e-3
+        R_1 = None
+        R_2 = None
+        R_2_signed = None
+        n_actual = 1.45
+        n_design = n_actual + dn
+        T_c = 4.35e-3
+        diameter = 12.7e-3
+        # This results in this value of R_2: -0.017933320598319306 for n=1.8 and -0.010350017052321312 for n=1.45
+    elif lens_type == 'spherical - like labs aspheric':
+        n_actual = 1.45
+        n_design = n_actual + dn
+        T_c = 4.35e-3
+        f_lens = focal_length_of_lens(
+            R_1=np.inf, R_2=-0.010350017052321312, n=1.45, T_c=4.35e-3
+        )  # Same as the aspheric ones.
+        R = f_lens * (n_design - 1) * (
+                    1 + np.sqrt(1 - T_c / (f_lens * n_design)))  # This is the R value that results in f=f_lens
+        R_1 = R
+        R_2 = R
+        R_2_signed = -R_2
+        back_focal_length = back_focal_length_of_lens(R_1=R_1, R_2=-R_2, n=n_design, T_c=T_c)
+        diameter = 12.7e-3
+    elif lens_type == 'avantier':
+        # Avantier lenses:
+        n_actual = 1.8
+        n_design = n_actual + dn
+        R_1 = 24.22e-3
+        R_2 = 5.49e-3
+        R_2_signed = -R_2
+        T_c = 2.91e-3
+        diameter = 7.75e-3
+        back_focal_length = back_focal_length_of_lens(R_1=R_1, R_2=-R_2, n=1.8, T_c=T_c)
+    elif lens_type == 'aspheric - like avantier':
+        n_actual = 1.8
+        n_design = n_actual + dn
+        back_focal_length = 0.0042325  # This results in the save focal length as the avantier lens.
+        R_1 = None
+        R_2 = None
+        R_2_signed = None
+        T_c = 2.91e-3
+        diameter = 7.75e-3
+    else:
+        raise ValueError("lens_type must be either aspheric, spherical, avantier")
+    return n_actual, n_design, T_c, back_focal_length, R_1, R_2, R_2_signed, diameter
