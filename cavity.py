@@ -2121,10 +2121,9 @@ class Arm:
                 lambda_0_laser=self.lambda_0_laser,
                 n=self.n,
             )
-        self.mode_parameters_on_surface_0.z_R[0]
         center = (
             self.central_line.origin
-            - self.mode_parameters_on_surface_0.z_minus_z_0[..., np.newaxis] / self.n * self.central_line.k_vector
+            - self.mode_parameters_on_surface_0.z_minus_z_0[..., np.newaxis] * self.central_line.k_vector
         )
         mode_parameters = ModeParameters(
             center=center,
