@@ -4870,7 +4870,7 @@ def mirror_lens_mirror_generator_with_unconcentricity(unconcentricity: float, ba
     lens = generate_lens_from_params(base_params[1])
     lens_left_center = lens[0].center
     T_c = base_params[1].T_c
-    f = focal_length_of_lens(R_1, R_2, n, T_c)
+    f = focal_length_of_lens(R_1, -R_2, n, T_c)
     h_2 = f * (n - 1) * T_c / (R_1 * n)
     h_1 = f * (n - 1) * T_c / (R_2 * n)
     d_1 = np.linalg.norm(lens_left_center)
