@@ -4861,15 +4861,16 @@ def find_required_perturbation_for_desired_change(
 
 def mirror_lens_mirror_generator_with_unconcentricity(unconcentricity: float, base_params: list[OpticalElementParams]):
     # unconcentricity is the unconcentricity of the long arm
-    base_params[0].x = -base_params[0].r_1
-    base_params[0].y = 0
-    base_params[0].z = 0
-    n = base_params[1].n_inside_or_after
-    R_1 = base_params[1].r_1
-    R_2 = base_params[1].r_2
-    lens = generate_lens_from_params(base_params[1])
+    base_params_copy = copy.deepcopy(base_params)
+    base_params_copy[0].x = -base_params_copy[0].r_1
+    base_params_copy[0].y = 0
+    base_params_copy[0].z = 0
+    n = base_params_copy[1].n_inside_or_after
+    R_1 = base_params_copy[1].r_1
+    R_2 = base_params_copy[1].r_2
+    lens = generate_lens_from_params(base_params_copy[1])
     lens_left_center = lens[0].center
-    T_c = base_params[1].T_c
+    T_c = base_params_copy[1].T_c
     f = focal_length_of_lens(R_1, -R_2, n, T_c)
     h_2 = f * (n - 1) * T_c / (R_1 * n)
     h_1 = f * (n - 1) * T_c / (R_2 * n)
@@ -4883,11 +4884,11 @@ def mirror_lens_mirror_generator_with_unconcentricity(unconcentricity: float, ba
     #         )  # This was extracted using ABCD matrices (in research file, 'Image of a point using a thick lens')
     # # And leads to the same result
     right_mirror_coc = lens_right_center + np.array([d_2 - unconcentricity, 0, 0])
-    base_params[2].x = right_mirror_coc[0] + base_params[2].r_1
-    base_params[2].y = right_mirror_coc[1]
-    base_params[2].z = right_mirror_coc[2]
+    base_params_copy[2].x = right_mirror_coc[0] + base_params_copy[2].r_1
+    base_params_copy[2].y = right_mirror_coc[1]
+    base_params_copy[2].z = right_mirror_coc[2]
     return Cavity.from_params(
-        params=base_params,
+        params=base_params_copy,
         standing_wave=True,
         lambda_0_laser=LAMBDA_0_LASER,
         set_central_line=True,

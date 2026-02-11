@@ -1,28 +1,30 @@
-from matplotlib import use
-use("TkAgg")  # or 'Qt5Agg', 'GTK3Agg', etc. depending on your system
+# from matplotlib import use
+# use("TkAgg")  # or 'Qt5Agg', 'GTK3Agg', etc. depending on your system
 from simple_analysis_scripts.analyze_potential import *
 # %%
 
 dn = 0
 lens_types = ['aspheric - lab', 'spherical - like labs aspheric', 'avantier', 'aspheric - like avantier']
-lens_type = lens_types[0]
+lens_type = lens_types[2]
 n_actual, n_design, T_c, back_focal_length, R_1, R_2, R_2_signed, diameter = generate_input_parameters_for_lenses(lens_type=lens_type, dn=dn)
-n_rays = 30
-unconcentricity = 30e-4  # np.float64(0.007610344827586207)  # ,  np.float64(0.007268965517241379)
-phi_max = 0.25
+n_rays = 4
+unconcentricity = 0# 10e-3  # np.float64(0.007610344827586207)  # ,  np.float64(0.007268965517241379)
+phi_max = 0.03
 desired_focus = 200e-3
 plot = True
 print_tests = False
 
-defocus = choose_source_position_for_desired_focus_analytic(
-    desired_focus=desired_focus,
-    T_c=T_c,
-    n_design=n_design,
-    diameter=diameter,
-    back_focal_length=back_focal_length,
-    R_1=R_1,
-    R_2=R_2_signed,
-)
+# defocus = choose_source_position_for_desired_focus_analytic(
+#     desired_focus=desired_focus,
+#     T_c=T_c,
+#     n_design=n_design,
+#     diameter=diameter,
+#     back_focal_length=back_focal_length,
+#     R_1=R_1,
+#     R_2=R_2_signed,
+# )
+
+defocus = back_focal_length - 4.9307005112e-3
 
 results_dict = analyze_potential(
     back_focal_length=back_focal_length,
@@ -47,15 +49,16 @@ if plot:
     # plt.close('all')
     fig, ax = plot_results(results_dict, far_away_plane=True, unconcentricity=unconcentricity)
     center = results_dict["center_of_curvature"]
-    ax[1, 1].set_xlim((center[0] - 0.002, center[0] + 0.002))
+    ax[1, 0].set_xlim((-0.01, 1))
     plt.suptitle(
         f"lens_type={lens_type}, desired_focus = {desired_focus:.3e}m, n_design: {n_design:.3f}, n_actual: {n_actual:.3f}, Lens focal length: {back_focal_length * 1e3:.1f} mm, Defocus: z_lens -> z_lens + {defocus * 1e3:.1f} mm, T_c: {T_c * 1e3:.1f} mm, Diameter: {diameter * 1e3:.2f} mm"
     )
+    ax[1, 1].set_xlim(-0.1, 1)
     # Save image with suptitle in name:
-    plt.savefig(
-        f"outputs/figures/analyze_potential_n_design lens_type={lens_type}_{n_design:.3f}_n_actual_{n_actual:.3f}_focal_length_{back_focal_length * 1e3:.1f}mm_defocus_{defocus * 1e3:.1f}mm_Tc_{T_c * 1e3:.1f}mm_diameter_{diameter * 1e3:.2f}mm.svg",
-        dpi=300,
-    )
+    # plt.savefig(
+    #     f"outputs/figures/analyze_potential_n_design lens_type={lens_type}_{n_design:.3f}_n_actual_{n_actual:.3f}_focal_length_{back_focal_length * 1e3:.1f}mm_defocus_{defocus * 1e3:.1f}mm_Tc_{T_c * 1e3:.1f}mm_diameter_{diameter * 1e3:.2f}mm.svg",
+    #     dpi=300,
+    # )
     plt.show()
 if print_tests:
     print(
@@ -64,10 +67,9 @@ if print_tests:
     print(
         f"Boundary of 2nd vs 4th order dominance for unconcentricity of {unconcentricity*1e6:.1f} µm: {np.abs(results_dict['zero_derivative_points']*1e3):.2f} mm"
     )
-# %% Generate a cavity with the same parameters:
-# cavity = results_dict['cavity']
-# cavity.plot()
-# plt.show()
+# %% playground
+asd = results_dict['mirror_object'].find_intersection_with_ray(results_dict['ray_sequence'][-1])
+
 # %% FOR-LOOP ANALYSIS:
 unconcentricities = np.linspace(10e-3, 0.1e-3, 30)
 paraxial_spot_sizes = np.zeros_like(unconcentricities)

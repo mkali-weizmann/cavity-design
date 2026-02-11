@@ -162,9 +162,9 @@ def find_wavefront_deviation(cavity: Cavity,
         if suptitles is not None:
             fig_0.suptitle(suptitles[0])
         fig_0.subplots_adjust(top=0.85, hspace=0.4)
-        if not running_in_notebook:
-            root = fig_0.canvas.manager.window
-            root.geometry("+2000+200")
+        # if not running_in_notebook:
+        #     root = fig_0.canvas.manager.window
+        #     root.geometry("+2000+200")
         results_dict['fig_potentials'] = fig_0
         results_dict['ax_potentials'] = ax_0
 
@@ -260,6 +260,25 @@ base_params = [
                                                                 intensity_reflectivity=9.99889e-01,
                                                                 intensity_transmittance=1e-04, temperature=np.nan))
 ]
+# %% [markdown]
+# # Playground
+
+# %%
+unconcentricity_value=1000e-6
+cavity_unconcentricity_0 = mirror_lens_mirror_generator_with_unconcentricity(unconcentricity=0e-6, base_params=base_params)
+cavity_unconcentricity_small = mirror_lens_mirror_generator_with_unconcentricity(unconcentricity=unconcentricity_value, base_params=base_params)
+# results_dict = find_wavefront_deviation(
+#     cavity=cavity_unconcentricity_0, max_initial_angle=0.03, n_rays=2000, plot_wavefronts=False, plot_potential_fits=True,
+#     plot_first_mirror_arc=False,secondary_axis_limits=(0.40980, 0.40983, -0.002, 0.0002), print_summary=True,
+#     angles_parity_sign=-1,
+#     suptitles=f"Mirror-Lens-Mirror cavity with 0 unconcentricity\nR_1={np.linalg.norm(cavity_unconcentricity_0.surfaces[0].origin - cavity_unconcentricity_0.surfaces[1].center):.3e} long_arm_length={np.linalg.norm(cavity_unconcentricity_0.surfaces[-1].center - cavity_unconcentricity_0.surfaces[-2].center):.3e}, short_arm_NA={cavity_unconcentricity_0.arms[0].mode_parameters.NA[0]:.3e}")
+results_dict = find_wavefront_deviation(
+    cavity=cavity_unconcentricity_small, max_initial_angle=0.03, n_rays=4, plot_wavefronts=False, plot_potential_fits=True,
+    plot_first_mirror_arc=False,secondary_axis_limits=(0.40980, 0.40983, -0.002, 0.0002), print_summary=True,
+    angles_parity_sign=-1,
+    suptitles=f"Mirror-Lens-Mirror cavity with 0 unconcentricity\nR_1={np.linalg.norm(cavity_unconcentricity_0.surfaces[0].origin - cavity_unconcentricity_0.surfaces[1].center):.3e} long_arm_length={np.linalg.norm(cavity_unconcentricity_0.surfaces[-1].center - cavity_unconcentricity_0.surfaces[-2].center):.3e}, short_arm_NA={cavity_unconcentricity_0.arms[0].mode_parameters.NA[0]:.3e}")
+
+plt.show()
 
 # %% [markdown]
 # # Sanity checks on a fabry perot cavity:
@@ -345,7 +364,7 @@ df = pd.DataFrame({'initial_angle': results_dict['tilt_angles'],
 # df.to_csv(r'outputs\tables\cavity_angles_small_to_large.csv')
 
 # %% [markdown]
-# ### Aberratmions wavefront deviation for the cavity with a small unconcentricity:
+# ### Aberrations wavefront deviation for the cavity with a small unconcentricity:
 
 # %%
 plt.close('all')
@@ -389,7 +408,7 @@ cavity_unconcentricity_0_inverted = Cavity.from_params(base_params_inverted,
                                                        debug_printing_level=1,)
 plt.close('all')
 results_dict = find_wavefront_deviation(
-    cavity=cavity_unconcentricity_0_inverted, max_initial_angle=0.01, n_rays=10000, plot_wavefronts=True, plot_potential_fits=True,
+    cavity=cavity_unconcentricity_0_inverted, max_initial_angle=0.01, n_rays=30, plot_wavefronts=True, plot_potential_fits=True,
     plot_first_mirror_arc=False, print_summary=True, secondary_axis_limits=(-0.0052, -0.0044, -0.0002, 0.002),
     angles_parity_sign=-1,
     suptitles="Mirror-Lens-Mirror cavity with 0 unconcentricity - shows aberrations")

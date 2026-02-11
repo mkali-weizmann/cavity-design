@@ -19,7 +19,7 @@ def initialize_rays(
         phi = np.linspace(0, phi_max, n_rays)
     else:
         phi = np.linspace(0, phi_max, n_rays)
-    ray_origin = optical_axis * defocus
+    ray_origin = ORIGIN# optical_axis * defocus
     rays_0 = Ray(origin=ray_origin, k_vector=unit_vector_of_angles(theta=0, phi=phi), n=1)
     return rays_0
 
@@ -198,7 +198,7 @@ def generate_one_lens_optical_system(
         surface_0, surface_1 = CurvedRefractiveSurface(
             radius=np.abs(R_1),
             outwards_normal=-optical_axis,
-            center=back_focal_length * optical_axis,
+            center=(back_focal_length - defocus) * optical_axis,
             n_1=1,
             n_2=n_actual,
             curvature_sign=CurvatureSigns.convex,
@@ -208,7 +208,7 @@ def generate_one_lens_optical_system(
         ), CurvedRefractiveSurface(
             radius=np.abs(R_2),
             outwards_normal=optical_axis,
-            center=(back_focal_length + T_c) * optical_axis,
+            center=(back_focal_length - defocus + T_c) * optical_axis,
             n_1=n_actual,
             n_2=1,
             curvature_sign=CurvatureSigns.concave,
@@ -217,7 +217,7 @@ def generate_one_lens_optical_system(
             diameter=diameter,
         )
     elif back_focal_length is not None:
-        back_center = back_focal_length * optical_axis
+        back_center = (back_focal_length - defocus) * optical_axis
         surface_0, surface_1 = Surface.from_params(
             generate_aspheric_lens_params(back_focal_length=back_focal_length, T_c=T_c, n=n_design,
                                           forward_normal=optical_axis, flat_faces_center=back_center, diameter=diameter,
@@ -336,8 +336,12 @@ def analyze_potential(
 
     results_dict = analyze_output_wavefront(ray_sequence, unconcentricity=unconcentricity, R_analytical=R_analytical, print_tests=print_tests)
     results_dict["optical_system"] = optical_system
-    cavity = complete_optical_system_to_cavity(results_dict, unconcentricity=unconcentricity, print_tests=print_tests)
-    results_dict["cavity"] = cavity
+    try:
+        cavity = complete_optical_system_to_cavity(results_dict, unconcentricity=unconcentricity, print_tests=print_tests)
+        results_dict["cavity"] = cavity
+    except AttributeError:
+        print(f"No mode found for cavity")
+        results_dict["cavity"] = None
 
     return results_dict
 
@@ -495,7 +499,8 @@ def plot_results(results_dict, far_away_plane: bool = False, unconcentricity: Op
             terms_parts_mirror.append(rf"${mant:.1f}\cdot10^{{{exp}}}\,x^{{{2 * i}}}$")
         terms_mirror = " + ".join(terms_parts_mirror)
         if spot_size_paraxial is not None:
-            mode_terms = f"\n Paraxial spot size: {spot_size_paraxial * 1e3:.2f} mm, NA long arm: {NA_paraxial:.2e}, NA short arm: {results_dict['cavity'].arms[0].mode_parameters.NA[0]:.2e}"
+            NA_short_arm = np.nan if results_dict["cavity"] is None else results_dict["cavity"].arms[0].mode_parameters.NA[0]
+            mode_terms = f"\n Paraxial spot size: {spot_size_paraxial * 1e3:.2f} mm, NA long arm: {NA_paraxial:.2e}, NA short arm: {NA_short_arm:.2e}"
         else:
             mode_terms = ""
         title += (
@@ -556,7 +561,8 @@ def plot_results(results_dict, far_away_plane: bool = False, unconcentricity: Op
         ax2.set_ylabel("Relative intensity (a.u.)")
         ax2.grid(False)
 
-    ax[0, 1].axvline(zero_derivative_points * 1e3, label="2nd vs 4th order max", color="purple", linestyle="dotted")
+    zero_derivative_point_plot = np.nan if zero_derivative_points is None else zero_derivative_points
+    ax[0, 1].axvline(zero_derivative_point_plot * 1e3, label="2nd vs 4th order max", color="purple", linestyle="dotted")
     ax[0, 1].legend(handles=handles)
     return fig, ax
 
@@ -608,16 +614,16 @@ def generate_input_parameters_for_lenses(lens_type, dn):
         diameter = 12.7e-3
     elif lens_type == 'avantier':
         # Avantier lenses:
-        n_actual = 1.8
+        n_actual = 1.76
         n_design = n_actual + dn
         R_1 = 24.22e-3
-        R_2 = 5.49e-3
+        R_2 = 5.488e-3
         R_2_signed = -R_2
-        T_c = 2.91e-3
+        T_c = 0.002913797540986543
         diameter = 7.75e-3
-        back_focal_length = back_focal_length_of_lens(R_1=R_1, R_2=-R_2, n=1.8, T_c=T_c)
+        back_focal_length = back_focal_length_of_lens(R_1=R_1, R_2=-R_2, n=n_design, T_c=T_c)
     elif lens_type == 'aspheric - like avantier':
-        n_actual = 1.8
+        n_actual = 1.76
         n_design = n_actual + dn
         back_focal_length = 0.0042325  # This results in the save focal length as the avantier lens.
         R_1 = None
