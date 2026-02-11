@@ -262,11 +262,11 @@ def decompose_ABCD_matrix(
 
 
 def propagate_local_mode_parameter_through_ABCD(
-    local_mode_parameters: LocalModeParameters, ABCD: np.ndarray, n_1: float = 1, n_2: float = 1
+    local_mode_parameters: LocalModeParameters, ABCD: np.ndarray, n_2: float = 1
 ) -> LocalModeParameters:
     A, B, C, D = decompose_ABCD_matrix(ABCD)
-    q_new = n_2 * (A * local_mode_parameters.q / n_1 + B) / (C * local_mode_parameters.q / n_1 + D)
-    # q_new = (A * local_mode_parameters.q + B) / (C * local_mode_parameters.q + D)
+    # q_new = n_2 * (A * local_mode_parameters.q / n_1 + B) / (C * local_mode_parameters.q / n_1 + D)  # Siegman's convention
+    q_new = (A * local_mode_parameters.q + B) / (C * local_mode_parameters.q + D)  # Wikipedia's convention
     return LocalModeParameters(q=q_new, lambda_0_laser=local_mode_parameters.lambda_0_laser, n=n_2)
 
 
@@ -2077,15 +2077,12 @@ class Arm:
         return matrix
 
     def propagate_local_mode_parameters(self, local_mode_parameters_on_surface_0: Optional[LocalModeParameters]):
-        mode_parameters_on_surface_1 = propagate_local_mode_parameter_through_ABCD(
-            local_mode_parameters_on_surface_0, self.ABCD_matrix_free_space, n_1=self.n, n_2=self.n
-        )
-        mode_parameters_after_surface_1 = propagate_local_mode_parameter_through_ABCD(
-            mode_parameters_on_surface_1,
-            self.ABCD_matrix_reflection,
-            n_1=self.surface_1.to_params.n_outside_or_before,
-            n_2=self.surface_1.to_params.n_inside_or_after,
-        )
+        mode_parameters_on_surface_1 = propagate_local_mode_parameter_through_ABCD(local_mode_parameters_on_surface_0,
+                                                                                   self.ABCD_matrix_free_space,
+                                                                                   n_2=self.n)
+        mode_parameters_after_surface_1 = propagate_local_mode_parameter_through_ABCD(mode_parameters_on_surface_1,
+                                                                                      self.ABCD_matrix_reflection,
+                                                                                      n_2=self.surface_1.to_params.n_inside_or_after)
         return mode_parameters_on_surface_1, mode_parameters_after_surface_1
 
     def set_local_mode_parameters(self) -> LocalModeParameters:
@@ -2147,9 +2144,8 @@ class Arm:
 
         point_plane_distance_from_surface_1 = (point - self.central_line.origin) @ self.central_line.k_vector
         propagation_ABCD = ABCD_free_space(point_plane_distance_from_surface_1)
-        local_mode_parameters = propagate_local_mode_parameter_through_ABCD(
-            self.mode_parameters_on_surface_0, propagation_ABCD, n_1=self.n, n_2=self.n
-        )
+        local_mode_parameters = propagate_local_mode_parameter_through_ABCD(self.mode_parameters_on_surface_0,
+                                                                            propagation_ABCD, n_2=self.n)
         return local_mode_parameters
 
     @property
@@ -2623,10 +2619,7 @@ class OpticalSystem:
                 )
                 local_mode_parameters_current = propagate_local_mode_parameter_through_ABCD(
                     local_mode_parameters=local_mode_parameters_before_first_surface,
-                    ABCD=self.surfaces[0].ABCD_matrix(cos_theta_incoming=1),
-                    n_1=mode_parameters.n,
-                    n_2=self.arms[0].n,
-                )
+                    ABCD=self.surfaces[0].ABCD_matrix(cos_theta_incoming=1), n_2=self.arms[0].n)
                 local_mode_parameters_history.extend(
                     [local_mode_parameters_before_first_surface, local_mode_parameters_current]
                 )
@@ -4556,7 +4549,7 @@ def local_mode_2_of_lens_parameters(
     ABCD_between = ABCD_free_space(w)
     ABCD_second = surface_2.ABCD_matrix(cos_theta_incoming=1)
     ABCD_total = ABCD_second @ ABCD_between @ ABCD_first
-    propagated_mode = propagate_local_mode_parameter_through_ABCD(local_mode_1, ABCD_total, n_1=1, n_2=1)
+    propagated_mode = propagate_local_mode_parameter_through_ABCD(local_mode_1, ABCD_total, n_2=1)
     return propagated_mode
 
 
@@ -4743,8 +4736,7 @@ def generate_spot_size_lines(
             spot_size_lines[:, 0, 1, :],
             spot_size_lines[:, 1, 0, :],
             spot_size_lines[:, 1, 1, :],
-        ]  # Each
-        # element is a  100 | 3 array.
+        ]  # Each element is a  100 | 3 array.
 
     return spot_size_lines_separated
 
@@ -4764,11 +4756,7 @@ def find_equal_angles_surface(
     )
     dT_c_0 = dT_c_of_a_lens(R=surface_0.radius, h=h)
     mode_parameters_right_after_surface_0 = propagate_local_mode_parameter_through_ABCD(
-        mode_parameters_just_before_surface_0,
-        surface_0.ABCD_matrix(cos_theta_incoming=1),
-        n_1=surface_0.n_1,
-        n_2=surface_0.n_2,
-    )
+        mode_parameters_just_before_surface_0, surface_0.ABCD_matrix(cos_theta_incoming=1), n_2=surface_0.n_2)
 
     def match_surface_to_radius(R_1: float) -> CurvedRefractiveSurface:
         T_c = dT_c_0 + T_edge + dT_c_of_a_lens(R=R_1, h=h)
@@ -5146,11 +5134,7 @@ def mirror_lens_mirror_cavity_generator(
     )
 
     mode_parameters_right_after_surface_left = propagate_local_mode_parameter_through_ABCD(
-        mode_parameters_just_before_surface_left,
-        surface_left.ABCD_matrix(cos_theta_incoming=1),
-        n_1=1,
-        n_2=n,
-    )
+        mode_parameters_just_before_surface_left, surface_left.ABCD_matrix(cos_theta_incoming=1), n_2=n)
 
     arm_lens = Arm(
         surface_0=surface_left,

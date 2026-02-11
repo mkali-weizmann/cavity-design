@@ -260,7 +260,7 @@ def mirror_lens_mirror_generator_collimated_beam(base_params: list[OpticalElemen
     R_1 = base_params[1].r_1
     R_2 = base_params[1].r_2
     T_c = base_params[1].T_c
-    f = focal_length_of_lens(R_1, R_2, n, T_c)
+    f = focal_length_of_lens(R_1, -R_2, n, T_c)
     h_2 = f * (n-1) * T_c / (R_1 * n) # principle plane to lens surface 0 distance
     h_1 = f * (n-1) * T_c / (R_2 * n) # principle plane to lens surface 2 distance
     d_1 = f - h_1 # distance from small mirror origin to lens surface 0
