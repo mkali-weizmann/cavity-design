@@ -346,7 +346,7 @@ def analyze_potential(
     return results_dict
 
 
-def plot_results(results_dict, far_away_plane: bool = False, unconcentricity: Optional[float] = None):
+def plot_results(results_dict, far_away_plane: bool = False, unconcentricity: Optional[float] = None, potential_x_axis_angles: bool = False):
     (optical_system, ray_sequence, R, center_of_curvature, NA_paraxial, spot_size_paraxial, zero_derivative_points) = (
         results_dict["optical_system"],
         results_dict["ray_sequence"],
@@ -462,8 +462,15 @@ def plot_results(results_dict, far_away_plane: bool = False, unconcentricity: Op
         )
         ax[0, 0].legend()
 
+    if potential_x_axis_angles:
+        angles_theta, angles_phi = angles_of_unit_vector(ray_sequence[0].k_vector)
+        potential_x_axis = angles_phi
+        potential_x_label = "phi (rad)"
+    else:
+        potential_x_axis = wavefront_points[:, 1] * 1e3
+        potential_x_label = "y (mm)"
     ax[0, 1].plot(
-        wavefront_points[:, 1] * 1e3,
+        potential_x_axis,
         residual_distances * 1e6,
         label="wavefront residual from matching sphere",
         marker="o",
@@ -473,7 +480,7 @@ def plot_results(results_dict, far_away_plane: bool = False, unconcentricity: Op
         alpha=0.6,
     )
     x_fit = np.linspace(np.min(wavefront_points[:, 1]), np.max(wavefront_points[:, 1]), 100)
-    ax[0, 1].set_xlabel("y (mm)")
+    ax[0, 1].set_xlabel(potential_x_label)
     ax[0, 1].set_ylabel("wavefront difference (µm)")
     ax[0, 1].grid()
     # build polynomial term string with ascending powers and .1e formatting, include x^{n} terms
@@ -490,6 +497,16 @@ def plot_results(results_dict, far_away_plane: bool = False, unconcentricity: Op
     # Build terms for mirror deviation polynomial (if present)
     terms_parts_mirror = []
     if polynomial_residuals_mirror is not None:
+        ax[0, 1].plot(
+            potential_x_axis,
+            residual_distances_mirror * 1e6,
+            marker="x",
+            linestyle="",
+            color="magenta",
+            label="Mirror deviation data",
+            markersize=5,
+            alpha=0.6,
+        )
         coeffs_mirror_asc = polynomial_residuals_mirror.coef
         for i, c in enumerate(coeffs_mirror_asc):
             s = f"{c:.1e}"
@@ -499,71 +516,62 @@ def plot_results(results_dict, far_away_plane: bool = False, unconcentricity: Op
             terms_parts_mirror.append(rf"${mant:.1f}\cdot10^{{{exp}}}\,x^{{{2 * i}}}$")
         terms_mirror = " + ".join(terms_parts_mirror)
         if spot_size_paraxial is not None:
-            NA_short_arm = np.nan if results_dict["cavity"] is None else results_dict["cavity"].arms[0].mode_parameters.NA[0]
+            NA_short_arm = np.nan if results_dict["cavity"] is None else \
+            results_dict["cavity"].arms[0].mode_parameters.NA[0]
             mode_terms = f"\n Paraxial spot size: {spot_size_paraxial * 1e3:.2f} mm, NA long arm: {NA_paraxial:.2e}, NA short arm: {NA_short_arm:.2e}"
         else:
             mode_terms = ""
         title += (
-            f"\nmirror deviation fit (unconcentricity = {unconcentricity*1e6:.1f} µm):\n" + terms_mirror + mode_terms
+                f"\nmirror deviation fit (unconcentricity = {unconcentricity * 1e6:.1f} µm):\n" + terms_mirror + mode_terms
         )
-        ax[0, 1].plot(
-            x_fit * 1e3,
-            polynomial_residuals_mirror(x_fit**2) * 1e6,
-            color="green",
-            linestyle="dashed",
-            label="Mirror residuals Polynomial fit",
-            linewidth=0.5,
-        )
-        ax[0, 1].plot(
-            wavefront_points[:, 1] * 1e3,
-            residual_distances_mirror * 1e6,
-            marker="x",
-            linestyle="",
-            color="magenta",
-            label="Mirror deviation data",
-            markersize=5,
-            alpha=0.6,
-        )
+        ax[0, 1].set_title(title)
+        if not potential_x_axis_angles:
+            ax[0, 1].plot(
+                x_fit * 1e3,
+                polynomial_residuals_mirror(x_fit**2) * 1e6,
+                color="green",
+                linestyle="dashed",
+                label="Mirror residuals Polynomial fit",
+                linewidth=0.5,
+            )
+            ax[0, 1].plot(
+                x_fit * 1e3,
+                polynomial(x_fit**2) * 1e6,
+                color="red",
+                linestyle="dashed",
+                label="Matching sphere residuals Polynomial fit",
+                linewidth=0.5,
+            )
+            # Plot intensity profile on a new y axis for ax[0, 1] if NA_paraxial is not None: using the formula: e^{-y^{2} / (spot_size_paraxial / 2)^{2})}
+            if NA_paraxial is not None and spot_size_paraxial is not None:
+                ax2 = ax[0, 1].twinx()
+                intensity_profile = np.exp(-(x_fit**2) / (spot_size_paraxial / 2) ** 2)
+                ax2.plot(
+                    x_fit * 1e3,
+                    intensity_profile,
+                    color="orange",
+                    linestyle="dashed",
+                    label="Paraxial Gaussian intensity profile",
+                    linewidth=1,
+                )
+                ax2.axvline(
+                    spot_size_paraxial * 1e3 * np.sign(x_fit[0]),
+                    color="orange",
+                    linestyle="dashed",
+                    linewidth=1,
+                    label="Paraxial spot size ($w_{0}$)",
+                )
+                legend_line = Line2D(
+                    [], [], color="orange", linestyle="dashed", linewidth=1, label="Paraxial Gaussian intensity profile"
+                )
+                handles, labels = ax[0, 1].get_legend_handles_labels()
+                handles.append(legend_line)
+                ax2.set_ylabel("Relative intensity (a.u.)")
+                ax2.grid(False)
 
-    ax[0, 1].set_title(title)
-    ax[0, 1].plot(
-        x_fit * 1e3,
-        polynomial(x_fit**2) * 1e6,
-        color="red",
-        linestyle="dashed",
-        label="Matching sphere residuals Polynomial fit",
-        linewidth=0.5,
-    )
-    # Plot intensity profile on a new y axis for ax[0, 1] if NA_paraxial is not None: using the formula: e^{-y^{2} / (spot_size_paraxial / 2)^{2})}
-    if NA_paraxial is not None and spot_size_paraxial is not None:
-        ax2 = ax[0, 1].twinx()
-        intensity_profile = np.exp(-(x_fit**2) / (spot_size_paraxial / 2) ** 2)
-        ax2.plot(
-            x_fit * 1e3,
-            intensity_profile,
-            color="orange",
-            linestyle="dashed",
-            label="Paraxial Gaussian intensity profile",
-            linewidth=1,
-        )
-        ax2.axvline(
-            spot_size_paraxial * 1e3 * np.sign(x_fit[0]),
-            color="orange",
-            linestyle="dashed",
-            linewidth=1,
-            label="Paraxial spot size ($w_{0}$)",
-        )
-        legend_line = Line2D(
-            [], [], color="orange", linestyle="dashed", linewidth=1, label="Paraxial Gaussian intensity profile"
-        )
-        handles, labels = ax[0, 1].get_legend_handles_labels()
-        handles.append(legend_line)
-        ax2.set_ylabel("Relative intensity (a.u.)")
-        ax2.grid(False)
-
-    zero_derivative_point_plot = np.nan if zero_derivative_points is None else zero_derivative_points
-    ax[0, 1].axvline(zero_derivative_point_plot * 1e3, label="2nd vs 4th order max", color="purple", linestyle="dotted")
-    ax[0, 1].legend(handles=handles)
+            zero_derivative_point_plot = np.nan if zero_derivative_points is None else zero_derivative_points
+            ax[0, 1].axvline(zero_derivative_point_plot * 1e3, label="2nd vs 4th order max", color="purple", linestyle="dotted")
+            ax[0, 1].legend(handles=handles)
     return fig, ax
 
 

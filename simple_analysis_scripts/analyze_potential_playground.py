@@ -7,24 +7,24 @@ dn = 0
 lens_types = ['aspheric - lab', 'spherical - like labs aspheric', 'avantier', 'aspheric - like avantier']
 lens_type = lens_types[2]
 n_actual, n_design, T_c, back_focal_length, R_1, R_2, R_2_signed, diameter = generate_input_parameters_for_lenses(lens_type=lens_type, dn=dn)
-n_rays = 4
-unconcentricity = 0# 10e-3  # np.float64(0.007610344827586207)  # ,  np.float64(0.007268965517241379)
-phi_max = 0.03
+n_rays = 400
+unconcentricity = 2.24255506e-3  # np.float64(0.007610344827586207)  # ,  np.float64(0.007268965517241379)
+phi_max = 0.04
 desired_focus = 200e-3
 plot = True
 print_tests = False
 
-# defocus = choose_source_position_for_desired_focus_analytic(
-#     desired_focus=desired_focus,
-#     T_c=T_c,
-#     n_design=n_design,
-#     diameter=diameter,
-#     back_focal_length=back_focal_length,
-#     R_1=R_1,
-#     R_2=R_2_signed,
-# )
+defocus = choose_source_position_for_desired_focus_analytic(
+    desired_focus=desired_focus,
+    T_c=T_c,
+    n_design=n_design,
+    diameter=diameter,
+    back_focal_length=back_focal_length,
+    R_1=R_1,
+    R_2=R_2_signed,
+)
 
-defocus = back_focal_length - 4.9307005112e-3
+# defocus = back_focal_length - 4.9307005112e-3
 
 results_dict = analyze_potential(
     back_focal_length=back_focal_length,
@@ -47,7 +47,7 @@ if print_tests:
     )
 if plot:
     # plt.close('all')
-    fig, ax = plot_results(results_dict, far_away_plane=True, unconcentricity=unconcentricity)
+    fig, ax = plot_results(results_dict, far_away_plane=True, unconcentricity=unconcentricity, potential_x_axis_angles=True)
     center = results_dict["center_of_curvature"]
     ax[1, 0].set_xlim((-0.01, 1))
     plt.suptitle(
@@ -67,8 +67,10 @@ if print_tests:
     print(
         f"Boundary of 2nd vs 4th order dominance for unconcentricity of {unconcentricity*1e6:.1f} µm: {np.abs(results_dict['zero_derivative_points']*1e3):.2f} mm"
     )
+print(results_dict['cavity'].mode_parameters[0].NA[0])
+print(results_dict['cavity'].surfaces[-1].center[0] - results_dict['cavity'].surfaces[-2].center[0])
 # %% playground
-asd = results_dict['mirror_object'].find_intersection_with_ray(results_dict['ray_sequence'][-1])
+pyperclip.copy(results_dict['cavity'].formatted_textual_params)
 
 # %% FOR-LOOP ANALYSIS:
 unconcentricities = np.linspace(10e-3, 0.1e-3, 30)

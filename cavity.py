@@ -2425,9 +2425,9 @@ class OpticalSystem:
 
     @property
     def formatted_textual_params(self) -> str:
-        if self.params is None:
+        if self.to_params is None:
             return "No parameters set for this cavity."
-        textual_representation = "params = " + str(self.params).replace(
+        textual_representation = "params = " + str(self.to_params).replace(
             "OpticalElementParams", "\n          OpticalElementParams"
         ).replace("))]", "))\n         ]")
         return textual_representation

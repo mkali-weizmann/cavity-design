@@ -260,6 +260,15 @@ base_params = [
                                                                 intensity_reflectivity=9.99889e-01,
                                                                 intensity_transmittance=1e-04, temperature=np.nan))
 ]
+
+
+base_params_new = [
+          OpticalElementParams(name='LaserOptik mirror'      ,surface_type='curved_mirror'                  , x=-4.999920759497428e-03  , y=0                       , z=0                       , theta=0                       , phi=1e+00 * np.pi           , r_1=5e-03                   , r_2=np.nan                  , curvature_sign=CurvatureSigns.concave, T_c=np.nan                  , n_inside_or_after=1e+00                   , n_outside_or_before=1e+00                   , diameter=np.nan                  , material_properties=MaterialProperties(refractive_index=1.45e+00                , alpha_expansion=5.2e-07                 , beta_surface_absorption=1e-06                   , kappa_conductivity=1.38e+00                , dn_dT=1.2e-05                 , nu_poisson_ratio=1.6e-01                 , alpha_volume_absorption=1e-03                   , intensity_reflectivity=1e-04                   , intensity_transmittance=9.99899e-01             , temperature=np.nan                  ), polynomial_coefficients=None),
+          OpticalElementParams(name='first surface'          ,surface_type='curved_refractive_surface'      , x=4.932665324745802e-03   , y=0                       , z=0                       , theta=0                       , phi=1e+00 * np.pi           , r_1=2.422e-02               , r_2=np.nan                  , curvature_sign=CurvatureSigns.convex, T_c=np.nan                  , n_inside_or_after=1.76e+00                , n_outside_or_before=1e+00                   , diameter=7.75e-03                , material_properties=MaterialProperties(refractive_index=None                    , alpha_expansion=None                    , beta_surface_absorption=None                    , kappa_conductivity=None                    , dn_dT=None                    , nu_poisson_ratio=None                    , alpha_volume_absorption=None                    , intensity_reflectivity=None                    , intensity_transmittance=None                    , temperature=np.nan                  ), polynomial_coefficients=None),
+          OpticalElementParams(name='second surface'         ,surface_type='curved_refractive_surface'      , x=7.846462865732347e-03   , y=0                       , z=0                       , theta=0                       , phi=0                       , r_1=5.488e-03               , r_2=np.nan                  , curvature_sign=CurvatureSigns.concave, T_c=np.nan                  , n_inside_or_after=1e+00                   , n_outside_or_before=1.76e+00                , diameter=7.75e-03                , material_properties=MaterialProperties(refractive_index=None                    , alpha_expansion=None                    , beta_surface_absorption=None                    , kappa_conductivity=None                    , dn_dT=None                    , nu_poisson_ratio=None                    , alpha_volume_absorption=None                    , intensity_reflectivity=None                    , intensity_transmittance=None                    , temperature=np.nan                  ), polynomial_coefficients=None),
+          OpticalElementParams(name='big mirror'             ,surface_type='curved_mirror'                  , x=4.05603907805732e-01    , y=0                       , z=0                       , theta=0                       , phi=0                       , r_1=1.999999999999998e-01   , r_2=np.nan                  , curvature_sign=CurvatureSigns.concave, T_c=np.nan                  , n_inside_or_after=1e+00                   , n_outside_or_before=1e+00                   , diameter=np.nan                  , material_properties=MaterialProperties(refractive_index=None                    , alpha_expansion=None                    , beta_surface_absorption=None                    , kappa_conductivity=None                    , dn_dT=None                    , nu_poisson_ratio=None                    , alpha_volume_absorption=None                    , intensity_reflectivity=None                    , intensity_transmittance=None                    , temperature=np.nan                  ), polynomial_coefficients=None)]
+
+
 # %% [markdown]
 # # Playground
 
@@ -267,15 +276,16 @@ base_params = [
 unconcentricity_value=1000e-6
 cavity_unconcentricity_0 = mirror_lens_mirror_generator_with_unconcentricity(unconcentricity=0e-6, base_params=base_params)
 cavity_unconcentricity_small = mirror_lens_mirror_generator_with_unconcentricity(unconcentricity=unconcentricity_value, base_params=base_params)
+cavity_new = Cavity.from_params(base_params_new)
 # results_dict = find_wavefront_deviation(
 #     cavity=cavity_unconcentricity_0, max_initial_angle=0.03, n_rays=2000, plot_wavefronts=False, plot_potential_fits=True,
 #     plot_first_mirror_arc=False,secondary_axis_limits=(0.40980, 0.40983, -0.002, 0.0002), print_summary=True,
 #     angles_parity_sign=-1,
 #     suptitles=f"Mirror-Lens-Mirror cavity with 0 unconcentricity\nR_1={np.linalg.norm(cavity_unconcentricity_0.surfaces[0].origin - cavity_unconcentricity_0.surfaces[1].center):.3e} long_arm_length={np.linalg.norm(cavity_unconcentricity_0.surfaces[-1].center - cavity_unconcentricity_0.surfaces[-2].center):.3e}, short_arm_NA={cavity_unconcentricity_0.arms[0].mode_parameters.NA[0]:.3e}")
 results_dict = find_wavefront_deviation(
-    cavity=cavity_unconcentricity_small, max_initial_angle=0.03, n_rays=4, plot_wavefronts=False, plot_potential_fits=True,
-    plot_first_mirror_arc=False,secondary_axis_limits=(0.40980, 0.40983, -0.002, 0.0002), print_summary=True,
-    angles_parity_sign=-1,
+    cavity=cavity_new, max_initial_angle=0.04, n_rays=400, plot_wavefronts=False, plot_potential_fits=True,
+    plot_first_mirror_arc=False, secondary_axis_limits=(0.40980, 0.40983, -0.002, 0.0002), print_summary=True,
+    angles_parity_sign=-1, potential_fits_x_axis='angles',
     suptitles=f"Mirror-Lens-Mirror cavity with 0 unconcentricity\nR_1={np.linalg.norm(cavity_unconcentricity_0.surfaces[0].origin - cavity_unconcentricity_0.surfaces[1].center):.3e} long_arm_length={np.linalg.norm(cavity_unconcentricity_0.surfaces[-1].center - cavity_unconcentricity_0.surfaces[-2].center):.3e}, short_arm_NA={cavity_unconcentricity_0.arms[0].mode_parameters.NA[0]:.3e}")
 
 plt.show()
