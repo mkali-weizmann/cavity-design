@@ -11,7 +11,6 @@ def initialize_rays(
     diameter: Optional[float] = None,
     back_focal_length: Optional[float] = None,
 ):
-    optical_axis = RIGHT
     if phi_max is None and dphi is not None:
         phi = np.arange(0, n_rays) * dphi
     elif phi_max is None and dphi is None:
@@ -228,12 +227,8 @@ def generate_one_lens_optical_system(
     else:
         raise ValueError("Either R_1 and R_2, or back_focal_length must be provided.")
 
-    optical_system = OpticalSystem(
-        surfaces=[surface_0, surface_1],
-        lambda_0_laser=LAMBDA_0_LASER,
-        given_initial_central_line=True,
-        use_paraxial_ray_tracing=False,
-    )
+    optical_system = OpticalSystem(surfaces=[surface_0, surface_1], lambda_0_laser=LAMBDA_0_LASER,
+                                   given_initial_central_line=True, use_paraxial_ray_tracing=False)
 
     return optical_system, optical_axis
 
@@ -614,7 +609,7 @@ def generate_input_parameters_for_lenses(lens_type, dn):
             R_1=np.inf, R_2=-0.010350017052321312, n=1.45, T_c=4.35e-3
         )  # Same as the aspheric ones.
         R = f_lens * (n_design - 1) * (
-                    1 + np.sqrt(1 - T_c / (f_lens * n_design)))  # This is the R value that results in f=f_lens
+                    1 - np.sqrt(1 - T_c / (f_lens * n_design)))  # This is the R value that results in f=f_lens
         R_1 = R
         R_2 = R
         R_2_signed = -R_2

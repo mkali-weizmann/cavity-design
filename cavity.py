@@ -529,7 +529,6 @@ class Surface:
         # takes a point on the surface and returns the parameters
         raise NotImplementedError
 
-    @property
     def ABCD_matrix(self, cos_theta_incoming=1):
         # Will be overriden by physical surfaces that actually affect the rays/modes.
         return np.eye(4)
@@ -2344,7 +2343,6 @@ class OpticalSystem:
         surfaces: List[Surface],
         lambda_0_laser: Optional[float] = None,
         params: Optional[List[OpticalElementParams]] = None,
-        names: Optional[List[str]] = None,
         power: Optional[float] = None,
         t_is_trivial: bool = True,
         p_is_trivial: bool = True,
@@ -2363,7 +2361,6 @@ class OpticalSystem:
         self.resonating_mode_successfully_traced: Optional[bool] = None
         self.lambda_0_laser: Optional[float] = lambda_0_laser
         self.params = params
-        self.names_memory = names
         self.power = power
         self.p_is_trivial = p_is_trivial
         self.t_is_trivial = t_is_trivial
@@ -2499,11 +2496,8 @@ class OpticalSystem:
 
     @property
     def names(self):
-        if self.names_memory is not None:
-            return self.names_memory
-        else:
-            names_params = [p.name if p.name is not None else i for i, p in enumerate(self.to_params)]
-            return names_params
+        names = [p.name if p.name is not None else f"{i}: {p.surface_type}" for i, p in enumerate(self.to_params)]
+        return names
 
     @property
     def roundtrip_power_losses(self):
@@ -2892,25 +2886,15 @@ class OpticalSystem:
         return sum(gouy_phases)
 
     def output_radius_of_curvature(self, initial_distance: float) -> float:
-        # Currently assume 1d problem for simplicty, if required it can be expanded
-        if isinstance(
-            self.surfaces[0], PhysicalSurface
-        ):  # Bad implementation. to correct it, I need to make sure that OpticalSystem can actually accept a surface that is not a PhysicalSurface, and allow for General surfaces in general. Also - better decompose the self.ABCD matrices to the propagation and reflection ABCD matrices.
-            first_ABCD = self.physical_surfaces[0].ABCD_matrix(cos_theta_incoming=1)[:2, :2]
-        else:
-            first_ABCD = np.eye(2)
+        # Currently assume 1d problem for simplicty (only the :2, :2 elements for the first dimension are used), if required it can be expanded
+        first_ABCD = self.surfaces[0].ABCD_matrix(cos_theta_incoming=1)[:2, :2]
         ABCD = self.ABCD_round_trip[:2, :2] @ first_ABCD
         A, B, C, D = ABCD[0, 0], ABCD[0, 1], ABCD[1, 0], ABCD[1, 1]
         R_out = -(A * initial_distance + B) / (C * initial_distance + D)
         return R_out
 
     def required_initial_distance_for_desired_output_radius_of_curvature(self, desired_R_out: float) -> float:
-        if isinstance(
-            self.surfaces[0], PhysicalSurface
-        ):  # Bad implementation. to correct it, I need to make sure that OpticalSystem can actually accept a surface that is not a PhysicalSurface, and allow for General surfaces in general. Also - better decompose the self.ABCD matrices to the propagation and reflection ABCD matrices.
-            first_ABCD = self.physical_surfaces[0].ABCD_matrix(cos_theta_incoming=1)[:2, :2]
-        else:
-            first_ABCD = np.eye(2)
+        first_ABCD = self.surfaces[0].ABCD_matrix(cos_theta_incoming=1)[:2, :2]
         ABCD = self.ABCD_round_trip[:2, :2] @ first_ABCD
         A, B, C, D = ABCD[0, 0], ABCD[0, 1], ABCD[1, 0], ABCD[1, 1]
         initial_distance = -(B + D * desired_R_out) / (A + C * desired_R_out)
@@ -2935,11 +2919,8 @@ class OpticalSystem:
         else:
             initial_ray_inverted = None
 
-        inverted_system = OpticalSystem(
-            surfaces=inverted_surfaces,
-            lambda_0_laser=self.lambda_0_laser,
-            given_initial_central_line=initial_ray_inverted,
-        )
+        inverted_system = OpticalSystem(surfaces=inverted_surfaces, lambda_0_laser=self.lambda_0_laser,
+                                        given_initial_central_line=initial_ray_inverted)
         return inverted_system
 
 
@@ -2953,7 +2934,6 @@ class Cavity(OpticalSystem):
         standing_wave: bool = False,
         lambda_0_laser: Optional[float] = None,
         params: Optional[List[OpticalElementParams]] = None,
-        names: Optional[List[str]] = None,
         set_central_line: bool = True,
         set_mode_parameters: bool = True,
         set_initial_surface: bool = False,
@@ -2968,16 +2948,9 @@ class Cavity(OpticalSystem):
     ):
         ordered_surfaces = self._order_surfaces_for_initialization(surfaces, standing_wave=standing_wave)
 
-        super().__init__(
-            surfaces=ordered_surfaces,
-            lambda_0_laser=lambda_0_laser,
-            params=params,
-            names=names,
-            t_is_trivial=t_is_trivial,
-            p_is_trivial=p_is_trivial,
-            power=power,
-            use_paraxial_ray_tracing=use_paraxial_ray_tracing,
-        )
+        super().__init__(surfaces=ordered_surfaces, lambda_0_laser=lambda_0_laser, params=params, power=power,
+                         t_is_trivial=t_is_trivial, p_is_trivial=p_is_trivial,
+                         use_paraxial_ray_tracing=use_paraxial_ray_tracing)
 
         self.standing_wave = standing_wave
         self.central_line_successfully_traced: Optional[bool] = None

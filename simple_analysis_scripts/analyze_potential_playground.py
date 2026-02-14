@@ -12,7 +12,7 @@ unconcentricity = 2.24255506e-3  # np.float64(0.007610344827586207)  # ,  np.flo
 phi_max = 0.04
 desired_focus = 200e-3
 plot = True
-print_tests = False
+print_tests = True
 
 defocus = choose_source_position_for_desired_focus_analytic(
     desired_focus=desired_focus,
@@ -47,7 +47,7 @@ if print_tests:
     )
 if plot:
     # plt.close('all')
-    fig, ax = plot_results(results_dict, far_away_plane=True, unconcentricity=unconcentricity, potential_x_axis_angles=True)
+    fig, ax = plot_results(results_dict, far_away_plane=True, unconcentricity=unconcentricity, potential_x_axis_angles=False)
     center = results_dict["center_of_curvature"]
     ax[1, 0].set_xlim((-0.01, 1))
     plt.suptitle(
