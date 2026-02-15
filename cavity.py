@@ -453,6 +453,20 @@ class RaySequence:
     def cumulative_optical_path_length(self) -> np.ndarray:
         return np.cumsum(self.optical_path_length, axis=0)
 
+    def plot(
+        self,
+        ax: Optional[plt.Axes] = None,
+        dim=2,
+        plane: str = "xy",
+        length: Union[np.ndarray, float] = np.nan,
+        **kwargs,
+    ):
+        for i in range(len(self)):
+            self[i].plot(ax=ax, dim=dim, plane=plane, length=length, **kwargs)
+
+    def __len__(self):
+        return self.origin.shape[0]
+
 
 class Surface:
     def __init__(
@@ -2076,12 +2090,12 @@ class Arm:
         return matrix
 
     def propagate_local_mode_parameters(self, local_mode_parameters_on_surface_0: Optional[LocalModeParameters]):
-        mode_parameters_on_surface_1 = propagate_local_mode_parameter_through_ABCD(local_mode_parameters_on_surface_0,
-                                                                                   self.ABCD_matrix_free_space,
-                                                                                   n_2=self.n)
-        mode_parameters_after_surface_1 = propagate_local_mode_parameter_through_ABCD(mode_parameters_on_surface_1,
-                                                                                      self.ABCD_matrix_reflection,
-                                                                                      n_2=self.surface_1.to_params.n_inside_or_after)
+        mode_parameters_on_surface_1 = propagate_local_mode_parameter_through_ABCD(
+            local_mode_parameters_on_surface_0, self.ABCD_matrix_free_space, n_2=self.n
+        )
+        mode_parameters_after_surface_1 = propagate_local_mode_parameter_through_ABCD(
+            mode_parameters_on_surface_1, self.ABCD_matrix_reflection, n_2=self.surface_1.to_params.n_inside_or_after
+        )
         return mode_parameters_on_surface_1, mode_parameters_after_surface_1
 
     def set_local_mode_parameters(self) -> LocalModeParameters:
@@ -2142,8 +2156,9 @@ class Arm:
 
         point_plane_distance_from_surface_1 = (point - self.central_line.origin) @ self.central_line.k_vector
         propagation_ABCD = ABCD_free_space(point_plane_distance_from_surface_1)
-        local_mode_parameters = propagate_local_mode_parameter_through_ABCD(self.mode_parameters_on_surface_0,
-                                                                            propagation_ABCD, n_2=self.n)
+        local_mode_parameters = propagate_local_mode_parameter_through_ABCD(
+            self.mode_parameters_on_surface_0, propagation_ABCD, n_2=self.n
+        )
         return local_mode_parameters
 
     @property
@@ -2576,7 +2591,7 @@ class OpticalSystem:
 
     def propagate_ray(
         self, ray: Ray, n_arms: Optional[int] = None, propagate_with_first_surface_first: bool = False
-    ) -> List[Ray]:
+    ) -> RaySequence:
         ray_history = [ray]
         n_arms = nvl(n_arms, len(self.arms))
 
@@ -2590,7 +2605,9 @@ class OpticalSystem:
             arm = self.arms[i % len(self.arms)]
             ray = arm.propagate_ray(ray, use_paraxial_ray_tracing=self.use_paraxial_ray_tracing)
             ray_history.append(ray)
-        return ray_history
+
+        ray_sequence = RaySequence(ray_history)
+        return ray_sequence
 
     def propagate_mode_parameters(
         self,
@@ -2612,7 +2629,9 @@ class OpticalSystem:
                 )
                 local_mode_parameters_current = propagate_local_mode_parameter_through_ABCD(
                     local_mode_parameters=local_mode_parameters_before_first_surface,
-                    ABCD=self.surfaces[0].ABCD_matrix(cos_theta_incoming=1), n_2=self.arms[0].n)
+                    ABCD=self.surfaces[0].ABCD_matrix(cos_theta_incoming=1),
+                    n_2=self.arms[0].n,
+                )
                 local_mode_parameters_history.extend(
                     [local_mode_parameters_before_first_surface, local_mode_parameters_current]
                 )
@@ -2919,8 +2938,11 @@ class OpticalSystem:
         else:
             initial_ray_inverted = None
 
-        inverted_system = OpticalSystem(surfaces=inverted_surfaces, lambda_0_laser=self.lambda_0_laser,
-                                        given_initial_central_line=initial_ray_inverted)
+        inverted_system = OpticalSystem(
+            surfaces=inverted_surfaces,
+            lambda_0_laser=self.lambda_0_laser,
+            given_initial_central_line=initial_ray_inverted,
+        )
         return inverted_system
 
 
@@ -2948,9 +2970,15 @@ class Cavity(OpticalSystem):
     ):
         ordered_surfaces = self._order_surfaces_for_initialization(surfaces, standing_wave=standing_wave)
 
-        super().__init__(surfaces=ordered_surfaces, lambda_0_laser=lambda_0_laser, params=params, power=power,
-                         t_is_trivial=t_is_trivial, p_is_trivial=p_is_trivial,
-                         use_paraxial_ray_tracing=use_paraxial_ray_tracing)
+        super().__init__(
+            surfaces=ordered_surfaces,
+            lambda_0_laser=lambda_0_laser,
+            params=params,
+            power=power,
+            t_is_trivial=t_is_trivial,
+            p_is_trivial=p_is_trivial,
+            use_paraxial_ray_tracing=use_paraxial_ray_tracing,
+        )
 
         self.standing_wave = standing_wave
         self.central_line_successfully_traced: Optional[bool] = None
@@ -4728,7 +4756,8 @@ def find_equal_angles_surface(
     )
     dT_c_0 = dT_c_of_a_lens(R=surface_0.radius, h=h)
     mode_parameters_right_after_surface_0 = propagate_local_mode_parameter_through_ABCD(
-        mode_parameters_just_before_surface_0, surface_0.ABCD_matrix(cos_theta_incoming=1), n_2=surface_0.n_2)
+        mode_parameters_just_before_surface_0, surface_0.ABCD_matrix(cos_theta_incoming=1), n_2=surface_0.n_2
+    )
 
     def match_surface_to_radius(R_1: float) -> CurvedRefractiveSurface:
         T_c = dT_c_0 + T_edge + dT_c_of_a_lens(R=R_1, h=h)
@@ -5107,7 +5136,8 @@ def mirror_lens_mirror_cavity_generator(
     )
 
     mode_parameters_right_after_surface_left = propagate_local_mode_parameter_through_ABCD(
-        mode_parameters_just_before_surface_left, surface_left.ABCD_matrix(cos_theta_incoming=1), n_2=n)
+        mode_parameters_just_before_surface_left, surface_left.ABCD_matrix(cos_theta_incoming=1), n_2=n
+    )
 
     arm_lens = Arm(
         surface_0=surface_left,

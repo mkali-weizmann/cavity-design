@@ -319,8 +319,8 @@ def analyze_potential(
 
     # Generate objects:
     rays_0 = initialize_rays(defocus=defocus, n_rays=n_rays, dphi=dphi, phi_max=phi_max, diameter=diameter, back_focal_length=back_focal_length)
-    ray_history = optical_system.propagate_ray(rays_0, propagate_with_first_surface_first=True)
-    ray_sequence = RaySequence(ray_history)
+    ray_sequence = optical_system.propagate_ray(rays_0, propagate_with_first_surface_first=True)
+    # ray_sequence = RaySequence(ray_history)
 
     if extract_R_analytically:
         R_analytical = optical_system.output_radius_of_curvature(
@@ -609,7 +609,7 @@ def generate_input_parameters_for_lenses(lens_type, dn):
             R_1=np.inf, R_2=-0.010350017052321312, n=1.45, T_c=4.35e-3
         )  # Same as the aspheric ones.
         R = f_lens * (n_design - 1) * (
-                    1 - np.sqrt(1 - T_c / (f_lens * n_design)))  # This is the R value that results in f=f_lens
+                    1 + np.sqrt(1 - T_c / (f_lens * n_design)))  # This is the R value that results in f=f_lens
         R_1 = R
         R_2 = R
         R_2_signed = -R_2
