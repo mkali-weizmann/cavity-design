@@ -364,55 +364,6 @@ def complete_optical_system_to_cavity(results_dict: dict, unconcentricity: float
         )
     return cavity
 
-def analyze_potential_old(
-    R_1: Optional[float] = None,
-    R_2: Optional[float] = None,
-    back_focal_length: Optional[float] = None,
-    defocus=0,
-    T_c=3e-3,
-    n_design=1.8,
-    diameter=12.7e-3,
-    unconcentricity: float = 0,
-    n_actual=None,
-    n_rays=100,
-    dphi: Optional[float] = None,
-    phi_max: Optional[float] = None,
-    extract_R_analytically: bool = False,
-    print_tests: bool = True,
-):
-    optical_system, optical_axis = generate_one_lens_optical_system(
-        R_1=R_1,
-        R_2=R_2,
-        back_focal_length=back_focal_length,
-        defocus=defocus,
-        T_c=T_c,
-        n_design=n_design,
-        diameter=diameter,
-        n_actual=n_actual,
-    )
-
-    # Generate objects:
-    rays_0 = initialize_rays(defocus=defocus, n_rays=n_rays, dphi=dphi, phi_max=phi_max, diameter=diameter, back_focal_length=back_focal_length)
-    ray_sequence = optical_system.propagate_ray(rays_0, propagate_with_first_surface_first=True)
-    # ray_sequence = RaySequence(ray_history)
-
-    if extract_R_analytically:
-        R_analytical = optical_system.output_radius_of_curvature(
-            initial_distance=np.linalg.norm(rays_0.origin[0, :] - optical_system.arms[0].surface_0.center)
-        )
-    else:
-        R_analytical = None
-
-    results_dict = analyze_output_wavefront(ray_sequence, unconcentricity=unconcentricity, R_analytical=R_analytical, print_tests=print_tests)
-    results_dict["optical_system"] = optical_system
-    try:
-        cavity = complete_optical_system_to_cavity(results_dict, unconcentricity=unconcentricity, print_tests=print_tests)
-        results_dict["cavity"] = cavity
-    except AttributeError:
-        print(f"No mode found for cavity")
-        results_dict["cavity"] = None
-
-    return results_dict
 
 def analyze_potential(optical_system: OpticalSystem, rays_0: Ray, unconcentricity, print_tests):
     ray_sequence = optical_system.propagate_ray(rays_0, propagate_with_first_surface_first=True)
@@ -426,7 +377,8 @@ def analyze_potential(optical_system: OpticalSystem, rays_0: Ray, unconcentricit
                                                    print_tests=print_tests)
         results_dict["cavity"] = cavity
     except AttributeError:
-        print(f"No mode found for cavity")
+        if print_tests:
+            print(f"No mode found for cavity")
         results_dict["cavity"] = None
 
     return results_dict
@@ -480,12 +432,16 @@ def plot_results(results_dict, far_away_plane: bool = False,
             None,
             None,
         )
-    valid_mode = results_dict["cavity"].mode_parameters[0] is not None and results_dict["cavity"].mode_parameters[0].z_R > 0
     valid_cavity = results_dict["cavity"] is not None
     fig, ax = plt.subplots(2, 2, figsize=(20, 16), constrained_layout=True)
     surface_0, surface_1 = optical_system.physical_surfaces[0], optical_system.physical_surfaces[-1]
     ray_sequence.plot(ax=ax[1, 0], linewidth=0.5, labels=rays_labels)
-    results_dict["cavity"].plot(ax=ax[1, 0])
+    if valid_cavity:
+        results_dict["cavity"].plot(ax=ax[1, 0])
+        results_dict["cavity"].plot(ax=ax[1, 1])
+    else:
+        results_dict["optical_system"].plot(ax=ax[1, 0])
+        results_dict["optical_system"].plot(ax=ax[1, 1])
     ax[1, 0].set_xlim(ray_sequence.origin[0, 0, 0] - 0.01, center_of_curvature[0] * 2)  # (-1e-3, 100e-3)
     ax[1, 0].set_ylim(-surface_1.diameter / 2, surface_1.diameter / 2)  # (-4.2e-3, 4.2e-3)
     ax[1, 0].grid()
@@ -494,8 +450,6 @@ def plot_results(results_dict, far_away_plane: bool = False,
     ax[1, 0].legend()
 
     ray_sequence.plot(ax=ax[1, 1], linewidth=0.5, labels=rays_labels)
-    results_dict["cavity"].plot(ax=ax[1, 1])
-
     ax[1, 1].set_xlim(
         (surface_1.center[0] + center_of_curvature[0]) / 2 - 0.002, center_of_curvature[0] + 0.005
     )  # (-1e-3, 100e-3)
