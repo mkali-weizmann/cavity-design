@@ -26,8 +26,7 @@ from utils import (
 
 from simple_analysis_scripts.analyze_potential import (
     choose_source_position_for_desired_focus_analytic,
-    analyze_potential,
-    generate_input_parameters_for_lenses,
+    generate_input_parameters_for_lenses, generate_one_lens_optical_system, initialize_rays, analyze_potential,
 )
 
 
@@ -636,21 +635,20 @@ def test_potential_single_lens():
 
     # defocus = back_focal_length - 4.9307005112e-3
 
-    results_dict = analyze_potential(
-        back_focal_length=back_focal_length,
-        R_1=R_1,
-        R_2=R_2_signed,
-        defocus=defocus,
-        T_c=T_c,
-        n_design=n_design,
-        diameter=diameter,
-        n_actual=n_actual,
-        n_rays=n_rays,
-        unconcentricity=unconcentricity,
-        extract_R_analytically=True,
-        phi_max=phi_max,
-        print_tests=print_tests,
-    )
+    # results_dict = generate_system_and_analyze_potential(R_1=R_1, R_2=R_2_signed, back_focal_length=back_focal_length,
+    #                                                      defocus=defocus, T_c=T_c, n_design=n_design, diameter=diameter,
+    #                                                      unconcentricity=unconcentricity, n_actual=n_actual,
+    #                                                      n_rays=n_rays, phi_max=phi_max, extract_R_analytically=True,
+    #                                                      print_tests=print_tests)
+
+    optical_system, optical_axis = generate_one_lens_optical_system(R_1=R_1, R_2=R_2_signed,
+                                                                    back_focal_length=back_focal_length,
+                                                                    defocus=defocus, T_c=T_c, n_design=n_design,
+                                                                    diameter=diameter, n_actual=n_actual, )
+    rays_0 = initialize_rays(defocus=defocus, n_rays=n_rays, phi_max=phi_max, diameter=diameter,
+                             back_focal_length=back_focal_length)
+    results_dict = analyze_potential(optical_system=optical_system, rays_0=rays_0, unconcentricity=unconcentricity,
+                                     print_tests=print_tests)
     assert np.isclose(
         np.abs(results_dict["zero_derivative_points"] * 1e3), 0.15342637331775477
     ), f"Potential single lens test failed: expected zero derivative point at approximately 0.15342637331775477 mm but got {results_dict['zero_derivative_points']*1e3} mm"

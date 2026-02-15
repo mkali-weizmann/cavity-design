@@ -1,8 +1,9 @@
 from matplotlib import use
 use("TkAgg")  # or 'Qt5Agg', 'GTK3Agg', etc. depending on your system
 from simple_analysis_scripts.analyze_potential import *
-# %%
 
+
+# %%
 dn = 0
 lens_types = ['aspheric - lab', 'spherical - like labs aspheric', 'avantier', 'aspheric - like avantier']
 lens_type = lens_types[0]
@@ -14,36 +15,21 @@ desired_focus = 200e-3
 plot = True
 print_tests = True
 
-defocus = choose_source_position_for_desired_focus_analytic(
-    desired_focus=desired_focus,
-    T_c=T_c,
-    n_design=n_design,
-    diameter=diameter,
-    back_focal_length=back_focal_length,
-    R_1=R_1,
-    R_2=R_2_signed,
-)
 
-# defocus = back_focal_length - 4.9307005112e-3
+defocus = choose_source_position_for_desired_focus_analytic(desired_focus=desired_focus, T_c=T_c, n_design=n_design, diameter=diameter, back_focal_length=back_focal_length, R_1=R_1, R_2=R_2_signed,)
+optical_system, optical_axis = generate_one_lens_optical_system(R_1=R_1, R_2=R_2_signed, back_focal_length=back_focal_length, defocus=defocus, T_c=T_c, n_design=n_design, diameter=diameter, n_actual=n_actual,)
+rays_0 = initialize_rays(defocus=defocus, n_rays=n_rays, phi_max=phi_max, diameter=diameter, back_focal_length=back_focal_length)
+results_dict = analyze_potential(optical_system=optical_system, rays_0=rays_0, unconcentricity=unconcentricity, print_tests=print_tests)
 
-results_dict = analyze_potential(
-    back_focal_length=back_focal_length,
-    R_1=R_1,
-    R_2=R_2_signed,
-    defocus=defocus,
-    T_c=T_c,
-    n_design=n_design,
-    diameter=diameter,
-    n_actual=n_actual,
-    n_rays=n_rays,
-    unconcentricity=unconcentricity,
-    extract_R_analytically=True,
-    phi_max=phi_max,
-    print_tests=print_tests,
-)
 if print_tests:
     print(
         f"Defocus solution for 30 mm focus: {defocus*1e3:.3f} mm, focal point distance: {(results_dict['center_of_curvature'][0] - results_dict['optical_system'].physical_surfaces[1].center[0]) * 1e3:.2f} mm"
+    )
+    print(
+        f"Paraxial spot size for unconcentricity of {unconcentricity*1e6:.1f} μm: {results_dict['spot_size_paraxial']*1e3:.2f} mm"
+    )
+    print(
+        f"Boundary of 2nd vs 4th order dominance for unconcentricity of {unconcentricity*1e6:.1f} µm: {np.abs(results_dict['zero_derivative_points']*1e3):.2f} mm"
     )
 if plot:
     # plt.close('all')
@@ -60,15 +46,8 @@ if plot:
     #     dpi=300,
     # )
     plt.show()
-if print_tests:
-    print(
-        f"Paraxial spot size for unconcentricity of {unconcentricity*1e6:.1f} μm: {results_dict['spot_size_paraxial']*1e3:.2f} mm"
-    )
-    print(
-        f"Boundary of 2nd vs 4th order dominance for unconcentricity of {unconcentricity*1e6:.1f} µm: {np.abs(results_dict['zero_derivative_points']*1e3):.2f} mm"
-    )
-print(results_dict['cavity'].mode_parameters[0].NA[0])
-print(results_dict['cavity'].surfaces[-1].center[0] - results_dict['cavity'].surfaces[-2].center[0])
+
+
 # %% playground
 pyperclip.copy(results_dict['cavity'].formatted_textual_params)
 
@@ -80,20 +59,10 @@ paraxial_NAs = np.zeros_like(unconcentricities)
 left_NAs = np.zeros_like(unconcentricities)
 for i, u in enumerate(unconcentricities):
     print(f"\n\n\nu={u:.10e} µm")
-    results_dict = analyze_potential(
-        back_focal_length=back_focal_length,
-        R_1=R_1,
-        R_2=R_2_signed,
-        defocus=defocus,
-        T_c=T_c,
-        n_design=n_design,
-        diameter=diameter,
-        n_actual=n_actual,
-        n_rays=n_rays,
-        unconcentricity=u,
-        extract_R_analytically=True,
-        phi_max=phi_max,
-    )
+    results_dict = generate_system_and_analyze_potential(R_1=R_1, R_2=R_2_signed, back_focal_length=back_focal_length,
+                                                         defocus=defocus, T_c=T_c, n_design=n_design, diameter=diameter,
+                                                         unconcentricity=u, n_actual=n_actual, n_rays=n_rays,
+                                                         phi_max=phi_max, extract_R_analytically=True)
     paraxial_spot_sizes[i] = results_dict["spot_size_paraxial"]
     paraxial_NAs[i] = results_dict["NA_paraxial"]
     left_NAs[i] = results_dict["cavity"].arms[0].mode_parameters.NA[0]

@@ -170,14 +170,6 @@ def analyze_output_wavefront(ray_sequence: RaySequence, unconcentricity: float, 
     return results_dict
 
 
-def analyze_potential_general(optical_system: OpticalSystem, rays_0: Ray, unconcentricity):
-    ray_history = optical_system.propagate_ray(rays_0)
-    ray_sequence = RaySequence(ray_history)
-    results_dict = analyze_output_wavefront(ray_sequence, unconcentricity=unconcentricity)
-    results_dict["surfaces"] = optical_system.surfaces
-    return results_dict
-
-
 def generate_one_lens_optical_system(
     R_1: Optional[float] = None,
     R_2: Optional[float] = None,
@@ -231,6 +223,89 @@ def generate_one_lens_optical_system(
                                    given_initial_central_line=True, use_paraxial_ray_tracing=False)
 
     return optical_system, optical_axis
+
+def generate_two_lenses_optical_system(
+    defocus: float,
+    back_focal_length_aspheric: float,
+    T_c_aspheric: float,
+    n_design_aspheric: float,
+    n_actual_aspheric: float,
+    n_design_spherical: float,
+    n_actual_spherical: float,
+    T_c_spherical: float,
+    f_spherical: float,
+    diameter: float=12.7e-3,
+):
+    OPTICAL_AXIS = RIGHT
+    desired_focus = 200e-3
+    back_center = (back_focal_length_aspheric - defocus) * OPTICAL_AXIS
+    aspheric_flat, aspheric_curved = Surface.from_params(
+        generate_aspheric_lens_params(
+            back_focal_length=back_focal_length_aspheric,
+            T_c=T_c_aspheric,
+            n=n_design_aspheric,
+            forward_normal=OPTICAL_AXIS,
+            flat_faces_center=back_center,
+            diameter=diameter,
+            polynomial_degree=8,
+            name="aspheric_lens_automatic",
+        )
+    )
+    aspheric_flat.n_2 = n_actual_aspheric
+    aspheric_curved.n_1 = n_actual_aspheric
+
+    optical_system = OpticalSystem(
+        surfaces=[aspheric_flat, aspheric_curved],
+        t_is_trivial=True,
+        p_is_trivial=True,
+        given_initial_central_line=True,
+        use_paraxial_ray_tracing=False,
+    )
+
+
+    R = (
+        f_spherical * (n_design_spherical - 1) * (1 + np.sqrt(1 - T_c_aspheric / (f_spherical * n_design_spherical)))
+    )  # This is the R value that results in f=f_lens
+    R_1_spherical = R
+    R_2_spherical = R
+    lens_distance_to_aspheric_output_COC = image_of_a_point_with_thick_lens(
+        distance_to_face_1=desired_focus, R_1=R_2_spherical, R_2=-R_1_spherical, n=n_actual_aspheric, T_c=T_c_spherical
+    )
+    aspheric_output_ROC = optical_system.output_radius_of_curvature(initial_distance=back_focal_length_aspheric - defocus)
+    lens_distance_to_aspheric_curved_face = lens_distance_to_aspheric_output_COC + aspheric_output_ROC  # aspheric_output_ROC Should be negative, so this is effectively a subtraction
+    spherical_0 = CurvedRefractiveSurface(
+        radius=np.abs(R_1_spherical),
+        outwards_normal=-OPTICAL_AXIS,
+        center=aspheric_curved.center + lens_distance_to_aspheric_curved_face * OPTICAL_AXIS,
+        n_1=1,
+        n_2=n_actual_spherical,
+        curvature_sign=CurvatureSigns.convex,
+        name="spherical_0",
+        thickness=T_c_aspheric / 2,
+        diameter=diameter,
+    )
+
+    spherical_1 = CurvedRefractiveSurface(
+        radius=np.abs(R_2_spherical),
+        outwards_normal=OPTICAL_AXIS,
+        center=spherical_0.center + T_c_spherical * OPTICAL_AXIS,
+        n_1=n_actual_spherical,
+        n_2=1,
+        curvature_sign=CurvatureSigns.concave,
+        name="spherical_1",
+        thickness=T_c_aspheric / 2,
+        diameter=diameter,
+    )
+
+    optical_system_combined = OpticalSystem(
+        surfaces=[aspheric_flat, aspheric_curved, spherical_0, spherical_1],
+        t_is_trivial=True,
+        p_is_trivial=True,
+        given_initial_central_line=True,
+        use_paraxial_ray_tracing=False,
+    )
+
+    return optical_system_combined
 
 
 def complete_optical_system_to_cavity(results_dict: dict, unconcentricity: float, print_tests: bool = True):
@@ -289,8 +364,7 @@ def complete_optical_system_to_cavity(results_dict: dict, unconcentricity: float
         )
     return cavity
 
-
-def analyze_potential(
+def analyze_potential_old(
     R_1: Optional[float] = None,
     R_2: Optional[float] = None,
     back_focal_length: Optional[float] = None,
@@ -340,6 +414,22 @@ def analyze_potential(
 
     return results_dict
 
+def analyze_potential(optical_system: OpticalSystem, rays_0: Ray, unconcentricity, print_tests):
+    ray_sequence = optical_system.propagate_ray(rays_0, propagate_with_first_surface_first=True)
+    R_analytical = optical_system.output_radius_of_curvature(
+        initial_distance=np.linalg.norm(rays_0.origin[0, :] - optical_system.arms[0].surface_0.center)
+    )
+    results_dict = analyze_output_wavefront(ray_sequence, unconcentricity=unconcentricity, R_analytical=R_analytical, print_tests=print_tests)
+    results_dict["optical_system"] = optical_system
+    try:
+        cavity = complete_optical_system_to_cavity(results_dict, unconcentricity=unconcentricity,
+                                                   print_tests=print_tests)
+        results_dict["cavity"] = cavity
+    except AttributeError:
+        print(f"No mode found for cavity")
+        results_dict["cavity"] = None
+
+    return results_dict
 
 def plot_results(results_dict, far_away_plane: bool = False,
                  unconcentricity: Optional[float] = None,
