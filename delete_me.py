@@ -4,13 +4,11 @@ from pathlib import Path
 project_root = Path.cwd().parent
 sys.path.append(str(project_root))
 
-from matplotlib.lines import Line2D
-from ipywidgets import Layout, FloatSlider, Checkbox, Text, widgets, IntSlider, Dropdown
+from ipywidgets import Layout, FloatSlider, Checkbox, widgets, IntSlider
 
-from simple_analysis_scripts.analyze_potential import *
+from simple_analysis_scripts.potential_analysis.analyze_potential import *
 
 import io
-import matplotlib.pyplot as plt
 from PIL import Image
 import win32clipboard
 

@@ -20,7 +20,7 @@ try:
     running_in_notebook = shell is not None and shell.__class__.__name__ == "ZMQInteractiveShell"
     if ALREADY_CHANGED_DIR == 0:
         import os
-        os.chdir('..')
+        os.chdir('../..')
     ALREADY_CHANGED_DIR = 1
 except Exception:
     running_in_notebook =  False

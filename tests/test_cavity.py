@@ -24,7 +24,7 @@ from utils import (
     solve_aspheric_profile,
 )
 
-from simple_analysis_scripts.analyze_potential import (
+from simple_analysis_scripts.potential_analysis.analyze_potential import (
     choose_source_position_for_desired_focus_analytic,
     generate_input_parameters_for_lenses, generate_one_lens_optical_system, initialize_rays, analyze_potential,
 )

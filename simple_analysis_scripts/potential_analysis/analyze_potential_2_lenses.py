@@ -1,7 +1,7 @@
 from matplotlib import use
 use("TkAgg")  # or 'Qt5Agg', 'GTK3Agg', etc. depending on your system
 
-from simple_analysis_scripts.analyze_potential import *
+from simple_analysis_scripts.potential_analysis.analyze_potential import *
 
 # %%
 
