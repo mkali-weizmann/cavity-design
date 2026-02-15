@@ -26,7 +26,7 @@ def initialize_rays(
 def analyze_output_wavefront(ray_sequence: RaySequence, unconcentricity: float, R_analytical: Optional[float] = None, print_tests: bool = True):
     output_ray = ray_sequence[-1]
     # Extract all wavefront features at the output surface of the lens.
-    d_0 = ray_sequence.cumulative_optical_path_length[1, 0]  # Assumes the first ray is the optical axis ray.
+    d_0 = ray_sequence.cumulative_optical_path_length[-2, 0]  # Assumes the first ray is the optical axis ray.
     wavefront_points_initial = ray_sequence.parameterization(d_0, optical_path_length=True)
 
     R_numerical, center_of_curvature_numerical = extract_matching_sphere(
@@ -270,22 +270,22 @@ def complete_optical_system_to_cavity(results_dict: dict, unconcentricity: float
     if print_tests:
         print(
             f"NA in the right arm - analytical calculation and numerical cavity solution\n{results_dict['NA_paraxial']:.3e}\n"
-            f"{cavity.arms[3].mode_parameters.NA[0]:.3e}"
+            f"{cavity.arms[len(cavity.arms) // 2].mode_parameters.NA[0]:.3e}"
         )
 
         print(
             f"center of curvature of output wave and mode center in cavity:\n"
-            f"{results_dict['center_of_curvature'] - unconcentricity / 2 * RIGHT}\n{cavity.mode_parameters[2].center[0, :]}"
+            f"{results_dict['center_of_curvature'] - unconcentricity / 2 * RIGHT}\n{cavity.mode_parameters[len(cavity.arms) // 2].center[0, :]}"
         )
 
         print(
             "Spot size in the right mirror - analytical calculation and numerical cavity solution\n"
-            f"{results_dict['spot_size_paraxial'] * 1e3:.3e} mm\n{w_of_q(cavity.arms[3].mode_parameters_on_surface_0.q[0], lambda_laser=LAMBDA_0_LASER) * 1e3:.3e} mm"
+            f"{results_dict['spot_size_paraxial'] * 1e3:.3e} mm\n{w_of_q(cavity.arms[len(cavity.arms) // 2].mode_parameters_on_surface_0.q[0], lambda_laser=LAMBDA_0_LASER) * 1e3:.3e} mm"
         )
 
         print(
             "mode radius of curvature after the optical system - analytical calculation and numerical cavity solution\n"
-            f"{results_dict['R']*1e3:.3e} mm\n{R_of_q(cavity.arms[2].mode_parameters_on_surface_0.q[0])*1e3:.3e} mm"
+            f"{results_dict['R']*1e3:.3e} mm\n{R_of_q(cavity.arms[len(cavity.arms) // 2 - 1].mode_parameters_on_surface_0.q[0])*1e3:.3e} mm"
         )
     return cavity
 
@@ -341,7 +341,10 @@ def analyze_potential(
     return results_dict
 
 
-def plot_results(results_dict, far_away_plane: bool = False, unconcentricity: Optional[float] = None, potential_x_axis_angles: bool = False):
+def plot_results(results_dict, far_away_plane: bool = False,
+                 unconcentricity: Optional[float] = None,
+                 potential_x_axis_angles: bool = False,
+                 rays_labels: Optional[List[str]] = None):
     (optical_system, ray_sequence, R, center_of_curvature, NA_paraxial, spot_size_paraxial, zero_derivative_points) = (
         results_dict["optical_system"],
         results_dict["ray_sequence"],
@@ -393,28 +396,23 @@ def plot_results(results_dict, far_away_plane: bool = False, unconcentricity: Op
     #     polynomial_residuals_mirror = Polynomial(coeffs_mirror_truncated, domain=polynomial_residuals_mirror.domain, window=polynomial_residuals_mirror.window)
     # plot points:
     fig, ax = plt.subplots(2, 2, figsize=(20, 16), constrained_layout=True)
-    rays_0, rays_1, rays_2 = ray_sequence
     surface_0, surface_1 = optical_system.physical_surfaces[0], optical_system.physical_surfaces[-1]
-    rays_0.plot(ax=ax[1, 0], label="Before lens", color="black", linewidth=0.5)
-    rays_1.plot(ax=ax[1, 0], label="After flat surface", color="blue", linewidth=0.5)
-    rays_2.plot(ax=ax[1, 0], label="After aspheric surface", color="red", linewidth=0.5)
-    surface_0.plot(ax=ax[1, 0], color="green")
-    surface_1.plot(ax=ax[1, 0], color="orange")
-    ax[1, 0].set_xlim(rays_0.origin[0, 0] - 0.01, center_of_curvature[0] * 2)  # (-1e-3, 100e-3)
+    ray_sequence.plot(ax=ax[1, 0], linewidth=0.5, labels=rays_labels)
+    results_dict["cavity"].plot(ax=ax[1, 0])
+    ax[1, 0].set_xlim(ray_sequence.origin[0, 0, 0] - 0.01, center_of_curvature[0] * 2)  # (-1e-3, 100e-3)
     ax[1, 0].set_ylim(-surface_1.diameter / 2, surface_1.diameter / 2)  # (-4.2e-3, 4.2e-3)
     ax[1, 0].grid()
     ax[1, 0].scatter(wavefront_points[:, 0], wavefront_points[:, 1], s=8, color="purple")
     ax[1, 0].scatter(center_of_curvature[0], center_of_curvature[1], s=50, color="cyan", label="Center of curvature")
+    ax[1, 0].legend()
 
-    rays_0.plot(ax=ax[1, 1], label="Before lens", color="black", linewidth=0.5)
-    rays_1.plot(ax=ax[1, 1], label="After flat surface", color="blue", linewidth=0.5)
-    rays_2.plot(ax=ax[1, 1], label="After aspheric surface", color="red", linewidth=0.5)
-    surface_0.plot(ax=ax[1, 1], color="green")
-    surface_1.plot(ax=ax[1, 1], color="orange")
+    ray_sequence.plot(ax=ax[1, 1], linewidth=0.5, labels=rays_labels)
+    results_dict["cavity"].plot(ax=ax[1, 1])
+
     ax[1, 1].set_xlim(
         (surface_1.center[0] + center_of_curvature[0]) / 2 - 0.002, center_of_curvature[0] + 0.005
     )  # (-1e-3, 100e-3)
-    ax[1, 1].set_ylim(-rays_2.origin[1, 1] * 0.5, 1 * rays_2.origin[1, 1])  # (-4.2e-3, 4.2e-3)
+    ax[1, 1].set_ylim(-ray_sequence.origin[-1, 1, 1] * 0.5, 1 * ray_sequence.origin[-1, 1, 1])  # (-4.2e-3, 4.2e-3)
     ax[1, 1].grid()
     ax[1, 1].scatter(wavefront_points[:, 0], wavefront_points[:, 1], s=8, color="purple")
     ax[1, 1].scatter(center_of_curvature[0], center_of_curvature[1], s=50, color="cyan", label="Center of curvature")

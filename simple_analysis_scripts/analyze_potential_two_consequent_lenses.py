@@ -4,6 +4,9 @@ use("TkAgg")  # or 'Qt5Agg', 'GTK3Agg', etc. depending on your system
 from simple_analysis_scripts.analyze_potential import *
 
 # %%
+
+
+
 OPTICAL_AXIS = RIGHT
 dn = 0
 lens_types = ["aspheric - lab", "spherical - like labs aspheric", "avantier", "aspheric - like avantier"]
@@ -12,11 +15,11 @@ n_actual, n_design, T_c, back_focal_length, R_1, R_2, R_2_signed, diameter = gen
     lens_type=lens_type, dn=dn
 )
 n_rays = 50
-unconcentricity = 2.24255506e-3  # np.float64(0.007610344827586207)  # ,  np.float64(0.007268965517241379)
-phi_max = 0.04
+unconcentricity = 5e-3  # np.float64(0.007610344827586207)  # ,  np.float64(0.007268965517241379)
+phi_max = 0.3
 desired_focus = 200e-3
 plot = True
-print_tests = False
+print_tests = True
 
 defocus = 0.0029887489470528557
 
@@ -92,13 +95,28 @@ optical_system_combined = OpticalSystem(
     use_paraxial_ray_tracing=False,
 )
 
-fig, ax = plt.subplots()
-optical_system_combined.plot(ax=ax)
+# fig, ax = plt.subplots()
+# optical_system_combined.plot(ax=ax)
 ray_0 = initialize_rays(defocus=defocus, n_rays=n_rays, phi_max=phi_max)
 ray_sequence = optical_system_combined.propagate_ray(ray_0, propagate_with_first_surface_first=True)
-ray_sequence.plot(ax=ax, color="red", linewidth=0.1, label="aspheric only", alpha=1)
-plt.show()
+# ray_sequence.plot(ax=ax, colors="red", linewidth=0.1, labels="aspheric only", alpha=1)
+# plt.show()
+# %%
+output_ROC = optical_system_combined.output_radius_of_curvature(initial_distance=back_focal_length - defocus)
+results_dict = analyze_output_wavefront(ray_sequence,
+                                        unconcentricity=unconcentricity,
+                                        R_analytical=output_ROC,
+                                        print_tests=print_tests)
+results_dict["optical_system"] = optical_system_combined
+try:
+    cavity = complete_optical_system_to_cavity(results_dict, unconcentricity=unconcentricity, print_tests=print_tests)
+    results_dict["cavity"] = cavity
+except AttributeError:
+    print(f"No mode found for cavity")
+    results_dict["cavity"] = None
 
+plot_results(results_dict=results_dict, far_away_plane=True, unconcentricity=unconcentricity, potential_x_axis_angles=False)
+plt.show()
 
 # %%
 d_0 = ray_sequence.cumulative_optical_path_length[1, 0]  # Assumes the first ray is the optical axis ray.

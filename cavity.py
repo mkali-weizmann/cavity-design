@@ -289,12 +289,12 @@ def local_mode_parameters_of_round_trip_ABCD(
 
 class Ray:
     def __init__(
-        self,
-        origin: np.ndarray,  # [m_rays..., 3]  # Last index is for x,y,z
-        k_vector: np.ndarray,  # [m_rays..., 3]  # Last index is for x,y,z
-        length: Union[np.ndarray, float] = np.nan,  # [m_rays...]
-        n: float = np.nan,  # [m_rays...], the refractive index in the medium the ray is in. Assumes all rays are in
-        # The same medium.
+            self,
+            origin: np.ndarray,  # [m_rays..., 3]  # Last index is for x,y,z
+            k_vector: np.ndarray,  # [m_rays..., 3]  # Last index is for x,y,z
+            length: Union[np.ndarray, float] = np.nan,  # [m_rays...]
+            n: float = np.nan,  # [m_rays...], the refractive index in the medium the ray is in. Assumes all rays are in
+            # The same medium.
     ):
         if k_vector.ndim == 1 and origin.shape[0] > 1:
             k_vector = np.tile(k_vector, (*origin.shape[:-1], 1))
@@ -336,12 +336,12 @@ class Ray:
             return np.nan
 
     def plot(
-        self,
-        ax: Optional[plt.Axes] = None,
-        dim=2,
-        plane: str = "xy",
-        length: Union[np.ndarray, float] = np.nan,
-        **kwargs,
+            self,
+            ax: Optional[plt.Axes] = None,
+            dim=2,
+            plane: str = "xy",
+            length: Union[np.ndarray, float] = np.nan,
+            **kwargs,
     ):
         if ax is None:
             fig = plt.figure()
@@ -360,6 +360,12 @@ class Ray:
         ray_origin_reshaped = self.origin.reshape(-1, 3)
         ray_k_vector_reshaped = self.k_vector.reshape(-1, 3)
         lengths_reshaped = length.reshape(-1)
+
+        label = kwargs.get("label", None)
+        if isinstance(label, str) or label is None:
+            kwargs = dict(kwargs)
+            kwargs.pop("label", None)
+
         if dim == 3:
             [
                 ax.plot(
@@ -375,6 +381,7 @@ class Ray:
                         ray_origin_reshaped[i, 2],
                         ray_origin_reshaped[i, 2] + lengths_reshaped[i] * ray_k_vector_reshaped[i, 2],
                     ],
+                    label=label if isinstance(label, str) and i == 0 else "_nolegend_",
                     **kwargs,
                 )
                 for i in range(ray_origin_reshaped.shape[0])
@@ -391,6 +398,7 @@ class Ray:
                         ray_origin_reshaped[i, y_index],
                         ray_origin_reshaped[i, y_index] + lengths_reshaped[i] * ray_k_vector_reshaped[i, y_index],
                     ],
+                    label=label if isinstance(label, str) and i == 0 else "_nolegend_",
                     **kwargs,
                 )
                 for i in range(ray_origin_reshaped.shape[0])
@@ -400,15 +408,22 @@ class Ray:
 
 
 class RaySequence:
-    def __init__(self, rays: List[Ray]):
-        self.origin = np.stack([ray.origin for ray in rays], axis=0)  # [n_rays, m_rays..., 3]
-        self.k_vector = np.stack([ray.k_vector for ray in rays], axis=0)  # [n_rays, m_rays..., 3]
-        self.n = np.array([ray.n for ray in rays])  # [n_rays]
-        length = np.stack([ray.length for ray in rays], axis=0)  # [n_rays, m_rays...]
-        length[np.isnan(length)] = np.inf
-        self.length = length  # [n_rays, m_rays...]
+    # A Ray which is assumed to have the first index as the "ray step", and the n attribute has the same length as the number of ray steps. For example, if we have a ray sequence of 3 steps, and each step has 10 rays, then the origin and k_vector attributes will be of the shape [3, 10, 3], and the n attribute will be of the shape [3].
+    def __init__(self, rays: Optional[List[Ray]] = None, origin: Optional[np.ndarray] = None, k_vector: Optional[np.ndarray] = None, length: Optional[np.ndarray] = None, n: Optional[np.ndarray] = None):
+        if rays is not None:
+            assert origin is None and k_vector is None and length is None and n is None, "If rays is given, origin, k_vector, length and n should not be given"
+            origin  = np.stack([ray.origin for ray in rays], axis=0)  # [n_steps, m_rays..., 3]
+            k_vector = np.stack([ray.k_vector for ray in rays], axis=0)  # [n_steps, m_rays..., 3]
+            n = np.array([ray.n for ray in rays])  # [n_steps]
+            length = np.stack([ray.length for ray in rays], axis=0)  # [n_steps, m_rays...]
+            # length[np.isnan(length)] = np.inf  # Last rays are often infinite  # Why was it here? consider changing it back
 
-    def __getitem__(self, key):
+        self.origin = origin  # [n_steps, m_rays..., 3]
+        self.k_vector = k_vector  # [n_steps, m_rays..., 3]
+        self.n = n  # [n_steps]
+        self.length = length  # [n_steps, m_rays...]
+
+    def __getitem__(self, key) -> Ray:
         # If key is a tuple and the second-from-last element is a slice, this case is not implemented.
         if isinstance(key, tuple) and len(key) >= 2 and isinstance(key[0], slice):
             raise NotImplementedError("Slicing over the ray axis (key[-2]) is not implemented")
@@ -459,12 +474,35 @@ class RaySequence:
         dim=2,
         plane: str = "xy",
         length: Union[np.ndarray, float] = np.nan,
+        colors: Optional[Union[List[str], str]] = None,
+        labels: Optional[Union[List[str], str]] = None,
         **kwargs,
     ):
-        for i in range(len(self)):
-            self[i].plot(ax=ax, dim=dim, plane=plane, length=length, **kwargs)
+        if colors is None:
+            prop_cycle = plt.rcParams.get("axes.prop_cycle", None)
+            try:
+                default_colors = prop_cycle.by_key().get("color")
+            except Exception:
+                default_colors = None
+            if not default_colors:
+                default_colors = [f"C{i}" for i in range(10)]
+        elif isinstance(colors, str):
+            default_colors = [colors]
+        else:
+            default_colors = colors
+        colors = [default_colors[i % len(default_colors)] for i in range(len(self))]
 
-    def __len__(self):
+        labels_list = [None] * len(self)
+        if isinstance(labels, str):
+            labels_list[0] = labels
+        elif labels is not None:
+            for i in range(min(len(self), len(labels))):
+                labels_list[i] = labels[i]
+
+        for i in range(len(self)):
+            self[i].plot(ax=ax, dim=dim, plane=plane, length=length, color=colors[i], label=labels_list[i], **kwargs)
+
+    def __len__(self) -> int:
         return self.origin.shape[0]
 
 
@@ -2942,6 +2980,7 @@ class OpticalSystem:
             surfaces=inverted_surfaces,
             lambda_0_laser=self.lambda_0_laser,
             given_initial_central_line=initial_ray_inverted,
+            use_paraxial_ray_tracing=self.use_paraxial_ray_tracing,
         )
         return inverted_system
 

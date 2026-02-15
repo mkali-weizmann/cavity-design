@@ -1,5 +1,5 @@
-# from matplotlib import use
-# use("TkAgg")  # or 'Qt5Agg', 'GTK3Agg', etc. depending on your system
+from matplotlib import use
+use("TkAgg")  # or 'Qt5Agg', 'GTK3Agg', etc. depending on your system
 from simple_analysis_scripts.analyze_potential import *
 # %%
 
@@ -47,7 +47,7 @@ if print_tests:
     )
 if plot:
     # plt.close('all')
-    fig, ax = plot_results(results_dict, far_away_plane=True, unconcentricity=unconcentricity, potential_x_axis_angles=False)
+    fig, ax = plot_results(results_dict, far_away_plane=True, unconcentricity=unconcentricity, potential_x_axis_angles=False, rays_labels=["Before lens", "After flat surface", "After aspheric surface"])
     center = results_dict["center_of_curvature"]
     ax[1, 0].set_xlim((-0.01, 1))
     plt.suptitle(
