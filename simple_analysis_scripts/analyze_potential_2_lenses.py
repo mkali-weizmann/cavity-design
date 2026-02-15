@@ -8,7 +8,7 @@ from simple_analysis_scripts.analyze_potential import *
 plot = True
 print_tests = True
 n_rays = 50
-unconcentricity = 5e-3  # np.float64(0.007610344827586207)  # ,  np.float64(0.007268965517241379)
+unconcentricity = -5e-3  # np.float64(0.007610344827586207)  # ,  np.float64(0.007268965517241379)
 phi_max = 0.3
 defocus = 0.0029887489470528557
 back_focal_length_aspheric = 20e-3

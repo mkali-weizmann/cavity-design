@@ -480,11 +480,8 @@ def plot_results(results_dict, far_away_plane: bool = False,
             None,
             None,
         )
-    # Truncate polynomial_residuals_mirror to first 3 orders only:
-    # if polynomial_residuals_mirror is not None:
-    #     coeffs_mirror_truncated = polynomial_residuals_mirror.coef[:3]
-    #     polynomial_residuals_mirror = Polynomial(coeffs_mirror_truncated, domain=polynomial_residuals_mirror.domain, window=polynomial_residuals_mirror.window)
-    # plot points:
+    valid_mode = results_dict["cavity"].mode_parameters[0] is not None and results_dict["cavity"].mode_parameters[0].z_R > 0
+    valid_cavity = results_dict["cavity"] is not None
     fig, ax = plt.subplots(2, 2, figsize=(20, 16), constrained_layout=True)
     surface_0, surface_1 = optical_system.physical_surfaces[0], optical_system.physical_surfaces[-1]
     ray_sequence.plot(ax=ax[1, 0], linewidth=0.5, labels=rays_labels)

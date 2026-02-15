@@ -15,7 +15,6 @@ desired_focus = 200e-3
 plot = True
 print_tests = True
 
-
 defocus = choose_source_position_for_desired_focus_analytic(desired_focus=desired_focus, T_c=T_c, n_design=n_design, diameter=diameter, back_focal_length=back_focal_length, R_1=R_1, R_2=R_2_signed,)
 optical_system, optical_axis = generate_one_lens_optical_system(R_1=R_1, R_2=R_2_signed, back_focal_length=back_focal_length, defocus=defocus, T_c=T_c, n_design=n_design, diameter=diameter, n_actual=n_actual,)
 rays_0 = initialize_rays(defocus=defocus, n_rays=n_rays, phi_max=phi_max, diameter=diameter, back_focal_length=back_focal_length)
@@ -48,21 +47,28 @@ if plot:
     plt.show()
 
 
-# %% playground
-pyperclip.copy(results_dict['cavity'].formatted_textual_params)
-
 # %% FOR-LOOP ANALYSIS:
-unconcentricities = np.linspace(10e-3, 0.1e-3, 30)
+lens_types = ['aspheric - lab', 'spherical - like labs aspheric', 'avantier', 'aspheric - like avantier']
+dn=0
+desired_focus=200e-3
+n_rays=400
+phi_max=0.21
+lens_type = lens_types[0]
+n_actual, n_design, T_c, back_focal_length, R_1, R_2, R_2_signed, diameter = generate_input_parameters_for_lenses(lens_type, dn)
+maximal_unconcentricitiy = 1e-3  # np.float64(0.007610344827586207)  # ,  np.float64(0.007268965517241379)
+print_tests=True
+
+defocus = choose_source_position_for_desired_focus_analytic(desired_focus=desired_focus, T_c=T_c, n_design=n_design, diameter=diameter, back_focal_length=back_focal_length, R_1=R_1, R_2=R_2_signed)
+unconcentricities = np.linspace(maximal_unconcentricitiy, 0.1e-3, 30)
 paraxial_spot_sizes = np.zeros_like(unconcentricities)
 spot_size_boundaries = np.zeros_like(unconcentricities)
 paraxial_NAs = np.zeros_like(unconcentricities)
 left_NAs = np.zeros_like(unconcentricities)
 for i, u in enumerate(unconcentricities):
-    print(f"\n\n\nu={u:.10e} µm")
-    results_dict = generate_system_and_analyze_potential(R_1=R_1, R_2=R_2_signed, back_focal_length=back_focal_length,
-                                                         defocus=defocus, T_c=T_c, n_design=n_design, diameter=diameter,
-                                                         unconcentricity=u, n_actual=n_actual, n_rays=n_rays,
-                                                         phi_max=phi_max, extract_R_analytically=True)
+    defocus = choose_source_position_for_desired_focus_analytic(desired_focus=desired_focus, T_c=T_c, n_design=n_design, diameter=diameter, back_focal_length=back_focal_length, R_1=R_1, R_2=R_2_signed,)
+    optical_system, optical_axis = generate_one_lens_optical_system(R_1=R_1, R_2=R_2_signed, back_focal_length=back_focal_length, defocus=defocus, T_c=T_c, n_design=n_design, diameter=diameter, n_actual=n_actual, )
+    rays_0 = initialize_rays(defocus=defocus, n_rays=n_rays, phi_max=phi_max, diameter=diameter, back_focal_length=back_focal_length)
+    results_dict = analyze_potential(optical_system=optical_system, rays_0=rays_0, unconcentricity=u, print_tests=print_tests)
     paraxial_spot_sizes[i] = results_dict["spot_size_paraxial"]
     paraxial_NAs[i] = results_dict["NA_paraxial"]
     left_NAs[i] = results_dict["cavity"].arms[0].mode_parameters.NA[0]
