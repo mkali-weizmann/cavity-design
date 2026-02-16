@@ -39,17 +39,20 @@ spherical_back_alternative = CurvedRefractiveSurface(radius=r_spherical,
                                                      material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"],
                                                      thickness=T_c_aspheric / 2,
                                                      diameter=diameter,)
-polynomial_coefficients_back = np.array([0, widget_convenient_exponent(2.470e-1,scale=0), 0, 0, 0, 0, 0, 0])
+polynomial_coefficients_back = np.array([0, 0, 0, 0, 0, 0, 0, 0])  # widget_convenient_exponent(-2.470e-1,scale=0)
+outwards_normal = -OPTICAL_AXIS * np.sign(polynomial_coefficients_back[1]) if polynomial_coefficients_back[1] != 0 else -OPTICAL_AXIS
+if polynomial_coefficients_back[1] < 0:
+    polynomial_coefficients_back[1] *= -1
 aspherical_back_alternative = AsphericRefractiveSurface(polynomial_coefficients=polynomial_coefficients_back,
                                                         center=aspheric_flat.center,
                                                         n_1=1,
                                                         n_2=1.45,
-                                                        outwards_normal=OPTICAL_AXIS * np.sign(widget_convenient_exponent(-2.470e-1,scale=0)),
+                                                        outwards_normal=outwards_normal,
                                                         name="aspherical_lens_alternative",
                                                         material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"],
                                                         thickness=T_c_aspheric / 2,
                                                         diameter=diameter,
-                                                        curvature_sign=CurvatureSigns.convex if widget_convenient_exponent(-2.470e-1,scale=0) < 0 else CurvatureSigns.concave,
+                                                        curvature_sign=outwards_normal @ OPTICAL_AXIS
                                                         )
 
 optical_system_original = OpticalSystem(surfaces=[aspheric_flat, aspheric_front],
