@@ -11,9 +11,9 @@ f = focal_length_of_lens(R_1=R_1, R_2=R_2, n=n, T_c=T_c)
 back_focal_length = back_focal_length_of_lens(R_1=R_1, R_2=R_2, n=n, T_c=T_c)
 first_surface_center = RIGHT * np.abs(R_1)
 
-surface_1 = CurvedRefractiveSurface(radius=np.abs(R_1), outwards_normal=RIGHT,
-                                    center=first_surface_center, n_1=1.0, n_2=n,
-                                    curvature_sign=CurvatureSigns.concave, name="concave side", diameter=diameter)
+surface_1 = CurvedRefractiveSurface(radius=np.abs(R_1), outwards_normal=RIGHT, center=first_surface_center, n_1=1.0,
+                                    n_2=n, curvature_sign=CurvatureSigns.concave, name="concave side",
+                                    diameter=diameter)
 surface_2 = CurvedRefractiveSurface(radius=np.abs(R_2), outwards_normal=RIGHT,
                                     center=first_surface_center + RIGHT * T_c, n_1=n, n_2=1.0,
                                     curvature_sign=CurvatureSigns.concave, name="convex side", diameter=diameter)

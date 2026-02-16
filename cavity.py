@@ -724,18 +724,11 @@ class Surface:
         elif p.surface_type == SurfacesTypes.ideal_thick_lens:  # IdealThickLens
             surface = generate_thick_ideal_lens_from_params(p)
         elif p.surface_type == SurfacesTypes.curved_refractive_surface:  # Refractive surface (one side of a lens)
-            surface = CurvedRefractiveSurface(
-                radius=p.r_1,
-                outwards_normal=outwards_normal,
-                center=center,
-                n_1=p.n_outside_or_before,
-                n_2=p.n_inside_or_after,
-                curvature_sign=p.curvature_sign,
-                name=p.name,
-                thermal_properties=p.material_properties,
-                thickness=p.T_c,
-                diameter=p.diameter,
-            )
+            surface = CurvedRefractiveSurface(radius=p.r_1, outwards_normal=outwards_normal, center=center,
+                                              n_1=p.n_outside_or_before, n_2=p.n_inside_or_after,
+                                              curvature_sign=p.curvature_sign, name=p.name,
+                                              material_properties=p.material_properties, thickness=p.T_c,
+                                              diameter=p.diameter)
         elif p.surface_type == SurfacesTypes.ideal_lens:  # Ideal lens
             surface = IdealLens(
                 outwards_normal=outwards_normal,
@@ -1046,8 +1039,12 @@ class AsphericSurface(Surface):
             if isinstance(polynomial_coefficients, Polynomial)
             else Polynomial(polynomial_coefficients)
         )
+        assert self.polynomial.coef[1] >= 0, "Negative curvature in polynomial, Currently the direction of the curvature should be encoded in the outwards normal direction and not in the polynomial coefficients, so the coefficient of the quadratic term should be positive. This might be relaxed in the future if needed."
         self.thickness_center = self.polynomial((self.diameter / 2) ** 2)  # thickness at the center of the surface
-        self.radius = 1 / (2 * self.polynomial.coef[1])
+        if self.polynomial.coef[1] == 0:
+            self.radius = np.inf
+        else:
+            self.radius = 1 / (2 * self.polynomial.coef[1])
 
     def find_intersection_with_ray_exact(self, ray: Ray) -> np.ndarray:
         # For a sketch and a detalied explanation on the calculation, go to:
@@ -1231,14 +1228,9 @@ class AsphericRefractiveSurface(AsphericSurface, RefractiveSurface):
         self.curvature_sign = curvature_sign
 
     def ABCD_matrix(self, cos_theta_incoming: Optional[float] = None) -> np.ndarray:
-        paraxial_approximation_surface = CurvedRefractiveSurface(
-            radius=self.radius,
-            outwards_normal=RIGHT,
-            center=ORIGIN,
-            n_1=self.n_1,
-            n_2=self.n_2,
-            curvature_sign=self.curvature_sign,
-        )
+        paraxial_approximation_surface = CurvedRefractiveSurface(radius=self.radius, outwards_normal=RIGHT,
+                                                                 center=ORIGIN, n_1=self.n_1, n_2=self.n_2,
+                                                                 curvature_sign=self.curvature_sign)
         return paraxial_approximation_surface.ABCD_matrix(cos_theta_incoming=cos_theta_incoming)
 
     def thermal_transformation(self, P_laser_power: float, w_spot_size: float, **kwargs):
@@ -1749,14 +1741,14 @@ class CurvedRefractiveSurface(CurvedSurface, RefractiveSurface):
         n_2: float = 1.5,
         curvature_sign: int = 1,
         name: Optional[str] = None,
-        thermal_properties: Optional[MaterialProperties] = None,
+        material_properties: Optional[MaterialProperties] = None,
         thickness: Optional[float] = 5e-4,
         diameter: Optional[float] = None,
     ):
         super().__init__(
             outwards_normal=outwards_normal,
             name=name,
-            material_properties=thermal_properties,
+            material_properties=material_properties,
             radius=radius,
             center=center,
             origin=origin,
@@ -1878,17 +1870,9 @@ class CurvedRefractiveSurface(CurvedSurface, RefractiveSurface):
         new_thermal_properties = copy.copy(self.material_properties)
         new_thermal_properties.temperature = ROOM_TEMPERATURE
 
-        return CurvedRefractiveSurface(
-            radius=radius_new,
-            outwards_normal=self.outwards_normal,
-            center=center_new,
-            n_1=n_1,
-            n_2=n_2,
-            curvature_sign=self.curvature_sign,
-            name=self.name,
-            thermal_properties=new_thermal_properties,
-            diameter=self.diameter,
-        )
+        return CurvedRefractiveSurface(radius=radius_new, outwards_normal=self.outwards_normal, center=center_new,
+                                       n_1=n_1, n_2=n_2, curvature_sign=self.curvature_sign, name=self.name,
+                                       material_properties=new_thermal_properties, diameter=self.diameter)
 
 
 def generate_lens_from_params(params: OpticalElementParams):
@@ -1911,31 +1895,15 @@ def generate_lens_from_params(params: OpticalElementParams):
 
     center_1 = center - (1 / 2) * p.T_c * forward_direction
     center_2 = center + (1 / 2) * p.T_c * forward_direction
-    surface_1 = CurvedRefractiveSurface(
-        radius=p.r_1,
-        outwards_normal=-forward_direction,
-        center=center_1,
-        n_1=p.n_outside_or_before,
-        n_2=p.n_inside_or_after,
-        curvature_sign=-1,
-        name=names[0],
-        thermal_properties=p.material_properties,
-        thickness=p.T_c / 2,
-        diameter=p.diameter,
-    )
+    surface_1 = CurvedRefractiveSurface(radius=p.r_1, outwards_normal=-forward_direction, center=center_1,
+                                        n_1=p.n_outside_or_before, n_2=p.n_inside_or_after, curvature_sign=-1,
+                                        name=names[0], material_properties=p.material_properties, thickness=p.T_c / 2,
+                                        diameter=p.diameter)
 
-    surface_2 = CurvedRefractiveSurface(
-        radius=p.r_2,
-        outwards_normal=forward_direction,
-        center=center_2,
-        n_1=p.n_inside_or_after,
-        n_2=p.n_outside_or_before,
-        curvature_sign=1,
-        name=names[1],
-        thermal_properties=p.material_properties,
-        thickness=p.T_c / 2,
-        diameter=p.diameter,
-    )
+    surface_2 = CurvedRefractiveSurface(radius=p.r_2, outwards_normal=forward_direction, center=center_2,
+                                        n_1=p.n_inside_or_after, n_2=p.n_outside_or_before, curvature_sign=1,
+                                        name=names[1], material_properties=p.material_properties, thickness=p.T_c / 2,
+                                        diameter=p.diameter)
     return surface_1, surface_2
 
 
@@ -4801,15 +4769,9 @@ def find_equal_angles_surface(
     def match_surface_to_radius(R_1: float) -> CurvedRefractiveSurface:
         T_c = dT_c_0 + T_edge + dT_c_of_a_lens(R=R_1, h=h)
         center_1 = surface_0.center + surface_0.inwards_normal * T_c
-        second_surface = CurvedRefractiveSurface(
-            radius=R_1,
-            outwards_normal=-surface_0.outwards_normal,
-            center=center_1,
-            n_1=surface_0.n_2,
-            n_2=1,
-            curvature_sign=-1 * surface_0.curvature_sign,
-            thickness=T_c / 2,
-        )
+        second_surface = CurvedRefractiveSurface(radius=R_1, outwards_normal=-surface_0.outwards_normal,
+                                                 center=center_1, n_1=surface_0.n_2, n_2=1,
+                                                 curvature_sign=-1 * surface_0.curvature_sign, thickness=T_c / 2)
         return second_surface
 
     def f_for_root(R_1: np.ndarray) -> float:  # ARBITRARY - ASSUMES CONVEX LENS
@@ -5125,16 +5087,9 @@ def mirror_lens_mirror_cavity_generator(
         intensity_transmittance,
         temperature,
     ) = lens_material_properties.to_array
-    surface_left = CurvedRefractiveSurface(
-        center=np.array([x_lens_left, 0, 0]),
-        radius=R_left,
-        outwards_normal=np.array([-1, 0, 0]),
-        n_1=1,
-        n_2=n,
-        curvature_sign=-1,
-        name="lens_left",
-        thermal_properties=lens_material_properties,
-    )
+    surface_left = CurvedRefractiveSurface(radius=R_left, outwards_normal=np.array([-1, 0, 0]),
+                                           center=np.array([x_lens_left, 0, 0]), n_1=1, n_2=n, curvature_sign=-1,
+                                           name="lens_left", material_properties=lens_material_properties)
     if set_R_right_to_equalize_angles:
         surface_right = find_equal_angles_surface(
             mode_before_lens=mode_left,
@@ -5159,16 +5114,9 @@ def mirror_lens_mirror_cavity_generator(
 
         x_2_right = x_lens_left + T_c
 
-        surface_right = CurvedRefractiveSurface(
-            center=np.array([x_2_right, 0, 0]),
-            radius=R_right,
-            outwards_normal=np.array([1, 0, 0]),
-            n_1=n,
-            n_2=1,
-            curvature_sign=1,
-            name="lens_right",
-            thermal_properties=lens_material_properties,
-        )
+        surface_right = CurvedRefractiveSurface(radius=R_right, outwards_normal=np.array([1, 0, 0]),
+                                                center=np.array([x_2_right, 0, 0]), n_1=n, n_2=1, curvature_sign=1,
+                                                name="lens_right", material_properties=lens_material_properties)
 
     mode_parameters_just_before_surface_left = mode_left.local_mode_parameters(
         np.linalg.norm(surface_left.center - mode_left.center[0])

@@ -14,8 +14,14 @@ pos_mirror_inner = mode_0.z_of_R(5e-3, output_type=float)
 # dummy_surface = FlatSurface(outwards_normal=np.array([1, 0, 0]), point_on_surface=np.array([0, 0, 0]), name='waist_plane')
 initial_mode_parameters = mode_0.local_mode_parameters(z_minus_z_0=0)
 initial_ray = Ray(origin=mode_0.center[0, :], k_vector=mode_0.k_vector)
-surface_1 = CurvedRefractiveSurface(radius=5e-3, center=np.array([pos_mirror_inner, 0, 0]), outwards_normal=np.array([1,0,0]), n_1=1, n_2=PHYSICAL_SIZES_DICT['material_properties_fused_silica'].refractive_index, name='mirrors inner surface')
-surface_2 = CurvedRefractiveSurface(radius=5e-3, center=np.array([pos_mirror_inner+3.45e-3, 0, 0]), outwards_normal=np.array([1,0,0]), n_1=PHYSICAL_SIZES_DICT['material_properties_fused_silica'].refractive_index, n_2=1, name='mirrors outer surface')
+surface_1 = CurvedRefractiveSurface(radius=5e-3, outwards_normal=np.array([1, 0, 0]),
+                                    center=np.array([pos_mirror_inner, 0, 0]), n_1=1,
+                                    n_2=PHYSICAL_SIZES_DICT['material_properties_fused_silica'].refractive_index,
+                                    name='mirrors inner surface')
+surface_2 = CurvedRefractiveSurface(radius=5e-3, outwards_normal=np.array([1, 0, 0]),
+                                    center=np.array([pos_mirror_inner + 3.45e-3, 0, 0]),
+                                    n_1=PHYSICAL_SIZES_DICT['material_properties_fused_silica'].refractive_index, n_2=1,
+                                    name='mirrors outer surface')
 arms_with_modes = simple_mode_propagator(surfaces=[surface_1, surface_2],
                                          local_mode_parameters_initial=initial_mode_parameters,
                                          ray_initial=initial_ray,

@@ -186,27 +186,19 @@ def generate_one_lens_optical_system(
         n_actual = n_design
     if R_1 is not None and R_2 is not None:
         back_focal_length = back_focal_length_of_lens(R_1=R_1, R_2=R_2, n=n_design, T_c=T_c)
-        surface_0, surface_1 = CurvedRefractiveSurface(
-            radius=np.abs(R_1),
-            outwards_normal=-optical_axis,
-            center=(back_focal_length - defocus) * optical_axis,
-            n_1=1,
-            n_2=n_actual,
-            curvature_sign=CurvatureSigns.convex,
-            name="first surface",
-            thickness=T_c / 2,
-            diameter=diameter,
-        ), CurvedRefractiveSurface(
-            radius=np.abs(R_2),
-            outwards_normal=optical_axis,
-            center=(back_focal_length - defocus + T_c) * optical_axis,
-            n_1=n_actual,
-            n_2=1,
-            curvature_sign=CurvatureSigns.concave,
-            name="second surface",
-            thickness=T_c / 2,
-            diameter=diameter,
-        )
+        surface_0, surface_1 = CurvedRefractiveSurface(radius=np.abs(R_1), outwards_normal=-optical_axis,
+                                                       center=(back_focal_length - defocus) * optical_axis, n_1=1,
+                                                       n_2=n_actual, curvature_sign=CurvatureSigns.convex,
+                                                       name="first surface", thickness=T_c / 2,
+                                                       diameter=diameter), CurvedRefractiveSurface(radius=np.abs(R_2),
+                                                                                                   outwards_normal=optical_axis,
+                                                                                                   center=(
+                                                                                                                      back_focal_length - defocus + T_c) * optical_axis,
+                                                                                                   n_1=n_actual, n_2=1,
+                                                                                                   curvature_sign=CurvatureSigns.concave,
+                                                                                                   name="second surface",
+                                                                                                   thickness=T_c / 2,
+                                                                                                   diameter=diameter)
     elif back_focal_length is not None:
         back_center = (back_focal_length - defocus) * optical_axis
         surface_0, surface_1 = Surface.from_params(
@@ -273,29 +265,15 @@ def generate_two_lenses_optical_system(
     )
     aspheric_output_ROC = optical_system.output_radius_of_curvature(initial_distance=back_focal_length_aspheric - defocus)
     lens_distance_to_aspheric_curved_face = lens_distance_to_aspheric_output_COC + aspheric_output_ROC  # aspheric_output_ROC Should be negative, so this is effectively a subtraction
-    spherical_0 = CurvedRefractiveSurface(
-        radius=np.abs(R_1_spherical),
-        outwards_normal=-OPTICAL_AXIS,
-        center=aspheric_curved.center + lens_distance_to_aspheric_curved_face * OPTICAL_AXIS,
-        n_1=1,
-        n_2=n_actual_spherical,
-        curvature_sign=CurvatureSigns.convex,
-        name="spherical_0",
-        thickness=T_c_aspheric / 2,
-        diameter=diameter,
-    )
+    spherical_0 = CurvedRefractiveSurface(radius=np.abs(R_1_spherical), outwards_normal=-OPTICAL_AXIS,
+                                          center=aspheric_curved.center + lens_distance_to_aspheric_curved_face * OPTICAL_AXIS,
+                                          n_1=1, n_2=n_actual_spherical, curvature_sign=CurvatureSigns.convex,
+                                          name="spherical_0", thickness=T_c_aspheric / 2, diameter=diameter)
 
-    spherical_1 = CurvedRefractiveSurface(
-        radius=np.abs(R_2_spherical),
-        outwards_normal=OPTICAL_AXIS,
-        center=spherical_0.center + T_c_spherical * OPTICAL_AXIS,
-        n_1=n_actual_spherical,
-        n_2=1,
-        curvature_sign=CurvatureSigns.concave,
-        name="spherical_1",
-        thickness=T_c_aspheric / 2,
-        diameter=diameter,
-    )
+    spherical_1 = CurvedRefractiveSurface(radius=np.abs(R_2_spherical), outwards_normal=OPTICAL_AXIS,
+                                          center=spherical_0.center + T_c_spherical * OPTICAL_AXIS,
+                                          n_1=n_actual_spherical, n_2=1, curvature_sign=CurvatureSigns.concave,
+                                          name="spherical_1", thickness=T_c_aspheric / 2, diameter=diameter)
 
     optical_system_combined = OpticalSystem(
         surfaces=[aspheric_flat, aspheric_curved, spherical_0, spherical_1],
