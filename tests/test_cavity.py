@@ -26,7 +26,7 @@ from utils import (
 
 from simple_analysis_scripts.potential_analysis.analyze_potential import (
     choose_source_position_for_desired_focus_analytic,
-    generate_input_parameters_for_lenses, generate_one_lens_optical_system, initialize_rays, analyze_potential,
+    known_lenses_generator, generate_one_lens_optical_system, initialize_rays, analyze_potential,
 )
 
 
@@ -614,9 +614,8 @@ def test_potential_single_lens():
     dn = 0
     lens_types = ["aspheric - lab", "spherical - like labs aspheric", "avantier", "aspheric - like avantier"]
     lens_type = lens_types[2]
-    n_actual, n_design, T_c, back_focal_length, R_1, R_2, R_2_signed, diameter = generate_input_parameters_for_lenses(
-        lens_type=lens_type, dn=dn
-    )
+    n_actual, n_design, T_c, back_focal_length, R_1, R_2, R_2_signed, diameter = known_lenses_generator(
+        lens_type=lens_type, dn=dn)
     n_rays = 400
     unconcentricity = 2.24255506e-3  # np.float64(0.007610344827586207)  # ,  np.float64(0.007268965517241379)
     phi_max = 0.04

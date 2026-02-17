@@ -1269,7 +1269,7 @@ def extract_matching_sphere(p_1: np.ndarray, p_2: np.ndarray, k_1: np.ndarray):
     denominator = 2 * np.dot(k_1, p_2 - p_1)
     R = numerator / denominator
     center = p_1 + R * k_1
-    return np.abs(R), center
+    return R, center
 
 
 def copy_parameters_func(local_parameters):

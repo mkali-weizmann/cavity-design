@@ -18,52 +18,66 @@ def initialize_rays(
         phi = np.linspace(0, phi_max, n_rays)
     else:
         phi = np.linspace(0, phi_max, n_rays)
-    ray_origin = ORIGIN# optical_axis * defocus
+    ray_origin = ORIGIN  # optical_axis * defocus
     rays_0 = Ray(origin=ray_origin, k_vector=unit_vector_of_angles(theta=0, phi=phi), n=1)
     return rays_0
 
 
-def analyze_output_wavefront(ray_sequence: RaySequence, unconcentricity: float, R_analytical: Optional[float] = None, print_tests: bool = True):
+def analyze_output_wavefront(
+    ray_sequence: RaySequence,
+    unconcentricity: float,
+    R_output_analytical: Optional[float] = None,
+    end_mirror_ROC: Optional[float] = None,
+    print_tests: bool = True,
+):
     output_ray = ray_sequence[-1]
     # Extract all wavefront features at the output surface of the lens.
-    d_0 = ray_sequence.cumulative_optical_path_length[-2, 0]  # Assumes the first ray is the optical axis ray.
-    wavefront_points_initial = ray_sequence.parameterization(d_0, optical_path_length=True)
 
-    R_numerical, center_of_curvature_numerical = extract_matching_sphere(
+    relative_optical_path_length = (
+        ray_sequence.cumulative_optical_path_length[-2, :] - ray_sequence.cumulative_optical_path_length[-2, 0]
+    )
+    wavefront_points_initial = output_ray.parameterization(t=-relative_optical_path_length)
+
+    R_output_numerical, center_of_curvature_numerical = extract_matching_sphere(  # TODO: invert R sign convention
         wavefront_points_initial[..., 0, :], wavefront_points_initial[..., 1, :], output_ray.k_vector[..., 0, :]
     )
-    if R_analytical is not None:
-        R = R_analytical
-        center_of_curvature = ray_sequence[-1].parameterization(R_analytical, optical_path_length=False)[
+    if R_output_analytical is not None:
+        R_output = R_output_analytical
+        center_of_curvature = ray_sequence[-1].parameterization(R_output_analytical, optical_path_length=False)[
             0, :
         ]  # Along the optical axis.
         if print_tests:
             print(
-                f"Analytical/numerical output ROC:\n{R:.6e}\n{R_numerical:.6e} (inaccurate for large or extremeley small dphi)"
+                f"Analytical/numerical output ROC:\n{R_output:.6e}\n{R_output_numerical:.6e} (inaccurate for large or extremeley small dphi)"
             )
             print(
                 f"Analytical/numerical center of curvature:\n{np.stack((center_of_curvature, center_of_curvature_numerical), axis=0)} (inacurate for large or extremeley small dphi)"
             )
     else:
-        R, center_of_curvature = R_numerical, center_of_curvature_numerical
+        R_output, center_of_curvature = R_output_numerical, center_of_curvature_numerical
 
-    residual_distances_initial = R - np.linalg.norm(wavefront_points_initial - center_of_curvature, axis=-1)
+    residual_distances_initial = np.abs(R_output) - np.linalg.norm(
+        wavefront_points_initial - center_of_curvature, axis=-1
+    )
     polynomial_residuals_initial = Polynomial.fit(
         wavefront_points_initial[:, 1] ** 2, residual_distances_initial, 4
     ).convert()
     if print_tests:
         print(
-            f"Initial wavefront residual from fitted sphere. 2nd order term should be singificantly smaller than 1/(2*R) = {1 / (2 * R):.3e}, actual: {polynomial_residuals_initial.coef[1]:.3e}"
+            f"Initial wavefront residual from fitted sphere. 2nd order term should be singificantly smaller than 1/(2*R_output) = {1 / (2 * R_output):.3e}, actual: {polynomial_residuals_initial.coef[1]:.3e}"
         )
         print(
             f" Fourth order term: {polynomial_residuals_initial.coef[2]:.3e}, should be significantly larger than y_max ** -2 * second order term = {wavefront_points_initial[-1, 1] ** -2 * polynomial_residuals_initial.coef[1]:.26e}"
         )
+    if end_mirror_ROC is None:
+        end_mirror_ROC = R_output
 
     # Extract wavefront features at a far away plane (2*ROC - u from the lens):
-    wavefront_points_opposite = ray_sequence.parameterization(d_0 + 2 * R - unconcentricity, optical_path_length=True)
+    wavefront_points_opposite = output_ray.parameterization(
+        -relative_optical_path_length + R_output + end_mirror_ROC - unconcentricity, optical_path_length=True
+    )
 
-    R_opposite = R - unconcentricity
-    center_of_curvature_opposite = center_of_curvature
+    R_opposite = -(end_mirror_ROC - unconcentricity)  # negative because at this point the beam is diverging.
     R_opposite_numerical, center_of_curvature_opposite_numerical = extract_matching_sphere(
         wavefront_points_opposite[..., 0, :], wavefront_points_opposite[..., 1, :], ray_sequence[-1].k_vector[..., 0, :]
     )  # Should be the same as the original center of curvature
@@ -72,28 +86,26 @@ def analyze_output_wavefront(ray_sequence: RaySequence, unconcentricity: float, 
             f"Far away plane analytical/numerical output ROC:\n{R_opposite:.6e}\n{R_opposite_numerical:.6e} (inaccurate for large or extremeley small dphi)"
         )
         print(
-            f"Far away plane analytical/numerical center of curvature:\n{np.stack((center_of_curvature_opposite, center_of_curvature_opposite_numerical), axis=0)} (inacurate for large or extremeley small dphi)"
+            f"Far away plane analytical/numerical center of curvature:\n{np.stack((center_of_curvature, center_of_curvature_opposite_numerical), axis=0)} (inacurate for large or extremeley small dphi)"
         )
 
-    if R_analytical is None:
-        R_opposite, center_of_curvature_opposite = R_opposite_numerical, center_of_curvature_opposite_numerical
+    if R_output_analytical is None:
+        R_opposite, center_of_curvature = R_opposite_numerical, center_of_curvature_opposite_numerical
 
-    residual_distances_opposite = R_opposite - np.linalg.norm(
-        wavefront_points_opposite - center_of_curvature_opposite, axis=-1
-    )
+    residual_distances_opposite = R_opposite - np.linalg.norm(wavefront_points_opposite - center_of_curvature, axis=-1)
     polynomial_residuals_opposite = Polynomial.fit(
         wavefront_points_opposite[:, 1] ** 2, residual_distances_opposite, 4
     ).convert()
 
     # Analyze unconcentric mirror case:
-    center_of_mirror = center_of_curvature + np.array([-unconcentricity, 0, 0])
-    residual_distances_mirror = R - np.linalg.norm(
+    center_of_mirror = center_of_curvature - unconcentricity * output_ray.k_vector[0, :]
+    residual_distances_mirror = end_mirror_ROC - np.linalg.norm(
         wavefront_points_opposite - center_of_mirror, axis=-1
-    )  # Mirror has a radius of R, not R_opposite.
+    )  # Mirror has a radius of R_output, not R_opposite.
     polynomial_residuals_mirror = Polynomial.fit(
         wavefront_points_opposite[:, 1] ** 2, residual_distances_mirror, 4
     ).convert()
-    expected_second_order_term = 1 / 2 * (1 / R_opposite - 1 / R)
+    expected_second_order_term = 1 / 2 * (1 / R_opposite - 1 / R_output)
     if print_tests:
         print(
             f"Expected second order term in mirror deviation polynomial due to unconcentricity: {expected_second_order_term:.3e}, actual: {polynomial_residuals_mirror.coef[1]:.3e} (TRY LOWER MAXIMAL NA IF THEY DON'T MATCH)"
@@ -102,20 +114,23 @@ def analyze_output_wavefront(ray_sequence: RaySequence, unconcentricity: float, 
     # Generate dummy points for fitted spheres (used only for plotting, not for calculations):
     points_rel = wavefront_points_initial - center_of_curvature
     phi_dummy = np.linspace(0, np.arctan(points_rel[-1, 1] / points_rel[-1, 0]), 100)
-    dummy_points_curvature_initial = center_of_curvature - R * np.stack(
+    dummy_points_curvature_initial = center_of_curvature - R_output * np.stack(
         (np.cos(phi_dummy), np.sin(phi_dummy), np.zeros_like(phi_dummy)), axis=-1
     )
-    dummy_points_curvature_opposite = center_of_curvature_opposite + R_opposite * np.stack(
+    dummy_points_curvature_opposite = center_of_curvature + R_opposite * np.stack(
         (np.cos(phi_dummy), np.sin(phi_dummy), np.zeros_like(phi_dummy)), axis=-1
     )
-    dummy_points_mirror = center_of_mirror + R * np.stack(
+    dummy_points_mirror = center_of_mirror + end_mirror_ROC * np.stack(
         (np.cos(phi_dummy), np.sin(phi_dummy), np.zeros_like(phi_dummy)), axis=-1
     )  # Mirror has the radius of the original wavefront sphere, but centered at the shifted center.
 
-    L_long_arm = 2 * R - unconcentricity
+    L_long_arm = R_output + end_mirror_ROC - unconcentricity
+    assert (
+        L_long_arm > 0
+    ), f"Long arm length should be positive, but got {L_long_arm:.3e} m. Try increasing end mirror ROC. The default end mirror ROC works only for output converging wavefront"
     if unconcentricity > 0:
         reighley_range_paraxial = np.sqrt(L_long_arm * unconcentricity) / 2
-        center_mode_right_outer_side = ray_sequence[-1].origin[0, :] + (R - unconcentricity / 2) * RIGHT
+        center_mode_right_outer_side = ray_sequence[-1].origin[0, :] + (R_output - unconcentricity / 2) * RIGHT
         mode_parameters_right_arm = ModeParameters(
             center=center_mode_right_outer_side,
             k_vector=RIGHT,
@@ -124,12 +139,14 @@ def analyze_output_wavefront(ray_sequence: RaySequence, unconcentricity: float, 
             n=1,
         )
         NA_paraxial = mode_parameters_right_arm.NA[0]
-        spot_size_paraxial = mode_parameters_right_arm.local_mode_parameters(R - unconcentricity / 2).spot_size[0]
+        spot_size_paraxial = mode_parameters_right_arm.local_mode_parameters(
+            end_mirror_ROC - unconcentricity / 2
+        ).spot_size[0]
     else:
         NA_paraxial, spot_size_paraxial, mode_parameters_right_arm = np.nan, np.nan, None
     mirror_object = CurvedMirror(
-        radius=R,
-        center=center_of_mirror + R * RIGHT,
+        radius=end_mirror_ROC,
+        center=center_of_mirror + end_mirror_ROC * RIGHT,
         outwards_normal=RIGHT,
         curvature_sign=CurvatureSigns.concave,
         name="big mirror",
@@ -146,14 +163,13 @@ def analyze_output_wavefront(ray_sequence: RaySequence, unconcentricity: float, 
     results_dict = {
         "ray_sequence": ray_sequence,
         "wavefront_points_initial": wavefront_points_initial,
-        "R": R,
+        "R_output": R_output,
         "center_of_curvature": center_of_curvature,
         "dummy_points_curvature_initial": dummy_points_curvature_initial,
         "residual_distances_initial": residual_distances_initial,
         "polynomial_residuals_initial": polynomial_residuals_initial,
         "R_opposite": R_opposite,
         "wavefront_points_opposite": wavefront_points_opposite,
-        "center_of_curvature_opposite": center_of_curvature_opposite,
         "dummy_points_curvature_opposite": dummy_points_curvature_opposite,
         "dummy_points_mirror": dummy_points_mirror,
         "residual_distances_opposite": residual_distances_opposite,
@@ -186,35 +202,55 @@ def generate_one_lens_optical_system(
         n_actual = n_design
     if R_1 is not None and R_2 is not None:
         back_focal_length = back_focal_length_of_lens(R_1=R_1, R_2=R_2, n=n_design, T_c=T_c)
-        surface_0, surface_1 = CurvedRefractiveSurface(radius=np.abs(R_1), outwards_normal=-optical_axis,
-                                                       center=(back_focal_length - defocus) * optical_axis, n_1=1,
-                                                       n_2=n_actual, curvature_sign=CurvatureSigns.convex,
-                                                       name="first surface", thickness=T_c / 2,
-                                                       diameter=diameter), CurvedRefractiveSurface(radius=np.abs(R_2),
-                                                                                                   outwards_normal=optical_axis,
-                                                                                                   center=(
-                                                                                                                      back_focal_length - defocus + T_c) * optical_axis,
-                                                                                                   n_1=n_actual, n_2=1,
-                                                                                                   curvature_sign=CurvatureSigns.concave,
-                                                                                                   name="second surface",
-                                                                                                   thickness=T_c / 2,
-                                                                                                   diameter=diameter)
+        surface_0, surface_1 = CurvedRefractiveSurface(
+            radius=np.abs(R_1),
+            outwards_normal=-optical_axis,
+            center=(back_focal_length - defocus) * optical_axis,
+            n_1=1,
+            n_2=n_actual,
+            curvature_sign=CurvatureSigns.convex,
+            name="first surface",
+            thickness=T_c / 2,
+            diameter=diameter,
+        ), CurvedRefractiveSurface(
+            radius=np.abs(R_2),
+            outwards_normal=optical_axis,
+            center=(back_focal_length - defocus + T_c) * optical_axis,
+            n_1=n_actual,
+            n_2=1,
+            curvature_sign=CurvatureSigns.concave,
+            name="second surface",
+            thickness=T_c / 2,
+            diameter=diameter,
+        )
     elif back_focal_length is not None:
         back_center = (back_focal_length - defocus) * optical_axis
         surface_0, surface_1 = Surface.from_params(
-            generate_aspheric_lens_params(back_focal_length=back_focal_length, T_c=T_c, n=n_design,
-                                          forward_normal=optical_axis, flat_faces_center=back_center, diameter=diameter,
-                                          polynomial_degree=8, name="aspheric_lens_automatic")
+            generate_aspheric_lens_params(
+                back_focal_length=back_focal_length,
+                T_c=T_c,
+                n=n_design,
+                forward_normal=optical_axis,
+                flat_faces_center=back_center,
+                diameter=diameter,
+                polynomial_degree=8,
+                name="aspheric_lens_automatic",
+            )
         )
         surface_0.n_2 = n_actual
         surface_1.n_1 = n_actual
     else:
         raise ValueError("Either R_1 and R_2, or back_focal_length must be provided.")
 
-    optical_system = OpticalSystem(surfaces=[surface_0, surface_1], lambda_0_laser=LAMBDA_0_LASER,
-                                   given_initial_central_line=True, use_paraxial_ray_tracing=False)
+    optical_system = OpticalSystem(
+        surfaces=[surface_0, surface_1],
+        lambda_0_laser=LAMBDA_0_LASER,
+        given_initial_central_line=True,
+        use_paraxial_ray_tracing=False,
+    )
 
     return optical_system, optical_axis
+
 
 def generate_two_lenses_optical_system(
     defocus: float,
@@ -226,7 +262,7 @@ def generate_two_lenses_optical_system(
     n_actual_spherical: float,
     T_c_spherical: float,
     f_spherical: float,
-    diameter: float=12.7e-3,
+    diameter: float = 12.7e-3,
 ):
     OPTICAL_AXIS = RIGHT
     desired_focus = 200e-3
@@ -254,7 +290,6 @@ def generate_two_lenses_optical_system(
         use_paraxial_ray_tracing=False,
     )
 
-
     R = (
         f_spherical * (n_design_spherical - 1) * (1 + np.sqrt(1 - T_c_aspheric / (f_spherical * n_design_spherical)))
     )  # This is the R value that results in f=f_lens
@@ -263,17 +298,35 @@ def generate_two_lenses_optical_system(
     lens_distance_to_aspheric_output_COC = image_of_a_point_with_thick_lens(
         distance_to_face_1=desired_focus, R_1=R_2_spherical, R_2=-R_1_spherical, n=n_actual_aspheric, T_c=T_c_spherical
     )
-    aspheric_output_ROC = optical_system.output_radius_of_curvature(initial_distance=back_focal_length_aspheric - defocus)
-    lens_distance_to_aspheric_curved_face = lens_distance_to_aspheric_output_COC + aspheric_output_ROC  # aspheric_output_ROC Should be negative, so this is effectively a subtraction
-    spherical_0 = CurvedRefractiveSurface(radius=np.abs(R_1_spherical), outwards_normal=-OPTICAL_AXIS,
-                                          center=aspheric_curved.center + lens_distance_to_aspheric_curved_face * OPTICAL_AXIS,
-                                          n_1=1, n_2=n_actual_spherical, curvature_sign=CurvatureSigns.convex,
-                                          name="spherical_0", thickness=T_c_aspheric / 2, diameter=diameter)
+    aspheric_output_ROC = optical_system.output_radius_of_curvature(
+        initial_distance=back_focal_length_aspheric - defocus
+    )
+    lens_distance_to_aspheric_curved_face = (
+        lens_distance_to_aspheric_output_COC + aspheric_output_ROC
+    )  # aspheric_output_ROC Should be negative, so this is effectively a subtraction
+    spherical_0 = CurvedRefractiveSurface(
+        radius=np.abs(R_1_spherical),
+        outwards_normal=-OPTICAL_AXIS,
+        center=aspheric_curved.center + lens_distance_to_aspheric_curved_face * OPTICAL_AXIS,
+        n_1=1,
+        n_2=n_actual_spherical,
+        curvature_sign=CurvatureSigns.convex,
+        name="spherical_0",
+        thickness=T_c_aspheric / 2,
+        diameter=diameter,
+    )
 
-    spherical_1 = CurvedRefractiveSurface(radius=np.abs(R_2_spherical), outwards_normal=OPTICAL_AXIS,
-                                          center=spherical_0.center + T_c_spherical * OPTICAL_AXIS,
-                                          n_1=n_actual_spherical, n_2=1, curvature_sign=CurvatureSigns.concave,
-                                          name="spherical_1", thickness=T_c_aspheric / 2, diameter=diameter)
+    spherical_1 = CurvedRefractiveSurface(
+        radius=np.abs(R_2_spherical),
+        outwards_normal=OPTICAL_AXIS,
+        center=spherical_0.center + T_c_spherical * OPTICAL_AXIS,
+        n_1=n_actual_spherical,
+        n_2=1,
+        curvature_sign=CurvatureSigns.concave,
+        name="spherical_1",
+        thickness=T_c_aspheric / 2,
+        diameter=diameter,
+    )
 
     optical_system_combined = OpticalSystem(
         surfaces=[aspheric_flat, aspheric_curved, spherical_0, spherical_1],
@@ -290,7 +343,7 @@ def complete_optical_system_to_cavity(results_dict: dict, unconcentricity: float
     # Generate cavity for mode analysis:
     optical_system = results_dict["optical_system"]
     mode_parameters_lens_right_outer_side = LocalModeParameters(
-        z_minus_z_0=results_dict["R"] - unconcentricity / 2,
+        z_minus_z_0=results_dict["R_output"] - unconcentricity / 2,
         lambda_0_laser=LAMBDA_0_LASER,
         n=1,
         z_R=z_R_of_NA(NA=results_dict["NA_paraxial"], lambda_laser=LAMBDA_0_LASER),
@@ -338,21 +391,34 @@ def complete_optical_system_to_cavity(results_dict: dict, unconcentricity: float
 
         print(
             "mode radius of curvature after the optical system - analytical calculation and numerical cavity solution\n"
-            f"{results_dict['R']*1e3:.3e} mm\n{R_of_q(cavity.arms[len(cavity.arms) // 2 - 1].mode_parameters_on_surface_0.q[0])*1e3:.3e} mm"
+            f"{results_dict['R_output']*1e3:.3e} mm\n{R_of_q(cavity.arms[len(cavity.arms) // 2 - 1].mode_parameters_on_surface_0.q[0])*1e3:.3e} mm"
         )
     return cavity
 
 
-def analyze_potential(optical_system: OpticalSystem, rays_0: Ray, unconcentricity, print_tests):
+def analyze_potential(
+    optical_system: OpticalSystem,
+    rays_0: Ray,
+    unconcentricity: float,
+    end_mirror_ROC: Optional[float] = None,
+    print_tests: bool = True,
+):
     ray_sequence = optical_system.propagate_ray(rays_0, propagate_with_first_surface_first=True)
     R_analytical = optical_system.output_radius_of_curvature(
         initial_distance=np.linalg.norm(rays_0.origin[0, :] - optical_system.arms[0].surface_0.center)
     )
-    results_dict = analyze_output_wavefront(ray_sequence, unconcentricity=unconcentricity, R_analytical=R_analytical, print_tests=print_tests)
+    results_dict = analyze_output_wavefront(
+        ray_sequence,
+        unconcentricity=unconcentricity,
+        R_output_analytical=R_analytical,
+        end_mirror_ROC=end_mirror_ROC,
+        print_tests=print_tests,
+    )
     results_dict["optical_system"] = optical_system
     try:
-        cavity = complete_optical_system_to_cavity(results_dict, unconcentricity=unconcentricity,
-                                                   print_tests=print_tests)
+        cavity = complete_optical_system_to_cavity(
+            results_dict, unconcentricity=unconcentricity, print_tests=print_tests
+        )
         results_dict["cavity"] = cavity
     except AttributeError:
         if print_tests:
@@ -361,14 +427,18 @@ def analyze_potential(optical_system: OpticalSystem, rays_0: Ray, unconcentricit
 
     return results_dict
 
-def plot_results(results_dict, far_away_plane: bool = False,
-                 unconcentricity: Optional[float] = None,
-                 potential_x_axis_angles: bool = False,
-                 rays_labels: Optional[List[str]] = None):
+
+def plot_results(
+    results_dict,
+    far_away_plane: bool = False,
+    unconcentricity: Optional[float] = None,
+    potential_x_axis_angles: bool = False,
+    rays_labels: Optional[List[str]] = None,
+):
     (optical_system, ray_sequence, R, center_of_curvature, NA_paraxial, spot_size_paraxial, zero_derivative_points) = (
         results_dict["optical_system"],
         results_dict["ray_sequence"],
-        results_dict["R"],
+        results_dict["R_output"],
         results_dict["center_of_curvature"],
         results_dict["NA_paraxial"],
         results_dict["spot_size_paraxial"],
@@ -528,13 +598,14 @@ def plot_results(results_dict, far_away_plane: bool = False,
             terms_parts_mirror.append(rf"${mant:.1f}\cdot10^{{{exp}}}\,x^{{{2 * i}}}$")
         terms_mirror = " + ".join(terms_parts_mirror)
         if spot_size_paraxial is not None:
-            NA_short_arm = np.nan if results_dict["cavity"] is None else \
-            results_dict["cavity"].arms[0].mode_parameters.NA[0]
+            NA_short_arm = (
+                np.nan if results_dict["cavity"] is None else results_dict["cavity"].arms[0].mode_parameters.NA[0]
+            )
             mode_terms = f"\n Paraxial spot size: {spot_size_paraxial * 1e3:.2f} mm, NA long arm: {NA_paraxial:.2e}, NA short arm: {NA_short_arm:.2e}"
         else:
             mode_terms = ""
         title += (
-                f"\nmirror deviation fit (unconcentricity = {unconcentricity * 1e6:.1f} µm):\n" + terms_mirror + mode_terms
+            f"\nmirror deviation fit (unconcentricity = {unconcentricity * 1e6:.1f} µm):\n" + terms_mirror + mode_terms
         )
         ax[0, 1].set_title(title)
         if not potential_x_axis_angles:
@@ -582,7 +653,9 @@ def plot_results(results_dict, far_away_plane: bool = False,
                 ax2.grid(False)
 
             zero_derivative_point_plot = np.nan if zero_derivative_points is None else zero_derivative_points
-            ax[0, 1].axvline(zero_derivative_point_plot * 1e3, label="2nd vs 4th order max", color="purple", linestyle="dotted")
+            ax[0, 1].axvline(
+                zero_derivative_point_plot * 1e3, label="2nd vs 4th order max", color="purple", linestyle="dotted"
+            )
             ax[0, 1].legend(handles=handles)
     return fig, ax
 
@@ -605,8 +678,9 @@ def choose_source_position_for_desired_focus_analytic(
     defocus = back_focal_length - distance_to_flat_face
     return defocus
 
-def generate_input_parameters_for_lenses(lens_type, dn):
-    if lens_type == 'aspheric - lab':
+
+def known_lenses_generator(lens_type, dn):
+    if lens_type == "aspheric - lab":
         # back_focal_length = back_focal_length_of_lens(R_1=24.22e-3, R_2=-5.49e-3, n=1.8, T_c=2.91e-3)
         # diameter = 7.75e-3
         back_focal_length = 20e-3
@@ -618,21 +692,22 @@ def generate_input_parameters_for_lenses(lens_type, dn):
         T_c = 4.35e-3
         diameter = 12.7e-3
         # This results in this value of R_2: -0.017933320598319306 for n=1.8 and -0.010350017052321312 for n=1.45
-    elif lens_type == 'spherical - like labs aspheric':
+    elif lens_type == "spherical - like labs aspheric":
         n_actual = 1.45
         n_design = n_actual + dn
         T_c = 4.35e-3
         f_lens = focal_length_of_lens(
             R_1=np.inf, R_2=-0.010350017052321312, n=1.45, T_c=4.35e-3
         )  # Same as the aspheric ones.
-        R = f_lens * (n_design - 1) * (
-                    1 + np.sqrt(1 - T_c / (f_lens * n_design)))  # This is the R value that results in f=f_lens
+        R = (
+            f_lens * (n_design - 1) * (1 + np.sqrt(1 - T_c / (f_lens * n_design)))
+        )  # This is the R value that results in f=f_lens
         R_1 = R
         R_2 = R
         R_2_signed = -R_2
         back_focal_length = back_focal_length_of_lens(R_1=R_1, R_2=-R_2, n=n_design, T_c=T_c)
         diameter = 12.7e-3
-    elif lens_type == 'avantier':
+    elif lens_type == "avantier":
         # Avantier lenses:
         n_actual = 1.76
         n_design = n_actual + dn
@@ -642,7 +717,7 @@ def generate_input_parameters_for_lenses(lens_type, dn):
         T_c = 0.002913797540986543
         diameter = 7.75e-3
         back_focal_length = back_focal_length_of_lens(R_1=R_1, R_2=-R_2, n=n_design, T_c=T_c)
-    elif lens_type == 'aspheric - like avantier':
+    elif lens_type == "aspheric - like avantier":
         n_actual = 1.76
         n_design = n_actual + dn
         back_focal_length = 0.0042325  # This results in the save focal length as the avantier lens.
