@@ -106,10 +106,6 @@ def analyze_output_wavefront(
         wavefront_points_opposite[:, 1] ** 2, residual_distances_mirror, 4
     ).convert()
     expected_second_order_term = 1 / 2 * (1 / R_opposite - 1 / R_output)
-    if print_tests:
-        print(
-            f"Expected second order term in mirror deviation polynomial due to unconcentricity: {expected_second_order_term:.3e}, actual: {polynomial_residuals_mirror.coef[1]:.3e} (TRY LOWER MAXIMAL NA IF THEY DON'T MATCH)"
-        )
 
     # Generate dummy points for fitted spheres (used only for plotting, not for calculations):
     points_rel = wavefront_points_initial - center_of_curvature
@@ -395,7 +391,7 @@ def analyze_potential(
     )
 
     if small_mirror_object is None:
-        small_mirror_object = CurvedMirror(radius=5e-3, outwards_normal=LEFT, center=ORIGIN,
+        small_mirror_object = CurvedMirror(radius=5e-3, outwards_normal=LEFT, origin=ORIGIN,
                                            curvature_sign=CurvatureSigns.concave, name="LaserOptik mirror",
                                            diameter=7.75e-3, material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"])
 
@@ -403,7 +399,8 @@ def analyze_potential(
                     lambda_0_laser=LAMBDA_0_LASER,
                     t_is_trivial=True,
                     p_is_trivial=True,
-                    use_paraxial_ray_tracing=False)
+                    use_paraxial_ray_tracing=False,
+                    standing_wave=True)
 
     results_dict["optical_system"] = optical_system
     results_dict["cavity"] = cavity
@@ -474,6 +471,7 @@ def plot_results(
     fig, ax = plt.subplots(2, 2, figsize=(20, 16), constrained_layout=True)
     surface_0, surface_1 = optical_system.physical_surfaces[0], optical_system.physical_surfaces[-1]
     ray_sequence.plot(ax=ax[1, 0], linewidth=0.5, labels=rays_labels)
+    ray_sequence.plot(ax=ax[1, 1], linewidth=0.5, labels=rays_labels)
     if valid_cavity:
         results_dict["cavity"].plot(ax=ax[1, 0], fine_resolution=True)
         results_dict["cavity"].plot(ax=ax[1, 1], fine_resolution=True)
@@ -487,7 +485,6 @@ def plot_results(
     ax[1, 0].scatter(center_of_curvature[0], center_of_curvature[1], s=50, color="cyan", label="Center of curvature")
     ax[1, 0].legend()
 
-    ray_sequence.plot(ax=ax[1, 1], linewidth=0.5, labels=rays_labels)
     ax[1, 1].set_xlim(
         center_of_curvature[0] -1e-3, center_of_curvature[0] + 1e-3
     )
@@ -717,5 +714,5 @@ def known_lenses_generator(lens_type, dn):
         T_c = 2.91e-3
         diameter = 7.75e-3
     else:
-        raise ValueError("lens_type must be either aspheric, spherical, avantier")
+        raise ValueError("lens_type must be either 'aspheric - lab', 'spherical - like labs aspheric', 'avantier',  'aspheric - like avantier'")
     return n_actual, n_design, T_c, back_focal_length, R_1, R_2, R_2_signed, diameter

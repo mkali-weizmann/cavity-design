@@ -427,7 +427,7 @@ class RaySequence:
         # If key is a tuple and the second-from-last element is a slice, this case is not implemented.
         if isinstance(key, tuple) and len(key) >= 2 and isinstance(key[0], slice):
             raise NotImplementedError("Slicing over the ray axis (key[-2]) is not implemented")
-        if isinstance(key, int):
+        if isinstance(key, int) or isinstance(key, slice):
             n = self.n[key]
         else:
             n = self.n[key[0]]
