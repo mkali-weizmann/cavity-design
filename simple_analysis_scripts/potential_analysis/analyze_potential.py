@@ -92,7 +92,7 @@ def analyze_output_wavefront(
     if R_output_analytical is None:
         R_opposite, center_of_curvature = R_opposite_numerical, center_of_curvature_opposite_numerical
 
-    residual_distances_opposite = R_opposite - np.linalg.norm(wavefront_points_opposite - center_of_curvature, axis=-1)
+    residual_distances_opposite = np.abs(R_opposite) - np.linalg.norm(wavefront_points_opposite - center_of_curvature, axis=-1)
     polynomial_residuals_opposite = Polynomial.fit(
         wavefront_points_opposite[:, 1] ** 2, residual_distances_opposite, 4
     ).convert()
@@ -117,7 +117,7 @@ def analyze_output_wavefront(
     dummy_points_curvature_initial = center_of_curvature - R_output * np.stack(
         (np.cos(phi_dummy), np.sin(phi_dummy), np.zeros_like(phi_dummy)), axis=-1
     )
-    dummy_points_curvature_opposite = center_of_curvature + R_opposite * np.stack(
+    dummy_points_curvature_opposite = center_of_curvature -R_opposite * np.stack(  # R_opposite is negative
         (np.cos(phi_dummy), np.sin(phi_dummy), np.zeros_like(phi_dummy)), axis=-1
     )
     dummy_points_mirror = center_of_mirror + end_mirror_ROC * np.stack(
@@ -128,29 +128,9 @@ def analyze_output_wavefront(
     assert (
         L_long_arm > 0
     ), f"Long arm length should be positive, but got {L_long_arm:.3e} m. Try increasing end mirror ROC. The default end mirror ROC works only for output converging wavefront"
-    if unconcentricity > 0:
-        reighley_range_paraxial = np.sqrt(L_long_arm * unconcentricity) / 2
-        center_mode_right_outer_side = ray_sequence[-1].origin[0, :] + (R_output - unconcentricity / 2) * RIGHT
-        mode_parameters_right_arm = ModeParameters(
-            center=center_mode_right_outer_side,
-            k_vector=RIGHT,
-            z_R=np.array([reighley_range_paraxial, reighley_range_paraxial]),
-            lambda_0_laser=LAMBDA_0_LASER,
-            n=1,
-        )
-        NA_paraxial = mode_parameters_right_arm.NA[0]
-        spot_size_paraxial = mode_parameters_right_arm.local_mode_parameters(
-            end_mirror_ROC - unconcentricity / 2
-        ).spot_size[0]
-    else:
-        NA_paraxial, spot_size_paraxial, mode_parameters_right_arm = np.nan, np.nan, None
-    mirror_object = CurvedMirror(
-        radius=end_mirror_ROC,
-        center=center_of_mirror + end_mirror_ROC * RIGHT,
-        outwards_normal=RIGHT,
-        curvature_sign=CurvatureSigns.concave,
-        name="big mirror",
-    )
+    end_mirror_object = CurvedMirror(radius=end_mirror_ROC, outwards_normal=RIGHT,
+                                     center=center_of_mirror + end_mirror_ROC * RIGHT,
+                                     curvature_sign=CurvatureSigns.concave, name="big mirror")
 
     # find point of 0 derivative (other than 0) in residual_distances_mirror:
     deriv_mirror = np.gradient(residual_distances_mirror, wavefront_points_opposite[:, 1])
@@ -176,11 +156,8 @@ def analyze_output_wavefront(
         "residual_distances_mirror": residual_distances_mirror,
         "polynomial_residuals_opposite": polynomial_residuals_opposite,
         "polynomial_residuals_mirror": polynomial_residuals_mirror,
-        "NA_paraxial": NA_paraxial,
-        "spot_size_paraxial": spot_size_paraxial,
         "zero_derivative_points": zero_derivative_points,
-        "mirror_object": mirror_object,
-        "mode_parameters_right_arm": mode_parameters_right_arm,
+        "end_mirror_object": end_mirror_object,
     }
 
     return results_dict
@@ -366,7 +343,7 @@ def complete_optical_system_to_cavity(results_dict: dict, unconcentricity: float
     )
 
     cavity = Cavity(
-        surfaces=[mirror_left, *optical_system.physical_surfaces, results_dict["mirror_object"]],
+        surfaces=[mirror_left, *optical_system.physical_surfaces, results_dict["end_mirror_object"]],
         lambda_0_laser=LAMBDA_0_LASER,
         t_is_trivial=True,
         p_is_trivial=True,
@@ -401,12 +378,14 @@ def analyze_potential(
     rays_0: Ray,
     unconcentricity: float,
     end_mirror_ROC: Optional[float] = None,
+    small_mirror_object: Optional[CurvedMirror] = None,
     print_tests: bool = True,
 ):
     ray_sequence = optical_system.propagate_ray(rays_0, propagate_with_first_surface_first=True)
     R_analytical = optical_system.output_radius_of_curvature(
         initial_distance=np.linalg.norm(rays_0.origin[0, :] - optical_system.arms[0].surface_0.center)
     )
+
     results_dict = analyze_output_wavefront(
         ray_sequence,
         unconcentricity=unconcentricity,
@@ -414,16 +393,27 @@ def analyze_potential(
         end_mirror_ROC=end_mirror_ROC,
         print_tests=print_tests,
     )
+
+    if small_mirror_object is None:
+        small_mirror_object = CurvedMirror(radius=5e-3, outwards_normal=LEFT, center=ORIGIN,
+                                           curvature_sign=CurvatureSigns.concave, name="LaserOptik mirror",
+                                           diameter=7.75e-3, material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"])
+
+    cavity = Cavity(surfaces=[small_mirror_object, *optical_system.surfaces, results_dict["end_mirror_object"]],
+                    lambda_0_laser=LAMBDA_0_LASER,
+                    t_is_trivial=True,
+                    p_is_trivial=True,
+                    use_paraxial_ray_tracing=False)
+
     results_dict["optical_system"] = optical_system
-    try:
-        cavity = complete_optical_system_to_cavity(
-            results_dict, unconcentricity=unconcentricity, print_tests=print_tests
-        )
-        results_dict["cavity"] = cavity
-    except AttributeError:
-        if print_tests:
-            print(f"No mode found for cavity")
-        results_dict["cavity"] = None
+    results_dict["cavity"] = cavity
+
+    if cavity.resonating_mode_successfully_traced:
+        results_dict["spot_size_paraxial"] = cavity.arms[len(cavity.surfaces) - 1].mode_parameters_on_surface_1.spot_size[0]
+        results_dict["NA_paraxial"] = cavity.arms[len(cavity.surfaces) - 1].mode_parameters.NA[0]
+    else:
+        results_dict["spot_size_paraxial"] = np.nan
+        results_dict["NA_paraxial"] = np.nan
 
     return results_dict
 
@@ -485,11 +475,11 @@ def plot_results(
     surface_0, surface_1 = optical_system.physical_surfaces[0], optical_system.physical_surfaces[-1]
     ray_sequence.plot(ax=ax[1, 0], linewidth=0.5, labels=rays_labels)
     if valid_cavity:
-        results_dict["cavity"].plot(ax=ax[1, 0])
-        results_dict["cavity"].plot(ax=ax[1, 1])
+        results_dict["cavity"].plot(ax=ax[1, 0], fine_resolution=True)
+        results_dict["cavity"].plot(ax=ax[1, 1], fine_resolution=True)
     else:
-        results_dict["optical_system"].plot(ax=ax[1, 0])
-        results_dict["optical_system"].plot(ax=ax[1, 1])
+        results_dict["optical_system"].plot(ax=ax[1, 0], fine_resolution=True)
+        results_dict["optical_system"].plot(ax=ax[1, 1], fine_resolution=True)
     ax[1, 0].set_xlim(ray_sequence.origin[0, 0, 0] - 0.01, center_of_curvature[0] * 2)  # (-1e-3, 100e-3)
     ax[1, 0].set_ylim(-surface_1.diameter / 2, surface_1.diameter / 2)  # (-4.2e-3, 4.2e-3)
     ax[1, 0].grid()
@@ -499,8 +489,8 @@ def plot_results(
 
     ray_sequence.plot(ax=ax[1, 1], linewidth=0.5, labels=rays_labels)
     ax[1, 1].set_xlim(
-        (surface_1.center[0] + center_of_curvature[0]) / 2 - 0.002, center_of_curvature[0] + 0.005
-    )  # (-1e-3, 100e-3)
+        center_of_curvature[0] -1e-3, center_of_curvature[0] + 1e-3
+    )
     ax[1, 1].set_ylim(-ray_sequence.origin[-1, 1, 1] * 0.5, 1 * ray_sequence.origin[-1, 1, 1])  # (-4.2e-3, 4.2e-3)
     ax[1, 1].grid()
     ax[1, 1].scatter(wavefront_points[:, 0], wavefront_points[:, 1], s=8, color="purple")
@@ -597,7 +587,7 @@ def plot_results(
             exp = int(exp_str)
             terms_parts_mirror.append(rf"${mant:.1f}\cdot10^{{{exp}}}\,x^{{{2 * i}}}$")
         terms_mirror = " + ".join(terms_parts_mirror)
-        if spot_size_paraxial is not None:
+        if not np.isnan(spot_size_paraxial):
             NA_short_arm = (
                 np.nan if results_dict["cavity"] is None else results_dict["cavity"].arms[0].mode_parameters.NA[0]
             )

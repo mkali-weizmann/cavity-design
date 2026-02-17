@@ -714,15 +714,9 @@ class Surface:
         center = np.array([p.x, p.y, p.z])
         outwards_normal = unit_vector_of_angles(p.theta, p.phi)
         if p.surface_type == SurfacesTypes.curved_mirror:  # Mirror
-            surface = CurvedMirror(
-                radius=p.r_1,
-                outwards_normal=outwards_normal,
-                center=center,
-                curvature_sign=p.curvature_sign,
-                name=p.name,
-                diameter=p.diameter,
-                thermal_properties=p.material_properties,
-            )
+            surface = CurvedMirror(radius=p.r_1, outwards_normal=outwards_normal, center=center,
+                                   curvature_sign=p.curvature_sign, name=p.name, diameter=p.diameter,
+                                   material_properties=p.material_properties)
         elif p.surface_type == SurfacesTypes.thick_lens:  # ThickLens
             surface = generate_lens_from_params(p)
         elif p.surface_type == SurfacesTypes.ideal_thick_lens:  # IdealThickLens
@@ -1633,13 +1627,13 @@ class CurvedMirror(CurvedSurface, ReflectiveSurface):
         curvature_sign: int = 1,
         name: Optional[str] = None,
         diameter: float = np.nan,
-        thermal_properties: Optional[MaterialProperties] = None,
+        material_properties: Optional[MaterialProperties] = None,
     ):
 
         super().__init__(
             outwards_normal=outwards_normal,
             name=name,
-            material_properties=thermal_properties,
+            material_properties=material_properties,
             radius=radius,
             center=center,
             origin=origin,
@@ -1675,25 +1669,6 @@ class CurvedMirror(CurvedSurface, ReflectiveSurface):
         )
         return ABCD
 
-    def plot_2d(self, ax: Optional[plt.Axes] = None, name: Optional[str] = None):
-        if ax is None:
-            fig, ax = plt.subplots()
-        d_theta = 0.3
-        p = np.linspace(-d_theta, d_theta, 50)
-        p_grey = np.linspace(d_theta, -d_theta + 2 * np.pi, 100)
-        points = self.parameterization(0, p)
-        grey_points = self.parameterization(0, p_grey)
-        ax.plot(points[:, 0], points[:, 1], "b-")
-        ax.plot(
-            grey_points[:, 0],
-            grey_points[:, 1],
-            color=(0.81, 0.81, 0.81),
-            linestyle="-.",
-            linewidth=0.5,
-            label=None,
-        )
-        ax.plot(self.origin[0], self.origin[1], "bo")
-
     def thermal_transformation(
         self,
         P_laser_power: float,
@@ -1725,12 +1700,8 @@ class CurvedMirror(CurvedSurface, ReflectiveSurface):
             new_thermal_properties = copy.copy(self.material_properties)
             new_thermal_properties.temperature = delta_T
 
-            new_mirror = CurvedMirror(
-                radius=new_radius,
-                outwards_normal=self.outwards_normal,
-                center=self.center,  # + (new_radius - self.radius) * self.inwards_normal,
-                thermal_properties=new_thermal_properties,
-            )
+            new_mirror = CurvedMirror(radius=new_radius, outwards_normal=self.outwards_normal, center=self.center,
+                                      material_properties=new_thermal_properties)
             return new_mirror
 
 
@@ -4522,13 +4493,8 @@ def match_a_mirror_to_mode(
             R_z_inverse = np.abs(z / (z**2 + mode.z_R[0] ** 2))
             center = mode.center[0, :] + mode.k_vector * z
             outwards_normal = mode.k_vector * np.sign(z)
-            mirror = CurvedMirror(
-                center=center,
-                outwards_normal=outwards_normal,
-                radius=R_z_inverse**-1,
-                thermal_properties=material_properties,
-                name=name,
-            )
+            mirror = CurvedMirror(radius=R_z_inverse ** -1, outwards_normal=outwards_normal, center=center, name=name,
+                                  material_properties=material_properties)
     elif R is not None:
         center = mode.z_of_R(R, output_type=np.ndarray)
         outwards_normal = mode.k_vector * np.sign(R)
@@ -4540,13 +4506,8 @@ def match_a_mirror_to_mode(
                 name=name,
             )
         else:
-            mirror = CurvedMirror(
-                center=center,
-                outwards_normal=outwards_normal,
-                radius=np.abs(R),
-                thermal_properties=material_properties,
-                name=name,
-            )
+            mirror = CurvedMirror(radius=np.abs(R), outwards_normal=outwards_normal, center=center, name=name,
+                                  material_properties=material_properties)
     return mirror
 
 
@@ -5159,12 +5120,8 @@ def mirror_lens_mirror_cavity_generator(
         center = surface_right.center + mode_right.k_vector * right_arm_length
         outwards_normal = mode_right.k_vector  # not convex compatible currently
         R = big_mirror_radius
-        mirror_right = CurvedMirror(
-            center=center,
-            outwards_normal=outwards_normal,
-            radius=R,
-            thermal_properties=mirrors_material_properties,
-        )
+        mirror_right = CurvedMirror(radius=R, outwards_normal=outwards_normal, center=center,
+                                    material_properties=mirrors_material_properties)
     elif big_mirror_radius is not None and right_arm_length is None:
         mirror_right = match_a_mirror_to_mode(
             mode=mode_right, R=big_mirror_radius, material_properties=mirrors_material_properties
@@ -5246,18 +5203,10 @@ def fabry_perot_generator(
             mode=mode_0, material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"], R=-radii[1]
         )
     elif unconcentricity is not None:
-        mirror_1 = CurvedMirror(
-            origin=np.array([0, 0, 0]),
-            outwards_normal=np.array([-1, 0, 0]),
-            radius=radii[0],
-            name="Left Mirror",
-        )
-        mirror_2 = CurvedMirror(
-            origin=np.array([-unconcentricity, 0, 0]),
-            outwards_normal=np.array([1, 0, 0]),
-            radius=radii[1],
-            name="Right Mirror",
-        )
+        mirror_1 = CurvedMirror(radius=radii[0], outwards_normal=np.array([-1, 0, 0]), origin=np.array([0, 0, 0]),
+                                name="Left Mirror")
+        mirror_2 = CurvedMirror(radius=radii[1], outwards_normal=np.array([1, 0, 0]),
+                                origin=np.array([-unconcentricity, 0, 0]), name="Right Mirror")
     else:
         raise ValueError("Either NA or unconcentricity must be provided.")
     return Cavity(

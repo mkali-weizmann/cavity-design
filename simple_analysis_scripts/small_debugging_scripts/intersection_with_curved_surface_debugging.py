@@ -1,7 +1,7 @@
 from cavity import *
 # %% # Intersection debug cell:
-general_mirror = CurvedMirror(radius=5e-3, origin=np.array([0, 0, 0]), outwards_normal=np.array([-1, 0, 0]))
-right_mirror = CurvedMirror(radius=5e-3, origin=np.array([0, 0, 0]), outwards_normal=np.array([1, 0, 0]))
+general_mirror = CurvedMirror(radius=5e-3, outwards_normal=np.array([-1, 0, 0]), origin=np.array([0, 0, 0]))
+right_mirror = CurvedMirror(radius=5e-3, outwards_normal=np.array([1, 0, 0]), origin=np.array([0, 0, 0]))
 tilt_angles = np.linspace(0, 0.15, 1000)
 initial_arc_lengths = tilt_angles * general_mirror.radius
 initial_rays_origin = general_mirror.parameterization(np.zeros_like(initial_arc_lengths), -initial_arc_lengths)

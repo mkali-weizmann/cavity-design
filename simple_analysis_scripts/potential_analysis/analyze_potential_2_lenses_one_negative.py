@@ -7,7 +7,7 @@ from simple_analysis_scripts.potential_analysis.analyze_potential import *
 plot = True
 print_tests = True
 n_rays = 15
-unconcentricity = 1e-3  # np.float64(0.007610344827586207)  # ,  np.float64(0.007268965517241379)
+unconcentricity = 10e-3  # np.float64(0.007610344827586207)  # ,  np.float64(0.007268965517241379)
 phi_max = 0.05
 OPTICAL_AXIS = RIGHT
 back_focal_length_aspheric = 20e-3
@@ -99,18 +99,18 @@ R_analytical = optical_system.output_radius_of_curvature(
 # output_rays_inverse.plot(ax=ax, linestyle="dashed", linewidth=0.5, color='red')
 # plt.show()
 # %%
-# results_dict = analyze_potential(
-#     optical_system=optical_system,
-#     rays_0=rays_0,
-#     unconcentricity=unconcentricity,
-#     end_mirror_ROC=
-#     print_tests=print_tests,
-# )
-# plot_results(
-#     results_dict=results_dict,
-#     far_away_plane=True,
-#     unconcentricity=unconcentricity,
-#     potential_x_axis_angles=False,
-# )
-#
-# plt.show()
+results_dict = analyze_potential(
+    optical_system=optical_system,
+    rays_0=rays_0,
+    unconcentricity=unconcentricity,
+    end_mirror_ROC=20e-2,
+    print_tests=print_tests,
+)
+plot_results(
+    results_dict=results_dict,
+    far_away_plane=True,
+    unconcentricity=unconcentricity,
+    potential_x_axis_angles=False,
+)
+
+plt.show()

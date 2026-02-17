@@ -36,20 +36,10 @@ def test_fabry_perot_mode_finding():
     R_2 = 5e-3
     u = 1e-5
     L = R_1 + R_2 - u
-    surface_1 = CurvedMirror(
-        center=np.array([0, 0, -R_1]),
-        outwards_normal=np.array([0, 0, -1]),
-        radius=R_1,
-        curvature_sign=CurvatureSigns.concave,
-        diameter=0.01,
-    )
-    surface_2 = CurvedMirror(
-        center=np.array([0, 0, -R_1 + L]),
-        outwards_normal=np.array([0, 0, 1]),
-        radius=R_2,
-        curvature_sign=CurvatureSigns.concave,
-        diameter=0.01,
-    )
+    surface_1 = CurvedMirror(radius=R_1, outwards_normal=np.array([0, 0, -1]), center=np.array([0, 0, -R_1]),
+                             curvature_sign=CurvatureSigns.concave, diameter=0.01)
+    surface_2 = CurvedMirror(radius=R_2, outwards_normal=np.array([0, 0, 1]), center=np.array([0, 0, -R_1 + L]),
+                             curvature_sign=CurvatureSigns.concave, diameter=0.01)
     cavity = Cavity(
         surfaces=[surface_1, surface_2],
         standing_wave=True,
