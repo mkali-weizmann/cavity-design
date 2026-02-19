@@ -2885,8 +2885,10 @@ class OpticalSystem:
         gouy_phases = [arm.acquired_gouy_phase for arm in self.arms]
         return sum(gouy_phases)
 
-    def output_radius_of_curvature(self, initial_distance: float) -> float:
+    def output_radius_of_curvature(self, initial_distance: Optional[float] = None, source_position: Optional[np.ndarray] = None) -> float:
         # Currently assume 1d problem for simplicty (only the :2, :2 elements for the first dimension are used), if required it can be expanded
+        if initial_distance is None and source_position is not None:
+            initial_distance = (self.surfaces[0].center - source_position) @ self.central_line[0].k_vector  # ATTENTION, THIS MIGHT NOT BE THE OPTICAL AXIS OUTSIDE THE FIRST ARM
         first_ABCD = self.surfaces[0].ABCD_matrix(cos_theta_incoming=1)[:2, :2]
         ABCD = self.ABCD_round_trip[:2, :2] @ first_ABCD
         A, B, C, D = ABCD[0, 0], ABCD[0, 1], ABCD[1, 0], ABCD[1, 1]
@@ -4508,7 +4510,26 @@ def match_a_mirror_to_mode(
         else:
             mirror = CurvedMirror(radius=np.abs(R), outwards_normal=outwards_normal, center=center, name=name,
                                   material_properties=material_properties)
+    else:
+        raise ValueError("Debug me")
     return mirror
+
+def match_a_local_mode_to_mirror(mirror: CurvedMirror,
+                                 lambda_0_laser: float,
+                                 NA: Optional[float] = None,
+                                 z_R: Optional[float] = None,
+                                 n=1) -> LocalModeParameters:
+    if z_R is None and NA is not None and lambda_0_laser is not None:
+        z_R = z_R_of_NA(NA, lambda_laser=lambda_0_laser / n)
+    elif z_R is None and (NA is None or lambda_0_laser is None):
+        raise ValueError("You must provide either z_R or NA and lambda_0_laser, but not neither.")
+
+    z_minus_z_0 = -(mirror.radius + np.sqrt(mirror.radius**2 - 4 * z_R**2)) / 2
+    q = z_minus_z_0 + 1j * z_R
+    local_mode_parameters = LocalModeParameters(q=np.array([q, q]), lambda_0_laser=lambda_0_laser, n=n)
+
+    return local_mode_parameters
+
 
 
 def local_mode_2_of_lens_parameters(

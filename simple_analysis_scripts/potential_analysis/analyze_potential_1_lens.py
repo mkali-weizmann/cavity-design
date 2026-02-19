@@ -6,19 +6,19 @@ from simple_analysis_scripts.potential_analysis.analyze_potential import *
 # %%
 dn = 0
 lens_types = ['aspheric - lab', 'spherical - like labs aspheric', 'avantier', 'aspheric - like avantier']
-lens_type = lens_types[2]
+lens_type = lens_types[0]
 n_actual, n_design, T_c, back_focal_length, R_1, R_2, R_2_signed, diameter = known_lenses_generator(lens_type=lens_type,
                                                                                                     dn=dn)
 n_rays = 30
-unconcentricity = 5e-4  # np.float64(0.007610344827586207)  # ,  np.float64(0.007268965517241379)
-phi_max = 0.04
+unconcentricity = 1e-3  # np.float64(0.007610344827586207)  # ,  np.float64(0.007268965517241379)
+phi_max = 0.14
 desired_focus = 200e-3
 plot = True
 print_tests = True
 
 defocus = choose_source_position_for_desired_focus_analytic(desired_focus=desired_focus, T_c=T_c, n_design=n_design, diameter=diameter, back_focal_length=back_focal_length, R_1=R_1, R_2=R_2_signed,)
 optical_system, optical_axis = generate_one_lens_optical_system(R_1=R_1, R_2=R_2_signed, back_focal_length=back_focal_length, defocus=defocus, T_c=T_c, n_design=n_design, diameter=diameter, n_actual=n_actual,)
-rays_0 = initialize_rays(defocus=defocus, n_rays=n_rays, phi_max=phi_max, diameter=diameter, back_focal_length=back_focal_length)
+rays_0 = initialize_rays(n_rays=n_rays, phi_max=phi_max)
 results_dict = analyze_potential(optical_system=optical_system, rays_0=rays_0, unconcentricity=unconcentricity, print_tests=print_tests)
 
 if print_tests:
@@ -35,11 +35,9 @@ if plot:
     # plt.close('all')
     fig, ax = plot_results(results_dict, far_away_plane=True, unconcentricity=unconcentricity, potential_x_axis_angles=False, rays_labels=["Before lens", "After flat surface", "After aspheric surface"])
     center = results_dict["center_of_curvature"]
-    ax[1, 0].set_xlim((-0.01, 1))
     plt.suptitle(
         f"lens_type={lens_type}, desired_focus = {desired_focus:.3e}m, n_design: {n_design:.3f}, n_actual: {n_actual:.3f}, Lens focal length: {back_focal_length * 1e3:.1f} mm, Defocus: z_lens -> z_lens + {defocus * 1e3:.1f} mm, T_c: {T_c * 1e3:.1f} mm, Diameter: {diameter * 1e3:.2f} mm"
     )
-    ax[1, 1].set_xlim(-0.1, 1)
     # Save image with suptitle in name:
     # plt.savefig(
     #     f"outputs/figures/analyze_potential_n_design lens_type={lens_type}_{n_design:.3f}_n_actual_{n_actual:.3f}_focal_length_{back_focal_length * 1e3:.1f}mm_defocus_{defocus * 1e3:.1f}mm_Tc_{T_c * 1e3:.1f}mm_diameter_{diameter * 1e3:.2f}mm.svg",

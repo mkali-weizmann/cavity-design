@@ -634,8 +634,7 @@ def test_potential_single_lens():
                                                                     back_focal_length=back_focal_length,
                                                                     defocus=defocus, T_c=T_c, n_design=n_design,
                                                                     diameter=diameter, n_actual=n_actual, )
-    rays_0 = initialize_rays(defocus=defocus, n_rays=n_rays, phi_max=phi_max, diameter=diameter,
-                             back_focal_length=back_focal_length)
+    rays_0 = initialize_rays(n_rays=n_rays, phi_max=phi_max)
     results_dict = analyze_potential(optical_system=optical_system, rays_0=rays_0, unconcentricity=unconcentricity,
                                      print_tests=print_tests)
     assert np.isclose(

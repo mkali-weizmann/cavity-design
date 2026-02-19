@@ -20,7 +20,7 @@ T_c_spherical = 4.35e-3
 spherical_radii = 200e-3
 relative_position_spherical = 0.3
 desired_focus = 200e-3
-lens_type = "aspheric - lab"
+lens_type = "avantier"
 dn = 0
 
 n_actual, n_design, T_c, back_focal_length, R_1, R_2, R_2_signed, diameter = known_lenses_generator(lens_type, dn)
@@ -67,7 +67,6 @@ optical_system = OpticalSystem(
 )
 
 rays_0 = initialize_rays(defocus=defocus, n_rays=n_rays, phi_max=phi_max)
-
 
 results_dict = analyze_potential(
     optical_system=optical_system,

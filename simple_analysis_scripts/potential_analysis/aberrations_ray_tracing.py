@@ -27,6 +27,7 @@ except Exception:
     from matplotlib import use
     use('TkAgg')
 from cavity import *
+from simple_analysis_scripts.potential_analysis.analyze_potential import initialize_rays
 
 def point_of_equal_angles(ray_1: Ray, ray_2: Ray, p_1: np.ndarray):
     # projects point p_1 (assumed to be on ray_1) onto ray_2 such that the angles between the segment p_1 to p_2 and the rays are equal.
@@ -77,11 +78,8 @@ def find_wavefront_deviation(cavity: Cavity,
                              ):
     first_mirror = cavity.physical_surfaces[0]
     last_mirror = cavity.physical_surfaces[-1]
-    tilt_angles = np.linspace(0, max_initial_angle, n_rays)
-    initial_arc_lengths = tilt_angles * first_mirror.radius
-    initial_rays_origin = first_mirror.parameterization(np.zeros_like(initial_arc_lengths), -initial_arc_lengths)
-    orthonormal_direction = unit_vector_of_angles(theta=np.zeros_like(tilt_angles), phi=tilt_angles + np.pi * (1 - first_mirror.inwards_normal[0])/2)  # Assume system is alligned with x axis
-    orthonormal_ray = Ray(origin=initial_rays_origin, k_vector=orthonormal_direction)
+    orthonormal_ray = initialize_rays(n_rays=n_rays, phi_max=max_initial_angle, starting_mirror=first_mirror)
+    tilt_angles = angles_of_unit_vector(orthonormal_ray.k_vector)[1]
     ray_history = cavity.propagate_ray(orthonormal_ray, n_arms=len(cavity.physical_surfaces) - 1)
     intersection_points = ray_history[-1].origin
     intersection_directions = ray_history[-2].k_vector
