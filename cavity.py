@@ -4665,22 +4665,64 @@ def find_minimal_width_for_spot_size_and_radius(radius, spot_size_radius, T_edge
 
 
 def calculate_incidence_angle(surface: Surface, mode_parameters: ModeParameters) -> float:
-    # Calculates the incidence angle between the beam at the E=E_0e^-1 lateral_position (one spot size away from it's optical axis)
-    # and the surface of an optical element
-    # Derivation is abailable here: https://mynotebook.labarchives.com/doc/view/ODcuMTAwMDAwMDAwMDAwMDF8MTA1ODU5NS82Ny9FbnRyeVBhcnQvMTg4MjAyOTYyOXwyMjEuMQ==?nb_id=MTM3NjE3My41fDEwNTg1OTUvMTA1ODU5NS9Ob3RlYm9vay8zMjQzMzA0MzY1fDM0OTMzNjMuNQ%3D%3D
+    # old code is in git before commit 68ee9d05bff74c20b80f76af9896fcea89948562 and derivation of old code is here:
+    # https://mynotebook.labarchives.com/doc/view/ODcuMTAwMDAwMDAwMDAwMDF8MTA1ODU5NS82Ny9FbnRyeVBhcnQvMTg4MjAyOTYyOXwyMjEuMQ==?nb_id=MTM3NjE3My41fDEwNTg1OTUvMTA1ODU5NS9Ob3RlYm9vay8zMjQzMzA0MzY1fDM0OTMzNjMuNQ%3D%3D
+    # Derivation for this syntax is in the research file under subsection "Angle of incidence of marginal ray and a spherical surface"
+    # And a demonstration that it works is here: https://www.desmos.com/calculator/qk6yradzbn
     if isinstance(surface, FlatSurface):
         return np.arccos(surface.outwards_normal @ mode_parameters.k_vector)
+    if isinstance(surface, AsphericSurface):
+        raise NotImplementedError("Calculate incidence angle for aspheric surfaces is not implemented yet.")
 
     surface_center_to_waist_position_vector = mode_parameters.center[0, :] - surface.center
-    R_mode = mode_parameters.R_of_z(np.linalg.norm(surface_center_to_waist_position_vector))
-
     from_the_convex_side = np.sign(surface.outwards_normal @ surface_center_to_waist_position_vector)
+    w_0, z_R, R, z_0, z_s = mode_parameters.w_0[0], mode_parameters.z_R[0], surface.radius, mode_parameters.center[0, :] @ mode_parameters.k_vector, surface.origin  @ mode_parameters.k_vector
+    # --- Quadratic coefficients ---
+    A = (w_0 ** 2 / z_R ** 2) + 1.0
+    B = -2.0 * ((w_0 ** 2 / z_R ** 2) * z_0 + z_s)
+    C = w_0 ** 2 + (w_0 ** 2 / z_R ** 2) * z_0 ** 2 + z_s ** 2 - R ** 2
 
-    angle_of_incidence = np.arcsin(
-        ((np.abs(R_mode + surface.radius * from_the_convex_side)) * mode_parameters.NA[0]) / surface.radius
+    # --- Discriminant ---
+    discriminant = B ** 2 - 4.0 * A * C
+
+    if discriminant < 0:
+        raise ValueError("No real intersection between Gaussian envelope and sphere.")
+
+    sqrt_disc = np.sqrt(discriminant)
+
+    # --- Solutions z1, z2 ---
+    z1 = (-B + sqrt_disc) / (2.0 * A)
+    z2 = (-B - sqrt_disc) / (2.0 * A)
+    z_star = (-B + sqrt_disc * from_the_convex_side) / (2.0 * A)
+    y_star = np.sqrt(R ** 2 - (z_star - z_s) ** 2)
+
+    # ---------------------------------------------------------
+    # Choose which intersection you want:
+    # ---------------------------------------------------------
+
+    # --- Beam radius at intersection ---
+
+
+    # --- Derivative w'(z) ---
+    w_prime = (
+            w_0 * (z_star - z_0)
+            / (z_R ** 2 * np.sqrt(1.0 + ((z_star - z_0) ** 2) / z_R ** 2))
     )
 
-    angle_of_incidence_deg = np.degrees(angle_of_incidence)
+    # --- Ray direction vector (not normalized) ---
+    v = np.array([1.0, w_prime])
+
+    # --- Surface normal vector (not normalized) ---
+    n = np.array([
+        z_star - z_s,
+        y_star
+    ])
+
+    # --- Angle between them ---
+    cross_mag = np.abs(v[0] * n[1] - v[1] * n[0])
+    gamma = np.arcsin(cross_mag / (np.linalg.norm(v) * np.linalg.norm(n)))
+    angle_of_incidence_deg = np.degrees(gamma)
+
     return angle_of_incidence_deg
 
 
