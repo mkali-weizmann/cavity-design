@@ -1163,7 +1163,7 @@ class AsphericSurface(Surface):
         diameter: float = 7.75e-3,
         fine_resolution=False,
         **kwargs,
-    ):
+    ) -> plt.Axes:
         if plane != "xy" or self.outwards_normal[2] != 0:
             raise NotImplementedError("Plotting AsphericSurface is only implemented for the 'xy' plane.")
         if dim != 2:
@@ -1196,6 +1196,7 @@ class AsphericSurface(Surface):
         ax.plot(
             r_back_side[:, 0], r_back_side[:, 1], linestyle="--", color=color if color is not None else "blue", **kwargs
         )
+        return ax
 
 
 class AsphericRefractiveSurface(AsphericSurface, RefractiveSurface):
@@ -2416,7 +2417,7 @@ class OpticalSystem:
             params = self.params
         return params
 
-    @property
+    @property  # TODO change it to be the __str__ function without breaking existing code
     def formatted_textual_params(self) -> str:
         if self.to_params is None:
             return "No parameters set for this cavity."
@@ -4666,15 +4667,17 @@ def find_minimal_width_for_spot_size_and_radius(radius, spot_size_radius, T_edge
 def calculate_incidence_angle(surface: Surface, mode_parameters: ModeParameters) -> float:
     # Calculates the incidence angle between the beam at the E=E_0e^-1 lateral_position (one spot size away from it's optical axis)
     # and the surface of an optical element
+    # Derivation is abailable here: https://mynotebook.labarchives.com/doc/view/ODcuMTAwMDAwMDAwMDAwMDF8MTA1ODU5NS82Ny9FbnRyeVBhcnQvMTg4MjAyOTYyOXwyMjEuMQ==?nb_id=MTM3NjE3My41fDEwNTg1OTUvMTA1ODU5NS9Ob3RlYm9vay8zMjQzMzA0MzY1fDM0OTMzNjMuNQ%3D%3D
     if isinstance(surface, FlatSurface):
         return np.arccos(surface.outwards_normal @ mode_parameters.k_vector)
 
     surface_center_to_waist_position_vector = mode_parameters.center[0, :] - surface.center
+    R_mode = mode_parameters.R_of_z(np.linalg.norm(surface_center_to_waist_position_vector))
+
     from_the_convex_side = np.sign(surface.outwards_normal @ surface_center_to_waist_position_vector)
-    surface_to_waist_distance_signed = np.linalg.norm(surface_center_to_waist_position_vector) * from_the_convex_side
 
     angle_of_incidence = np.arcsin(
-        ((surface.radius + surface_to_waist_distance_signed) * mode_parameters.NA[0]) / surface.radius
+        ((np.abs(R_mode + surface.radius * from_the_convex_side)) * mode_parameters.NA[0]) / surface.radius
     )
 
     angle_of_incidence_deg = np.degrees(angle_of_incidence)

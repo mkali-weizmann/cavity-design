@@ -27,6 +27,7 @@ from utils import (
 from simple_analysis_scripts.potential_analysis.analyze_potential import (
     choose_source_position_for_desired_focus_analytic,
     known_lenses_generator, generate_one_lens_optical_system, initialize_rays, analyze_potential,
+    analyze_potential_given_cavity,
 )
 
 
@@ -640,3 +641,37 @@ def test_potential_single_lens():
     assert np.isclose(
         np.abs(results_dict["zero_derivative_points"] * 1e3), 0.15342637331775477
     ), f"Potential single lens test failed: expected zero derivative point at approximately 0.15342637331775477 mm but got {results_dict['zero_derivative_points']*1e3} mm"
+
+def test_free_potential_vs_cavity_potential_comparison():
+    dn = 0
+    lens_types = ['aspheric - lab', 'spherical - like labs aspheric', 'avantier', 'aspheric - like avantier']
+    lens_type = lens_types[0]
+    n_actual, n_design, T_c, back_focal_length, R_1, R_2, R_2_signed, diameter = known_lenses_generator(
+        lens_type=lens_type,
+        dn=dn)
+    n_rays = 30
+    unconcentricity = 1e-3  # np.float64(0.007610344827586207)  # ,  np.float64(0.007268965517241379)
+    phi_max = 0.14
+    desired_focus = 200e-3
+    print_tests = True
+
+    defocus = choose_source_position_for_desired_focus_analytic(desired_focus=desired_focus, T_c=T_c, n_design=n_design,
+                                                                diameter=diameter, back_focal_length=back_focal_length,
+                                                                R_1=R_1, R_2=R_2_signed, )
+    optical_system, optical_axis = generate_one_lens_optical_system(R_1=R_1, R_2=R_2_signed,
+                                                                    back_focal_length=back_focal_length,
+                                                                    defocus=defocus, T_c=T_c, n_design=n_design,
+                                                                    diameter=diameter, n_actual=n_actual, )
+    rays_0 = initialize_rays(n_rays=n_rays, phi_max=phi_max)
+    results_dict = analyze_potential(optical_system=optical_system, rays_0=rays_0, unconcentricity=unconcentricity,
+                                     print_tests=print_tests)
+    cavity = results_dict['cavity']
+
+    results_dict_cavity = analyze_potential_given_cavity(cavity=cavity, n_rays=30, phi_max=0.14, print_tests=True)
+    assert np.all(np.isclose(np.array(
+        [results_dict['zero_derivative_points'], results_dict['polynomial_residuals_mirror'].coef[2],
+         results_dict['polynomial_residuals_opposite'].coef[1]]),
+                             np.array([results_dict_cavity['zero_derivative_points'],
+                                       results_dict_cavity['polynomial_residuals_mirror'].coef[2],
+                                       results_dict_cavity['polynomial_residuals_opposite'].coef[
+                                           1]]))), "Results from analyze_potential_given_cavity do not match results from analyze_potential for the same cavity."

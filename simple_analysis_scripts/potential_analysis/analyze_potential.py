@@ -330,7 +330,8 @@ def generate_negative_lens_cavity(n_actual_first_lens, n_design_first_lens, T_c_
                                   negative_lens_refractive_index,
                                   negative_lens_center_thickness,
                                   first_arm_NA: float,
-                                  right_mirror_ROC: float
+                                  right_mirror_ROC: Optional[float] = None,
+                                  right_mirror_distance_to_negative_lens_front: Optional[float] = None,
 ):
     defocus = choose_source_position_for_desired_focus_analytic(desired_focus=approximate_focus_distance_long_arm, T_c=T_c_first_lens, n_design=n_design_first_lens,
                                                                 diameter=diameter_first_lens, back_focal_length=back_focal_length_first_lens,
@@ -384,7 +385,13 @@ def generate_negative_lens_cavity(n_actual_first_lens, n_design_first_lens, T_c_
 
     output_mode_local = optical_system_without_last_mirror.propagate_mode_parameters(mode_parameters=mode_parameters_first_arm, propagate_with_first_surface_first=False)[-1]
     output_mode = output_mode_local.to_mode_parameters(location_of_local_mode_parameter=optical_system_without_last_mirror.arms[-1].surface_1.center, k_vector=RIGHT)
-    right_mirror = match_a_mirror_to_mode(mode=output_mode, R=right_mirror_ROC, name="Large mirror", material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"])
+    if right_mirror_distance_to_negative_lens_front is not None and right_mirror_ROC is None:
+        z_minus_z_0 = np.linalg.norm(output_mode.center[0, :] - negative_lens_front.center) + right_mirror_distance_to_negative_lens_front
+        right_mirror = match_a_mirror_to_mode(mode=output_mode, z=z_minus_z_0, name="Large mirror", material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"])
+    elif right_mirror_ROC is not None and right_mirror_distance_to_negative_lens_front is None:
+        right_mirror = match_a_mirror_to_mode(mode=output_mode, R=right_mirror_ROC, name="Large mirror", material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"])
+    else:
+        raise ValueError("Either right_mirror_ROC or right_mirror_distance_to_negative_lens_front must be provided, but not both.")
 
     cavity = Cavity(surfaces=[mirror_left, *optical_system.surfaces, negative_lens_back, negative_lens_front, right_mirror],
                     lambda_0_laser=LAMBDA_0_LASER, t_is_trivial=True, p_is_trivial=True, use_paraxial_ray_tracing=False, standing_wave=True)

@@ -30,7 +30,6 @@ optical_system_initial, optical_axis = generate_one_lens_optical_system(R_1=R_1,
 
 output_ROC = optical_system_initial.output_radius_of_curvature(initial_distance=optical_system_initial.surfaces[0].center[0])
 
-
 spherical_back_center = optical_system_initial.surfaces[-1].center + output_ROC * (1+relative_position_spherical) * OPTICAL_AXIS
 spherical_back = CurvedRefractiveSurface(
     radius=spherical_radii,
@@ -66,7 +65,7 @@ optical_system = OpticalSystem(
     given_initial_central_line=True,
 )
 
-rays_0 = initialize_rays(defocus=defocus, n_rays=n_rays, phi_max=phi_max)
+rays_0 = initialize_rays(n_rays=n_rays, phi_max=phi_max)
 
 results_dict = analyze_potential(
     optical_system=optical_system,
