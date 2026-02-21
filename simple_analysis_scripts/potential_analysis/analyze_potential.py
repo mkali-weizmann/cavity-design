@@ -375,23 +375,27 @@ def generate_negative_lens_cavity(n_actual_first_lens, n_design_first_lens, T_c_
         thickness=negative_lens_center_thickness / 2,
         diameter=diameter_first_lens,
     )
+    if right_mirror_ROC is not None and right_mirror_distance_to_negative_lens_front is not None:
+        right_mirror = CurvedMirror(radius=right_mirror_ROC,
+                                    outwards_normal=RIGHT,
+                                    center=negative_lens_front.center + right_mirror_distance_to_negative_lens_front * RIGHT,)
+    elif right_mirror_ROC is not None or right_mirror_distance_to_negative_lens_front is not None:
+        z_R_first_arm = z_R_of_NA(NA=first_arm_NA, lambda_laser=LAMBDA_0_LASER)
 
-    z_R_first_arm = z_R_of_NA(NA=first_arm_NA, lambda_laser=LAMBDA_0_LASER)
+        local_mode_parameters_first_mirror = match_a_local_mode_to_mirror(mirror=mirror_left, z_R=z_R_first_arm, lambda_0_laser=LAMBDA_0_LASER)
+        mode_parameters_first_arm = local_mode_parameters_first_mirror.to_mode_parameters(location_of_local_mode_parameter=mirror_left.center, k_vector=RIGHT)
+        optical_system_without_last_mirror = OpticalSystem(surfaces=[mirror_left, *optical_system.surfaces, negative_lens_back, negative_lens_front],
+                                                           t_is_trivial=True, p_is_trivial=True, given_initial_central_line=True, use_paraxial_ray_tracing=False)
 
-    local_mode_parameters_first_mirror = match_a_local_mode_to_mirror(mirror=mirror_left, z_R=z_R_first_arm, lambda_0_laser=LAMBDA_0_LASER)
-    mode_parameters_first_arm = local_mode_parameters_first_mirror.to_mode_parameters(location_of_local_mode_parameter=mirror_left.center, k_vector=RIGHT)
-    optical_system_without_last_mirror = OpticalSystem(surfaces=[mirror_left, *optical_system.surfaces, negative_lens_back, negative_lens_front],
-                                                       t_is_trivial=True, p_is_trivial=True, given_initial_central_line=True, use_paraxial_ray_tracing=False)
-
-    output_mode_local = optical_system_without_last_mirror.propagate_mode_parameters(mode_parameters=mode_parameters_first_arm, propagate_with_first_surface_first=False)[-1]
-    output_mode = output_mode_local.to_mode_parameters(location_of_local_mode_parameter=optical_system_without_last_mirror.arms[-1].surface_1.center, k_vector=RIGHT)
-    if right_mirror_distance_to_negative_lens_front is not None and right_mirror_ROC is None:
-        z_minus_z_0 = np.linalg.norm(output_mode.center[0, :] - negative_lens_front.center) + right_mirror_distance_to_negative_lens_front
-        right_mirror = match_a_mirror_to_mode(mode=output_mode, z=z_minus_z_0, name="Large mirror", material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"])
-    elif right_mirror_ROC is not None and right_mirror_distance_to_negative_lens_front is None:
-        right_mirror = match_a_mirror_to_mode(mode=output_mode, R=right_mirror_ROC, name="Large mirror", material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"])
+        output_mode_local = optical_system_without_last_mirror.propagate_mode_parameters(mode_parameters=mode_parameters_first_arm, propagate_with_first_surface_first=False)[-1]
+        output_mode = output_mode_local.to_mode_parameters(location_of_local_mode_parameter=optical_system_without_last_mirror.arms[-1].surface_1.center, k_vector=RIGHT)
+        if right_mirror_distance_to_negative_lens_front is not None and right_mirror_ROC is None:
+            z_minus_z_0 = np.linalg.norm(output_mode.center[0, :] - negative_lens_front.center) + right_mirror_distance_to_negative_lens_front
+            right_mirror = match_a_mirror_to_mode(mode=output_mode, z=z_minus_z_0, name="Large mirror", material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"])
+        elif right_mirror_ROC is not None and right_mirror_distance_to_negative_lens_front is None:
+            right_mirror = match_a_mirror_to_mode(mode=output_mode, R=right_mirror_ROC, name="Large mirror", material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"])
     else:
-        raise ValueError("Either right_mirror_ROC or right_mirror_distance_to_negative_lens_front must be provided, but not both.")
+        raise ValueError("Either right_mirror_ROC or right_mirror_distance_to_negative_lens_front or both must be provided")
 
     cavity = Cavity(surfaces=[mirror_left, *optical_system.surfaces, negative_lens_back, negative_lens_front, right_mirror],
                     lambda_0_laser=LAMBDA_0_LASER, t_is_trivial=True, p_is_trivial=True, use_paraxial_ray_tracing=False, standing_wave=True)
@@ -494,8 +498,8 @@ def analyze_potential(
     results_dict["cavity"] = cavity
 
     if cavity.resonating_mode_successfully_traced:
-        results_dict["spot_size_paraxial"] = cavity.arms[len(cavity.surfaces) - 1].mode_parameters_on_surface_1.spot_size[0]
-        results_dict["NA_paraxial"] = cavity.arms[len(cavity.surfaces) - 1].mode_parameters.NA[0]
+        results_dict["spot_size_paraxial"] = cavity.arms[len(cavity.surfaces) - 2].mode_parameters_on_surface_1.spot_size[0]
+        results_dict["NA_paraxial"] = cavity.arms[len(cavity.surfaces) - 2].mode_parameters.NA[0]
     else:
         results_dict["spot_size_paraxial"] = np.nan
         results_dict["NA_paraxial"] = np.nan
@@ -527,8 +531,8 @@ def analyze_potential_given_cavity(cavity: Cavity,
     results_dict["optical_system"] = optical_system_reduced
     results_dict["cavity"] = cavity
     if cavity.resonating_mode_successfully_traced:  #TODO generalize so that this paragraph is not written twice
-        results_dict["spot_size_paraxial"] = cavity.arms[len(cavity.surfaces) - 1].mode_parameters_on_surface_1.spot_size[0]
-        results_dict["NA_paraxial"] = cavity.arms[len(cavity.surfaces) - 1].mode_parameters.NA[0]
+        results_dict["spot_size_paraxial"] = cavity.arms[len(cavity.surfaces) - 2].mode_parameters_on_surface_1.spot_size[0]
+        results_dict["NA_paraxial"] = cavity.arms[len(cavity.surfaces) - 2].mode_parameters.NA[0]
     else:
         results_dict["spot_size_paraxial"] = np.nan
         results_dict["NA_paraxial"] = np.nan
@@ -598,7 +602,7 @@ def plot_results(
     else:
         results_dict["optical_system"].plot(ax=ax[1, 0], fine_resolution=True)
         results_dict["optical_system"].plot(ax=ax[1, 1], fine_resolution=True)
-    ax[1, 0].set_xlim(ray_sequence.origin[0, 0, 0] - 0.01, center_of_curvature[0] * 2)  # (-1e-3, 100e-3)
+    ax[1, 0].set_xlim(ray_sequence.origin[0, 0, 0] - 0.01, results_dict['end_mirror_object'].center[0]+0.01)  # (-1e-3, 100e-3)
     ax[1, 0].set_ylim(-surface_1.diameter / 2, surface_1.diameter / 2)  # (-4.2e-3, 4.2e-3)
     ax[1, 0].grid()
     ax[1, 0].scatter(wavefront_points[:, 0], wavefront_points[:, 1], s=8, color="purple")

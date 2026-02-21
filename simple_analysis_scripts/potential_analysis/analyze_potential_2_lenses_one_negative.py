@@ -27,7 +27,6 @@ n_actual, n_design, T_c, back_focal_length, R_1, R_2, R_2_signed, diameter = kno
 defocus = choose_source_position_for_desired_focus_analytic(desired_focus=desired_focus, T_c=T_c, n_design=n_design, diameter=diameter, back_focal_length=back_focal_length, R_1=R_1, R_2=R_2_signed,)
 optical_system_initial, optical_axis = generate_one_lens_optical_system(R_1=R_1, R_2=R_2_signed, back_focal_length=back_focal_length, defocus=defocus, T_c=T_c, n_design=n_design, diameter=diameter, n_actual=n_actual, )
 
-
 output_ROC = optical_system_initial.output_radius_of_curvature(initial_distance=optical_system_initial.surfaces[0].center[0])
 
 spherical_back_center = optical_system_initial.surfaces[-1].center + output_ROC * (1+relative_position_spherical) * OPTICAL_AXIS

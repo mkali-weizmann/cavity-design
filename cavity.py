@@ -4692,7 +4692,7 @@ def calculate_incidence_angle(surface: Surface, mode_parameters: ModeParameters)
 
     # --- Solutions z1, z2 ---
     z2 = (-B + sqrt_disc) / (2.0 * A)
-    z1 = (-B - sqrt_disc) / (2.0 * A)
+    # z1 = (-B - sqrt_disc) / (2.0 * A)
     z_star = z2
     y_star = np.sqrt(R ** 2 - (z_star - z_s) ** 2)
 
