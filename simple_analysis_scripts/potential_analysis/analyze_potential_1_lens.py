@@ -6,12 +6,12 @@ from simple_analysis_scripts.potential_analysis.analyze_potential import *
 # %%
 dn = 0
 lens_types = ['aspheric - lab', 'spherical - like labs aspheric', 'avantier', 'aspheric - like avantier']
-lens_type = lens_types[0]
+lens_type = lens_types[2]
 n_actual, n_design, T_c, back_focal_length, R_1, R_2, R_2_signed, diameter = known_lenses_generator(lens_type=lens_type,
                                                                                                     dn=dn)
 n_rays = 30
 unconcentricity = 1e-3  # np.float64(0.007610344827586207)  # ,  np.float64(0.007268965517241379)
-phi_max = 0.14
+phi_max = 0.312
 desired_focus = 200e-3
 plot = True
 print_tests = True

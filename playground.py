@@ -87,7 +87,6 @@ lens_focal_length = focal_length_of_lens(R_1=-results_dict['cavity'].surfaces[3]
 mirror_radius = results_dict['cavity'].surfaces[-1].radius
 plt.show()
 
-
 # n_rays = 50
 # phi_max = 0.15
 # back_focal_length_aspheric = 20e-3
