@@ -623,14 +623,6 @@ def test_potential_single_lens():
         R_2=R_2_signed,
     )
 
-    # defocus = back_focal_length - 4.9307005112e-3
-
-    # results_dict = generate_system_and_analyze_potential(R_1=R_1, R_2=R_2_signed, back_focal_length=back_focal_length,
-    #                                                      defocus=defocus, T_c=T_c, n_design=n_design, diameter=diameter,
-    #                                                      unconcentricity=unconcentricity, n_actual=n_actual,
-    #                                                      n_rays=n_rays, phi_max=phi_max, extract_R_analytically=True,
-    #                                                      print_tests=print_tests)
-
     optical_system, optical_axis = generate_one_lens_optical_system(R_1=R_1, R_2=R_2_signed,
                                                                     back_focal_length=back_focal_length,
                                                                     defocus=defocus, T_c=T_c, n_design=n_design,

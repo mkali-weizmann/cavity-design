@@ -80,7 +80,6 @@ def analyze_output_wavefront(
         unconcentricity = (center_of_curvature - end_mirror_origin) @ optical_axis
     elif end_mirror_center is None and unconcentricity is not None:
         end_mirror_origin = center_of_curvature - unconcentricity * optical_axis
-        end_mirror_center = end_mirror_origin + end_mirror_ROC * optical_axis
     else:
         raise ValueError("Either unconcentricity or end_mirror_center must be provided, but not both.")
 
@@ -171,9 +170,9 @@ def analyze_output_wavefront(
 
 
 def generate_one_lens_optical_system(
-    R_1: Optional[float] = None,
-    R_2: Optional[float] = None,
-    back_focal_length: Optional[float] = None,
+    R_1: Optional[float] = None,  # For a spherical lens
+    R_2: Optional[float] = None,  # For a spherical lens
+    back_focal_length: Optional[float] = None,  # For an aspheric lens
     defocus=0,
     T_c=3e-3,
     n_design=1.8,
@@ -186,31 +185,16 @@ def generate_one_lens_optical_system(
         n_actual = n_design
     if R_1 is not None and R_2 is not None:
         back_focal_length = back_focal_length_of_lens(R_1=R_1, R_2=R_2, n=n_design, T_c=T_c)
-        surface_0, surface_1 = CurvedRefractiveSurface(
-            radius=np.abs(R_1),
-            outwards_normal=-optical_axis,
-            center=(back_focal_length - defocus) * optical_axis,
-            n_1=1,
-            n_2=n_actual,
-            curvature_sign=CurvatureSigns.convex,
-            name="first surface",
-            thickness=T_c / 2,
-            diameter=diameter,
-        ), CurvedRefractiveSurface(
-            radius=np.abs(R_2),
-            outwards_normal=optical_axis,
-            center=(back_focal_length - defocus + T_c) * optical_axis,
-            n_1=n_actual,
-            n_2=1,
-            curvature_sign=CurvatureSigns.concave,
-            name="second surface",
-            thickness=T_c / 2,
-            diameter=diameter,
+        params = OpticalElementParams(
+            name="spherical_lens", surface_type=SurfacesTypes.thick_lens,
+            x=back_focal_length - defocus + T_c / 2, y=0, z=0, r_1=np.abs(R_1), r_2=np.abs(R_2), theta=0, phi=0,
+            T_c=T_c, n_inside_or_after=n_actual, n_outside_or_before=1, diameter=diameter,
+            curvature_sign=CurvatureSigns.convex, polynomial_coefficients=None,
+            material_properties=PHYSICAL_SIZES_DICT['material_properties_sapphire']
         )
     elif back_focal_length is not None:
         back_center = (back_focal_length - defocus) * optical_axis
-        surface_0, surface_1 = Surface.from_params(
-            generate_aspheric_lens_params(
+        params = generate_aspheric_lens_params(
                 back_focal_length=back_focal_length,
                 T_c=T_c,
                 n=n_design,
@@ -220,19 +204,16 @@ def generate_one_lens_optical_system(
                 polynomial_degree=8,
                 name="aspheric_lens_automatic",
             )
-        )
-        surface_0.n_2 = n_actual
-        surface_1.n_1 = n_actual
+        params.n_inside_or_after = n_actual
     else:
         raise ValueError("Either R_1 and R_2, or back_focal_length must be provided.")
 
-    optical_system = OpticalSystem(
-        surfaces=[surface_0, surface_1],
+    optical_system = OpticalSystem.from_params(
+        params=[params],
         lambda_0_laser=LAMBDA_0_LASER,
         given_initial_central_line=True,
         use_paraxial_ray_tracing=False,
     )
-
     return optical_system, optical_axis
 
 
@@ -491,7 +472,7 @@ def analyze_potential(
                                            curvature_sign=CurvatureSigns.concave, name="LaserOptik mirror",
                                            diameter=7.75e-3, material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"])
 
-    cavity = Cavity(surfaces=[small_mirror_object, *optical_system.surfaces, results_dict["end_mirror_object"]],
+    cavity = Cavity.from_params(params=[small_mirror_object.to_params, *optical_system.to_params, results_dict["end_mirror_object"].to_params],
                     lambda_0_laser=LAMBDA_0_LASER,
                     t_is_trivial=True,
                     p_is_trivial=True,

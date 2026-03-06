@@ -2394,9 +2394,8 @@ class OpticalSystem:
         return physical_surfaces
 
     @staticmethod
-    def from_params(
+    def params_to_surfaces(
         params: Union[np.ndarray, List[OpticalElementParams]],
-        **kwargs,
     ):
         if isinstance(params, np.ndarray):
             raise ValueError(
@@ -2412,12 +2411,17 @@ class OpticalSystem:
                 surfaces.extend(surface_temp)
             else:
                 surfaces.append(surface_temp)
-        cavity = Cavity(
+        return surfaces
+
+    @staticmethod
+    def from_params(params: Union[np.ndarray, List[OpticalElementParams]], **kwargs):
+        surfaces = OpticalSystem.params_to_surfaces(params)
+        optical_system = OpticalSystem(
             surfaces,
             params=params,
             **kwargs,
         )
-        return cavity
+        return optical_system
 
     @property
     def to_params(self) -> List[OpticalElementParams]:
@@ -2435,6 +2439,9 @@ class OpticalSystem:
             "OpticalElementParams", "\n          OpticalElementParams"
         ).replace("))]", "))\n         ]")
         return textual_representation
+
+    def __str__(self):
+        return self.formatted_textual_params
 
     @property
     def to_array(self) -> np.ndarray:
@@ -2991,6 +2998,16 @@ class Cavity(OpticalSystem):
             )
         if set_initial_surface:
             self.set_initial_surface()
+
+    @staticmethod
+    def from_params(params: Union[np.ndarray, List[OpticalElementParams]], **kwargs):
+        surfaces = OpticalSystem.params_to_surfaces(params)
+        cavity = Cavity(
+            surfaces,
+            params=params,
+            **kwargs,
+        )
+        return cavity
 
     @staticmethod
     def _order_surfaces_for_initialization(surfaces: List[Surface], standing_wave) -> List[Surface]:
