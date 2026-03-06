@@ -351,12 +351,12 @@ class Ray:
                 ax = fig.add_subplot(111)
         if not np.isnan(length):
             length = np.ones(self.origin.shape[:-1]) * length
-        elif not np.any(np.isnan(self.length)):
-            length = np.where(
-                np.isinf(self.length), 1, self.length
-            )  # If length is inf, we take it to be 0 for plotting purposes
         else:
-            length = np.ones_like(self.origin[..., 0])
+            length = np.where(
+                np.isinf(self.length) | np.isnan(self.length), 1, self.length
+            )  # If length is inf, we take it to be 0 for plotting purposes
+        # else:
+        #     length = np.ones_like(self.origin[..., 0])
         ray_origin_reshaped = self.origin.reshape(-1, 3)
         ray_k_vector_reshaped = self.k_vector.reshape(-1, 3)
         lengths_reshaped = length.reshape(-1)
@@ -409,7 +409,11 @@ class Ray:
 
 class RaySequence:
     # A Ray which is assumed to have the first index as the "ray step", and the n attribute has the same length as the number of ray steps. For example, if we have a ray sequence of 3 steps, and each step has 10 rays, then the origin and k_vector attributes will be of the shape [3, 10, 3], and the n attribute will be of the shape [3].
-    def __init__(self, rays: Optional[List[Ray]] = None, origin: Optional[np.ndarray] = None, k_vector: Optional[np.ndarray] = None, length: Optional[np.ndarray] = None, n: Optional[np.ndarray] = None):
+    def __init__(self, rays: Optional[List[Ray]] = None,
+                 origin: Optional[np.ndarray] = None,
+                 k_vector: Optional[np.ndarray] = None,
+                 length: Optional[np.ndarray] = None,
+                 n: Optional[np.ndarray] = None):
         if rays is not None:
             assert origin is None and k_vector is None and length is None and n is None, "If rays is given, origin, k_vector, length and n should not be given"
             origin  = np.stack([ray.origin for ray in rays], axis=0)  # [n_steps, m_rays..., 3]
@@ -420,21 +424,27 @@ class RaySequence:
 
         self.origin = origin  # [n_steps, m_rays..., 3]
         self.k_vector = k_vector  # [n_steps, m_rays..., 3]
-        self.n = n  # [n_steps]
         self.length = length  # [n_steps, m_rays...]
+        self.n = n  # [n_steps]
 
-    def __getitem__(self, key) -> Ray:
+
+    def __getitem__(self, key) -> Union[Ray, RaySequence]:
         # If key is a tuple and the second-from-last element is a slice, this case is not implemented.
-        if isinstance(key, tuple) and len(key) >= 2 and isinstance(key[0], slice):
-            raise NotImplementedError("Slicing over the ray axis (key[-2]) is not implemented")
+        origin = self.origin[key]
+        k_vector = self.k_vector[key]
         if isinstance(key, int) or isinstance(key, slice):
+            length = self.length[key]
             n = self.n[key]
-        else:
+        elif isinstance(key, tuple):
+            length = self.length[key[:len(self.length.shape)]]
             n = self.n[key[0]]
-        subscripted_ray = Ray(
-            self.origin[key], self.k_vector[key], self.length[key] if self.length is not None else None, n=n
-        )
-        return subscripted_ray
+        else:
+            raise NotImplementedError(f"Key type not supported")
+
+        if isinstance(key, int) or isinstance(key, tuple) and isinstance(key[0], int):
+            return Ray(origin=origin, k_vector=k_vector, length=length, n=n)
+        else:
+            return RaySequence(origin=origin, k_vector=k_vector, length=length, n=n)
 
     def parameterization(self, t: float, optical_path_length: bool = False) -> np.ndarray:
         if isinstance(t, (float, int)):

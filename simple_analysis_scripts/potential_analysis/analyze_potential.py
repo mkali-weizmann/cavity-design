@@ -470,6 +470,10 @@ def analyze_potential(
     print_tests: bool = True,
 ):
     ray_sequence = optical_system.propagate_ray(rays_0, propagate_with_first_surface_first=True)
+
+    rays_indices_that_didnt_escape = np.bitwise_not(np.any(np.isnan(ray_sequence.length[:-1]), axis=0))
+    ray_sequence = ray_sequence[:, rays_indices_that_didnt_escape]
+
     R_analytical = optical_system.output_radius_of_curvature(
         source_position=rays_0.origin[0, :]
     )
