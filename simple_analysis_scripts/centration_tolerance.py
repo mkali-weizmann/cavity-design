@@ -86,9 +86,8 @@ perturbable_params_names = [ParamsNames.phi, ParamsNames.x]
 tolerance_matrix = cavity_decomposed.generate_tolerance_dataframe(perturbable_params_names=perturbable_params_names)
 
 
-overlaps_series = cavity_decomposed.generate_overlap_series(
-    shifts=2 * np.abs(tolerance_matrix[:, :]), shift_size=100, perturbable_params_names=perturbable_params_names
-)
+overlaps_series = cavity_decomposed.generate_overlap_series(shifts=2 * np.abs(tolerance_matrix[:, :]), shift_numel=100,
+                                                            perturbable_params_names=perturbable_params_names)
 cavity_decomposed.generate_overlaps_graphs(arm_index_for_NA=2, tolerance_dataframe=tolerance_matrix[:, :],
                                            overlaps_series=overlaps_series,
                                            perturbable_params_names=perturbable_params_names)

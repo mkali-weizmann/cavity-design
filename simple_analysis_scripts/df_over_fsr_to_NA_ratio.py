@@ -238,12 +238,9 @@ tolerance_matrix_concentric = cavity_concentric.generate_tolerance_dataframe()
 
 # %%
 overlaps_series_confocal = cavity_confocal.generate_overlap_series(shifts=2 * np.abs(tolerance_matrix_confocal[:, :]),
-                                                                   shift_size=50,
-                                                                   )
+                                                                   shift_numel=50)
 overlaps_series_concentric = cavity_concentric.generate_overlap_series(
-    shifts=2 * np.abs(tolerance_matrix_concentric[:, :]),
-    shift_size=50,
-)
+    shifts=2 * np.abs(tolerance_matrix_concentric[:, :]), shift_numel=50)
 
 # # %%
 cavity_confocal.generate_overlaps_graphs(arm_index_for_NA=0, tolerance_dataframe=tolerance_matrix_confocal[:, :],

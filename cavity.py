@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import warnings
+
 from scipy.optimize import brentq
 
 from utils import *
@@ -1031,6 +1033,7 @@ class AsphericSurface(Surface):
         center: np.ndarray,
         outwards_normal: np.ndarray,
         polynomial_coefficients: Union[Polynomial, np.ndarray, List[float]],  # a0, a2, a4...
+        curvature_sign: int = CurvatureSigns.concave,  # With respect to the incoming beam.
         name: Optional[str] = None,
         diameter: Optional[float] = None,
         material_properties: MaterialProperties = None,
@@ -1039,6 +1042,7 @@ class AsphericSurface(Surface):
         super().__init__(outwards_normal=outwards_normal, name=name, radius=np.nan, **kwargs)
         self._center = center
         self.outwards_normal = normalize_vector(outwards_normal)
+        self.curvature_sign = curvature_sign
         self.name = name
         self.diameter = diameter
         self.material_properties = material_properties
@@ -1153,7 +1157,11 @@ class AsphericSurface(Surface):
         return self._center
 
     def find_intersection_with_ray_paraxial(self, ray: Ray) -> np.ndarray:
-        raise NotImplementedError("No paraxial methods for aspherical surfaces")
+        paraxial_surface = CurvedSurface(radius=self.radius, outwards_normal=self.outwards_normal,
+                                                                 center=self.center,
+                                                                 curvature_sign=self.curvature_sign)
+        intersection_point = paraxial_surface.find_intersection_with_ray_paraxial(ray)
+        return intersection_point
 
     def parameterization(self, t: Union[np.ndarray, float], p: Union[np.ndarray, float]) -> np.ndarray:
         # Take parameters and return points on the surface
@@ -1232,6 +1240,7 @@ class AsphericRefractiveSurface(AsphericSurface, RefractiveSurface):
             material_properties=material_properties,
             n_1=n_1,
             n_2=n_2,
+            curvature_sign=curvature_sign,
             **kwargs,
         )
         self.curvature_sign = curvature_sign
@@ -2353,7 +2362,7 @@ class OpticalSystem:
         power: Optional[float] = None,
         t_is_trivial: bool = True,
         p_is_trivial: bool = True,
-        given_initial_central_line: Optional[Union[Ray, bool]] = None,
+        given_initial_central_line: Optional[Union[Ray, bool]] = True,
         given_initial_local_mode_parameters: Optional[LocalModeParameters] = None,
         use_paraxial_ray_tracing: bool = True,
     ):
@@ -3576,12 +3585,12 @@ class Cavity(OpticalSystem):
         shifts: Union[np.ndarray, float],  # Float is interpreted as linspace's limits,
         # np.ndarray means that the element_index'th parameter_index'th element of shifts is the linspace limits of
         # the element_index'th parameter_index'th parameter.
-        shift_size: int = 50,
+        shift_numel: int = 50,
         perturbable_params_names: Optional[List[str]] = None,
     ) -> np.ndarray:
         if perturbable_params_names is None:
             perturbable_params_names = self.perturbable_params_names
-        overlaps = np.zeros((len(self.to_params), len(perturbable_params_names), shift_size))
+        overlaps = np.zeros((len(self.to_params), len(perturbable_params_names), shift_numel))
         for element_index in tqdm(
             range(len(self.to_params)), desc="Overlap Series - element_index", disable=self.debug_printing_level < 1
         ):
@@ -3591,15 +3600,15 @@ class Cavity(OpticalSystem):
                 disable=self.debug_printing_level < 1,
             ):
                 if isinstance(shifts, (float, int)):
-                    shift_series = np.linspace(-shifts, shifts, shift_size)
+                    shift_series = np.linspace(-shifts, shifts, shift_numel)
                 else:
                     if np.isnan(shifts[element_index, j]):
-                        shift_series = np.linspace(-1e-10, 1e-10, shift_size)
+                        shift_series = np.linspace(-1e-10, 1e-10, shift_numel)
                     else:
                         shift_series = np.linspace(
                             -shifts[element_index, j],
                             shifts[element_index, j],
-                            shift_size,
+                            shift_numel,
                         )
                 # The condition inside is for the case it is a mirror and the parameter is n, and then we don't want
                 # to draw it.
@@ -3647,9 +3656,8 @@ class Cavity(OpticalSystem):
             )
 
         if overlaps_series is None:
-            overlaps_series = self.generate_overlap_series(
-                shifts=2 * np.abs(np.array(tolerance_dataframe)), shift_size=30
-            )
+            overlaps_series = self.generate_overlap_series(shifts=2 * np.abs(np.array(tolerance_dataframe)),
+                                                           shift_numel=30)
         plt.suptitle(f"NA={self.arms[arm_index_for_NA].mode_parameters.NA[0]:.3e}")
 
         for i in range(len(self.to_params)):
@@ -3683,7 +3691,9 @@ class Cavity(OpticalSystem):
                 )
                 try:
                     min_value = np.nanmin(overlaps_series[i, j, :])
-                    ax[i, j].set_ylim(1.1 * min_value - 0.1, 1.1 - 0.1 * min_value)
+                    if np.isnan(min_value):
+                        min_value = 0
+                    ax[i, j].set_ylim(min_value - 0.01, 1.01)
                 except ValueError:
                     pass
         fig.tight_layout()
@@ -4504,10 +4514,9 @@ def functions_first_crossing_both_directions(
 
 def match_a_mirror_to_mode(
     mode: ModeParameters,
-    material_properties: MaterialProperties,
     z: Optional[float] = None,
     R: Optional[float] = None,
-    name: Optional[str] = None,
+    **mirror_kwargs,
 ) -> Union[FlatMirror, CurvedMirror]:
     if z is None and R is None or (z is not None and R is not None):
         raise ValueError("You must provide either z or R, but not both, and not neither.")
@@ -4516,15 +4525,13 @@ def match_a_mirror_to_mode(
             mirror = FlatMirror(
                 center=mode.center[0, :],
                 outwards_normal=mode.k_vector,
-                thermal_properties=material_properties,
-                name=name,
+                **mirror_kwargs,
             )
         else:
             R_z_inverse = np.abs(z / (z**2 + mode.z_R[0] ** 2))
             center = mode.center[0, :] + mode.k_vector * z
             outwards_normal = mode.k_vector * np.sign(z)
-            mirror = CurvedMirror(radius=R_z_inverse ** -1, outwards_normal=outwards_normal, center=center, name=name,
-                                  material_properties=material_properties)
+            mirror = CurvedMirror(radius=R_z_inverse ** -1, outwards_normal=outwards_normal, center=center, **mirror_kwargs,)
     elif R is not None:
         center = mode.z_of_R(R, output_type=np.ndarray)
         outwards_normal = mode.k_vector * np.sign(R)
@@ -4532,12 +4539,10 @@ def match_a_mirror_to_mode(
             mirror = FlatMirror(
                 center=center,
                 outwards_normal=outwards_normal,
-                thermal_properties=material_properties,
-                name=name,
+                **mirror_kwargs,
             )
         else:
-            mirror = CurvedMirror(radius=np.abs(R), outwards_normal=outwards_normal, center=center, name=name,
-                                  material_properties=material_properties)
+            mirror = CurvedMirror(radius=np.abs(R), outwards_normal=outwards_normal, center=center, **mirror_kwargs,)
     else:
         raise ValueError("Debug me")
     return mirror
@@ -5117,11 +5122,11 @@ def mirror_lens_mirror_cavity_generator(
             x_left = x_left_waist - waist_to_left_mirror
             x_lens_left = x_left_waist + waist_to_lens
         mirror_left = match_a_mirror_to_mode(
-            mode=mode_left, z=x_left - mode_left.center[0, 0], material_properties=mirrors_material_properties
+            mode=mode_left, z=x_left - mode_left.center[0, 0], material_properties=mirrors_material_properties, diameter=7.75e-3, name="Small Mirror"
         )
     elif R_small_mirror is not None:
         mirror_left = match_a_mirror_to_mode(
-            mode=mode_left, R=-R_small_mirror, material_properties=mirrors_material_properties
+            mode=mode_left, R=-R_small_mirror, material_properties=mirrors_material_properties, diameter=7.75e-3, name="Small Mirror"
         )
         if waist_to_lens is not None:
             x_lens_left = x_left_waist + waist_to_lens
@@ -5214,15 +5219,16 @@ def mirror_lens_mirror_cavity_generator(
         outwards_normal = mode_right.k_vector  # not convex compatible currently
         R = big_mirror_radius
         mirror_right = CurvedMirror(radius=R, outwards_normal=outwards_normal, center=center,
-                                    material_properties=mirrors_material_properties)
+                                    material_properties=mirrors_material_properties, diameter=25.4e-3, name="Big Mirror")
     elif big_mirror_radius is not None and right_arm_length is None:
         mirror_right = match_a_mirror_to_mode(
-            mode=mode_right, R=big_mirror_radius, material_properties=mirrors_material_properties
+            mode=mode_right, R=big_mirror_radius, material_properties=mirrors_material_properties, diameter=25.4e-3,
+            name="Big Mirror"
         )
     elif big_mirror_radius is None and right_arm_length is not None:
         z_minus_z_0_right_mirror = z_minus_z_0_right_surface + right_arm_length
         mirror_right = match_a_mirror_to_mode(
-            mode=mode_right, z=z_minus_z_0_right_mirror, material_properties=mirrors_material_properties
+            mode=mode_right, z=z_minus_z_0_right_mirror, material_properties=mirrors_material_properties, diameter=25.4e-3, name="Big Mirror"
         )
     else:
         if z_minus_z_0_right_surface > 0:  # It can not be symmetric if the mode is past the waist already at the lens,
@@ -5253,6 +5259,7 @@ def mirror_lens_mirror_cavity_generator(
     params_lens.surface_type = SurfacesTypes.thick_lens
     params_lens.name = "Lens"
     params_lens.material_properties = lens_material_properties
+    params_lens.diameter = 7.75e-3
 
     params = [mirror_left_params, params_lens, mirror_right_params]
 
@@ -5310,6 +5317,58 @@ def fabry_perot_generator(
         standing_wave=True,
         **kwargs,
     )
+
+def fixed_NA_cavity_generator(optical_system: OpticalSystem,
+                              NA: float,
+                              end_mirror_distance_to_last_element: Optional[float] = None,
+                              end_mirror_ROC: Optional[float] = None,
+                              **end_mirror_kwargs,
+                              ):
+    # Assumes the optical system's optical axis is RIGHT
+    # Can be generalized to a general direction by propagating a ray through the optical system, defining the optical
+    # axis after it.
+    optical_axis = RIGHT
+    z_R_first_arm = z_R_of_NA(NA=NA, lambda_laser=LAMBDA_0_LASER)
+    first_mirror: CurvedMirror = optical_system.surfaces[0]
+    last_surface = optical_system.surfaces[-1]
+    local_mode_parameters_first_mirror = match_a_local_mode_to_mirror(mirror=first_mirror, z_R=z_R_first_arm,
+                                                                      lambda_0_laser=LAMBDA_0_LASER)
+    mode_parameters_first_arm = local_mode_parameters_first_mirror.to_mode_parameters(
+        location_of_local_mode_parameter=first_mirror.center, k_vector=optical_axis)
+    output_mode_local = optical_system.propagate_mode_parameters(mode_parameters=mode_parameters_first_arm,
+                                                                 propagate_with_first_surface_first=False)[-1]
+    output_mode = output_mode_local.to_mode_parameters(
+        location_of_local_mode_parameter=optical_system.arms[-1].surface_1.center, k_vector=optical_axis)
+    if end_mirror_ROC is not None and end_mirror_distance_to_last_element is not None:  # Overrides the NA
+        end_mirror = CurvedMirror(radius=end_mirror_ROC,
+                                    outwards_normal=RIGHT,
+                                    center=last_surface.center + end_mirror_distance_to_last_element * RIGHT,
+                                    **end_mirror_kwargs)
+    elif end_mirror_distance_to_last_element is not None and end_mirror_ROC is None:  # Fixed NA and last arm length
+        z_minus_z_0 = np.linalg.norm(
+            output_mode.center[0, :] - last_surface.center) + end_mirror_distance_to_last_element
+        end_mirror = match_a_mirror_to_mode(mode=output_mode, z=z_minus_z_0, name="End mirror",
+                                              **end_mirror_kwargs)
+    elif end_mirror_ROC is not None and end_mirror_distance_to_last_element is None:  # Fixed NA and last mirror ROC
+        end_mirror = match_a_mirror_to_mode(mode=output_mode, R=end_mirror_ROC, name="End mirror",
+                                              **end_mirror_kwargs)
+    else:
+        raise ValueError("Either right_mirror_ROC or right_mirror_distance_to_negative_lens_front or both must be provided")
+    if optical_system.params is not None:
+        cavity = Cavity.from_params(
+            params=[*optical_system.params, end_mirror.to_params],
+            lambda_0_laser=optical_system.lambda_0_laser, t_is_trivial=True, p_is_trivial=True,
+            use_paraxial_ray_tracing=optical_system.use_paraxial_ray_tracing, standing_wave=True)
+    else:
+        cavity = Cavity(
+            surfaces=[*optical_system.surfaces, end_mirror],
+            lambda_0_laser=optical_system.lambda_0_laser, t_is_trivial=True, p_is_trivial=True,
+            use_paraxial_ray_tracing=optical_system.use_paraxial_ray_tracing, standing_wave=True)
+    if (not (end_mirror_ROC is not None and end_mirror_distance_to_last_element is not None)  # If NA should not be overridden
+            and not np.isclose(cavity.arms[-1].mode_parameters.NA[0], NA, rtol=0, atol=1e-3)): # and it is not the desired one:
+            warnings.warn(f"Did not achieve the desired NA, got {cavity.arms[-1].mode_parameters.NA[0]:.3e} instead of {NA:.3e}")
+    return cavity
+
 
 
 def reverse_elements_order_of_mirror_lens_mirror(params: Union[np.ndarray, List[OpticalElementParams]]) -> np.ndarray:
@@ -5369,12 +5428,18 @@ def generate_mirror_lens_mirror_cavity_textual_summary(
             cavity.surfaces_ordered[lens_short_arm_surface_index].center[0]
             - cavity.mode_parameters[short_arm_index].center[0, 0]
         )
-        angle_right = cavity.arms[long_arm_index].calculate_incidence_angle(
-            surface_index=lens_short_arm_surface_in_arm_index
-        )
-        angle_left = cavity.arms[short_arm_index].calculate_incidence_angle(
-            surface_index=lens_long_arm_surface_in_arm_index
-        )
+        if not isinstance(cavity.surfaces[1], AsphericSurface):
+            angle_left = cavity.arms[short_arm_index].calculate_incidence_angle(
+                surface_index=lens_long_arm_surface_in_arm_index
+            )
+        else:
+            angle_left = np.nan
+        if not isinstance(cavity.surfaces[2], AsphericSurface):
+            angle_right = cavity.arms[long_arm_index].calculate_incidence_angle(
+                surface_index=lens_short_arm_surface_in_arm_index
+            )
+        else:
+            angle_right = np.nan
         spot_size_left_mirror = (
             cavity.arms[short_arm_index].mode_parameters_on_surfaces[lens_short_arm_surface_in_arm_index].spot_size[0]
         )
@@ -5430,12 +5495,7 @@ def generate_mirror_lens_mirror_cavity_textual_summary(
 
     R_left_mirror = cavity.surfaces_ordered[small_mirror_index].radius
 
-    minimal_width_lens = find_minimal_width_for_spot_size_and_radius(
-        radius=R_short_side,
-        spot_size_radius=spot_size_lens_long_side,
-        T_edge=T_edge,
-        h_divided_by_spot_size=minimal_h_divided_by_spot_size,
-    )
+
     geometric_feasibility = True
     if set_h_instead_of_w:
         if CA_divided_by_2spot_size < 2.5:
@@ -5445,6 +5505,12 @@ def generate_mirror_lens_mirror_cavity_textual_summary(
             f"spot size (long) (2w) = {2 * spot_size_lens_long_side:.3e}, spot size (short) (2w) = {2 * spot_size_lens_short_side:.3e},   CA / 2w_spot_size = {CA_divided_by_2spot_size:.3e}, lens is wide enough = {geometric_feasibility},   {angle_left=:.2f},   {angle_right=:.2f}"
         )
     else:
+        minimal_width_lens = find_minimal_width_for_spot_size_and_radius(
+            radius=R_short_side,
+            spot_size_radius=spot_size_lens_long_side,
+            T_edge=T_edge,
+            h_divided_by_spot_size=minimal_h_divided_by_spot_size,
+        )
         if T_c < minimal_width_lens:
             geometric_feasibility = False
         minimal_CA_lens = minimal_h_divided_by_spot_size * spot_size_lens_long_side
@@ -5520,7 +5586,7 @@ def plot_mirror_lens_mirror_cavity_analysis(
         max_x = max(x_limits)
         ax[0].set_xlim(min_x, max_x)
     if auto_set_y:
-        y_lim = maximal_lens_height(R_left, T_c) * 1.1
+        y_lim = cavity.surfaces[1].diameter * 1.1
     else:
         y_lim = y_span
     ax[0].set_ylim(-y_lim, y_lim)

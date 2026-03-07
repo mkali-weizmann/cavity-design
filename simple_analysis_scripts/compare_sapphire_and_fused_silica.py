@@ -36,9 +36,7 @@ for i, params_name in enumerate(['Sapphire, NA=0.2, L1=0.3, w=3mm - High NA axis
     tolerance_matrix = cavity.generate_tolerance_dataframe()
 
     # %%
-    overlaps_series = cavity.generate_overlap_series(shifts=2 * np.abs(tolerance_matrix[:, :]),
-                                                     shift_size=30,
-                                                     print_progress=False)
+    overlaps_series = cavity.generate_overlap_series(shifts=2 * np.abs(tolerance_matrix[:, :]), shift_numel=30)
 
     # %%
     cavity.generate_overlaps_graphs(arm_index_for_NA=2, tolerance_dataframe=tolerance_matrix[:, :],
@@ -110,9 +108,7 @@ for i, params in enumerate(params_list):
     tolerance_matrix = cavity.generate_tolerance_dataframe()
 
     # %%
-    overlaps_series = cavity.generate_overlap_series(shifts=2 * np.abs(tolerance_matrix[:, :]),
-                                                     shift_size=30,
-                                                     print_progress=False)
+    overlaps_series = cavity.generate_overlap_series(shifts=2 * np.abs(tolerance_matrix[:, :]), shift_numel=30)
 
     # %%
     cavity.generate_overlaps_graphs(arm_index_for_NA=2, tolerance_dataframe=tolerance_matrix[:, :],
