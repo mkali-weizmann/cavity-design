@@ -1,4 +1,4 @@
-﻿degree,input power[uW],reflection[uW],dark[uW],polarization
+﻿angle_deg,input_power_uW,reflection_uW,dark_uW,polarization
 -4,72700,2.7,0.024,p
 -5,72700,1.72,0.024,p
 -8,72700,2.49,0.024,p
