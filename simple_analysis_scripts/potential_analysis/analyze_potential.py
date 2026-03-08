@@ -572,10 +572,10 @@ def plot_results(
         results_dict["optical_system"].plot(ax=ax[1, 0], fine_resolution=True)
         results_dict["optical_system"].plot(ax=ax[1, 1], fine_resolution=True)
     ax[1, 0].set_xlim(ray_sequence.origin[0, 0, 0] - 0.01, results_dict['end_mirror_object'].center[0]+0.01)  # (-1e-3, 100e-3)
-    ax[1, 0].set_ylim(-surface_1.diameter / 2, surface_1.diameter / 2)  # (-4.2e-3, 4.2e-3)
+    ax[1, 0].set_ylim(-5e-3, 5e-3)  # surface_1.diameter / 2, surface_1.diameter / 2
     ax[1, 0].grid()
     ax[1, 0].scatter(wavefront_points[:, 0], wavefront_points[:, 1], s=8, color="purple")
-    ax[1, 0].scatter(center_of_curvature[0], center_of_curvature[1], s=50, color="cyan", label="Center of curvature")
+    ax[1, 0].scatter(center_of_curvature[0], center_of_curvature[1], s=20, color="cyan", label="Center of curvature")
     ax[1, 0].legend()
 
     ax[1, 1].set_xlim(ray_sequence.origin[0, 0, 0] - 0.01,
@@ -583,8 +583,7 @@ def plot_results(
     ax[1, 1].set_aspect('equal', adjustable='box')
     ax[1, 1].grid()
     ax[1, 1].scatter(wavefront_points[:, 0], wavefront_points[:, 1], s=8, color="purple")
-    ax[1, 1].scatter(center_of_curvature[0], center_of_curvature[1], s=50, color="cyan", label="Center of curvature")
-    ax[1, 1].legend()
+    # ax[1, 1].scatter(center_of_curvature[0], center_of_curvature[1], s=50, color="cyan", label="Center of curvature")
 
     # ax[1, 1].set_xlim(
     #     center_of_curvature[0] -1e-3, center_of_curvature[0] + 1e-3
