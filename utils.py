@@ -127,18 +127,12 @@ class SurfacesTypes:
 
 @dataclass
 class CurvatureSigns:
-    convex = -1
-    concave = 1
-
-    @staticmethod
-    def from_integer_representation(integer_representation: int) -> int:
-        if integer_representation == 1:
-            return CurvatureSigns.convex
-        elif integer_representation == -1:
-            return CurvatureSigns.concave
-        else:
-            raise ValueError("Curvature sign must be either 1 or -1")
-
+    # if the ray hits the sphere from the inside, it is concave and the sign is -1.
+    # If it hits the sphere from the outside, it is convex and the sign is 1.
+    # According to the  convention as in here: https://en.wikipedia.org/wiki/Ray_transfer_matrix_analysis
+    convex = 1
+    concave = -1
+    flat = 0
 
 @dataclass
 class MaterialProperties:

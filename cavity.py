@@ -1563,7 +1563,7 @@ class CurvedSurface(Surface):
         center: Optional[np.ndarray] = None,  # Not the center of the sphere but the center of
         # the plate.
         origin: Optional[np.ndarray] = None,  # The center of the sphere.
-        curvature_sign: int = 1,
+        curvature_sign: int = -1,
         # 1 for concave (where the ray is hitting the sphere from the inside) and -1 for convex
         # (where the ray is hitting the sphere from the outside). this is used to find the correct intersection
         # point of a ray with the surface
@@ -1588,7 +1588,7 @@ class CurvedSurface(Surface):
         Delta_squared = np.sum(Delta**2, axis=-1)  # m_rays
         Delta_projection_on_k = np.sum(Delta * ray.k_vector, axis=-1)  # m_rays
         with np.errstate(invalid="ignore"):
-            length = -Delta_projection_on_k + self.curvature_sign * np.sqrt(
+            length = -Delta_projection_on_k - self.curvature_sign * np.sqrt(
                 Delta_projection_on_k**2 - Delta_squared + self.radius**2
             )
         intersection_point = ray.parameterization(length)
@@ -1671,7 +1671,7 @@ class CurvedMirror(CurvedSurface, ReflectiveSurface):
         center: np.ndarray = None,  # Not the center of the sphere but the center of
         # the plate, where the beam should hit.
         origin: Optional[np.ndarray] = None,  # The center of the sphere.
-        curvature_sign: int = 1,
+        curvature_sign: int = -1,
         name: Optional[str] = None,
         diameter: float = np.nan,
         material_properties: Optional[MaterialProperties] = None,
@@ -1765,7 +1765,7 @@ class CurvedRefractiveSurface(CurvedSurface, RefractiveSurface):
         origin: Optional[np.ndarray] = None,  # The center of the sphere.
         n_1: float = 1,
         n_2: float = 1.5,
-        curvature_sign: int = 1,
+        curvature_sign: int = -1,
         name: Optional[str] = None,
         material_properties: Optional[MaterialProperties] = None,
         thickness: Optional[float] = 5e-4,
@@ -1788,7 +1788,7 @@ class CurvedRefractiveSurface(CurvedSurface, RefractiveSurface):
     def ABCD_matrix(self, cos_theta_incoming: float = None) -> np.ndarray:
         cos_theta_outgoing = np.sqrt(1 - (self.n_1 / self.n_2) ** 2 * (1 - cos_theta_incoming**2))
         R_signed = self.radius * self.curvature_sign
-        delta_n_e_out_of_plane = self.n_2 * cos_theta_outgoing - self.n_1 * cos_theta_incoming
+        delta_n_e_out_of_plane = self.n_1 * cos_theta_incoming - self.n_2 * cos_theta_outgoing
         delta_n_e_in_plane = delta_n_e_out_of_plane / (cos_theta_incoming * cos_theta_outgoing)
 
         # See the comment in the ABCD_matrix method of the CurvedSurface class for an explanation of the approximation.
@@ -1935,7 +1935,7 @@ def generate_lens_from_params(params: OpticalElementParams):
         center=center_1,
         n_1=p.n_outside_or_before,
         n_2=p.n_inside_or_after,
-        curvature_sign=-1,
+        curvature_sign=1,
         name=names[0],
         material_properties=p.material_properties,
         thickness=p.T_c / 2,
@@ -1948,7 +1948,7 @@ def generate_lens_from_params(params: OpticalElementParams):
         center=center_2,
         n_1=p.n_inside_or_after,
         n_2=p.n_outside_or_before,
-        curvature_sign=1,
+        curvature_sign=-1,
         name=names[1],
         material_properties=p.material_properties,
         thickness=p.T_c / 2,
@@ -2033,7 +2033,7 @@ def generate_aspheric_lens_params(
 
 
 def convert_curved_refractive_surface_to_ideal_lens(surface: CurvedRefractiveSurface):
-    focal_length = 1 / (surface.n_2 - surface.n_1) * surface.radius * (-1 * surface.curvature_sign)
+    focal_length = 1 / (surface.n_2 - surface.n_1) * surface.radius * (surface.curvature_sign)
     ideal_lens = IdealLens(
         outwards_normal=surface.outwards_normal,
         center=surface.center,
@@ -2307,7 +2307,7 @@ class Arm:
             normal_function = lambda x: self.surface_0.outwards_normal * sign  # Add sign
         elif isinstance(self.surface_0, CurvedSurface):
             normal_function = lambda r: normal_to_a_sphere(
-                r_surface=r, o_center=self.surface_0.origin, sign=-self.surface_0.curvature_sign
+                r_surface=r, o_center=self.surface_0.origin, sign=self.surface_0.curvature_sign
             )  # Add sign
 
         def propagation_kernel(r_source: np.ndarray, r_observer: np.ndarray, k: float):
@@ -4905,7 +4905,7 @@ def find_equal_angles_surface(
             center=center_1,
             n_1=surface_0.n_2,
             n_2=1,
-            curvature_sign=-1 * surface_0.curvature_sign,
+            curvature_sign=1 * surface_0.curvature_sign,
             thickness=T_c / 2,
         )
         return second_surface
@@ -5237,7 +5237,7 @@ def mirror_lens_mirror_cavity_generator(
         center=np.array([x_lens_left, 0, 0]),
         n_1=1,
         n_2=n,
-        curvature_sign=-1,
+        curvature_sign=1,
         name="lens_left",
         material_properties=lens_material_properties,
     )
@@ -5271,7 +5271,7 @@ def mirror_lens_mirror_cavity_generator(
             center=np.array([x_2_right, 0, 0]),
             n_1=n,
             n_2=1,
-            curvature_sign=1,
+            curvature_sign=-1,
             name="lens_right",
             material_properties=lens_material_properties,
         )

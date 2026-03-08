@@ -102,7 +102,7 @@ def test_mirror_lens_mirror_design():
             phi=0,
             r_1=2.422e-02,
             r_2=5.488e-03,
-            curvature_sign=CurvatureSigns.concave,
+            curvature_sign=CurvatureSigns.convex,
             T_c=2.913797540986543e-03,
             n_inside_or_after=1.76e00,
             n_outside_or_before=1e00,
