@@ -187,7 +187,7 @@ def generate_one_lens_optical_system(
         back_focal_length = back_focal_length_of_lens(R_1=R_1, R_2=R_2, n=n_design, T_c=T_c)
         params = OpticalElementParams(
             name="spherical_lens", surface_type=SurfacesTypes.thick_lens,
-            x=back_focal_length - defocus + T_c / 2, y=0, z=0, r_1=np.abs(R_1), r_2=np.abs(R_2), theta=0, phi=0,
+            x=back_focal_length - defocus + T_c / 2, y=0, z=0, r_1=np.abs(R_1), r_2=-np.abs(R_2), theta=0, phi=0,
             T_c=T_c, n_inside_or_after=n_actual, n_outside_or_before=1, diameter=diameter,
             curvature_sign=CurvatureSigns.convex, polynomial_coefficients=None,
             material_properties=PHYSICAL_SIZES_DICT['material_properties_sapphire']

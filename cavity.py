@@ -1930,12 +1930,13 @@ def generate_lens_from_params(params: OpticalElementParams):
     center_1 = center - (1 / 2) * p.T_c * forward_direction
     center_2 = center + (1 / 2) * p.T_c * forward_direction
     surface_1 = CurvedRefractiveSurface(
-        radius=p.r_1,
-        outwards_normal=-forward_direction,
+        radius=np.abs(p.r_1),
+        outwards_normal=-forward_direction * np.sign(p.r_1),
         center=center_1,
         n_1=p.n_outside_or_before,
         n_2=p.n_inside_or_after,
-        curvature_sign=1,
+        curvature_sign=np.sign(p.r_1),  # the sign of r_1 is +1 for a convex lens, and so for the ray the first surface
+        # is convex, for which the curvature sign is +1
         name=names[0],
         material_properties=p.material_properties,
         thickness=p.T_c / 2,
@@ -1943,12 +1944,13 @@ def generate_lens_from_params(params: OpticalElementParams):
     )
 
     surface_2 = CurvedRefractiveSurface(
-        radius=p.r_2,
-        outwards_normal=forward_direction,
+        radius=np.abs(p.r_2),
+        outwards_normal=-forward_direction * np.sign(p.r_2),
         center=center_2,
         n_1=p.n_inside_or_after,
         n_2=p.n_outside_or_before,
-        curvature_sign=-1,
+        curvature_sign=np.sign(p.r_2),  # the sign of r_2 is -1 for convex lens, and so for the ray the second surface
+        # is concave, for which the curvature sign is -1
         name=names[1],
         material_properties=p.material_properties,
         thickness=p.T_c / 2,
@@ -5360,7 +5362,7 @@ def mirror_lens_mirror_cavity_generator(
     params_lens = surface_right.to_params
     params_lens.x = (surface_left.center[0] + surface_right.center[0]) / 2
     params_lens.r_1 = surface_left.radius
-    params_lens.r_2 = surface_right.radius
+    params_lens.r_2 = -surface_right.radius
     params_lens.T_c = T_c
     params_lens.n_inside_or_after = n
     params_lens.n_outside_or_before = 1

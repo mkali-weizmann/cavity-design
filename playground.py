@@ -1,102 +1,32 @@
-from cavity import *
+from simple_analysis_scripts.potential_analysis.analyze_potential import *
+dn = 0
+lens_types = ["aspheric - lab", "spherical - like labs aspheric", "avantier", "aspheric - like avantier"]
+lens_type = lens_types[2]
+n_actual, n_design, T_c, back_focal_length, R_1, R_2, R_2_signed, diameter = known_lenses_generator(
+    lens_type=lens_type, dn=dn)
+n_rays = 400
+unconcentricity = 2.24255506e-3  # np.float64(0.007610344827586207)  # ,  np.float64(0.007268965517241379)
+phi_max = 0.04
+desired_focus = 200e-3
+print_tests = True
 
-params = [
-        OpticalElementParams(
-            name="Small Mirror",
-            surface_type="curved_mirror",
-            x=-4.999961263669513e-03,
-            y=0,
-            z=0,
-            theta=0,
-            phi=-1e00 * np.pi,
-            r_1=5e-03,
-            r_2=np.nan,
-            curvature_sign=CurvatureSigns.concave,
-            T_c=np.nan,
-            n_inside_or_after=1e00,
-            n_outside_or_before=1e00,
-            material_properties=MaterialProperties(
-                refractive_index=None,
-                alpha_expansion=7.5e-08,
-                beta_surface_absorption=1e-06,
-                kappa_conductivity=1.31e00,
-                dn_dT=None,
-                nu_poisson_ratio=1.7e-01,
-                alpha_volume_absorption=None,
-                intensity_reflectivity=9.99889e-01,
-                intensity_transmittance=1e-04,
-                temperature=np.nan,
-            ),
-        ),
-        OpticalElementParams(
-            name="Lens",
-            surface_type="thick_lens",
-            x=6.387599281689135e-03,
-            y=0,
-            z=0,
-            theta=0,
-            phi=0,
-            r_1=2.422e-02,
-            r_2=5.488e-03,
-            curvature_sign=CurvatureSigns.convex,
-            T_c=2.913797540986543e-03,
-            n_inside_or_after=1.76e00,
-            n_outside_or_before=1e00,
-            material_properties=MaterialProperties(
-                refractive_index=1.76e00,
-                alpha_expansion=5.5e-06,
-                beta_surface_absorption=1e-06,
-                kappa_conductivity=4.606e01,
-                dn_dT=1.17e-05,
-                nu_poisson_ratio=3e-01,
-                alpha_volume_absorption=1e-02,
-                intensity_reflectivity=1e-04,
-                intensity_transmittance=9.99899e-01,
-                temperature=np.nan,
-            ),
-        ),
-        OpticalElementParams(
-            name="Big Mirror",
-            surface_type="curved_mirror",
-            x=4.078081462362321e-01,
-            y=0,
-            z=0,
-            theta=0,
-            phi=0,
-            r_1=2e-01,
-            r_2=np.nan,
-            curvature_sign=CurvatureSigns.concave,
-            T_c=np.nan,
-            n_inside_or_after=1e00,
-            n_outside_or_before=1e00,
-            material_properties=MaterialProperties(
-                refractive_index=None,
-                alpha_expansion=7.5e-08,
-                beta_surface_absorption=1e-06,
-                kappa_conductivity=1.31e00,
-                dn_dT=None,
-                nu_poisson_ratio=1.7e-01,
-                alpha_volume_absorption=None,
-                intensity_reflectivity=9.99889e-01,
-                intensity_transmittance=1e-04,
-                temperature=np.nan,
-            ),
-        ),
-    ]
-
-cavity = Cavity.from_params(
-    params=params,
-    standing_wave=True,
-    lambda_0_laser=LAMBDA_0_LASER,
-    set_central_line=True,
-    set_mode_parameters=True,
-    set_initial_surface=False,
-    t_is_trivial=True,
-    p_is_trivial=True,
-    power=2e4,
-    use_paraxial_ray_tracing=True,
-    debug_printing_level=1,
+defocus = choose_source_position_for_desired_focus_analytic(
+    desired_focus=desired_focus,
+    T_c=T_c,
+    n_design=n_design,
+    diameter=diameter,
+    back_focal_length=back_focal_length,
+    R_1=R_1,
+    R_2=R_2_signed,
 )
 
-cavity.plot()
-plt.show()
+optical_system, optical_axis = generate_one_lens_optical_system(R_1=R_1, R_2=R_2_signed,
+                                                                back_focal_length=back_focal_length,
+                                                                defocus=defocus, T_c=T_c, n_design=n_design,
+                                                                diameter=diameter, n_actual=n_actual, )
+rays_0 = initialize_rays(n_rays=n_rays, phi_max=phi_max)
+results_dict = analyze_potential(optical_system=optical_system, rays_0=rays_0, unconcentricity=unconcentricity,
+                                 print_tests=print_tests)
+assert np.isclose(
+    np.abs(results_dict["zero_derivative_points"] * 1e3), 0.15342637331775477
+), f"Potential single lens test failed: expected zero derivative point at approximately 0.15342637331775477 mm but got {results_dict['zero_derivative_points']*1e3} mm"
