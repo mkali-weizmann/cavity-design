@@ -293,7 +293,7 @@ class OpticalElementParams:
         surface_type_string = surface_type_string.ljust(33)
         name_string = f"'{self.name}'"
         name_string = name_string.ljust(25)
-        curvature_sign_string = "CurvatureSigns.concave" if self.curvature_sign == 1 else "CurvatureSigns.convex"
+        curvature_sign_string = "CurvatureSigns.convex" if self.curvature_sign == CurvatureSigns.convex else "CurvatureSigns.concave"
         return (
             f"OpticalElementParams("
             f"name={name_string},"

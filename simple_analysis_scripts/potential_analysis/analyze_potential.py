@@ -335,28 +335,32 @@ def generate_negative_lens_cavity(n_actual_first_lens, n_design_first_lens, T_c_
     else:
         negative_lens_R_2 = 1 / negative_lens_R_2_inverse
     negative_lens_back_center = (approximate_focus_distance_long_arm + negative_lens_back_relative_position) * optical_axis + optical_system_lens.surfaces[-1].center
-    negative_lens_back, negative_lens_front = CurvedRefractiveSurface(
-        radius=np.abs(negative_lens_R_1),
-        outwards_normal=optical_axis * (- np.sign(negative_lens_R_1)),
-        center=negative_lens_back_center,
-        n_1=1,
-        n_2=negative_lens_refractive_index,
-        curvature_sign=CurvatureSigns.convex if negative_lens_R_1 > 0 else CurvatureSigns.concave,
-        name="negative_lens_back",
-        thickness=negative_lens_center_thickness / 2,
-        diameter=diameter_first_lens,
-    ), CurvedRefractiveSurface(
-        radius=np.abs(negative_lens_R_2),
-        outwards_normal=optical_axis * (- np.sign(negative_lens_R_2)),
-        center=negative_lens_back_center + negative_lens_center_thickness * optical_axis,
-        n_1=negative_lens_refractive_index,
-        n_2=1,
-        curvature_sign=CurvatureSigns.convex if negative_lens_R_2 > 0 else CurvatureSigns.concave,
-        name="negative_lens_front",
-        thickness=negative_lens_center_thickness / 2,
-        diameter=diameter_first_lens,
-    )
-    optical_system_without_last_mirror = OpticalSystem.from_params(params=[mirror_left.to_params, *optical_system_lens.params, negative_lens_back.to_params, negative_lens_front.to_params],
+    negative_lens_params = OpticalElementParams(x=negative_lens_back_center[0] + negative_lens_center_thickness / 2,
+                                                y=0, z=0, r_1=negative_lens_R_1, r_2=negative_lens_R_2, theta=0, phi=0, T_c=negative_lens_center_thickness, n_inside_or_after=negative_lens_refractive_index,
+                                                n_outside_or_before=1, diameter=diameter_first_lens, curvature_sign=np.nan, name="Negative Lens", material_properties=PHYSICAL_SIZES_DICT['material_properties_fused_silica'], polynomial_coefficients=None, surface_type=SurfacesTypes.thick_lens)
+    # negative_lens_back, negative_lens_front = CurvedRefractiveSurface(
+    #     radius=np.abs(negative_lens_R_1),
+    #     outwards_normal=optical_axis * (- np.sign(negative_lens_R_1)),
+    #     center=negative_lens_back_center,
+    #     n_1=1,
+    #     n_2=negative_lens_refractive_index,
+    #     curvature_sign=CurvatureSigns.convex if negative_lens_R_1 > 0 else CurvatureSigns.concave,
+    #     name="negative_lens_back",
+    #     thickness=negative_lens_center_thickness / 2,
+    #     diameter=diameter_first_lens,
+    # ), CurvedRefractiveSurface(
+    #     radius=np.abs(negative_lens_R_2),
+    #     outwards_normal=optical_axis * (- np.sign(negative_lens_R_2)),
+    #     center=negative_lens_back_center + negative_lens_center_thickness * optical_axis,
+    #     n_1=negative_lens_refractive_index,
+    #     n_2=1,
+    #     curvature_sign=CurvatureSigns.convex if negative_lens_R_2 > 0 else CurvatureSigns.concave,
+    #     name="negative_lens_front",
+    #     thickness=negative_lens_center_thickness / 2,
+    #     diameter=diameter_first_lens,
+    # )
+    print([mirror_left.to_params, *optical_system_lens.params, negative_lens_params])
+    optical_system_without_last_mirror = OpticalSystem.from_params(params=[mirror_left.to_params, *optical_system_lens.params, negative_lens_params],
                                                                    lambda_0_laser=LAMBDA_0_LASER, p_is_trivial=True, t_is_trivial=True, use_paraxial_ray_tracing=False)
 
     cavity = fixed_NA_cavity_generator(optical_system=optical_system_without_last_mirror,
