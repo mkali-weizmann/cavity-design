@@ -119,7 +119,7 @@ def analyze_output_wavefront(
 
     # Generate dummy points for fitted spheres (used only for plotting, not for calculations):
     points_rel = wavefront_points_initial - center_of_curvature
-    phi_dummy = np.linspace(0, np.arctan(points_rel[-1, 1] / points_rel[-1, 0]), 100)
+    phi_dummy = np.linspace(0, np.arctan(points_rel[-1, 1] / points_rel[-1, 0]), wavefront_points_initial.shape[0])
     dummy_points_curvature_initial = center_of_curvature - R_output * np.stack(
         (np.cos(phi_dummy), np.sin(phi_dummy), np.zeros_like(phi_dummy)), axis=-1
     )
@@ -306,7 +306,7 @@ def generate_two_lenses_optical_system(
 def generate_negative_lens_cavity(n_actual_first_lens, n_design_first_lens, T_c_first_lens, back_focal_length_first_lens, R_1_first_lens, R_2_first_lens, R_2_signed_first_lens, diameter_first_lens,
                                   approximate_focus_distance_long_arm: float,
                                   negative_lens_focal_length: float,
-                                  negative_lens_R_1_inverse: float,
+                                  negative_lens_R_2_inverse: float,
                                   negative_lens_back_relative_position,
                                   negative_lens_refractive_index,
                                   negative_lens_center_thickness,
@@ -324,16 +324,16 @@ def generate_negative_lens_cavity(n_actual_first_lens, n_design_first_lens, T_c_
     mirror_left = CurvedMirror(radius=5e-3, outwards_normal=LEFT, origin=ORIGIN,
                                            curvature_sign=CurvatureSigns.concave, name="LaserOptik mirror",
                                            diameter=7.75e-3, material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"])
-    f, n, r_1_inverse, T_c = negative_lens_focal_length, negative_lens_refractive_index, negative_lens_R_1_inverse, negative_lens_center_thickness
-    negative_lens_R_2_inverse = (1 / (f * (n-1)) - r_1_inverse) / ((n-1) * T_c * r_1_inverse / n - 1)
-    if negative_lens_R_2_inverse == 0:
-        negative_lens_R_2 = np.inf
-    else:
-        negative_lens_R_2 = 1 / negative_lens_R_2_inverse
+    f, n, r_2_inverse, T_c = negative_lens_focal_length, negative_lens_refractive_index, negative_lens_R_2_inverse, negative_lens_center_thickness
+    negative_lens_R_1_inverse = (1 / (f * (n-1)) + r_2_inverse) / ((n-1) * T_c * r_2_inverse / n + 1)
     if negative_lens_R_1_inverse == 0:
         negative_lens_R_1 = np.inf
     else:
         negative_lens_R_1 = 1 / negative_lens_R_1_inverse
+    if negative_lens_R_2_inverse == 0:
+        negative_lens_R_2 = np.inf
+    else:
+        negative_lens_R_2 = 1 / negative_lens_R_2_inverse
     negative_lens_back_center = (approximate_focus_distance_long_arm + negative_lens_back_relative_position) * optical_axis + optical_system_lens.surfaces[-1].center
     negative_lens_back, negative_lens_front = CurvedRefractiveSurface(
         radius=np.abs(negative_lens_R_1),
@@ -510,6 +510,7 @@ def plot_results(
     unconcentricity: Optional[float] = None,
     potential_x_axis_angles: bool = False,
     rays_labels: Optional[List[str]] = None,
+    fig_and_ax = None,
 ):
     (optical_system, ray_sequence, R, center_of_curvature, NA_paraxial, spot_size_paraxial, zero_derivative_points) = (
         results_dict["optical_system"],
@@ -557,7 +558,10 @@ def plot_results(
             None,
         )
     valid_cavity = results_dict["cavity"] is not None
-    fig, ax = plt.subplots(2, 2, figsize=(20, 16), constrained_layout=True)
+    if fig_and_ax is not None:
+        fig, ax = fig_and_ax
+    else:
+        fig, ax = plt.subplots(2, 2, figsize=(20, 16), constrained_layout=True)
     surface_0, surface_1 = optical_system.physical_surfaces[0], optical_system.physical_surfaces[-1]
     ray_sequence.plot(ax=ax[1, 0], linewidth=0.5, labels=rays_labels)
     ray_sequence.plot(ax=ax[1, 1], linewidth=0.5, labels=rays_labels)
@@ -574,16 +578,24 @@ def plot_results(
     ax[1, 0].scatter(center_of_curvature[0], center_of_curvature[1], s=50, color="cyan", label="Center of curvature")
     ax[1, 0].legend()
 
-    ax[1, 1].set_xlim(
-        center_of_curvature[0] -1e-3, center_of_curvature[0] + 1e-3
-    )
-    ax[1, 1].set_ylim(-ray_sequence.origin[-1, 1, 1] * 0.5, 1 * ray_sequence.origin[-1, 1, 1])  # (-4.2e-3, 4.2e-3)
+    ax[1, 1].set_xlim(ray_sequence.origin[0, 0, 0] - 0.01,
+                      results_dict['end_mirror_object'].center[0] + 0.01)  # (-1e-3, 100e-3)
+    ax[1, 1].set_aspect('equal', adjustable='box')
     ax[1, 1].grid()
     ax[1, 1].scatter(wavefront_points[:, 0], wavefront_points[:, 1], s=8, color="purple")
     ax[1, 1].scatter(center_of_curvature[0], center_of_curvature[1], s=50, color="cyan", label="Center of curvature")
+    ax[1, 1].legend()
+
+    # ax[1, 1].set_xlim(
+    #     center_of_curvature[0] -1e-3, center_of_curvature[0] + 1e-3
+    # )
+    # ax[1, 1].set_ylim(-ray_sequence.origin[-1, 1, 1] * 0.5, 1 * ray_sequence.origin[-1, 1, 1])  # (-4.2e-3, 4.2e-3)
+    # ax[1, 1].grid()
+    # ax[1, 1].scatter(wavefront_points[:, 0], wavefront_points[:, 1], s=8, color="purple")
+    # ax[1, 1].scatter(center_of_curvature[0], center_of_curvature[1], s=50, color="cyan", label="Center of curvature")
 
     ax[0, 0].plot(
-        wavefront_points[:, 0] * 1e3,
+        wavefront_points[:, 0] * 1e3 - dummy_points[:, 0] * 1e3,
         wavefront_points[:, 1] * 1e3,
         label="wavefront points",
         color="black",
@@ -594,7 +606,7 @@ def plot_results(
         alpha=0.4,
     )
     ax[0, 0].plot(
-        dummy_points[:, 0] * 1e3,
+        dummy_points[:, 0] * 1e3 - dummy_points[:, 0] * 1e3,
         dummy_points[:, 1] * 1e3,
         linestyle="dashdot",
         label="Fitted sphere for wavefront",
@@ -609,7 +621,7 @@ def plot_results(
     ax[0, 0].set_title(f"wavefront and fitted sphere: {R*1e3:.2f} mm")
     if dummy_points_mirror is not None:
         ax[0, 0].plot(
-            dummy_points_mirror[:, 0] * 1e3,
+            dummy_points_mirror[:, 0] * 1e3 - dummy_points[:, 0] * 1e3,
             dummy_points_mirror[:, 1] * 1e3,
             linestyle="dashed",
             color="magenta",
