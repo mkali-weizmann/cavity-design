@@ -824,14 +824,3 @@ def plot_results(
             ax[0, 1].legend(handles=handles)
     return fig, ax
 
-
-#
-# n_actual, n_design, T_c, back_focal_length, R_1, R_2, R_2_signed, diameter = known_lenses_generator(lens_type='aspheric - lab',
-#                                                                                                     dn=0)
-# cavity = generate_negative_lens_cavity(n_actual_first_lens=n_actual, n_design_first_lens=n_design, T_c_first_lens=T_c, back_focal_length_first_lens=back_focal_length,
-#                               R_1_first_lens=R_1, R_2_first_lens=R_2, R_2_signed_first_lens=R_2_signed, diameter_first_lens=diameter,
-#                               approximate_focus_distance_long_arm=200e-3, negative_lens_focal_length=-50e-3, negative_lens_R_1_inverse=-1e1, negative_lens_back_relative_position=100e-3,
-#                               negative_lens_refractive_index=1.45, negative_lens_center_thickness=2e-3, first_arm_NA=0.15, right_mirror_ROC=200e-3
-#                               )
-#
-# cavity.plot()
