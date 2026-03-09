@@ -105,15 +105,15 @@ p_mask = measured_reflectance['polarization'] == 'p'
 df_s = measured_reflectance[s_mask]
 df_p = measured_reflectance[p_mask]
 
-plt.scatter(df_s['angle_deg'], df_s['R'])
-plt.scatter(df_p['angle_deg'], df_p['R'])
+plt.scatter(np.abs(df_s['angle_deg']), df_s['R'])
+plt.scatter(np.abs(df_p['angle_deg']), df_p['R'])
 plt.xlabel('Angle of Incidence (degrees)')
 plt.ylabel('Reflectance')
 plt.yscale('log')
 plt.title('Measured Reflectance vs Angle of Incidence for Sapphire')
 plt.legend(['s-polarization', 'p-polarization'])
 plt.grid()
-plt.savefig(f'outputs/figures/power_vs_radius_{R * 1e5:.0f}.svg', bbox_inches='tight')
+plt.savefig(f'outputs/figures/reflected_power_vs_angle.svg', bbox_inches='tight')
 plt.show()
 
 # %%
@@ -148,14 +148,15 @@ for df in [df_s, df_p]:
     dfs_calibrated.append(df_calibrated)
 
 df_s_calibrated, df_p_calibrated = dfs_calibrated
-plt.scatter(df_s_calibrated['angle_deg'], df_s_calibrated['R'])
-plt.scatter(df_p_calibrated['angle_deg'], df_p_calibrated['R'])
+plt.scatter(np.abs(df_s_calibrated['angle_deg']), df_s_calibrated['R'])
+plt.scatter(np.abs(df_p_calibrated['angle_deg']), df_p_calibrated['R'])
 plt.xlabel('Angle of Incidence (degrees)')
 plt.ylabel('Reflectance')
 plt.yscale('log')
 plt.title('Measured Reflectance vs Angle of Incidence for Sapphire\n(recentered to be symmetric around 0 degrees)')
 plt.legend(['s-polarization', 'p-polarization'])
 plt.grid()
+plt.savefig(f'outputs/figures/reflected_power_vs_angle_recentered_abs.svg', bbox_inches='tight')
 plt.show()
 
 # %%
@@ -199,6 +200,7 @@ ax[2].set_yscale('log')
 ax[2].set_title('Measured Reflectance vs Angle of Incidence for Sapphire (recentered and Smoothed)')
 ax[2].legend(['s-polarization', 'p-polarization'])
 ax[2].grid()
+plt.savefig(f'outputs/figures/reflected_power_vs_angle_recentered_smoothed_abs.svg', bbox_inches='tight')
 plt.show()
 
 # %%
@@ -273,8 +275,8 @@ ax_bottom.legend(['s-polarization', 'p-polarization'])
 
 plt.suptitle(f"\n\ntotal reflected power = $\\frac{{1}}{{2}}\int_{{0}}^{{\\beta_{{\max}}}}P\left(\\beta\\right)\cdot R_{{p}}\left(\\beta\\right)+P\left(\\beta\\right)\cdot R_{{s}}\left(\\beta\\right)d\\beta = {total_reflected_power:.3e}$", y=1.02)
 plt.tight_layout()
+plt.savefig(f'outputs/figures/total_reflected_power_analysis.svg', bbox_inches='tight')
 plt.show()
-# %%
 
 
 
