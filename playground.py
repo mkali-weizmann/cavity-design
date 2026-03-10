@@ -1,5 +1,8 @@
-from matplotlib import use
-use('TkAgg')
+# from matplotlib import use
+
+from utils import angles_of_unit_vector
+
+# use('TkAgg')
 from simple_analysis_scripts.potential_analysis.analyze_potential import *
 from scipy.optimize import minimize_scalar
 
@@ -23,54 +26,61 @@ cavity = Cavity.from_params(params=params,
                             debug_printing_level=1,
                             )
 # %%
-t, p = 0, 0.001
-p_1 = cavity.surfaces[-1].parameterization(t, p)
-initial_guess_direction = -cavity.surfaces[-1].normal_at_a_point(point=p_1)
-initial_guess_theta, initial_guess_phi = angles_of_unit_vector(initial_guess_direction)
-initial_guess_ray = Ray(origin=p_1, k_vector=initial_guess_direction)
-optical_system_reduced = OpticalSystem(surfaces=cavity.surfaces_ordered[len(cavity.surfaces_ordered) // 2:],
+rays_initial = initialize_rays(starting_mirror=cavity.surfaces[0], phi_max=0.1, n_rays=100)
+propagated_ray = cavity.propagate_ray(ray=rays_initial, n_arms=len(cavity.arms) // 2, propagate_with_first_surface_first=False)
+ax = cavity.plot()
+propagated_ray[:-1].plot(ax=ax, linewidth=0.5)
+end_points = propagated_ray[-1].origin
+end_directions_inverted = -propagated_ray[-2].k_vector
+plt.show()
+# %%
+optical_system_inverted_reduced = OpticalSystem(surfaces=cavity.surfaces_ordered[len(cavity.surfaces_ordered) // 2:],
                                        use_paraxial_ray_tracing=False,
                                        p_is_trivial=True,
                                        t_is_trivial=True,)
 
-# Reuse a single figure to avoid creating a new one each call
 fig, ax = plt.subplots()
 
-phi = initial_guess_phi
-def f_for_extremum(theta, phi):
+def optical_path_length_trip(p_1, theta, phi, plot=False):
     k_vector = unit_vector_of_angles(theta=theta, phi=phi)
     ray = Ray(origin=p_1, k_vector=k_vector)
-    propagated_ray = optical_system_reduced.propagate_ray(ray=ray, propagate_with_first_surface_first=False)
+    propagated_ray = optical_system_inverted_reduced.propagate_ray(ray=ray, propagate_with_first_surface_first=False)
     total_path_length = propagated_ray.cumulative_optical_path_length[-2]
     last_inner_product = propagated_ray.k_vector[-2] @ propagated_ray.k_vector[-1]
     if np.isnan(total_path_length):
         total_path_length = np.inf
         last_inner_product = np.inf
-    ax.clear()
-    optical_system_reduced.plot(ax=ax)
-    propagated_ray.plot(ax=ax)
-    ax.set_title(f'$\phi={phi:.10f}$\nOptical path length: {total_path_length:.10f} m\n last_inner product: {last_inner_product:.10f}')
-    fig.canvas.draw_idle()
-    plt.pause(0.001)
+    if plot:
+        ax.clear()
+        optical_system_inverted_reduced.plot(ax=ax)
+        propagated_ray.plot(ax=ax)
+        ax.set_title(f'$\phi={phi:.10f}$\nOptical path length: {total_path_length:.10f} m\n last_inner product: {last_inner_product:.10f}')
+        fig.canvas.draw_idle()
+        plt.pause(0.001)
     return total_path_length
 
 def f_for_extremum_1d(phi):
-    return f_for_extremum(theta=initial_guess_theta, phi=phi)
-
-optical_path_length = f_for_extremum(f_for_extremum_1d)
-
-# find phi that minimizes the optical path length
-
-result = minimize_scalar(f_for_extremum_1d, bounds=(initial_guess_phi - np.pi / 1000, initial_guess_phi + np.pi / 1000), tol=1e-10)
-optimal_phi = result.x
-optimal_optical_path_length = result.fun
+    return optical_path_length_trip(p_1=optical_system_inverted_reduced.surfaces[0].center, theta=0, phi=phi, plot=True)
 # %%
-phis_dummy = np.linspace(initial_guess_phi - np.pi / 1000, initial_guess_phi + np.pi / 1000, 100)
-propagated_ray_dummy = optical_system_reduced.propagate_ray(ray=Ray(origin=p_1, k_vector=unit_vector_of_angles(theta=initial_guess_theta, phi=phis_dummy)), propagate_with_first_surface_first=False)
-fig, ax = plt.subplots()
-optical_system_reduced.plot(ax=ax)
-propagated_ray_dummy[:-1].plot(ax=ax, linewidth=0.5)
-ax.set_title(f'Optimal $\phi$: {optimal_phi:.10f}\nOptimal optical path length: {optimal_optical_path_length:.10f}m')
-plt.show()
-
-# jacobian_phi =
+d_angle = 1e-6
+initial_angles = angles_of_unit_vector(end_directions_inverted)
+initial_angles_plus_dtheta = (initial_angles[0] + d_angle, initial_angles[1])
+initial_angles_plus_dphi = (initial_angles[0], initial_angles[1] + d_angle)
+k_vector_0 = end_directions_inverted
+k_vector_dtheta = unit_vector_of_angles(theta=initial_angles_plus_dtheta[0], phi=initial_angles_plus_dtheta[1])
+k_vector_dphi = unit_vector_of_angles(theta=initial_angles_plus_dphi[0], phi=initial_angles_plus_dphi[1])
+k_vectors_tilted = np.stack([k_vector_0, k_vector_dtheta, k_vector_dphi], axis=1)
+initial_starting_points = np.stack([end_points, end_points, end_points], axis=1)
+print(f"{k_vectors_tilted.shape=}, {initial_starting_points.shape=}")
+initial_rays = Ray(origin=initial_starting_points, k_vector=k_vectors_tilted)
+propagated_ray_backwards = optical_system_inverted_reduced.propagate_ray(ray=initial_rays, propagate_with_first_surface_first=False)
+optical_path_lengths_backwards = propagated_ray_backwards.cumulative_optical_path_length[-2]
+optical_path_lengths_backwards_minus_trivial = optical_path_lengths_backwards[:, 1:] - optical_path_lengths_backwards[:, 0:1]
+final_points_backwards = propagated_ray_backwards[-1].origin
+final_points_backwards_minus_trivial = final_points_backwards[:, 1:, :] - final_points_backwards[:, 0:1, :]
+final_points_distances_to_trivial = np.linalg.norm(final_points_backwards_minus_trivial, axis=-1)[:, 1:]
+quadratic_coefficients = (optical_path_lengths_backwards_minus_trivial / final_points_distances_to_trivial**2)
+# %%
+final_points_backwards_minus_trivial_normalized = normalize_vector(final_points_backwards_minus_trivial)
+final_points_spanning_vectors_inner_product = np.einsum('ij,ij->i', final_points_backwards_minus_trivial_normalized[:, 0, :], final_points_backwards_minus_trivial_normalized[:, 1, :])
+# %%

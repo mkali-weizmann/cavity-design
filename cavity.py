@@ -306,7 +306,7 @@ class Ray:
         self.origin = origin  # m_rays | 3
         self.k_vector = normalize_vector(k_vector)  # m_rays | 3
         if length is not None and isinstance(length, float) and origin.ndim > 1:  # If there is one length for many rays
-            length = np.ones(origin.shape[0]) * length
+            length = np.ones(origin.shape[:-1]) * length
         self.length = length  # m_rays or None
         self.n = n  # m_rays or None
 

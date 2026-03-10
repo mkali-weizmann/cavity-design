@@ -284,7 +284,6 @@ def generate_negative_lens_cavity(n_actual_first_lens, n_design_first_lens, T_c_
     #     thickness=negative_lens_center_thickness / 2,
     #     diameter=diameter_first_lens,
     # )
-    print([mirror_left.to_params, *optical_system_lens.params, negative_lens_params])
     optical_system_without_last_mirror = OpticalSystem.from_params(params=[mirror_left.to_params, *optical_system_lens.params, negative_lens_params],
                                                                    lambda_0_laser=LAMBDA_0_LASER, p_is_trivial=True, t_is_trivial=True, use_paraxial_ray_tracing=False)
 
@@ -636,7 +635,6 @@ def plot_results(
         fig, ax = fig_and_ax
     else:
         fig, ax = plt.subplots(2, 2, figsize=(20, 16), constrained_layout=True)
-    surface_0, surface_1 = optical_system.physical_surfaces[0], optical_system.physical_surfaces[-1]
     ray_sequence.plot(ax=ax[1, 0], linewidth=0.5, labels=rays_labels)
     ray_sequence.plot(ax=ax[1, 1], linewidth=0.5, labels=rays_labels)
     if valid_cavity:
@@ -657,15 +655,6 @@ def plot_results(
     ax[1, 1].set_aspect('equal', adjustable='box')
     ax[1, 1].grid()
     ax[1, 1].scatter(wavefront_points[:, 0], wavefront_points[:, 1], s=8, color="purple")
-    # ax[1, 1].scatter(center_of_curvature[0], center_of_curvature[1], s=50, color="cyan", label="Center of curvature")
-
-    # ax[1, 1].set_xlim(
-    #     center_of_curvature[0] -1e-3, center_of_curvature[0] + 1e-3
-    # )
-    # ax[1, 1].set_ylim(-ray_sequence.origin[-1, 1, 1] * 0.5, 1 * ray_sequence.origin[-1, 1, 1])  # (-4.2e-3, 4.2e-3)
-    # ax[1, 1].grid()
-    # ax[1, 1].scatter(wavefront_points[:, 0], wavefront_points[:, 1], s=8, color="purple")
-    # ax[1, 1].scatter(center_of_curvature[0], center_of_curvature[1], s=50, color="cyan", label="Center of curvature")
 
     ax[0, 0].plot(
         wavefront_points[:, 0] * 1e3 - dummy_points[:, 0] * 1e3,
