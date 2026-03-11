@@ -529,7 +529,10 @@ class RaySequence:
     def remove_escaped_rays(self):
         # Removes rays that did not intersect any surface, and therefore have nan in their length. last step always
         # has nan length, so it is not taken into account when checking which rays escaped and which didn't.
-        rays_indices_that_didnt_escape = np.bitwise_not(np.any(np.isnan(self.length[:-1]), axis=0))
+        missed_any_surface = np.any(np.isnan(self.length[:-1]), axis=0)
+        had_total_internal_reflection = np.any(np.isnan(self.k_vector), axis=(0, -1))
+        rays_that_escaped = np.bitwise_or(missed_any_surface, had_total_internal_reflection)
+        rays_indices_that_didnt_escape = np.bitwise_not(rays_that_escaped)
         ray_sequence_filtered = self[:, rays_indices_that_didnt_escape]
         return ray_sequence_filtered
 

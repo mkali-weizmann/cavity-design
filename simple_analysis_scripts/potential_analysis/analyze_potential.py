@@ -477,6 +477,7 @@ def analyze_potential_given_cavity(cavity: Cavity,
     first_mirror = cavity.physical_surfaces[0]
     rays_0 = initialize_rays(n_rays=n_rays, phi_max=phi_max)
     ray_sequence = optical_system_reduced.propagate_ray(rays_0, propagate_with_first_surface_first=True)
+    ray_sequence = ray_sequence.remove_escaped_rays
     R_analytical = optical_system_reduced.output_radius_of_curvature(
         source_position=first_mirror.origin
     )
