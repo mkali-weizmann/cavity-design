@@ -525,6 +525,14 @@ class RaySequence:
     def __len__(self) -> int:
         return self.origin.shape[0]
 
+    @property
+    def remove_escaped_rays(self):
+        # Removes rays that did not intersect any surface, and therefore have nan in their length. last step always
+        # has nan length, so it is not taken into account when checking which rays escaped and which didn't.
+        rays_indices_that_didnt_escape = np.bitwise_not(np.any(np.isnan(self.length[:-1]), axis=0))
+        ray_sequence_filtered = self[:, rays_indices_that_didnt_escape]
+        return ray_sequence_filtered
+
 
 class Surface:
     def __init__(

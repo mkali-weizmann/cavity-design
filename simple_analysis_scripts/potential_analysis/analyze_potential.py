@@ -262,28 +262,7 @@ def generate_negative_lens_cavity(n_actual_first_lens, n_design_first_lens, T_c_
     negative_lens_back_center = (approximate_focus_distance_long_arm + negative_lens_back_relative_position) * optical_axis + optical_system_lens.surfaces[-1].center
     negative_lens_params = OpticalElementParams(x=negative_lens_back_center[0] + negative_lens_center_thickness / 2,
                                                 y=0, z=0, r_1=negative_lens_R_1, r_2=negative_lens_R_2, theta=0, phi=0, T_c=negative_lens_center_thickness, n_inside_or_after=negative_lens_refractive_index,
-                                                n_outside_or_before=1, diameter=diameter_first_lens, curvature_sign=np.nan, name="Negative Lens", material_properties=PHYSICAL_SIZES_DICT['material_properties_fused_silica'], polynomial_coefficients=None, surface_type=SurfacesTypes.thick_lens)
-    # negative_lens_back, negative_lens_front = CurvedRefractiveSurface(
-    #     radius=np.abs(negative_lens_R_1),
-    #     outwards_normal=optical_axis * (- np.sign(negative_lens_R_1)),
-    #     center=negative_lens_back_center,
-    #     n_1=1,
-    #     n_2=negative_lens_refractive_index,
-    #     curvature_sign=CurvatureSigns.convex if negative_lens_R_1 > 0 else CurvatureSigns.concave,
-    #     name="negative_lens_back",
-    #     thickness=negative_lens_center_thickness / 2,
-    #     diameter=diameter_first_lens,
-    # ), CurvedRefractiveSurface(
-    #     radius=np.abs(negative_lens_R_2),
-    #     outwards_normal=optical_axis * (- np.sign(negative_lens_R_2)),
-    #     center=negative_lens_back_center + negative_lens_center_thickness * optical_axis,
-    #     n_1=negative_lens_refractive_index,
-    #     n_2=1,
-    #     curvature_sign=CurvatureSigns.convex if negative_lens_R_2 > 0 else CurvatureSigns.concave,
-    #     name="negative_lens_front",
-    #     thickness=negative_lens_center_thickness / 2,
-    #     diameter=diameter_first_lens,
-    # )
+                                                n_outside_or_before=1, diameter=25.7e-3, curvature_sign=np.nan, name="Negative Lens", material_properties=PHYSICAL_SIZES_DICT['material_properties_fused_silica'], polynomial_coefficients=None, surface_type=SurfacesTypes.thick_lens)
     optical_system_without_last_mirror = OpticalSystem.from_params(params=[mirror_left.to_params, *optical_system_lens.params, negative_lens_params],
                                                                    lambda_0_laser=LAMBDA_0_LASER, p_is_trivial=True, t_is_trivial=True, use_paraxial_ray_tracing=False)
 
@@ -292,63 +271,6 @@ def generate_negative_lens_cavity(n_actual_first_lens, n_design_first_lens, T_c_
                                        end_mirror_distance_to_last_element=right_mirror_distance_to_negative_lens_front,
                                        material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"])
     return cavity
-
-def complete_optical_system_to_cavity(results_dict: dict, unconcentricity: float, print_tests: bool = True):
-    # Generate cavity for mode analysis:
-    optical_system = results_dict["optical_system"]
-    mode_parameters_lens_right_outer_side = LocalModeParameters(
-        z_minus_z_0=results_dict["R_output"] - unconcentricity / 2,
-        lambda_0_laser=LAMBDA_0_LASER,
-        n=1,
-        z_R=z_R_of_NA(NA=results_dict["NA_paraxial"], lambda_laser=LAMBDA_0_LASER),
-    )
-    optical_system_inverted = optical_system.invert()
-    mode_parameters_right_arm = results_dict["mode_parameters_right_arm"].invert_direction()
-    modes_history = optical_system_inverted.propagate_mode_parameters(
-        mode_parameters=mode_parameters_right_arm, propagate_with_first_surface_first=True
-    )
-    output_mode_local = modes_history[-1]
-    output_mode = output_mode_local.to_mode_parameters(
-        location_of_local_mode_parameter=optical_system_inverted.arms[-1].surface_1.center, k_vector=LEFT
-    )
-
-    mirror_left = match_a_mirror_to_mode(
-        mode=output_mode,
-        R=5e-3,
-        name="LaserOptik mirror",
-        material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"],
-    )
-
-    cavity = Cavity(
-        surfaces=[mirror_left, *optical_system.physical_surfaces, results_dict["end_mirror_object"]],
-        lambda_0_laser=LAMBDA_0_LASER,
-        t_is_trivial=True,
-        p_is_trivial=True,
-        use_paraxial_ray_tracing=False,
-        standing_wave=True,
-    )
-    if print_tests:
-        print(
-            f"NA in the right arm - analytical calculation and numerical cavity solution\n{results_dict['NA_paraxial']:.3e}\n"
-            f"{cavity.arms[len(cavity.arms) // 2].mode_parameters.NA[0]:.3e}"
-        )
-
-        print(
-            f"center of curvature of output wave and mode center in cavity:\n"
-            f"{results_dict['center_of_curvature'] - unconcentricity / 2 * RIGHT}\n{cavity.mode_parameters[len(cavity.arms) // 2].center[0, :]}"
-        )
-
-        print(
-            "Spot size in the right mirror - analytical calculation and numerical cavity solution\n"
-            f"{results_dict['spot_size_paraxial'] * 1e3:.3e} mm\n{w_of_q(cavity.arms[len(cavity.arms) // 2].mode_parameters_on_surface_0.q[0], lambda_laser=LAMBDA_0_LASER) * 1e3:.3e} mm"
-        )
-
-        print(
-            "mode radius of curvature after the optical system - analytical calculation and numerical cavity solution\n"
-            f"{results_dict['R_output']*1e3:.3e} mm\n{R_of_q(cavity.arms[len(cavity.arms) // 2 - 1].mode_parameters_on_surface_0.q[0])*1e3:.3e} mm"
-        )
-    return cavity
-
 
 def analyze_output_wavefront(
     ray_sequence: RaySequence,
@@ -431,7 +353,7 @@ def analyze_output_wavefront(
 
     residual_distances_opposite = np.abs(R_opposite) - np.linalg.norm(wavefront_points_opposite - center_of_curvature, axis=-1)
     polynomial_residuals_opposite = Polynomial.fit(
-        wavefront_points_opposite[:, 1] ** 2, residual_distances_opposite, 4
+        wavefront_points_opposite[:, 1] ** 2, residual_distances_opposite, 6
     ).convert()
 
     # Analyze unconcentric mirror case:
@@ -439,9 +361,8 @@ def analyze_output_wavefront(
         wavefront_points_opposite - end_mirror_origin, axis=-1
     )  # Mirror has a radius of R_output, not R_opposite.
     polynomial_residuals_mirror = Polynomial.fit(
-        wavefront_points_opposite[:, 1] ** 2, residual_distances_mirror, 4
+        wavefront_points_opposite[:, 1] ** 2, residual_distances_mirror, 6
     ).convert()
-    expected_second_order_term = 1 / 2 * (1 / R_opposite - 1 / R_output)
 
     # Generate dummy points for fitted spheres (used only for plotting, not for calculations):
     points_rel = wavefront_points_initial - center_of_curvature
@@ -504,9 +425,7 @@ def analyze_potential(
     print_tests: bool = True,
 ):
     ray_sequence = optical_system.propagate_ray(rays_0, propagate_with_first_surface_first=True)
-
-    rays_indices_that_didnt_escape = np.bitwise_not(np.any(np.isnan(ray_sequence.length[:-1]), axis=0))
-    ray_sequence = ray_sequence[:, rays_indices_that_didnt_escape]
+    ray_sequence = ray_sequence.remove_escaped_rays  # Filter out rays that escaped the system (e.g. because of finite size of the lenses or because they were blocked by the mirror)
 
     R_analytical = optical_system.output_radius_of_curvature(
         source_position=rays_0.origin[0, :]
@@ -634,65 +553,18 @@ def plot_results(
     if fig_and_ax is not None:
         fig, ax = fig_and_ax
     else:
-        fig, ax = plt.subplots(2, 2, figsize=(20, 16), constrained_layout=True)
-    ray_sequence.plot(ax=ax[1, 0], linewidth=0.5, labels=rays_labels)
-    ray_sequence.plot(ax=ax[1, 1], linewidth=0.5, labels=rays_labels)
+        fig, ax = plt.subplots(2, 1, figsize=(20, 20), constrained_layout=True)
+    ray_sequence.plot(ax=ax[1], linewidth=0.5, labels=rays_labels)
     if valid_cavity:
-        results_dict["cavity"].plot(ax=ax[1, 0], fine_resolution=True)
-        results_dict["cavity"].plot(ax=ax[1, 1], fine_resolution=True)
+        results_dict["cavity"].plot(ax=ax[1], fine_resolution=True)
     else:
-        results_dict["optical_system"].plot(ax=ax[1, 0], fine_resolution=True)
-        results_dict["optical_system"].plot(ax=ax[1, 1], fine_resolution=True)
-    ax[1, 0].set_xlim(ray_sequence.origin[0, 0, 0] - 0.01, results_dict['end_mirror_object'].center[0]+0.01)  # (-1e-3, 100e-3)
-    ax[1, 0].set_ylim(-5e-3, 5e-3)  # surface_1.diameter / 2, surface_1.diameter / 2
-    ax[1, 0].grid()
-    ax[1, 0].scatter(wavefront_points[:, 0], wavefront_points[:, 1], s=8, color="purple")
-    ax[1, 0].scatter(center_of_curvature[0], center_of_curvature[1], s=20, color="cyan", label="Center of curvature")
-    ax[1, 0].legend()
-
-    ax[1, 1].set_xlim(ray_sequence.origin[0, 0, 0] - 0.01,
-                      results_dict['end_mirror_object'].center[0] + 0.01)  # (-1e-3, 100e-3)
-    ax[1, 1].set_aspect('equal', adjustable='box')
-    ax[1, 1].grid()
-    ax[1, 1].scatter(wavefront_points[:, 0], wavefront_points[:, 1], s=8, color="purple")
-
-    ax[0, 0].plot(
-        wavefront_points[:, 0] * 1e3 - dummy_points[:, 0] * 1e3,
-        wavefront_points[:, 1] * 1e3,
-        label="wavefront points",
-        color="black",
-        marker="o",
-        linestyle="",
-        markersize=5,
-        zorder=1,
-        alpha=0.4,
-    )
-    ax[0, 0].plot(
-        dummy_points[:, 0] * 1e3 - dummy_points[:, 0] * 1e3,
-        dummy_points[:, 1] * 1e3,
-        linestyle="dashdot",
-        label="Fitted sphere for wavefront",
-        color="C0",
-        linewidth=2.0,
-        alpha=0.95,
-        zorder=3,
-    )
-    ax[0, 0].set_xlabel("x (mm)")
-    ax[0, 0].set_ylabel("y (mm)")
-    ax[0, 0].grid()
-    ax[0, 0].set_title(f"wavefront and fitted sphere: {R*1e3:.2f} mm")
-    if dummy_points_mirror is not None:
-        ax[0, 0].plot(
-            dummy_points_mirror[:, 0] * 1e3 - dummy_points[:, 0] * 1e3,
-            dummy_points_mirror[:, 1] * 1e3,
-            linestyle="dashed",
-            color="magenta",
-            label="Fitted sphere for unconcentric mirror",
-            linewidth=2.0,
-            alpha=0.5,
-            zorder=2,
-        )
-        ax[0, 0].legend()
+        results_dict["optical_system"].plot(ax=ax[1], fine_resolution=True)
+    ax[1].set_xlim(ray_sequence.origin[0, 0, 0] - 0.01, results_dict['end_mirror_object'].center[0]+0.01)  # (-1e-3, 100e-3)
+    ax[1].set_ylim(-5e-3, 5e-3)  # surface_1.diameter / 2, surface_1.diameter / 2
+    ax[1].grid()
+    ax[1].scatter(wavefront_points[:, 0], wavefront_points[:, 1], s=8, color="purple")
+    ax[1].scatter(center_of_curvature[0], center_of_curvature[1], s=20, color="cyan", label="Center of curvature")
+    ax[1].legend()
 
     if potential_x_axis_angles:
         angles_theta, angles_phi = angles_of_unit_vector(ray_sequence[0].k_vector)
@@ -701,7 +573,7 @@ def plot_results(
     else:
         potential_x_axis = wavefront_points[:, 1] * 1e3
         potential_x_label = "y (mm)"
-    ax[0, 1].plot(
+    ax[0].plot(
         potential_x_axis,
         residual_distances * 1e6,
         label="wavefront residual from matching sphere",
@@ -712,9 +584,10 @@ def plot_results(
         alpha=0.6,
     )
     x_fit = np.linspace(np.min(wavefront_points[:, 1]), np.max(wavefront_points[:, 1]), 100)
-    ax[0, 1].set_xlabel(potential_x_label)
-    ax[0, 1].set_ylabel("wavefront difference (µm)")
-    ax[0, 1].grid()
+    ax[0].set_xlim(x_fit[0] * 1e3, x_fit[-1] * 1e3)
+    ax[0].set_xlabel(potential_x_label)
+    ax[0].set_ylabel("wavefront difference (µm)")
+    ax[0].grid()
     # build polynomial term string with ascending powers and .1e formatting, include x^{n} terms
     coeffs_asc = polynomial.coef
     terms_parts = []
@@ -729,7 +602,7 @@ def plot_results(
     # Build terms for mirror deviation polynomial (if present)
     terms_parts_mirror = []
     if polynomial_residuals_mirror is not None:
-        ax[0, 1].plot(
+        ax[0].plot(
             potential_x_axis,
             residual_distances_mirror * 1e6,
             marker="x",
@@ -761,9 +634,9 @@ def plot_results(
         title += (
             f"\nmirror deviation fit (unconcentricity = {unconcentricity_um:.1f} µm):\n" + terms_mirror + mode_terms
         )
-        ax[0, 1].set_title(title)
+        ax[0].set_title(title)
         if not potential_x_axis_angles:
-            ax[0, 1].plot(
+            ax[0].plot(
                 x_fit * 1e3,
                 polynomial_residuals_mirror(x_fit**2) * 1e6,
                 color="green",
@@ -771,7 +644,7 @@ def plot_results(
                 label="Mirror residuals Polynomial fit",
                 linewidth=0.5,
             )
-            ax[0, 1].plot(
+            ax[0].plot(
                 x_fit * 1e3,
                 polynomial(x_fit**2) * 1e6,
                 color="red",
@@ -779,9 +652,9 @@ def plot_results(
                 label="Matching sphere residuals Polynomial fit",
                 linewidth=0.5,
             )
-            # Plot intensity profile on a new y axis for ax[0, 1] if NA_paraxial is not None: using the formula: e^{-y^{2} / (spot_size_paraxial / 2)^{2})}
+            # Plot intensity profile on a new y axis for ax[0] if NA_paraxial is not None: using the formula: e^{-y^{2} / (spot_size_paraxial / 2)^{2})}
             if NA_paraxial is not None and spot_size_paraxial is not None:
-                ax2 = ax[0, 1].twinx()
+                ax2 = ax[0].twinx()
                 intensity_profile = np.exp(-(x_fit**2) / (spot_size_paraxial / 2) ** 2)
                 ax2.plot(
                     x_fit * 1e3,
@@ -801,15 +674,15 @@ def plot_results(
                 legend_line = Line2D(
                     [], [], color="orange", linestyle="dashed", linewidth=1, label="Paraxial Gaussian intensity profile"
                 )
-                handles, labels = ax[0, 1].get_legend_handles_labels()
+                handles, labels = ax[0].get_legend_handles_labels()
                 handles.append(legend_line)
                 ax2.set_ylabel("Relative intensity (a.u.)")
                 ax2.grid(False)
 
             zero_derivative_point_plot = np.nan if zero_derivative_points is None else zero_derivative_points
-            ax[0, 1].axvline(
+            ax[0].axvline(
                 zero_derivative_point_plot * 1e3, label="2nd vs 4th order max", color="purple", linestyle="dotted"
             )
-            ax[0, 1].legend(handles=handles)
+            ax[0].legend(handles=handles)
     return fig, ax
 
