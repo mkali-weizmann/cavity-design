@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.optimize import newton
 
 from cavity import *
 from matplotlib.lines import Line2D
@@ -273,6 +274,95 @@ def generate_negative_lens_cavity(n_actual_first_lens, n_design_first_lens, T_c_
                                        material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"], diameter=large_elements_CA)
     return cavity
 
+def gnerate_negative_lens_cavity_smart(phi_max_marginal, phi_max_polynomial, n_actual, n_design, T_c, back_focal_length, R_1, R_2, R_2_signed, diameter, n_rays, first_arm_NA, negative_lens_refractive_index, large_elements_CA, right_mirror_ROC, right_mirror_distance_to_negative_lens_front, negative_lens_defocus_power, negative_lens_R_2_inverse, desired_focus, negative_lens_back_relative_position):
+    negative_lens_focal_length = -1
+    negative_lens_R_2_inverse = 1
+
+    def f_root_lens_right(negative_lens_R_2_inverse):
+        cavity = generate_negative_lens_cavity(n_actual_first_lens=n_actual, n_design_first_lens=n_design,
+                                               T_c_first_lens=T_c, back_focal_length_first_lens=back_focal_length,
+                                               R_1_first_lens=R_1, R_2_first_lens=R_2,
+                                               R_2_signed_first_lens=R_2_signed,
+                                               diameter_first_lens=diameter,
+                                               approximate_focus_distance_long_arm=desired_focus,
+                                               negative_lens_focal_length=negative_lens_focal_length,
+                                               negative_lens_R_2_inverse=negative_lens_R_2_inverse,
+                                               negative_lens_back_relative_position=negative_lens_back_relative_position,
+                                               negative_lens_refractive_index=negative_lens_refractive_index,
+                                               negative_lens_center_thickness=3.45e-3,
+                                               first_arm_NA=first_arm_NA, right_mirror_ROC=right_mirror_ROC,
+                                               right_mirror_distance_to_negative_lens_front=right_mirror_distance_to_negative_lens_front, )
+        marginal_ray_initial = Ray(origin=ORIGIN, k_vector=unit_vector_of_angles(theta=0, phi=phi_max_marginal))
+        marginal_ray = cavity.propagate_ray(ray=marginal_ray_initial, propagate_with_first_surface_first=False,
+                                            n_arms=5)
+        #
+        if np.isnan(marginal_ray[4].origin[1]):
+            return np.inf
+        else:
+            two_y_marginal_over_R_lens_right = 2 * np.abs(marginal_ray[4].origin[1]) / cavity.arms[
+                3].surface_1.radius
+        return two_y_marginal_over_R_lens_right - 1
+
+    try:
+        negative_lens_R_2_inverse = newton(func=f_root_lens_right, x0=negative_lens_R_2_inverse, tol=1e-6,
+                                           maxiter=100)
+    except RuntimeError:
+        print(
+            f"Did not converge for desired focus {desired_focus} m and negative lens back relative position {negative_lens_back_relative_position}")
+
+    def f_root_mirror(negative_focal_length_inverse: float):
+        if negative_focal_length_inverse == 0:
+            negative_lens_focal_length = np.inf
+        else:
+            negative_lens_focal_length = 1 / negative_focal_length_inverse
+        cavity = generate_negative_lens_cavity(n_actual_first_lens=n_actual, n_design_first_lens=n_design,
+                                               T_c_first_lens=T_c, back_focal_length_first_lens=back_focal_length,
+                                               R_1_first_lens=R_1, R_2_first_lens=R_2,
+                                               R_2_signed_first_lens=R_2_signed,
+                                               diameter_first_lens=diameter,
+                                               approximate_focus_distance_long_arm=desired_focus,
+                                               negative_lens_focal_length=negative_lens_focal_length,
+                                               negative_lens_R_2_inverse=negative_lens_R_2_inverse,
+                                               negative_lens_back_relative_position=negative_lens_back_relative_position,
+                                               negative_lens_refractive_index=negative_lens_refractive_index,
+                                               negative_lens_center_thickness=3.45e-3,
+                                               first_arm_NA=first_arm_NA, right_mirror_ROC=right_mirror_ROC,
+                                               right_mirror_distance_to_negative_lens_front=right_mirror_distance_to_negative_lens_front, )
+        marginal_ray_initial = Ray(origin=ORIGIN, k_vector=unit_vector_of_angles(theta=0, phi=phi_max_marginal))
+        marginal_ray = cavity.propagate_ray(ray=marginal_ray_initial, propagate_with_first_surface_first=False,
+                                            n_arms=5)
+        if np.isnan(marginal_ray.origin[-1, 1]):
+            two_y_marginal_over_CA_right = -10 * negative_focal_length_inverse  # np.inf
+        else:
+            two_y_marginal_over_CA_right = 2 * np.abs(marginal_ray.origin[-1, 1]) / large_elements_CA
+        value_for_root = two_y_marginal_over_CA_right - 1
+        return value_for_root
+
+    try:
+        negative_lens_focal_length_inverse, results_report = newton(func=f_root_mirror,
+                                                                    x0=1 / negative_lens_defocus_power, tol=1e-6,
+                                                                    maxiter=100, disp=False, full_output=True)
+    except RuntimeError:
+        print(
+            f"Did not converge for desired focus {desired_focus} m and negative lens back relative position {negative_lens_back_relative_position}")
+    negative_lens_focal_length = 1 / negative_lens_focal_length_inverse
+
+    cavity = generate_negative_lens_cavity(n_actual_first_lens=n_actual, n_design_first_lens=n_design,
+                                           T_c_first_lens=T_c, back_focal_length_first_lens=back_focal_length,
+                                           R_1_first_lens=R_1, R_2_first_lens=R_2, R_2_signed_first_lens=R_2_signed,
+                                           diameter_first_lens=diameter,
+                                           approximate_focus_distance_long_arm=desired_focus,
+                                           negative_lens_focal_length=negative_lens_focal_length,
+                                           negative_lens_R_2_inverse=negative_lens_R_2_inverse,
+                                           negative_lens_back_relative_position=negative_lens_back_relative_position,
+                                           negative_lens_refractive_index=negative_lens_refractive_index,
+                                           negative_lens_center_thickness=3.45e-3, first_arm_NA=first_arm_NA,
+                                           right_mirror_ROC=right_mirror_ROC,
+                                           right_mirror_distance_to_negative_lens_front=right_mirror_distance_to_negative_lens_front)
+    results_dict = analyze_potential_given_cavity(cavity=cavity, n_rays=n_rays, phi_max=phi_max_polynomial,
+                                                  print_tests=False)
+    return results_dict['polynomial_residuals_mirror'].coef[2], negative_lens_focal_length, negative_lens_R_2_inverse, cavity
+
 def analyze_output_wavefront(
     ray_sequence: RaySequence,
     unconcentricity: Optional[float] = None,
@@ -478,11 +568,13 @@ def analyze_potential_given_cavity(cavity: Cavity,
     first_mirror = cavity.physical_surfaces[0]
     rays_0 = initialize_rays(n_rays=n_rays, phi_max=phi_max)
     ray_sequence = optical_system_reduced.propagate_ray(rays_0, propagate_with_first_surface_first=True)
-    ray_sequence = ray_sequence.remove_escaped_rays
+    ray_sequence_cleaned = ray_sequence.remove_escaped_rays
     R_analytical = optical_system_reduced.output_radius_of_curvature(
         source_position=first_mirror.origin
     )
-    results_dict = analyze_output_wavefront(ray_sequence=ray_sequence,
+    if ray_sequence_cleaned.origin.shape[1] == 1:
+        raise ValueError("All rays escaped the system, cannot analyze wavefront. Try increasing the number of rays or the maximum angle phi_max.")
+    results_dict = analyze_output_wavefront(ray_sequence=ray_sequence_cleaned,
                                             R_output_analytical=R_analytical,
                                             end_mirror_center=cavity.physical_surfaces[-1].center,
                                             end_mirror_ROC=cavity.physical_surfaces[-1].radius,
