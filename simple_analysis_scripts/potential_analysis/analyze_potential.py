@@ -238,6 +238,7 @@ def generate_negative_lens_cavity(n_actual_first_lens, n_design_first_lens, T_c_
                                   first_arm_NA: float,
                                   right_mirror_ROC: Optional[float] = None,
                                   right_mirror_distance_to_negative_lens_front: Optional[float] = None,
+                                  large_elements_CA: float = 25e-3
 ):
     defocus = choose_source_position_for_desired_focus_analytic(desired_focus=approximate_focus_distance_long_arm, T_c=T_c_first_lens, n_design=n_design_first_lens,
                                                                 diameter=diameter_first_lens, back_focal_length=back_focal_length_first_lens,
@@ -262,14 +263,14 @@ def generate_negative_lens_cavity(n_actual_first_lens, n_design_first_lens, T_c_
     negative_lens_back_center = (approximate_focus_distance_long_arm + negative_lens_back_relative_position) * optical_axis + optical_system_lens.surfaces[-1].center
     negative_lens_params = OpticalElementParams(x=negative_lens_back_center[0] + negative_lens_center_thickness / 2,
                                                 y=0, z=0, r_1=negative_lens_R_1, r_2=negative_lens_R_2, theta=0, phi=0, T_c=negative_lens_center_thickness, n_inside_or_after=negative_lens_refractive_index,
-                                                n_outside_or_before=1, diameter=25.7e-3, curvature_sign=np.nan, name="Negative Lens", material_properties=PHYSICAL_SIZES_DICT['material_properties_fused_silica'], polynomial_coefficients=None, surface_type=SurfacesTypes.thick_lens)
+                                                n_outside_or_before=1, diameter=large_elements_CA, curvature_sign=np.nan, name="Negative Lens", material_properties=PHYSICAL_SIZES_DICT['material_properties_fused_silica'], polynomial_coefficients=None, surface_type=SurfacesTypes.thick_lens)
     optical_system_without_last_mirror = OpticalSystem.from_params(params=[mirror_left.to_params, *optical_system_lens.params, negative_lens_params],
                                                                    lambda_0_laser=LAMBDA_0_LASER, p_is_trivial=True, t_is_trivial=True, use_paraxial_ray_tracing=False)
 
     cavity = fixed_NA_cavity_generator(optical_system=optical_system_without_last_mirror,
                                        NA=first_arm_NA, end_mirror_ROC=right_mirror_ROC,
                                        end_mirror_distance_to_last_element=right_mirror_distance_to_negative_lens_front,
-                                       material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"])
+                                       material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"], diameter=large_elements_CA)
     return cavity
 
 def analyze_output_wavefront(
