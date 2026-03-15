@@ -597,6 +597,7 @@ def plot_results(
     potential_x_axis_angles: bool = False,
     rays_labels: Optional[List[str]] = None,
     fig_and_ax = None,
+    plot_final_arm_backwards_rays: bool =  False
 ):
     (optical_system, ray_sequence, R, center_of_curvature, NA_paraxial, spot_size_paraxial, zero_derivative_points) = (
         results_dict["optical_system"],
@@ -658,6 +659,10 @@ def plot_results(
     ax[1].grid()
     ax[1].scatter(wavefront_points[:, 0], wavefront_points[:, 1], s=8, color="purple")
     ax[1].scatter(center_of_curvature[0], center_of_curvature[1], s=20, color="cyan", label="Center of curvature")
+    if plot_final_arm_backwards_rays:
+        final_rays = ray_sequence[-1]
+        backwards_rays = Ray(origin=final_rays.origin, k_vector=-final_rays.k_vector)
+        backwards_rays.plot(ax=ax[1], linewidth=0.5, linestyle='--', color="orange", length=0.5)
     ax[1].legend()
 
     if potential_x_axis_angles:
