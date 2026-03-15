@@ -267,7 +267,9 @@ def generate_negative_lens_cavity(n_actual_first_lens, n_design_first_lens, T_c_
                                                 n_outside_or_before=1, diameter=large_elements_CA, curvature_sign=np.nan, name="Negative Lens", material_properties=PHYSICAL_SIZES_DICT['material_properties_fused_silica'], polynomial_coefficients=None, surface_type=SurfacesTypes.thick_lens)
     optical_system_without_last_mirror = OpticalSystem.from_params(params=[mirror_left.to_params, *optical_system_lens.params, negative_lens_params],
                                                                    lambda_0_laser=LAMBDA_0_LASER, p_is_trivial=True, t_is_trivial=True, use_paraxial_ray_tracing=False)
-
+    if r_2_inverse > 0 and right_mirror_distance_to_negative_lens_front is not None:
+        r_2 = 1 / r_2_inverse
+        right_mirror_distance_to_negative_lens_front += (1-np.cos(np.arcsin(large_elements_CA/(2*r_2)))) * r_2  # Adjust for the fact that the lens surface is curved, so the distance to the front of the lens is not the same as the distance to the center of the lens.
     cavity = fixed_NA_cavity_generator(optical_system=optical_system_without_last_mirror,
                                        NA=first_arm_NA, end_mirror_ROC=right_mirror_ROC,
                                        end_mirror_distance_to_last_element=right_mirror_distance_to_negative_lens_front,

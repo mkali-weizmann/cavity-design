@@ -1940,7 +1940,17 @@ def generate_lens_from_params(params: OpticalElementParams):
 
     center_1 = center - (1 / 2) * p.T_c * forward_direction
     center_2 = center + (1 / 2) * p.T_c * forward_direction
-    surface_1 = CurvedRefractiveSurface(
+    if p.r_1 == np.inf:
+        surface_1 = FlatRefractiveSurface(
+            outwards_normal=-forward_direction,
+            center=center_1,
+            n_1=p.n_outside_or_before,
+            n_2=p.n_inside_or_after,
+            name=names[0],
+            diameter=p.diameter,
+        )
+    else:
+        surface_1 = CurvedRefractiveSurface(
         radius=np.abs(p.r_1),
         outwards_normal=-forward_direction * np.sign(p.r_1),
         center=center_1,
@@ -1953,20 +1963,29 @@ def generate_lens_from_params(params: OpticalElementParams):
         thickness=p.T_c / 2,
         diameter=p.diameter,
     )
-
-    surface_2 = CurvedRefractiveSurface(
-        radius=np.abs(p.r_2),
-        outwards_normal=-forward_direction * np.sign(p.r_2),
-        center=center_2,
-        n_1=p.n_inside_or_after,
-        n_2=p.n_outside_or_before,
-        curvature_sign=np.sign(p.r_2),  # the sign of r_2 is -1 for convex lens, and so for the ray the second surface
-        # is concave, for which the curvature sign is -1
-        name=names[1],
-        material_properties=p.material_properties,
-        thickness=p.T_c / 2,
-        diameter=p.diameter,
-    )
+    if p.r_2 == np.inf:
+        surface_2 = FlatRefractiveSurface(
+            outwards_normal=forward_direction,
+            center=center_2,
+            n_1=p.n_inside_or_after,
+            n_2=p.n_outside_or_before,
+            name=names[1],
+            diameter=p.diameter,
+        )
+    else:
+        surface_2 = CurvedRefractiveSurface(
+            radius=np.abs(p.r_2),
+            outwards_normal=-forward_direction * np.sign(p.r_2),
+            center=center_2,
+            n_1=p.n_inside_or_after,
+            n_2=p.n_outside_or_before,
+            curvature_sign=np.sign(p.r_2),  # the sign of r_2 is -1 for convex lens, and so for the ray the second surface
+            # is concave, for which the curvature sign is -1
+            name=names[1],
+            material_properties=p.material_properties,
+            thickness=p.T_c / 2,
+            diameter=p.diameter,
+        )
     return surface_1, surface_2
 
 
