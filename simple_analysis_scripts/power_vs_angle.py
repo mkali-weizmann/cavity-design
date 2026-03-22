@@ -241,40 +241,35 @@ plt.show()
 R_s = scipy.interpolate.interp1d(np.abs(df_s_calibrated['angle_deg']), reflectance_s, kind='linear', fill_value='extrapolate')
 R_p = scipy.interpolate.interp1d(np.abs(df_p_calibrated['angle_deg']), reflectance_p, kind='linear', fill_value='extrapolate')
 
+def integrated_reflectances(dP_dβ_normalized, beta_degrees):
+    total_reflected_power_s = 0.5 * np.trapezoid(dP_dβ_normalized * R_s(beta_degrees), beta_degrees)
+    total_reflected_power_p = 0.5 * np.trapezoid(dP_dβ_normalized * R_p(beta_degrees), beta_degrees)
+    total_reflected_power = total_reflected_power_s + total_reflected_power_p
+    return total_reflected_power, total_reflected_power_s, total_reflected_power_p
+
+
 # %% Conclusion cell
-total_reflected_power_s_avantier = 0.5 * np.trapezoid(dP_dβ_high_NA_side * R_s(beta_degrees), beta_degrees)
-total_reflected_power_p_avantier = 0.5 * np.trapezoid(dP_dβ_high_NA_side * R_p(beta_degrees), beta_degrees)
-total_reflected_power_avantier = total_reflected_power_s_avantier + total_reflected_power_p_avantier
+total_reflected_power_avantier, total_reflected_power_s_avantier, total_reflected_power_p_avantier = integrated_reflectances(dP_dβ_high_NA_side, beta_degrees)
 print(f'Total Reflected Power for s-polarization: {total_reflected_power_s_avantier:.3e}')
 print(f'Total Reflected Power for p-polarization: {total_reflected_power_p_avantier:.3e}')
 
-total_reflected_power_s_aspheric_n_1 = 0.5 * np.trapezoid(dP_dβ_best_form_n_1 * R_s(beta_degrees), beta_degrees)
-total_reflected_power_p_aspheric_n_1 = 0.5 * np.trapezoid(dP_dβ_best_form_n_1 * R_p(beta_degrees), beta_degrees)
-total_reflected_power_aspheric_n_1 = total_reflected_power_s_aspheric_n_1 + total_reflected_power_p_aspheric_n_1
+total_reflected_power_aspheric_n_1, total_reflected_power_s_aspheric_n_1, total_reflected_power_p_aspheric_n_1 = integrated_reflectances(dP_dβ_best_form_n_1, beta_degrees)
 print(f'Total Reflected Power for s-polarization: {total_reflected_power_s_aspheric_n_1:.3e}')
 print(f'Total Reflected Power for p-polarization: {total_reflected_power_p_aspheric_n_1:.3e}')
 
-total_reflected_power_s_aspheric_n_2 = 0.5 * np.trapezoid(dP_dβ_best_form_n_2 * R_s(beta_degrees), beta_degrees)
-total_reflected_power_p_aspheric_n_2 = 0.5 * np.trapezoid(dP_dβ_best_form_n_2 * R_p(beta_degrees), beta_degrees)
-total_reflected_power_aspheric_n_2 = total_reflected_power_s_aspheric_n_2 + total_reflected_power_p_aspheric_n_2
+total_reflected_power_aspheric_n_2, total_reflected_power_s_aspheric_n_2, total_reflected_power_p_aspheric_n_2 = integrated_reflectances(dP_dβ_best_form_n_2, beta_degrees)
 print(f'Total Reflected Power for s-polarization: {total_reflected_power_s_aspheric_n_2:.3e}')
 print(f'Total Reflected Power for p-polarization: {total_reflected_power_p_aspheric_n_2:.3e}')
 
-total_reflected_power_s_D_collimated_n_1 = 0.5 * np.trapezoid(dP_dβ_best_form_D_collimated_n_1 * R_s(beta_degrees), beta_degrees)
-total_reflected_power_p_D_collimated_n_1 = 0.5 * np.trapezoid(dP_dβ_best_form_D_collimated_n_1 * R_p(beta_degrees), beta_degrees)
-total_reflected_power_D_collimated_n_1 = total_reflected_power_s_D_collimated_n_1 + total_reflected_power_p_D_collimated_n_1
+total_reflected_power_D_collimated_n_1, total_reflected_power_s_D_collimated_n_1, total_reflected_power_p_D_collimated_n_1 = integrated_reflectances(dP_dβ_best_form_D_collimated_n_1, beta_degrees)
 print(f'Total Reflected Power for s-polarization: {total_reflected_power_s_D_collimated_n_1:.3e}')
 print(f'Total Reflected Power for p-polarization: {total_reflected_power_p_D_collimated_n_1:.3e}')
 
-total_reflected_power_s_D_collimated_n_2 = 0.5 * np.trapezoid(dP_dβ_best_form_D_collimated_n_2 * R_s(beta_degrees), beta_degrees)
-total_reflected_power_p_D_collimated_n_2 = 0.5 * np.trapezoid(dP_dβ_best_form_D_collimated_n_2 * R_p(beta_degrees), beta_degrees)
-total_reflected_power_D_collimated_n_2 = total_reflected_power_s_D_collimated_n_2 + total_reflected_power_p_D_collimated_n_2
+total_reflected_power_D_collimated_n_2, total_reflected_power_s_D_collimated_n_2, total_reflected_power_p_D_collimated_n_2 = integrated_reflectances(dP_dβ_best_form_D_collimated_n_2, beta_degrees)
 print(f'Total Reflected Power for s-polarization: {total_reflected_power_s_D_collimated_n_2:.3e}')
 print(f'Total Reflected Power for p-polarization: {total_reflected_power_p_D_collimated_n_2:.3e}')
 
-total_reflected_power_s_D_focused = 0.5 * np.trapezoid(dP_dβ_best_form_D_focused * R_s(beta_degrees), beta_degrees)
-total_reflected_power_p_D_focused = 0.5 * np.trapezoid(dP_dβ_best_form_D_focused * R_p(beta_degrees), beta_degrees)
-total_reflected_power_D_focused = total_reflected_power_s_D_focused + total_reflected_power_p_D_focused
+total_reflected_power_D_focused, total_reflected_power_s_D_focused, total_reflected_power_p_D_focused = integrated_reflectances(dP_dβ_best_form_D_focused, beta_degrees)
 print(f'Total Reflected Power for s-polarization: {total_reflected_power_s_D_focused:.3e}')
 print(f'Total Reflected Power for p-polarization: {total_reflected_power_p_D_focused:.3e}')
 
@@ -333,50 +328,90 @@ plt.suptitle(
 plt.tight_layout(rect=[0, 0, 1, 0.9])
 plt.savefig(f'outputs/figures/total_reflected_power_analysis.svg', bbox_inches='tight')
 plt.show()
+# %% Losses per NA:
+NA_array = np.linspace(0.05, 0.2, 100)
+losses_per_NA = np.zeros((len(NA_array), 6))
+for i, NA in enumerate(NA_array):
+    beta_degrees, dP_dβ_high_NA_side = generate_power_vs_aoi_distribution(β_value, NA=NA, d=ds[0], α_function=α_spherical, dα_dβ_function=dα_dβ_spherical, R=Rs[0])
+    _, dP_dβ_best_form_n_1 = generate_power_vs_aoi_distribution(β_value, NA=NA, d=ds[0], α_function=α_aspheric, dα_dβ_function=dα_dβ_aspheric, n=n_1)
+    _, dP_dβ_best_form_n_2 = generate_power_vs_aoi_distribution(β_value, NA=NA, d=ds[0], α_function=α_aspheric, dα_dβ_function=dα_dβ_aspheric, n=n_2)
+    _, dP_dβ_best_form_D_collimated_n_1 = generate_power_vs_aoi_distribution(β_value, NA=NA, d=ds[0], α_function=α_D_collimated, dα_dβ_function=dα_dβ_D_collimated, n=n_1)
+    _, dP_dβ_best_form_D_collimated_n_2 = generate_power_vs_aoi_distribution(β_value, NA=NA, d=ds[0], α_function=α_D_collimated, dα_dβ_function=dα_dβ_D_collimated, n=n_2)
+    _, dP_dβ_best_form_D_focused = generate_power_vs_aoi_distribution(β_value, NA=NA, d=ds[0], α_function=α_D_focused, dα_dβ_function=dα_dβ_D_focused)
 
-# %% Power vs radius (spherical only not really being used)
-for i in range(0, 2):
-    R = Rs[i]
-    NA = NAs[i]
-    d = ds[i]
-    w_0 = λ / (np.pi * NA)
-    z_R = np.pi * w_0 ** 2 / λ
-    w = w_0 * np.sqrt(1 + (d / z_R) ** 2)
-    r = np.linspace(0, D / 2, 10000)
-    θ = np.arcsin(r / R)
-    α = np.arctan(r / (d + R - np.sqrt(R ** 2 - r ** 2)))
-    β_value = θ + α
-    β_degrees = β_value / (2 * np.pi) * 360  # Convert to degrees
-    θ_degrees = θ / (2 * np.pi) * 360  # Convert to degrees
-    r_millimeters = r * 1e3  # Convert radius to mm
-    dP_dρ = P_0 * 4 * r / w ** 2 * np.exp(-2 * (r / w) ** 2)
-    dρ_dr = d * (d + R - np.sqrt(R ** 2 - r ** 2) - (2 * r**2) / (np.sqrt(R**2 - r**2))) / (d + R - np.sqrt(R ** 2 - r**2)) ** 2
-    dP_dr = dP_dρ * dρ_dr
-    dP_dr_normalized = dP_dr / np.trapezoid(dP_dr, r_millimeters)  # Normalize the power over the radius range
+    total_reflected_power_avantier, total_reflected_power_s_avantier, total_reflected_power_p_avantier = integrated_reflectances(dP_dβ_high_NA_side, beta_degrees)
+    total_reflected_power_aspheric_n_1, total_reflected_power_s_aspheric_n_1, total_reflected_power_p_aspheric_n_1 = integrated_reflectances(dP_dβ_best_form_n_1, beta_degrees)
+    total_reflected_power_aspheric_n_2, total_reflected_power_s_aspheric_n_2, total_reflected_power_p_aspheric_n_2 = integrated_reflectances(dP_dβ_best_form_n_2, beta_degrees)
+    total_reflected_power_D_collimated_n_1, total_reflected_power_s_D_collimated_n_1, total_reflected_power_p_D_collimated_n_1 = integrated_reflectances(dP_dβ_best_form_D_collimated_n_1, beta_degrees)
+    total_reflected_power_D_collimated_n_2, total_reflected_power_s_D_collimated_n_2, total_reflected_power_p_D_collimated_n_2 = integrated_reflectances(dP_dβ_best_form_D_collimated_n_2, beta_degrees)
+    total_reflected_power_D_focused, total_reflected_power_s_D_focused, total_reflected_power_p_D_focused = integrated_reflectances(dP_dβ_best_form_D_focused, beta_degrees)
 
-#     ax2 = plt.gca().twinx()
-#     ax2.plot(β_degrees, dP_dr, linestyle='--', label='Power vs Angle of Incidence - v2')
-#     ax2.set_xlabel('Angle of Incidence (degrees)')
-#     ax2.set_ylabel('Power (W)')
-#     ax2.grid(visible=True)
-# plt.show()
-    fig, ax1 = plt.subplots(figsize=(10, 6))
-    fig.suptitle(f'Power vs Radius for a Lens\nR={R * 1e3:.2f} mm', fontsize=16)
-    ax1.plot(r_millimeters, dP_dr_normalized, label='Power vs Radius', color='tab:blue')
-    ax1.set_xlabel('Radius (mm)')
-    ax1.set_ylabel('Power (normalized)', color='tab:blue')
-    ax1.tick_params(axis='y', labelcolor='tab:blue')
+    losses_per_NA[i, 0] = total_reflected_power_avantier
+    losses_per_NA[i, 1] = total_reflected_power_aspheric_n_1
+    losses_per_NA[i, 2] = total_reflected_power_aspheric_n_2
+    losses_per_NA[i, 3] = total_reflected_power_D_collimated_n_1
+    losses_per_NA[i, 4] = total_reflected_power_D_collimated_n_2
+    losses_per_NA[i, 5] = total_reflected_power_D_focused
+# %%
+plt.figure(figsize=(10, 6))
+plt.plot(NA_array, 4e6 * losses_per_NA[:, 0], label='Avantier one side (n=1.8)')
+plt.plot(NA_array, 4e6 * losses_per_NA[:, 1], label='perfect aspheric n=1.45')
+plt.plot(NA_array, 4e6 * losses_per_NA[:, 2], label='perfect aspheric n=1.8')
+plt.plot(NA_array, 2e6 * losses_per_NA[:, 3] + 2e6 * losses_per_NA[:, 5], label='D n=1.45')
+plt.plot(NA_array, 2e6 * losses_per_NA[:, 4] + 2e6 * losses_per_NA[:, 5], label='D n=1.8')
+plt.ylim(0, None)
+plt.xlabel('NA')
+plt.ylabel('Total Reflected Power (ppm)')
+plt.title('Roundtrip losses vs NA for different lens designs')
+plt.grid()
+plt.legend()
+plt.savefig(f'outputs/figures/total_reflected_power_vs_NA.svg', bbox_inches='tight')
+plt.show()
 
-    ax2 = ax1.twinx()
-    ax2.plot(r_millimeters, β_degrees, label='Angle of Incidence vs Radius', linestyle='--', color='tab:orange')
-    ax2.plot(r_millimeters, θ_degrees, label='Surface Inclination vs Radius', linestyle=':', color='tab:green')
-    ax2.set_ylabel('Angle (degrees)', color='tab:orange')
-    ax2.tick_params(axis='y', labelcolor='tab:orange')
 
-    lines_1, labels_1 = ax1.get_legend_handles_labels()
-    lines_2, labels_2 = ax2.get_legend_handles_labels()
-    ax2.legend(lines_1 + lines_2, labels_1 + labels_2, loc='upper right')
-
-    ax1.grid()
-    # plt.savefig(f'outputs/figures/power_vs_radius_{R * 1e5:.0f}.svg', bbox_inches='tight')
-    plt.show()
+# %% Power vs radius (spherical only, not really being used)
+# for i in range(0, 2):
+#     R = Rs[i]
+#     NA = NAs[i]
+#     d = ds[i]
+#     w_0 = λ / (np.pi * NA)
+#     z_R = np.pi * w_0 ** 2 / λ
+#     w = w_0 * np.sqrt(1 + (d / z_R) ** 2)
+#     r = np.linspace(0, D / 2, 10000)
+#     θ = np.arcsin(r / R)
+#     α = np.arctan(r / (d + R - np.sqrt(R ** 2 - r ** 2)))
+#     β_value = θ + α
+#     β_degrees = β_value / (2 * np.pi) * 360  # Convert to degrees
+#     θ_degrees = θ / (2 * np.pi) * 360  # Convert to degrees
+#     r_millimeters = r * 1e3  # Convert radius to mm
+#     dP_dρ = P_0 * 4 * r / w ** 2 * np.exp(-2 * (r / w) ** 2)
+#     dρ_dr = d * (d + R - np.sqrt(R ** 2 - r ** 2) - (2 * r**2) / (np.sqrt(R**2 - r**2))) / (d + R - np.sqrt(R ** 2 - r**2)) ** 2
+#     dP_dr = dP_dρ * dρ_dr
+#     dP_dr_normalized = dP_dr / np.trapezoid(dP_dr, r_millimeters)  # Normalize the power over the radius range
+#
+# #     ax2 = plt.gca().twinx()
+# #     ax2.plot(β_degrees, dP_dr, linestyle='--', label='Power vs Angle of Incidence - v2')
+# #     ax2.set_xlabel('Angle of Incidence (degrees)')
+# #     ax2.set_ylabel('Power (W)')
+# #     ax2.grid(visible=True)
+# # plt.show()
+#     fig, ax1 = plt.subplots(figsize=(10, 6))
+#     fig.suptitle(f'Power vs Radius for a Lens\nR={R * 1e3:.2f} mm', fontsize=16)
+#     ax1.plot(r_millimeters, dP_dr_normalized, label='Power vs Radius', color='tab:blue')
+#     ax1.set_xlabel('Radius (mm)')
+#     ax1.set_ylabel('Power (normalized)', color='tab:blue')
+#     ax1.tick_params(axis='y', labelcolor='tab:blue')
+#
+#     ax2 = ax1.twinx()
+#     ax2.plot(r_millimeters, β_degrees, label='Angle of Incidence vs Radius', linestyle='--', color='tab:orange')
+#     ax2.plot(r_millimeters, θ_degrees, label='Surface Inclination vs Radius', linestyle=':', color='tab:green')
+#     ax2.set_ylabel('Angle (degrees)', color='tab:orange')
+#     ax2.tick_params(axis='y', labelcolor='tab:orange')
+#
+#     lines_1, labels_1 = ax1.get_legend_handles_labels()
+#     lines_2, labels_2 = ax2.get_legend_handles_labels()
+#     ax2.legend(lines_1 + lines_2, labels_1 + labels_2, loc='upper right')
+#
+#     ax1.grid()
+#     # plt.savefig(f'outputs/figures/power_vs_radius_{R * 1e5:.0f}.svg', bbox_inches='tight')
+#     plt.show()
