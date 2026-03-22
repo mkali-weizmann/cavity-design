@@ -2451,7 +2451,7 @@ class OpticalSystem:
         p_is_trivial: bool = True,
         given_initial_central_line: Optional[Union[Ray, bool]] = True,
         given_initial_local_mode_parameters: Optional[LocalModeParameters] = None,
-        use_paraxial_ray_tracing: bool = True,
+        use_paraxial_ray_tracing: bool = False,
     ):
         self.arms: List[Arm] = [
             Arm(

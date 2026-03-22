@@ -6,7 +6,7 @@ from simple_analysis_scripts.potential_analysis.analyze_potential import *
 # %%
 dn = 0
 lens_types = ['aspheric - lab', 'spherical - like labs aspheric', 'avantier', 'aspheric - like avantier']
-lens_type = lens_types[2]
+lens_type = lens_types[0]
 n_actual, n_design, T_c, back_focal_length, R_1, R_2, R_2_signed, diameter = known_lenses_generator(lens_type=lens_type,
                                                                                                     dn=dn)
 n_rays = 30
