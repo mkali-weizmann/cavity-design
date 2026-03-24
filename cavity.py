@@ -3822,13 +3822,13 @@ class Cavity(OpticalSystem):
             surfaces=unheated_surfaces,
             standing_wave=self.standing_wave,
             lambda_0_laser=self.lambda_0_laser,
-            names=names,
             set_central_line=True,
             set_mode_parameters=True,
             set_initial_surface=False,
             t_is_trivial=self.t_is_trivial,
             p_is_trivial=self.p_is_trivial,
             power=0,
+            use_paraxial_ray_tracing=self.use_paraxial_ray_tracing,
         )
 
         return unheated_cavity

@@ -70,12 +70,13 @@ tolerances_initial_angles = np.zeros((len(powers), 3))
 cavity_fabry_perot = fabry_perot_generator(radii=radii,
                                                NA=NA,
                                                power=0,
-                                               debug_printing_level=1)
+                                               debug_printing_level=1,
+                                           use_paraxial_ray_tracing=True)
 cavity_fabry_perot_params = cavity_fabry_perot.to_params
 cavity_fabry_perot_params_copy = copy.deepcopy(cavity_fabry_perot_params)
 cavity_fabry_perot_params_copy[0].material_properties.alpha_expansion *= -1  # Negative TEC
 cavity_fabry_perot_negative_TEC = Cavity.from_params(cavity_fabry_perot_params_copy, lambda_0_laser=1064e-9,
-                                                      t_is_trivial=True, p_is_trivial=True, power=0)
+                                                      t_is_trivial=True, p_is_trivial=True, power=0, use_paraxial_ray_tracing=True)
 cavity_mirror_lens_mirror = mirror_lens_mirror_cavity_generator(NA_left=NA, waist_to_lens=waist_to_lens, h=h,
                                                                 R_left=R_left, R_right=R_right, T_c=0,
                                                                 T_edge=T_edge,
@@ -92,7 +93,7 @@ cavity_mirror_lens_mirror = mirror_lens_mirror_cavity_generator(NA_left=NA, wais
                                                                 set_R_right_to_collimate=set_R_right_to_collimate,
                                                                 set_R_left_to_collimate=set_R_left_to_collimate,
                                                                 power=0,
-                                                                debug_printing_level=2)
+                                                                debug_printing_level=2, use_paraxial_ray_tracing=True)
 
 for j, cavity in tqdm(enumerate([cavity_fabry_perot, cavity_fabry_perot_negative_TEC, cavity_mirror_lens_mirror])):
     # mirror_shift_tolerance = cavity.calculate_parameter_tolerance(
@@ -157,19 +158,19 @@ plt.savefig(f'outputs\\figures\\initial_tolerance_vs_power_high_power_NA={NA} - 
 plt.show()
 
 
-# --- FIGURE 3 ---
-fig3, ax3 = plt.subplots(figsize=(14, 10))
-plt.plot(powers, np.abs(tolerances_initial_angles[:, 0]), label='Fabry-Perot Cavity', linewidth=lw)
-plt.plot(powers, np.abs(tolerances_initial_angles[:, 1]), label='Fabry-Perot Cavity with Negative TEC', linewidth=lw)
-plt.plot(powers, np.abs(tolerances_initial_angles[:, 2]), label='Mirror-Lens-Mirror Cavity', linewidth=lw)
-
-plt.title(f"Slow Perturbations Tolerance vs Power (High power NA={NA})", fontsize=title_fs)
-plt.xlabel("Power (W)", fontsize=label_fs)
-plt.ylabel("Mirror Tilt Tolerance [rad]", fontsize=label_fs)
-plt.yscale('log')
-plt.tick_params(labelsize=tick_fs)
-plt.grid(True)
-plt.legend(fontsize=legend_fs)
-
-plt.savefig(f'outputs\\figures\\initial_tolerance_vs_power_high_power_NA={NA} - no aberrations - tilt.png')
-plt.show()
+# # --- FIGURE 3 ---
+# fig3, ax3 = plt.subplots(figsize=(14, 10))
+# plt.plot(powers, np.abs(tolerances_initial_angles[:, 0]), label='Fabry-Perot Cavity', linewidth=lw)
+# plt.plot(powers, np.abs(tolerances_initial_angles[:, 1]), label='Fabry-Perot Cavity with Negative TEC', linewidth=lw)
+# plt.plot(powers, np.abs(tolerances_initial_angles[:, 2]), label='Mirror-Lens-Mirror Cavity', linewidth=lw)
+#
+# plt.title(f"Slow Perturbations Tolerance vs Power (High power NA={NA})", fontsize=title_fs)
+# plt.xlabel("Power (W)", fontsize=label_fs)
+# plt.ylabel("Mirror Tilt Tolerance [rad]", fontsize=label_fs)
+# plt.yscale('log')
+# plt.tick_params(labelsize=tick_fs)
+# plt.grid(True)
+# plt.legend(fontsize=legend_fs)
+#
+# plt.savefig(f'outputs\\figures\\initial_tolerance_vs_power_high_power_NA={NA} - no aberrations - tilt.png')
+# plt.show()

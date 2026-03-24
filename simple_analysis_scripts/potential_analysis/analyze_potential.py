@@ -239,7 +239,8 @@ def generate_negative_lens_cavity(n_actual_first_lens, n_design_first_lens, T_c_
                                   first_arm_NA: float,
                                   right_mirror_ROC: Optional[float] = None,
                                   right_mirror_distance_to_negative_lens_front: Optional[float] = None,
-                                  large_elements_CA: float = 25e-3
+                                  large_elements_CA: float = 25e-3,
+                                  unconcentricity: Optional[float] = None,
 ):
     defocus = choose_source_position_for_desired_focus_analytic(desired_focus=approximate_focus_distance_long_arm, T_c=T_c_first_lens, n_design=n_design_first_lens,
                                                                 diameter=diameter_first_lens, back_focal_length=back_focal_length_first_lens,
@@ -270,10 +271,22 @@ def generate_negative_lens_cavity(n_actual_first_lens, n_design_first_lens, T_c_
     if r_2_inverse > 0 and right_mirror_distance_to_negative_lens_front is not None:
         r_2 = 1 / r_2_inverse
         right_mirror_distance_to_negative_lens_front += (1-np.cos(np.arcsin(large_elements_CA/(2*r_2)))) * r_2  # Adjust for the fact that the lens surface is curved, so the distance to the front of the lens is not the same as the distance to the center of the lens.
-    cavity = fixed_NA_cavity_generator(optical_system=optical_system_without_last_mirror,
-                                       NA=first_arm_NA, end_mirror_ROC=right_mirror_ROC,
-                                       end_mirror_distance_to_last_element=right_mirror_distance_to_negative_lens_front,
-                                       material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"], diameter=large_elements_CA)
+
+    if right_mirror_distance_to_negative_lens_front is not None and unconcentricity is not None:
+        optical_system_lenses_only = OpticalSystem.from_params(params=[*optical_system_lens.params, negative_lens_params], lambda_0_laser=LAMBDA_0_LASER, p_is_trivial=True, t_is_trivial=True, use_paraxial_ray_tracing=False)
+        R_analytical = optical_system_lenses_only.output_radius_of_curvature(
+            source_position=ORIGIN
+        )
+        center_of_curvature = optical_system_lenses_only.surfaces[-1].center + (R_analytical-unconcentricity) * optical_axis
+        right_mirror_center = optical_system_lenses_only.surfaces[-1].center + right_mirror_distance_to_negative_lens_front * optical_axis
+        right_mirror_ROC = float(np.linalg.norm(center_of_curvature - right_mirror_center))
+        mirror_right = CurvedMirror(radius=right_mirror_ROC, center=right_mirror_center, diameter=large_elements_CA, outwards_normal=RIGHT, curvature_sign=CurvatureSigns.concave, name="big mirror", material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"])
+        cavity = Cavity.from_params(params=[mirror_left.to_params, *optical_system_lens.params, negative_lens_params, mirror_right.to_params],lambda_0_laser=LAMBDA_0_LASER, p_is_trivial=True, t_is_trivial=True, use_paraxial_ray_tracing=False)
+    else:
+        cavity = fixed_NA_cavity_generator(optical_system=optical_system_without_last_mirror,
+                                           NA=first_arm_NA, end_mirror_ROC=right_mirror_ROC,
+                                           end_mirror_distance_to_last_element=right_mirror_distance_to_negative_lens_front,
+                                           material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"], diameter=large_elements_CA)
     return cavity
 
 def gnerate_negative_lens_cavity_smart(phi_max_marginal, phi_max_polynomial, n_actual, n_design, T_c, back_focal_length, R_1, R_2, R_2_signed, diameter, n_rays, first_arm_NA, negative_lens_refractive_index, large_elements_CA, right_mirror_ROC, right_mirror_distance_to_negative_lens_front, negative_lens_defocus_power, negative_lens_R_2_inverse, desired_focus, negative_lens_back_relative_position):

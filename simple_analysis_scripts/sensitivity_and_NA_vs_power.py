@@ -162,7 +162,6 @@ new_unheated_cavity = Cavity.from_params(
     power=0,
     p_is_trivial=True,
     t_is_trivial=True,
-    names=["Right Mirror", "Lens", "Left Mirror"],
 )
 print("Hot cavity:")
 cavity_mirror_lens_mirror_specs_ule = cavity_mirror_lens_mirror.specs(save_specs_name="hot_fuesed_silica",
