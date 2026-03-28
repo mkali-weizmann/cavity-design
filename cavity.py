@@ -3055,7 +3055,7 @@ class Cavity(OpticalSystem):
     def __init__(
         self,
         surfaces: List[Surface],
-        standing_wave: bool = False,
+        standing_wave: bool = True,
         lambda_0_laser: Optional[float] = None,
         params: Optional[List[OpticalElementParams]] = None,
         set_central_line: bool = True,

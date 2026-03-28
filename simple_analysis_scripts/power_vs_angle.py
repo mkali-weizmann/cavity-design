@@ -20,7 +20,9 @@ ds = (5e-3, 15e-2)
 D = 7.75e-3  # Diameter of the lens
 n_1 = 1.45
 n_2 = 1.8
-β_value = np.linspace(0, np.pi / 5, 100)
+β_value = np.linspace(0, 32 / 360 * 2 * np.pi, 100)  # 32 degrees is the edge of the reflectance measurement,
+# but some distributions of energy reach those values of incidence angles. The returned value for those reflectances is
+# just interpolation of the measure values, which is not too bad because anyways those are small power.
 
 def α_spherical(β_value, R, d):
     return np.arcsin(R / (R + d) * np.sin(β_value))
@@ -136,6 +138,10 @@ s_mask = measured_reflectance['polarization'] == 's'
 p_mask = measured_reflectance['polarization'] == 'p'
 df_s = measured_reflectance[s_mask]
 df_p = measured_reflectance[p_mask]
+
+# IMPORTANT: DIVIDE REFLECTANCE BY 2 BECAUSE THE REFLECTANCE HAPPENED TWICE - BOTH AT THE FIRST AND SECOND FACE OF THE SAMPLE
+df_s.loc[:,'R'] = df_s['R'] / 2
+df_p.loc[:,'R'] = df_p['R'] / 2
 
 plt.close('all')
 plt.scatter(np.abs(df_s['angle_deg']), df_s['R'])
@@ -366,6 +372,59 @@ plt.title('Roundtrip losses vs NA for different lens designs')
 plt.grid()
 plt.legend()
 plt.savefig(f'outputs/figures/total_reflected_power_vs_NA.svg', bbox_inches='tight')
+plt.show()
+# %%  # Plot dalpha/dbeta * R(beta)
+alpha_values_spherical = α_spherical(β_value, R=Rs[0], d=ds[0])
+dalpha_dbeta_spherical = dα_dβ_spherical(β_value, R=Rs[0], d=ds[0])
+alpha_values_aspheric_n_1 = α_aspheric(β_value, n=n_1)
+dalpha_dbeta_aspheric_n_1 = dα_dβ_aspheric(β_value, n=n_1)
+alpha_values_aspheric_n_2 = α_aspheric(β_value, n=n_2)
+dalpha_dbeta_aspheric_n_2 = dα_dβ_aspheric(β_value, n=n_2)
+alpha_values_D_collimated_n_1 = α_D_collimated(β_value, n=n_1)
+dalpha_dbeta_D_collimated_n_1 = dα_dβ_D_collimated(β_value, n=n_1)
+alpha_values_D_collimated_n_2 = α_D_collimated(β_value, n=n_2)
+dalpha_dbeta_D_collimated_n_2 = dα_dβ_D_collimated(β_value, n=n_2)
+alpha_values_D_focused = α_D_focused(β_value)
+dalpha_dbeta_D_focused = dα_dβ_D_focused(β_value)
+R_s_values = R_s(beta_degrees)
+R_p_values = R_p(beta_degrees)
+
+dalpha_dbeta_R_s_spherical = dalpha_dbeta_spherical * R_s_values
+dalpha_dbeta_R_p_spherical = dalpha_dbeta_spherical * R_p_values
+dalpha_dbeta_R_s_aspheric_n_1 = dalpha_dbeta_aspheric_n_1 * R_s_values
+dalpha_dbeta_R_p_aspheric_n_1 = dalpha_dbeta_aspheric_n_1 * R_p_values
+dalpha_dbeta_R_s_aspheric_n_2 = dalpha_dbeta_aspheric_n_2 * R_s_values
+dalpha_dbeta_R_p_aspheric_n_2 = dalpha_dbeta_aspheric_n_2 * R_p_values
+dalpha_dbeta_R_s_D_collimated_n_1 = dalpha_dbeta_D_collimated_n_1 * R_s_values
+dalpha_dbeta_R_p_D_collimated_n_1 = dalpha_dbeta_D_collimated_n_1 * R_p_values
+dalpha_dbeta_R_s_D_collimated_n_2 = dalpha_dbeta_D_collimated_n_2 * R_s_values
+dalpha_dbeta_R_p_D_collimated_n_2 = dalpha_dbeta_D_collimated_n_2 * R_p_values
+dalpha_dbeta_R_s_D_focused = dalpha_dbeta_D_focused * R_s_values
+dalpha_dbeta_R_p_D_focused = dalpha_dbeta_D_focused * R_p_values
+
+
+prop_cycle = plt.rcParams.get("axes.prop_cycle", None)
+default_colors = prop_cycle.by_key().get("color")
+
+plt.figure(figsize=(10, 6))
+plt.plot(beta_degrees, 0.5e6 * dalpha_dbeta_R_s_spherical, color=default_colors[0],  label='s-polarization, spherical')
+plt.plot(beta_degrees, 0.5e6 * dalpha_dbeta_R_p_spherical, color=default_colors[0], linestyle='--', label='p-polarization, spherical')
+plt.plot(beta_degrees, 0.5e6 * dalpha_dbeta_R_s_aspheric_n_1, color=default_colors[1], label='s-polarization, aspheric n=1.45')
+plt.plot(beta_degrees, 0.5e6 * dalpha_dbeta_R_p_aspheric_n_1, color=default_colors[1], linestyle='--', label='p-polarization, aspheric n=1.45')
+plt.plot(beta_degrees, 0.5e6 * dalpha_dbeta_R_s_aspheric_n_2, color=default_colors[2], label='s-polarization, aspheric n=1.8')
+plt.plot(beta_degrees, 0.5e6 * dalpha_dbeta_R_p_aspheric_n_2, color=default_colors[2], linestyle='--', label='p-polarization, aspheric n=1.8')
+plt.plot(beta_degrees, 0.5e6 * dalpha_dbeta_R_s_D_collimated_n_1, color=default_colors[3], label='s-polarization, D-collimated n=1.45')
+plt.plot(beta_degrees, 0.5e6 * dalpha_dbeta_R_p_D_collimated_n_1, color=default_colors[3], linestyle='--', label='p-polarization, D-collimated n=1.45')
+plt.plot(beta_degrees, 0.5e6 * dalpha_dbeta_R_s_D_collimated_n_2, color=default_colors[4], label='s-polarization, D-collimated n=1.8')
+plt.plot(beta_degrees, 0.5e6 * dalpha_dbeta_R_p_D_collimated_n_2, color=default_colors[4], linestyle='--', label='p-polarization, D-collimated n=1.8')
+plt.plot(beta_degrees, 0.5e6 * dalpha_dbeta_R_s_D_focused, color=default_colors[5], label='s-polarization, D-focused')
+plt.plot(beta_degrees, 0.5e6 * dalpha_dbeta_R_p_D_focused, color=default_colors[5], linestyle='--', label='p-polarization, D-focused')
+plt.xlabel('Angle of Incidence (degrees)')
+plt.ylabel('0.5 * dα/dβ * R(β) [ppm]')
+plt.title('0.5 * dα/dβ * R(β) vs Angle of Incidence for Different Lens Designs and Polarizations')
+plt.grid()
+plt.legend()
+plt.savefig(f'outputs/figures/dalpha_dbeta_times_R_vs_angle.svg', bbox_inches='tight')
 plt.show()
 
 

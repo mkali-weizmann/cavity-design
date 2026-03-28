@@ -1,41 +1,46 @@
 from simple_analysis_scripts.potential_analysis.analyze_potential import *
 
-OPTICAL_AXIS = RIGHT
-pd.options.display.float_format = "{:.3f}".format
-from scipy.optimize import newton
 copy_image = False
 copy_input_parameters = True
 copy_cavity_parameters = False
-max_NA_for_polynomial = 5.0000000000e-02
-fourth_order_target_value_log10 = 2.0000000000e+00
+max_NA_for_polynomial = 1.0000000000e-02
+fourth_order_target_value_log10 = 0.0000000000e+00
 n_rays = 30
 marginal_ray_NA = 3.0000000000e-01
 first_arm_NA = 1.5200000000e-01
 lens_type = 'avantier'
-mirror_setting_mode = "Set distance to spherical"
+mirror_setting_mode = 'Set distance and unconcentricity'
 negative_lens_refractive_index = 1.4500000000e+00
 negative_lens_center_thickness = 4.3500000000e-03
 large_elements_CA = 5.0000000000e-02
-right_mirror_ROC = 8.7100000000e-02
+right_mirror_ROC = 5.0000000000e-01
 right_mirror_distance_to_negative_lens_front = 1.0000000000e-02
 right_mirror_ROC_fine = 5.0000000000e-01
+unconcentricity = 3.5818000000e+00
 negative_lens_defocus_power = -1.2710100000e+01
 negative_lens_R_2_inverse = 6.6600000000e+01
 desired_focus = 7.0800000000e-02
 negative_lens_back_relative_position = 2.5000000000e-01
-unconcentricity = 0
 
 right_mirror_ROC_fine = widget_convenient_exponent(right_mirror_ROC_fine, scale=-10)
+fourth_order_target_value = widget_convenient_exponent(fourth_order_target_value_log10, scale=0)
 phi_max_marginal = np.arcsin(marginal_ray_NA)
 phi_max_polynomial = np.arcsin(max_NA_for_polynomial)
 if mirror_setting_mode == "Set ROC":
     right_mirror_distance_to_negative_lens_front = None
+    unconcentricity = None
     right_mirror_ROC += right_mirror_ROC_fine
 elif mirror_setting_mode == "Set distance to spherical":
     right_mirror_ROC = None
+    unconcentricity = None
     right_mirror_distance_to_negative_lens_front += right_mirror_ROC_fine
+elif mirror_setting_mode == "Set distance and unconcentricity":
+    right_mirror_distance_to_negative_lens_front += right_mirror_ROC_fine
+    unconcentricity = widget_convenient_exponent(unconcentricity, scale=-10)
+    right_mirror_ROC = None
 else:
     right_mirror_distance_to_negative_lens_front += right_mirror_ROC_fine
+    unconcentricity = None
 
 n_actual, n_design, T_c, back_focal_length, R_1, R_2, R_2_signed, diameter = known_lenses_generator(
     lens_type=lens_type,
@@ -138,9 +143,9 @@ def f_root_focal_length(negative_lens_focal_length_inverse):
         2], negative_lens_back_relative_position, negative_lens_R_2_inverse,
 
 
-f_root_focal_length_for_solver = lambda negative_lens_focal_length_inverse: \
-    f_root_focal_length(negative_lens_focal_length_inverse)[
-        0] + 10 ** fourth_order_target_value_log10  # Arbitrary small positive value
+f_root_focal_length_for_solver = lambda negative_lens_back_relative_position: \
+    f_root_focal_length(negative_lens_back_relative_position)[
+        0] - fourth_order_target_value  # Arbitrary small positive value
 negative_lens_focal_length_inverse, results_report = newton(func=f_root_focal_length_for_solver, x0=-10,
                                                             tol=1e-6, maxiter=100, disp=False, full_output=True)
 negative_lens_focal_length = 1 / negative_lens_focal_length_inverse
@@ -158,7 +163,8 @@ cavity = generate_negative_lens_cavity(n_actual_first_lens=n_actual, n_design_fi
                                        negative_lens_center_thickness=negative_lens_center_thickness,
                                        large_elements_CA=large_elements_CA,
                                        first_arm_NA=first_arm_NA, right_mirror_ROC=right_mirror_ROC,
-                                       right_mirror_distance_to_negative_lens_front=right_mirror_distance_to_negative_lens_front, unconcentricity=unconcentricity)
+                                       right_mirror_distance_to_negative_lens_front=right_mirror_distance_to_negative_lens_front,
+                                       unconcentricity=unconcentricity)
 results_dict = analyze_potential_given_cavity(cavity=cavity, n_rays=n_rays, phi_max=phi_max_polynomial,
                                               print_tests=False)
 marginal_ray_initial = Ray(origin=ORIGIN, k_vector=unit_vector_of_angles(theta=0, phi=phi_max_marginal))
@@ -209,14 +215,13 @@ fig.suptitle(
     f"marginal ray NA: {metadata_dict['marginal ray NA']:.3f}\n2y_marginal/CA lens left = {metadata_dict['2y_marginal/CA lens left']:.2f}, 2y_marginal/R lens left: {metadata_dict['2y_marginal/R lens left']:.2f}, 2y_marginal/R lens right: {metadata_dict['2y_marginal/R lens right']:.2f}\n2y_marginal/R mirror right: {metadata_dict['2y_marginal/R mirror right']:.2f}, 2y_marginal/CA right mirror: {metadata_dict['2y_marginal/CA right mirror']:.2f}\n"
     f"NA short arm = {metadata_dict['NA left arm']:.3f}, NA middle arm = {metadata_dict['NA middle arm']:.3f}, NA right arm = {metadata_dict['NA right arm']:.3f}\nincidence angle left = {metadata_dict['Incidence angle left (deg)']:.2f} deg, incidence angle right = {metadata_dict['Incidence angle right (deg)']:.2f} deg")
 ax[1].set_title(
-    f"lens left radius: {metadata_dict['negative lens left radius (mm)']:.2f}mm, lens right radius = {metadata_dict['negative lens right radius (mm)']:.2f}mm, lens focal length = {metadata_dict['negative lens focal length']:.2f}mm, lens n = {negative_lens_refractive_index:.2f}, lens T_c = {negative_lens_center_thickness * 1e3:.2f}mm\nright mirror radius = {metadata_dict['right mirror radius (mm)']:.3f} mm, right mirror distance to negative lens = {metadata_dict['right mirror distance to negative lens (mm)']:.3f} mm")
+    f"lens left radius: {metadata_dict['negative lens left radius (mm)']:.2f}mm, lens right radius = {metadata_dict['negative lens right radius (mm)']:.2f}mm, lens focal length = {metadata_dict['negative lens focal length']:.2f}mm, lens n = {negative_lens_refractive_index:.2f}, lens T_c = {negative_lens_center_thickness * 1e3:.2f}mm\nright mirror radius = {metadata_dict['right mirror radius (mm)']:.3f} mm, right mirror distance to negative lens = {metadata_dict['right mirror distance to negative lens (mm)']:.3f} mm, unconcentricity={unconcentricity if mirror_setting_mode == 'Set distance and unconcentricity' else None}")
 ax[1].set_ylim(-large_elements_CA / 1.8,
                large_elements_CA / 1.8)  # (-np.abs(final_intersection[1])*1.1, np.abs(final_intersection[1]))
 # ax[1].hlines([-12.5, ])
 ax[1].grid()
 ax[1].set_aspect('equal')
 fig.tight_layout()
-
 
 if copy_cavity_parameters:
     pyperclip.copy(results_dict['cavity'].formatted_textual_params)

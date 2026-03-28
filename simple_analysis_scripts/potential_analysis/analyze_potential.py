@@ -766,10 +766,10 @@ def plot_results(
                 label="Matching sphere residuals Polynomial fit",
                 linewidth=0.5,
             )
-            # Plot intensity profile on a new y axis for ax[0] if NA_paraxial is not None: using the formula: e^{-y^{2} / (spot_size_paraxial / 2)^{2})}
+            # Plot intensity profile on a new y axis for ax[0] if NA_paraxial is not None: using the formula: e^{-2y^{2} / (spot_size_paraxial)^{2})}
             if NA_paraxial is not None and spot_size_paraxial is not None:
                 ax2 = ax[0].twinx()
-                intensity_profile = np.exp(-(x_fit**2) / (spot_size_paraxial / 2) ** 2)
+                intensity_profile = np.exp(-(2 * x_fit**2) / (spot_size_paraxial) ** 2)
                 ax2.plot(
                     x_fit * 1e3,
                     intensity_profile,
