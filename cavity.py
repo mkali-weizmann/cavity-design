@@ -1951,18 +1951,20 @@ def generate_lens_from_params(params: OpticalElementParams):
         )
     else:
         surface_1 = CurvedRefractiveSurface(
-        radius=np.abs(p.r_1),
-        outwards_normal=-forward_direction * np.sign(p.r_1),
-        center=center_1,
-        n_1=p.n_outside_or_before,
-        n_2=p.n_inside_or_after,
-        curvature_sign=np.sign(p.r_1),  # the sign of r_1 is +1 for a convex lens, and so for the ray the first surface
-        # is convex, for which the curvature sign is +1
-        name=names[0],
-        material_properties=p.material_properties,
-        thickness=p.T_c / 2,
-        diameter=p.diameter,
-    )
+            radius=np.abs(p.r_1),
+            outwards_normal=-forward_direction * np.sign(p.r_1),
+            center=center_1,
+            n_1=p.n_outside_or_before,
+            n_2=p.n_inside_or_after,
+            curvature_sign=np.sign(
+                p.r_1
+            ),  # the sign of r_1 is +1 for a convex lens, and so for the ray the first surface
+            # is convex, for which the curvature sign is +1
+            name=names[0],
+            material_properties=p.material_properties,
+            thickness=p.T_c / 2,
+            diameter=p.diameter,
+        )
     if p.r_2 == np.inf:
         surface_2 = FlatRefractiveSurface(
             outwards_normal=forward_direction,
@@ -1979,7 +1981,9 @@ def generate_lens_from_params(params: OpticalElementParams):
             center=center_2,
             n_1=p.n_inside_or_after,
             n_2=p.n_outside_or_before,
-            curvature_sign=np.sign(p.r_2),  # the sign of r_2 is -1 for convex lens, and so for the ray the second surface
+            curvature_sign=np.sign(
+                p.r_2
+            ),  # the sign of r_2 is -1 for convex lens, and so for the ray the second surface
             # is concave, for which the curvature sign is -1
             name=names[1],
             material_properties=p.material_properties,
