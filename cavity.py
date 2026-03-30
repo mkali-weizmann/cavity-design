@@ -2459,7 +2459,8 @@ class OpticalSystem:
                 surfaces[i + 1],
             )
             for i in range(len(surfaces) - 1)
-        ]
+        ]  # This can not be a property, as it is edited later
+        self._surfaces = list(surfaces)
         self.central_line_successfully_traced: Optional[bool] = None
         self.resonating_mode_successfully_traced: Optional[bool] = None
         self.lambda_0_laser: Optional[float] = lambda_0_laser
@@ -2481,8 +2482,9 @@ class OpticalSystem:
 
     @property
     def surfaces(self):
-        surfaces = [arm.surface_0 for arm in self.arms] + [self.arms[-1].surface_1]
-        return surfaces
+        if len(self.arms) == 0:
+            return self._surfaces
+        return [arm.surface_0 for arm in self.arms] + [self.arms[-1].surface_1]
 
     @property
     def physical_surfaces(self):
@@ -2691,9 +2693,11 @@ class OpticalSystem:
         n_arms = nvl(n_arms, len(self.arms))
 
         if propagate_with_first_surface_first:
+            if len(self.surfaces) == 0:
+                return RaySequence(ray_history)
             # For cavities the ray usually starts from first surface and so the first propagation is by the second surface.
             # For other optical systems, the ray starts before the first surface and so the first propagation is by the first surface.
-            ray = self.arms[0].surface_0.propagate_ray(ray, paraxial=self.use_paraxial_ray_tracing)
+            ray = self.surfaces[0].propagate_ray(ray, paraxial=self.use_paraxial_ray_tracing)
             ray_history.append(ray)
 
         for i in range(n_arms):

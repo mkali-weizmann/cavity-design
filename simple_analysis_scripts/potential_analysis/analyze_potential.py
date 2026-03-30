@@ -584,9 +584,12 @@ def analyze_potential_given_cavity(cavity: Cavity,
     rays_0 = initialize_rays(n_rays=n_rays, phi_max=phi_max)
     ray_sequence = optical_system_reduced.propagate_ray(rays_0, propagate_with_first_surface_first=True)
     ray_sequence_cleaned = ray_sequence.remove_escaped_rays
-    R_analytical = optical_system_reduced.output_radius_of_curvature(
-        source_position=first_mirror.origin
-    )
+    if len(optical_system_reduced.surfaces) == 0:
+        R_analytical = None
+    else:
+        R_analytical = optical_system_reduced.output_radius_of_curvature(
+            source_position=first_mirror.origin
+        )
     if ray_sequence_cleaned.origin.shape[1] == 1:
         raise ValueError("All rays escaped the system, cannot analyze wavefront. Try increasing the number of rays or the maximum angle phi_max.")
     results_dict = analyze_output_wavefront(ray_sequence=ray_sequence_cleaned,
@@ -614,8 +617,7 @@ def plot_results(
     fig_and_ax = None,
     plot_final_arm_backwards_rays: bool =  False
 ):
-    (optical_system, ray_sequence, R, center_of_curvature, NA_paraxial, spot_size_paraxial, zero_derivative_points) = (
-        results_dict["optical_system"],
+    (ray_sequence, R, center_of_curvature, NA_paraxial, spot_size_paraxial, zero_derivative_points) = (
         results_dict["ray_sequence"],
         results_dict["R_output"],
         results_dict["center_of_curvature"],
@@ -627,17 +629,13 @@ def plot_results(
         (
             wavefront_points,
             residual_distances,
-            dummy_points,
             polynomial,
-            dummy_points_mirror,
             polynomial_residuals_mirror,
             residual_distances_mirror,
         ) = (
             results_dict["wavefront_points_opposite"],
             results_dict["residual_distances_opposite"],
-            results_dict["dummy_points_curvature_opposite"],
             results_dict["polynomial_residuals_opposite"],
-            results_dict["dummy_points_mirror"],
             results_dict["polynomial_residuals_mirror"],
             results_dict["residual_distances_mirror"],
         )
@@ -645,17 +643,13 @@ def plot_results(
         (
             wavefront_points,
             residual_distances,
-            dummy_points,
             polynomial,
-            dummy_points_mirror,
             polynomial_residuals_mirror,
             residual_distances_mirror,
         ) = (
             results_dict["wavefront_points_initial"],
             results_dict["residual_distances_initial"],
-            results_dict["dummy_points_curvature_initial"],
             results_dict["polynomial_residuals_initial"],
-            None,
             None,
             None,
         )
@@ -779,7 +773,7 @@ def plot_results(
                     linewidth=1,
                 )
                 ax2.axvline(
-                    spot_size_paraxial * 1e3 * np.sign(x_fit[0]),
+                    spot_size_paraxial * 1e3 * np.sign(x_fit[0]+1e-19),
                     color="orange",
                     linestyle="dashed",
                     linewidth=1,
