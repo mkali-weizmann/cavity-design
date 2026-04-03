@@ -981,7 +981,7 @@ class PhysicalSurface(Surface):
     ) -> np.ndarray:
         raise NotImplementedError
 
-    def ABCD_matrix(self, cos_theta_incoming: Optional[float] = None) -> np.ndarray:
+    def ABCD_matrix(self, cos_theta_incoming: Optional[Union[float, np.ndarray]] = None) -> np.ndarray:
         raise NotImplementedError
 
     def thermal_transformation(self, P_laser_power: float, w_spot_size: float, **kwargs):
@@ -1278,7 +1278,7 @@ class AsphericRefractiveSurface(AsphericSurface, RefractiveSurface):
         )
         self.curvature_sign = curvature_sign
 
-    def ABCD_matrix(self, cos_theta_incoming: Optional[float] = None) -> np.ndarray:
+    def ABCD_matrix(self, cos_theta_incoming: Union[float, np.ndarray] = None) -> np.ndarray:
         paraxial_approximation_surface = CurvedRefractiveSurface(
             radius=self.radius,
             outwards_normal=RIGHT,
@@ -1426,7 +1426,7 @@ class FlatMirror(FlatSurface, ReflectiveSurface):
     def center(self):
         return super().center
 
-    def ABCD_matrix(self, cos_theta_incoming: float = None) -> np.ndarray:
+    def ABCD_matrix(self, cos_theta_incoming: Union[float, np.ndarray] = None) -> np.ndarray:
         # Assumes the ray is in the x-y plane, and the mirror is in the z-x plane
         return np.array([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, -1, 0], [0, 0, 0, -1]])
 
@@ -1462,7 +1462,7 @@ class FlatRefractiveSurface(FlatSurface, RefractiveSurface):
         self.n_1 = n_1
         self.n_2 = n_2
 
-    def ABCD_matrix(self, cos_theta_incoming: float = None) -> np.ndarray:
+    def ABCD_matrix(self, cos_theta_incoming: Union[float, np.ndarray] = None) -> np.ndarray:
         # Note ! this code assumes the ray is in the x-y plane! Until it is fixed, the only perturbations in x,y,phi should be calculated!
         sin_theta_incoming = np.sqrt(1 - cos_theta_incoming**2)
         sin_theta_outgoing = (self.n_1 / self.n_2) * sin_theta_incoming
@@ -1550,7 +1550,7 @@ class IdealLens(FlatSurface, PhysicalSurface):
 
         return output_direction_vector
 
-    def ABCD_matrix(self, cos_theta_incoming: float = None) -> np.ndarray:
+    def ABCD_matrix(self, cos_theta_incoming: Union[float, np.ndarray] = None) -> np.ndarray:
         # THIS CURRENTLY DOES NOT HOLD FOR THE CASE WHERE THE RAY IS NOT PERPENDICULAR TO THE LENS!
         ABCD = np.array(
             [
@@ -1706,7 +1706,7 @@ class CurvedMirror(CurvedSurface, ReflectiveSurface):
         # intersection_point = self.find_intersection_with_ray(ray, paraxial=True)
         # return self.reflect_direction_exact(ray, intersection_point=intersection_point)
 
-    def ABCD_matrix(self, cos_theta_incoming: float = None):
+    def ABCD_matrix(self, cos_theta_incoming: Union[float, np.ndarray] = None):
         # order of rows/columns elements is [theta, theta, phi, phi]
         # An approximation is done here (beyond the small angles' approximation) by assuming that the central line
         # lives in the x,y plane, such that the plane of incidence is the x,y plane (parameterized by phi and phi)
@@ -1715,16 +1715,18 @@ class CurvedMirror(CurvedSurface, ReflectiveSurface):
         # It is not really justified for bigger perturbations and should be corrected.
         # It should be corrected by first finding the real axes, # And then apply a rotation matrix to this matrix on
         # both sides.
-        # ATTENTION - THIS SHOULD NOT BE HERE FOR NON-STANDING WAVES CAVITIES - BUT i AM DEALING ONLY WITH THOSE...
-        cos_theta_incoming = 1
-        ABCD = np.array(
-            [
-                [1, 0, 0, 0],
-                [-2 * cos_theta_incoming / self.radius, 1, 0, 0],
-                [0, 0, -1, 0],
-                [0, 0, 2 / (self.radius * cos_theta_incoming), -1],
-            ]
-        )
+        # ATTENTION - THIS SHOULD NOT BE HERE FOR NON-STANDING WAVES CAVITIES - BUT I AM DEALING ONLY WITH THOSE...
+        if cos_theta_incoming is None:
+            cos_theta_incoming = 1.0
+        cos_theta_incoming = np.asarray(cos_theta_incoming)
+
+        ABCD = np.zeros((*cos_theta_incoming.shape, 4, 4), dtype=float)
+        ABCD[..., 0, 0] = 1
+        ABCD[..., 1, 0] = -2 * cos_theta_incoming / self.radius
+        ABCD[..., 1, 1] = 1
+        ABCD[..., 2, 2] = -1
+        ABCD[..., 3, 2] = 2 / (self.radius * cos_theta_incoming)
+        ABCD[..., 3, 3] = -1
         return ABCD
 
     def thermal_transformation(
@@ -1796,26 +1798,20 @@ class CurvedRefractiveSurface(CurvedSurface, RefractiveSurface):
         self.n_2 = n_2
         self.thickness = thickness
 
-    def ABCD_matrix(self, cos_theta_incoming: float = None) -> np.ndarray:
+    def ABCD_matrix(self, cos_theta_incoming: Union[float, np.ndarray] = None) -> np.ndarray:
+        cos_theta_incoming = np.asarray(cos_theta_incoming)
         cos_theta_outgoing = np.sqrt(1 - (self.n_1 / self.n_2) ** 2 * (1 - cos_theta_incoming**2))
         R_signed = self.radius * self.curvature_sign
         delta_n_e_out_of_plane = self.n_1 * cos_theta_incoming - self.n_2 * cos_theta_outgoing
         delta_n_e_in_plane = delta_n_e_out_of_plane / (cos_theta_incoming * cos_theta_outgoing)
 
-        # See the comment in the ABCD_matrix method of the CurvedSurface class for an explanation of the approximation.
-        ABCD = np.array(
-            [
-                [1, 0, 0, 0],  # theta
-                [delta_n_e_out_of_plane / (R_signed * self.n_2), self.n_1 / self.n_2, 0, 0],  # theta
-                [0, 0, cos_theta_outgoing / cos_theta_incoming, 0],  # phi
-                [
-                    0,
-                    0,
-                    delta_n_e_in_plane / (R_signed * self.n_2),
-                    cos_theta_incoming * self.n_1 / (cos_theta_outgoing * self.n_2),
-                ],
-            ]
-        )  # phi
+        ABCD = np.zeros((*cos_theta_incoming.shape, 4, 4), dtype=float)
+        ABCD[..., 0, 0] = 1
+        ABCD[..., 1, 0] = delta_n_e_out_of_plane / (R_signed * self.n_2)
+        ABCD[..., 1, 1] = self.n_1 / self.n_2
+        ABCD[..., 2, 2] = cos_theta_outgoing / cos_theta_incoming
+        ABCD[..., 3, 2] = delta_n_e_in_plane / (R_signed * self.n_2)
+        ABCD[..., 3, 3] = cos_theta_incoming * self.n_1 / (cos_theta_outgoing * self.n_2)
         return ABCD
 
     def thermal_transformation(
@@ -2165,10 +2161,12 @@ class Arm:
         return matrix
 
     @property
-    def ABCD_matrix_reflection(self):
-        if self.central_line is None:
-            raise ValueError("Central line not set")
-        cos_theta = np.abs(self.central_line.k_vector @ self.surface_1.outwards_normal)  # ABS because we want the
+    def ABCD_matrix_reflection(self, ray: Ray = None):
+        if ray is None and self.central_line is None :
+            raise ValueError("Central line not set, and another ray was not given")
+        elif ray is None and self.central_line is not None:
+            ray = self.central_line
+        cos_theta = np.abs(ray.k_vector @ self.surface_1.outwards_normal)  # ABS because we want the
         # angle between the ray and the normal to be positive
         if isinstance(self.surface_1, PhysicalSurface):
             matrix = self.surface_1.ABCD_matrix(cos_theta)

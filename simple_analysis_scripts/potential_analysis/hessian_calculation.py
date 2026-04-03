@@ -6,7 +6,7 @@ from utils import angles_of_unit_vector
 from simple_analysis_scripts.potential_analysis.analyze_potential import *
 
 # %%
-def extract_mass_tensor(cavity: Cavity, n_rays: int = 30, phi_max: float = 0.02):
+def orthonormal_rays_end_points(cavity: Cavity, n_rays: int = 30, phi_max: float = 0.02):
     rays_initial = initialize_rays(starting_mirror=cavity.surfaces[0], phi_max=phi_max, n_rays=n_rays)
     propagated_ray = cavity.propagate_ray(ray=rays_initial, n_arms=len(cavity.arms) // 2,
                                           propagate_with_first_surface_first=False)
@@ -17,6 +17,10 @@ def extract_mass_tensor(cavity: Cavity, n_rays: int = 30, phi_max: float = 0.02)
         use_paraxial_ray_tracing=False,
         p_is_trivial=True,
         t_is_trivial=True, )
+    return end_points, end_directions_inverted, optical_system_inverted_reduced
+
+def hessian_ray_tracing(cavity: Cavity, n_rays: int = 30, phi_max: float = 0.02):
+    end_points, end_directions_inverted, optical_system_inverted_reduced = orthonormal_rays_end_points(cavity=cavity, n_rays=n_rays, phi_max=phi_max)
     d_angle = 1e-6
     initial_angles = angles_of_unit_vector(end_directions_inverted)  # (n_rays, n_rays)
     initial_angles_plus_dtheta = (initial_angles[0] + d_angle, initial_angles[1])  # (n_rays, n_rays)
@@ -30,9 +34,9 @@ def extract_mass_tensor(cavity: Cavity, n_rays: int = 30, phi_max: float = 0.02)
                                 axis=1)  # n_rays | 3 (0, dtheta, dphi) | 3 (xyz)
     initial_starting_points = np.stack([end_points, end_points, end_points],
                                        axis=1)  # n_rays | 3 (0, dtheta, dphi) | 3 (xyz)
-    initial_rays = Ray(origin=initial_starting_points,
-                       k_vector=k_vectors_tilted)  # origin.shape = n_rays | 3 (0, dtheta, dphi) | 3 (xyz)
-    propagated_ray_backwards = optical_system_inverted_reduced.propagate_ray(ray=initial_rays,
+    initial_rays_backwards = Ray(origin=initial_starting_points,
+                                 k_vector=k_vectors_tilted)  # origin.shape = n_rays | 3 (0, dtheta, dphi) | 3 (xyz)
+    propagated_ray_backwards = optical_system_inverted_reduced.propagate_ray(ray=initial_rays_backwards,
                                                                              propagate_with_first_surface_first=False)  # origin.shape = n_arms (one way) | n_rays | 3 (0, dtheta, dphi) | 3 (xyz)
     optical_path_lengths_backwards = propagated_ray_backwards.cumulative_optical_path_length[
         -2]  # n_rays | 3 (0, dtheta, dphi)
@@ -48,6 +52,12 @@ def extract_mass_tensor(cavity: Cavity, n_rays: int = 30, phi_max: float = 0.02)
     # final_points_backwards_minus_trivial_normalized = normalize_vector(final_points_backwards_minus_trivial)
     # final_points_spanning_vectors_inner_product = np.einsum('ij,ij->i', final_points_backwards_minus_trivial_normalized[:, 0, :], final_points_backwards_minus_trivial_normalized[:, 1, :])
     return quadratic_coefficients
+
+def hessian_ABCD_matrices(cavity: Cavity, n_rays: int = 30, phi_max: float = 0.02):
+    end_points, end_directions_inverted, optical_system_inverted_reduced = orthonormal_rays_end_points(cavity=cavity,
+                                                                                                       n_rays=n_rays,
+                                                                                                       phi_max=phi_max)
+    initial_rays_backwards = Ray(origin=end_points, k_vector=end_directions_inverted)
 
 # %% Cavity does not need to be concentric for the analysis.
 params = [
