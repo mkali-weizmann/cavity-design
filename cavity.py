@@ -1158,8 +1158,8 @@ class AsphericSurface(Surface):
         equation_expression = x - polynomial_value  # y - P(x)
         return equation_expression
 
-    def normal_at_a_point(self, r: np.ndarray):
-        relative_coordinates = self.relative_coordinates(r)
+    def normal_at_a_point(self, point: np.ndarray):
+        relative_coordinates = self.relative_coordinates(point)
         rho = relative_coordinates[..., 0]
         dP_drho = (
             self.polynomial.deriv()(rho**2) * 2 * rho
@@ -1171,7 +1171,7 @@ class AsphericSurface(Surface):
             normal_vector_in_surface_coordinates
         )  # r.shape[:-1, 2]
 
-        rho_vec = (r - self.center) - ((r - self.center) @ self.inwards_normal)[
+        rho_vec = (point - self.center) - ((point - self.center) @ self.inwards_normal)[
             ..., np.newaxis
         ] * self.inwards_normal  # r.shape[:-1, 3]
         # rho_vec[np.linalg.norm(rho_vec, axis=-1) == 0, :] = self.inwards_normal  # It's either this or the True in the next line
@@ -1715,10 +1715,12 @@ class CurvedMirror(CurvedSurface, ReflectiveSurface):
         # It is not really justified for bigger perturbations and should be corrected.
         # It should be corrected by first finding the real axes, # And then apply a rotation matrix to this matrix on
         # both sides.
-        # ATTENTION - THIS SHOULD NOT BE HERE FOR NON-STANDING WAVES CAVITIES - BUT I AM DEALING ONLY WITH THOSE...
         if cos_theta_incoming is None:
             cos_theta_incoming = 1.0
+
         cos_theta_incoming = np.asarray(cos_theta_incoming)
+        # ATTENTION - THIS SHOULD NOT BE HERE FOR NON-STANDING WAVES CAVITIES - BUT I AM DEALING ONLY WITH THOSE...
+        cos_theta_incoming = np.ones_like(cos_theta_incoming)
 
         ABCD = np.zeros((*cos_theta_incoming.shape, 4, 4), dtype=float)
         ABCD[..., 0, 0] = 1
@@ -2154,19 +2156,21 @@ class Arm:
             return None
 
     @property
-    def ABCD_matrix_free_space(self):
-        if self.central_line is None:
-            raise ValueError("Central line not set")
-        matrix = ABCD_free_space(self.central_line.length)
-        return matrix
-
-    @property
-    def ABCD_matrix_reflection(self, ray: Ray = None):
+    def ABCD_matrix_free_space(self, ray: Ray = None):
         if ray is None and self.central_line is None :
             raise ValueError("Central line not set, and another ray was not given")
         elif ray is None and self.central_line is not None:
             ray = self.central_line
-        cos_theta = np.abs(ray.k_vector @ self.surface_1.outwards_normal)  # ABS because we want the
+        matrix = ABCD_free_space(ray.length)
+        return matrix
+
+    @property
+    def ABCD_matrix_surface_1(self, ray: Ray = None):
+        if ray is None and self.central_line is None :
+            raise ValueError("Central line not set, and another ray was not given")
+        elif ray is None and self.central_line is not None:
+            ray = self.central_line
+        cos_theta = np.abs(ray.k_vector @ self.surface_1.normal_at_a_point(point=self.surface_1.find_intersection_with_ray_exact(ray)))  # ABS because we want the
         # angle between the ray and the normal to be positive
         if isinstance(self.surface_1, PhysicalSurface):
             matrix = self.surface_1.ABCD_matrix(cos_theta)
@@ -2176,7 +2180,7 @@ class Arm:
 
     @property
     def ABCD_matrix(self):
-        matrix = self.ABCD_matrix_reflection @ self.ABCD_matrix_free_space
+        matrix = self.ABCD_matrix_surface_1 @ self.ABCD_matrix_free_space
         return matrix
 
     def propagate_local_mode_parameters(self, local_mode_parameters_on_surface_0: Optional[LocalModeParameters]):
@@ -2184,7 +2188,7 @@ class Arm:
             local_mode_parameters_on_surface_0, self.ABCD_matrix_free_space, n_2=self.n
         )
         mode_parameters_after_surface_1 = propagate_local_mode_parameter_through_ABCD(
-            mode_parameters_on_surface_1, self.ABCD_matrix_reflection, n_2=self.surface_1.to_params.n_inside_or_after
+            mode_parameters_on_surface_1, self.ABCD_matrix_surface_1, n_2=self.surface_1.to_params.n_inside_or_after
         )
         return mode_parameters_on_surface_1, mode_parameters_after_surface_1
 
@@ -4529,6 +4533,7 @@ def plot_2_cavity_perturbation_overlap(
             title=f"Cavity perturbation overlap = {np.abs(overlap):.4f}",
             real_or_abs=real_or_abs,
         )
+    return overlap
 
 
 def evaluate_gaussian_3d(points: np.ndarray, mode_parameters: ModeParameters):

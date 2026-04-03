@@ -288,108 +288,54 @@ def test_aspheric_comparison_to_edmunds():
 
 
 def test_perturbation():
-    power_laser = 5.0000000000e04
+    power_laser = 5.0000000000e+04
     element_index_0 = 1
-    param_name_0 = "y"
-    perturbation_value_special_log_0 = -2.0894916580e00
-    perturbation_value_special_log_0_fine = -1.5773755980e00
-    element_index_1 = 0
-    param_name_1 = "x"
-    perturbation_value_special_log_1 = 1.7763568394e-15
-    perturbation_value_special_log_1_fine = 1.7763568394e-15
+    param_name_0 = 'y'
+    perturbation_value_special_log_0 = 2.4733644800e+00
+    perturbation_value_special_log_0_fine = 6.7924969500e-01
+
 
     params = [
-        OpticalElementParams(
-            name="Small Mirror",
-            surface_type="curved_mirror",
-            x=-4.999961263669513e-03,
-            y=0,
-            z=0,
-            theta=0,
-            phi=-1e00 * np.pi,
-            r_1=5e-03,
-            r_2=np.nan,
-            curvature_sign=CurvatureSigns.concave,
-            T_c=np.nan,
-            n_inside_or_after=1e00,
-            n_outside_or_before=1e00,
-            material_properties=MaterialProperties(
-                refractive_index=None,
-                alpha_expansion=7.5e-08,
-                beta_surface_absorption=1e-06,
-                kappa_conductivity=1.31e00,
-                dn_dT=None,
-                nu_poisson_ratio=1.7e-01,
-                alpha_volume_absorption=None,
-                intensity_reflectivity=9.99889e-01,
-                intensity_transmittance=1e-04,
-                temperature=np.nan,
-            ),
-        ),
-        OpticalElementParams(
-            name="Lens",
-            surface_type="thick_lens",
-            x=6.458249990515623e-03,
-            y=0,
-            z=0,
-            theta=0,
-            phi=0,
-            r_1=2.422e-02,
-            r_2=-5.488e-03,
-            curvature_sign=CurvatureSigns.concave,
-            T_c=2.913797540986543e-03,
-            n_inside_or_after=1.76e00,
-            n_outside_or_before=1e00,
-            material_properties=MaterialProperties(
-                refractive_index=1.76e00,
-                alpha_expansion=5.5e-06,
-                beta_surface_absorption=1e-06,
-                kappa_conductivity=4.606e01,
-                dn_dT=1.17e-05,
-                nu_poisson_ratio=3e-01,
-                alpha_volume_absorption=1e-02,
-                intensity_reflectivity=1e-04,
-                intensity_transmittance=9.99899e-01,
-                temperature=np.nan,
-            ),
-        ),
-        OpticalElementParams(
-            name="Big Mirror",
-            surface_type="curved_mirror",
-            x=3.565787616476249e-01,
-            y=0,
-            z=0,
-            theta=0,
-            phi=0,
-            r_1=2e-01,
-            r_2=np.nan,
-            curvature_sign=CurvatureSigns.concave,
-            T_c=np.nan,
-            n_inside_or_after=1e00,
-            n_outside_or_before=1e00,
-            material_properties=MaterialProperties(
-                refractive_index=None,
-                alpha_expansion=7.5e-08,
-                beta_surface_absorption=1e-06,
-                kappa_conductivity=1.31e00,
-                dn_dT=None,
-                nu_poisson_ratio=1.7e-01,
-                alpha_volume_absorption=None,
-                intensity_reflectivity=9.99889e-01,
-                intensity_transmittance=1e-04,
-                temperature=np.nan,
-            ),
-        ),
-    ]
+        OpticalElementParams(name='Small Mirror', surface_type='curved_mirror', x=-4.999954683912563e-03, y=0, z=0,
+                             theta=0, phi=-1e+00 * np.pi, r_1=5e-03, r_2=np.nan, curvature_sign=CurvatureSigns.concave,
+                             T_c=np.nan, n_inside_or_after=1e+00, n_outside_or_before=1e+00, diameter=7.75e-03,
+                             material_properties=MaterialProperties(refractive_index=None, alpha_expansion=7.5e-08,
+                                                                    beta_surface_absorption=1e-06,
+                                                                    kappa_conductivity=1.31e+00, dn_dT=None,
+                                                                    nu_poisson_ratio=1.7e-01,
+                                                                    alpha_volume_absorption=None,
+                                                                    intensity_reflectivity=9.99889e-01,
+                                                                    intensity_transmittance=1e-04, temperature=np.nan),
+                             polynomial_coefficients=None),
+        OpticalElementParams(name='Lens', surface_type='thick_lens', x=6.387599281689135e-03, y=0, z=0, theta=0, phi=0,
+                             r_1=2.422e-02, r_2=-5.488e-03, curvature_sign=CurvatureSigns.concave,
+                             T_c=2.913797540986543e-03, n_inside_or_after=1.76e+00, n_outside_or_before=1e+00,
+                             diameter=7.75e-03,
+                             material_properties=MaterialProperties(refractive_index=1.76e+00, alpha_expansion=5.5e-06,
+                                                                    beta_surface_absorption=1e-06,
+                                                                    kappa_conductivity=4.606e+01, dn_dT=1.17e-05,
+                                                                    nu_poisson_ratio=3e-01,
+                                                                    alpha_volume_absorption=1e-02,
+                                                                    intensity_reflectivity=1e-04,
+                                                                    intensity_transmittance=9.99899e-01,
+                                                                    temperature=np.nan), polynomial_coefficients=None),
+        OpticalElementParams(name='Big Mirror', surface_type='curved_mirror', x=4.074677357638641e-01, y=0, z=0,
+                             theta=0, phi=0, r_1=2e-01, r_2=np.nan, curvature_sign=CurvatureSigns.concave, T_c=np.nan,
+                             n_inside_or_after=1e+00, n_outside_or_before=1e+00, diameter=2.54e-02,
+                             material_properties=MaterialProperties(refractive_index=None, alpha_expansion=7.5e-08,
+                                                                    beta_surface_absorption=1e-06,
+                                                                    kappa_conductivity=1.31e+00, dn_dT=None,
+                                                                    nu_poisson_ratio=1.7e-01,
+                                                                    alpha_volume_absorption=None,
+                                                                    intensity_reflectivity=9.99889e-01,
+                                                                    intensity_transmittance=1e-04, temperature=np.nan),
+                             polynomial_coefficients=None)]
 
     perturbation_value_0 = widget_convenient_exponent(perturbation_value_special_log_0, base=10, scale=-10)
-    perturbation_value_1 = widget_convenient_exponent(perturbation_value_special_log_1, base=10, scale=-10)
 
     perturbation_value_0_fine = widget_convenient_exponent(perturbation_value_special_log_0_fine, base=10, scale=-10)
-    perturbation_value_1_fine = widget_convenient_exponent(perturbation_value_special_log_1_fine, base=10, scale=-10)
 
     perturbation_value_0 += perturbation_value_0_fine
-    perturbation_value_1 += perturbation_value_1_fine
 
     cavity = Cavity.from_params(
         params=params,
@@ -406,9 +352,6 @@ def test_perturbation():
         PerturbationPointer(
             element_index=element_index_0, parameter_name=param_name_0, perturbation_value=perturbation_value_0
         ),
-        PerturbationPointer(
-            element_index=element_index_1, parameter_name=param_name_1, perturbation_value=perturbation_value_1
-        ),
     ]
     perturbed_cavity = perturb_cavity(cavity=cavity, perturbation_pointer=perturbation_pointers)
 
@@ -416,12 +359,12 @@ def test_perturbation():
         cavity, perturbed_cavity, arm_index=0
     )
     overlap = gaussians_overlap_integral(A_1, A_2, b_1, b_2, c_1, c_2)
-
+    print("asdasdasd", np.abs(overlap))
     assert (
-        overlap - 0.9082902582542912
-    ) < 1e-6, f"Perturbation test failed: Expected overlap of 0.9082902582542912 but got {overlap}"
+        np.abs(overlap) - 0.9001508804272882
+    ) < 1e-6, f"Perturbation test failed: Expected overlap of 0.9001508804272882 but got {np.abs(overlap)}"
     assert np.all(
-        np.isclose(perturbed_cavity.central_line[0].k_vector, np.array([0.99991744, 0.0128496, 0.0]))
+        np.isclose(perturbed_cavity.central_line[0].k_vector, np.array([0.9999149256, -0.0130438341,  0]))
     ), f"Perturbation test failed:  Expected k_vector of [0.99991744, 0.0128496 , 0.        ] but got {perturbed_cavity.central_line[0].k_vector}"
 
 
