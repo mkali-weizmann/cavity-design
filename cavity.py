@@ -274,7 +274,7 @@ def propagate_local_mode_parameter_through_ABCD(
 
 def local_mode_parameters_of_round_trip_ABCD(
     round_trip_ABCD: np.ndarray,
-    n: float,  # refractive_index at the begining of the roundtrip
+    n: float,  # refractive_index at the beginning of the roundtrip
     lambda_0_laser: Optional[float] = None,
 ) -> LocalModeParameters:
     A, B, C, D = decompose_ABCD_matrix(round_trip_ABCD)

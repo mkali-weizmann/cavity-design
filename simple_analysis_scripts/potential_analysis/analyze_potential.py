@@ -542,7 +542,7 @@ def analyze_output_wavefront(
     )
     wavefront_points_initial = output_ray.parameterization(t=-relative_optical_path_length)
 
-    R_output_numerical, center_of_curvature_numerical = extract_matching_sphere(  # TODO: invert R sign convention
+    R_output_numerical, center_of_curvature_numerical = extract_matching_sphere(
         wavefront_points_initial[..., 0, :], wavefront_points_initial[..., 1, :], output_ray.k_vector[..., 0, :]
     )
     if R_output_analytical is not None:
@@ -910,8 +910,9 @@ def plot_results(
             unconcentricity_um = unconcentricity * 1e6
         else:
             unconcentricity_um = np.nan
+        differential_second_order_mirror = (residual_distances_mirror[1] - residual_distances_mirror[0]) / (wavefront_points[1, 1] - wavefront_points[0, 1]) ** 2
         title += (
-            f"\nmirror deviation fit (unconcentricity = {unconcentricity_um:.1f} µm):\n" + terms_mirror + mode_terms
+            f"\nmirror deviation fit (unconcentricity = {unconcentricity_um:.1f} µm):\n" + terms_mirror + f"a_2_diff = {differential_second_order_mirror:.2e}" + mode_terms
         )
         ax[0].set_title(title)
         if not potential_x_axis_angles:

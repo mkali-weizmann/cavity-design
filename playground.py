@@ -19,8 +19,8 @@ cavity = Cavity.from_params(params=params,
                             debug_printing_level=1,
                             )
 
-fake_mirror_big = match_a_mirror_to_mode(mode=cavity.arms[2].mode_parameters, z = np.linalg.norm(cavity.surfaces[3].center - cavity.arms[2].mode_parameters.center[0, :]), diameter=0.05)
-fake_mirror_small = match_a_mirror_to_mode(mode=cavity.arms[2].mode_parameters, z =-np.linalg.norm(cavity.arms[2].mode_parameters.center[0, :] - cavity.surfaces[2].center), diameter=0.02)
+fake_mirror_big = match_a_mirror_to_mode(mode=cavity.arms[2].mode_parameters, z=np.linalg.norm(cavity.surfaces[3].center - cavity.arms[2].mode_parameters.center[0, :]), diameter=0.05)
+fake_mirror_small = match_a_mirror_to_mode(mode=cavity.arms[2].mode_parameters, z=-np.linalg.norm(cavity.arms[2].mode_parameters.center[0, :] - cavity.surfaces[2].center), diameter=0.02)
 
 cavity_fake = Cavity.from_params(params=[params[0], params[1], fake_mirror_big.to_params],
                             standing_wave=True,
@@ -33,6 +33,14 @@ cavity_fake = Cavity.from_params(params=[params[0], params[1], fake_mirror_big.t
                             use_paraxial_ray_tracing=False,
                             debug_printing_level=1,
                             )
+# %%
+results_dict = analyze_potential_given_cavity(cavity=cavity_fake, n_rays=30, phi_max=0.15)
+fig, ax = plot_results(results_dict=results_dict, far_away_plane=True)
+ax[1].set_title(f"NA middle arm = {cavity_fake.arms[2].mode_parameters.NA[0]:.4f}, length middle arm = {cavity_fake.arms[2].central_line.length:.2f}")
+ax[1].set_ylim(-0.007, 0.007)
+ax[1].grid()
+plt.show()
+# %%
 fake_mirror_small_shifted = fake_mirror_small.to_params
 fake_mirror_big_shifted = fake_mirror_big.to_params
 small_mirrors_center_current = fake_mirror_small_shifted.x + fake_mirror_small_shifted.r_1
@@ -50,6 +58,7 @@ cavity_fabry_perot_fake = Cavity.from_params(params=[fake_mirror_small_shifted, 
                             use_paraxial_ray_tracing=False,
                             debug_printing_level=1,
                                  )
+
 # %%
 rays_0 = initialize_rays(n_rays=100, phi_max=0.02, starting_mirror=cavity_fabry_perot_fake.surfaces[0])
 base_length = np.linalg.norm(cavity_fabry_perot_fake.surfaces[1].center - rays_0.origin[0, :])
@@ -109,4 +118,3 @@ ax[1].set_title(f"NA middle arm = {cavity.arms[2].mode_parameters.NA[0]:.4f}, le
 ax[1].set_ylim(-0.007, 0.007)
 ax[1].grid()
 plt.show()
-# %%
