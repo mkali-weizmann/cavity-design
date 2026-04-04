@@ -1,8 +1,6 @@
 # from matplotlib import use
-from functools import reduce
-from utils import angles_of_unit_vector
-
 # use('TkAgg')
+from functools import reduce
 from simple_analysis_scripts.potential_analysis.analyze_potential import *
 
 # %%
@@ -60,10 +58,12 @@ def hessian_ABCD_matrices(cavity: Cavity, n_rays: int = 30, phi_max: float = 0.0
                                                                                                        phi_max=phi_max)
     initial_rays_backwards = Ray(origin=end_points, k_vector=end_directions_inverted)
     propagated_ray_backwards = optical_system_inverted_reduced.propagate_ray(ray=initial_rays_backwards, propagate_with_first_surface_first=False)
-    ABCD_matrices_optical_system = optical_system_inverted_reduced.ABCD_matrices(ray_sequence=propagated_ray_backwards)  # n_arms | *n_rays | 4 | 4
+    ABCD_matrices_optical_system = optical_system_inverted_reduced.ABCD_matrices(ray_sequence=propagated_ray_backwards[:-1])  # n_arms | *n_rays | 4 | 4
     one_way_ABCD_matrix = reduce(np.matmul, ABCD_matrices_optical_system)  # *n_rays | 4 | 4
-
-    return one_way_ABCD_matrix
+    A, B, C, D = decompose_ABCD_matrix(one_way_ABCD_matrix)
+    output_ROC = B / D
+    hessian = -(output_ROC - optical_system_inverted_reduced.surfaces[-1].radius) / (output_ROC * optical_system_inverted_reduced.surfaces[-1].radius)
+    return hessian
 
 
 # %% Cavity does not need to be concentric for the analysis.
@@ -84,8 +84,13 @@ cavity = Cavity.from_params(params=params,
                             debug_printing_level=1,
                             )
 # %%
-hessian_ray_tracing_value = hessian_ray_tracing(cavity=cavity, n_rays=100, phi_max=0.1)
-hessian_ABCD_matrices_value = hessian_ABCD_matrices(cavity=cavity, n_rays=100, phi_max=0.1)
+# hessian_ray_tracing_value = hessian_ray_tracing(cavity=cavity, n_rays=1, phi_max=0.1)
+# hessian_ABCD_matrices_value = hessian_ABCD_matrices(cavity=cavity, n_rays=1, phi_max=0.1)
+
+# %%
+cavity_fabry_perot = fabry_perot_generator((0.005, 0.005), NA=0.02, lambda_0_laser=LAMBDA_0_LASER, use_paraxial_ray_tracing=False)
+hessian_ray_tracing_value_fabry_perot = hessian_ray_tracing(cavity=cavity_fabry_perot, n_rays=1, phi_max=0.1)
+hessian_ABCD_matrices_value_fabry_perot = hessian_ABCD_matrices(cavity=cavity_fabry_perot, n_rays=1, phi_max=0.1)
 
 # %%
 n = params[1].n_inside_or_after

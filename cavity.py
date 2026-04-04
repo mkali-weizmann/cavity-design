@@ -248,24 +248,6 @@ class ModeParameters:
         return inverted_direction_mode
 
 
-def decompose_ABCD_matrix(
-    ABCD: np.ndarray,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    # Assumes ABCD matrix is either a (*some_shape, 4, 4) or a (*some_shape, 2, 2) array,
-    # where the last two dimensions are the ABCD matrix. for a 4X4 matrices, the first two dimension are for
-    # out-of-plane reflection/refraction, and the second two dimensions are for in-plane reflection/refraction.
-    if ABCD.shape[-2:] == (4, 4):
-        A, B, C, D = (
-            ABCD[..., (0, 2), (0, 2)],
-            ABCD[..., (0, 2), (1, 3)],
-            ABCD[..., (1, 3), (0, 2)],
-            ABCD[..., (1, 3), (1, 3)],
-        )
-    else:
-        A, B, C, D = ABCD[..., 0, 0], ABCD[..., 0, 1], ABCD[..., 1, 0], ABCD[..., 1, 1]
-    return A, B, C, D
-
-
 def propagate_local_mode_parameter_through_ABCD(
     local_mode_parameters: LocalModeParameters, ABCD: np.ndarray, n_2: float = 1
 ) -> LocalModeParameters:
@@ -2185,6 +2167,11 @@ class Arm:
         matrix = self.ABCD_matrix_surface_1(ray=ray) @ self.ABCD_matrix_free_space(ray=ray)
         return matrix
 
+    def ABCD_matrices(self, ray: Ray = None):
+        matrix_free_space = self.ABCD_matrix_free_space(ray=ray)
+        matrix_surface_1 = self.ABCD_matrix_surface_1(ray=ray)
+        return np.stack((matrix_free_space, matrix_surface_1), axis=0)
+
     def propagate_local_mode_parameters(self, local_mode_parameters_on_surface_0: Optional[LocalModeParameters]):
         mode_parameters_on_surface_1 = propagate_local_mode_parameter_through_ABCD(
             local_mode_parameters_on_surface_0, self.ABCD_matrix_free_space(), n_2=self.n
@@ -2571,9 +2558,11 @@ class OpticalSystem:
             raise ValueError("Central line not set, and another ray_sequence was not given")
         elif ray_sequence is None and self.central_line is not None:
             ray_sequence = self.central_line
-        ABCDs = np.zeros((*ray_sequence.length.shape, 4, 4))
+        base_shape = list(ray_sequence.length.shape)
+        base_shape[0] *= 2  # number of matrices is 2 per arm, one for the free space and one for the surface
+        ABCDs = np.zeros((*base_shape, 4, 4))
         for i in range(len(self.arms)):
-            ABCDs[i, ...] = self.arms[i].ABCD_matrix(ray=ray_sequence[i])
+            ABCDs[i:i+2, ...] = self.arms[i].ABCD_matrices(ray=ray_sequence[i])
         return ABCDs
 
     @property

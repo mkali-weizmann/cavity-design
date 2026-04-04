@@ -527,6 +527,22 @@ def ABCD_free_space(length: Union[np.ndarray, float]) -> np.ndarray:
 
     return ABCD
 
+def decompose_ABCD_matrix(
+    ABCD: np.ndarray,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    # Assumes ABCD matrix is either a (*some_shape, 4, 4) or a (*some_shape, 2, 2) array,
+    # where the last two dimensions are the ABCD matrix itself. for a 4X4 matrices, the first two dimension are for
+    # out-of-plane reflection/refraction, and the second two dimensions are for in-plane reflection/refraction.
+    if ABCD.shape[-2:] == (4, 4):
+        A, B, C, D = (
+            ABCD[..., (0, 2), (0, 2)],
+            ABCD[..., (0, 2), (1, 3)],
+            ABCD[..., (1, 3), (0, 2)],
+            ABCD[..., (1, 3), (1, 3)],
+        )
+    else:
+        A, B, C, D = ABCD[..., 0, 0], ABCD[..., 0, 1], ABCD[..., 1, 0], ABCD[..., 1, 1]
+    return A, B, C, D
 
 def normalize_vector(vector: Union[np.ndarray, list], ignore_null_vectors: bool = False) -> np.ndarray:
     if isinstance(vector, list):
