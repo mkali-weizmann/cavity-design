@@ -601,7 +601,7 @@ def test_free_potential_vs_cavity_potential_comparison():
     results_dict = analyze_potential(optical_system=optical_system, rays_0=rays_0, unconcentricity=unconcentricity,
                                      print_tests=print_tests)
     cavity = results_dict['cavity']
-
+    print(cavity.ABCD_round_trip)
     results_dict_cavity = analyze_potential_given_cavity(cavity=cavity, n_rays=30, phi_max=0.14, print_tests=True)
     assert np.all(np.isclose(np.array(
         [results_dict['zero_derivative_points'], results_dict['polynomial_residuals_mirror'].coef[2],

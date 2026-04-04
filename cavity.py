@@ -2562,7 +2562,7 @@ class OpticalSystem:
         base_shape[0] *= 2  # number of matrices is 2 per arm, one for the free space and one for the surface
         ABCDs = np.zeros((*base_shape, 4, 4))
         for i in range(len(self.arms)):
-            ABCDs[i:i+2, ...] = self.arms[i].ABCD_matrices(ray=ray_sequence[i])
+            ABCDs[2*i:2*i+2, ...] = self.arms[i].ABCD_matrices(ray=ray_sequence[i])
         return ABCDs
 
     @property
