@@ -515,8 +515,17 @@ def safe_exponent(a: Union[float, np.ndarray]) -> Union[float, np.ndarray]:
     return np.exp(a_safe)
 
 
-def ABCD_free_space(length: float) -> np.ndarray:
-    return np.array([[1, length, 0, 0], [0, 1, 0, 0], [0, 0, 1, length], [0, 0, 0, 1]])  # / cos_theta_between_planes
+def ABCD_free_space(length: Union[np.ndarray, float]) -> np.ndarray:
+    length = np.asarray(length)
+    ABCD = np.zeros((*length.shape, 4, 4))
+    ABCD[..., 0, 0] = 1
+    ABCD[..., 0, 1] = length
+    ABCD[..., 1, 1] = 1
+    ABCD[..., 2, 2] = 1
+    ABCD[..., 2, 3] = length
+    ABCD[..., 3, 3] = 1
+
+    return ABCD
 
 
 def normalize_vector(vector: Union[np.ndarray, list], ignore_null_vectors: bool = False) -> np.ndarray:

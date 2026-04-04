@@ -251,15 +251,18 @@ class ModeParameters:
 def decompose_ABCD_matrix(
     ABCD: np.ndarray,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    if ABCD.shape == (4, 4):
+    # Assumes ABCD matrix is either a (*some_shape, 4, 4) or a (*some_shape, 2, 2) array,
+    # where the last two dimensions are the ABCD matrix. for a 4X4 matrices, the first two dimension are for
+    # out-of-plane reflection/refraction, and the second two dimensions are for in-plane reflection/refraction.
+    if ABCD.shape[-2:] == (4, 4):
         A, B, C, D = (
-            ABCD[(0, 2), (0, 2)],
-            ABCD[(0, 2), (1, 3)],
-            ABCD[(1, 3), (0, 2)],
-            ABCD[(1, 3), (1, 3)],
+            ABCD[..., (0, 2), (0, 2)],
+            ABCD[..., (0, 2), (1, 3)],
+            ABCD[..., (1, 3), (0, 2)],
+            ABCD[..., (1, 3), (1, 3)],
         )
     else:
-        A, B, C, D = ABCD[0, 0], ABCD[0, 1], ABCD[1, 0], ABCD[1, 1]
+        A, B, C, D = ABCD[..., 0, 0], ABCD[..., 0, 1], ABCD[..., 1, 0], ABCD[..., 1, 1]
     return A, B, C, D
 
 
@@ -1707,7 +1710,8 @@ class CurvedMirror(CurvedSurface, ReflectiveSurface):
         # return self.reflect_direction_exact(ray, intersection_point=intersection_point)
 
     def ABCD_matrix(self, cos_theta_incoming: Union[float, np.ndarray] = None):
-        # order of rows/columns elements is [theta, theta, phi, phi]
+        # order of rows/columns elements is [out-of-plane, out-of-plane, in-plane, in-plane]
+        # ATTENTION - THE NEXT PARAGRAPHS IS PROBABLY NO LONGER VALID
         # An approximation is done here (beyond the small angles' approximation) by assuming that the central line
         # lives in the x,y plane, such that the plane of incidence is the x,y plane (parameterized by phi and phi)
         # and the sagittal plane is its transverse (parameterized by theta and theta).
@@ -1726,8 +1730,8 @@ class CurvedMirror(CurvedSurface, ReflectiveSurface):
         ABCD[..., 0, 0] = 1
         ABCD[..., 1, 0] = -2 * cos_theta_incoming / self.radius
         ABCD[..., 1, 1] = 1
-        ABCD[..., 2, 2] = -1
-        ABCD[..., 3, 2] = 2 / (self.radius * cos_theta_incoming)
+        ABCD[..., 2, 2] = -1  # Minus due to axis inversion (moving a bit to the left in plane before incidence results in moving a bit to the right after reflection)
+        ABCD[..., 3, 2] =  2 / (self.radius * cos_theta_incoming)
         ABCD[..., 3, 3] = -1
         return ABCD
 
@@ -2155,22 +2159,21 @@ class Arm:
         else:
             return None
 
-    @property
     def ABCD_matrix_free_space(self, ray: Ray = None):
-        if ray is None and self.central_line is None :
+        if ray is None and self.central_line is None:
             raise ValueError("Central line not set, and another ray was not given")
         elif ray is None and self.central_line is not None:
             ray = self.central_line
         matrix = ABCD_free_space(ray.length)
         return matrix
 
-    @property
     def ABCD_matrix_surface_1(self, ray: Ray = None):
         if ray is None and self.central_line is None :
             raise ValueError("Central line not set, and another ray was not given")
         elif ray is None and self.central_line is not None:
             ray = self.central_line
-        cos_theta = np.abs(ray.k_vector @ self.surface_1.normal_at_a_point(point=self.surface_1.find_intersection_with_ray_exact(ray)))  # ABS because we want the
+        inner_product = np.sum(ray.k_vector * self.surface_1.normal_at_a_point(point=self.surface_1.find_intersection_with_ray_exact(ray)), axis=-1)  # Inner product is written this way because shapes are unknown
+        cos_theta = np.abs(inner_product)  # ABS because we want the
         # angle between the ray and the normal to be positive
         if isinstance(self.surface_1, PhysicalSurface):
             matrix = self.surface_1.ABCD_matrix(cos_theta)
@@ -2178,17 +2181,16 @@ class Arm:
             matrix = np.eye(4)
         return matrix
 
-    @property
-    def ABCD_matrix(self):
-        matrix = self.ABCD_matrix_surface_1 @ self.ABCD_matrix_free_space
+    def ABCD_matrix(self, ray: Ray = None):
+        matrix = self.ABCD_matrix_surface_1(ray=ray) @ self.ABCD_matrix_free_space(ray=ray)
         return matrix
 
     def propagate_local_mode_parameters(self, local_mode_parameters_on_surface_0: Optional[LocalModeParameters]):
         mode_parameters_on_surface_1 = propagate_local_mode_parameter_through_ABCD(
-            local_mode_parameters_on_surface_0, self.ABCD_matrix_free_space, n_2=self.n
+            local_mode_parameters_on_surface_0, self.ABCD_matrix_free_space(), n_2=self.n
         )
         mode_parameters_after_surface_1 = propagate_local_mode_parameter_through_ABCD(
-            mode_parameters_on_surface_1, self.ABCD_matrix_surface_1, n_2=self.surface_1.to_params.n_inside_or_after
+            mode_parameters_on_surface_1, self.ABCD_matrix_surface_1(), n_2=self.surface_1.to_params.n_inside_or_after
         )
         return mode_parameters_on_surface_1, mode_parameters_after_surface_1
 
@@ -2562,24 +2564,26 @@ class OpticalSystem:
         if self.arms[0].central_line is None:
             return None
         else:
-            return [arm.central_line for arm in self.arms]
+            return RaySequence([arm.central_line for arm in self.arms])
 
-    @property
-    def ABCD_matrices(self):
-        if self.arms[0].central_line is None:
-            return None
-        else:
-            ABCD_list = [arm.ABCD_matrix for arm in self.arms]
-            return ABCD_list
+    def ABCD_matrices(self, ray_sequence: Optional[RaySequence] = None):
+        if ray_sequence is None and self.arms[0].central_line is None:
+            raise ValueError("Central line not set, and another ray_sequence was not given")
+        elif ray_sequence is None and self.central_line is not None:
+            ray_sequence = self.central_line
+        ABCDs = np.zeros((*ray_sequence.length.shape, 4, 4))
+        for i in range(len(self.arms)):
+            ABCDs[i, ...] = self.arms[i].ABCD_matrix(ray=ray_sequence[i])
+        return ABCDs
 
     @property
     def ABCD_round_trip(self):
         if self.arms[0].central_line is None:
             return None
-        elif len(self.ABCD_matrices) == 1:
-            return self.ABCD_matrices[0]
+        elif len(self.ABCD_matrices()) == 1:
+            return self.ABCD_matrices()[0]
         else:
-            return np.linalg.multi_dot(self.ABCD_matrices[::-1])
+            return np.linalg.multi_dot(self.ABCD_matrices()[::-1])
 
     @property
     def mode_parameters(self):

@@ -1,5 +1,5 @@
 # from matplotlib import use
-
+from functools import reduce
 from utils import angles_of_unit_vector
 
 # use('TkAgg')
@@ -47,17 +47,24 @@ def hessian_ray_tracing(cavity: Cavity, n_rays: int = 30, phi_max: float = 0.02)
         :, 0:1, :]  # n_rays | 2 (dtheta, dphi) | 3 (xyz)
     final_points_distances_to_trivial = np.linalg.norm(final_points_backwards_minus_trivial,
                                                        axis=-1)  # n_rays | 2 (dtheta, dphi)
-    quadratic_coefficients = (
+    hessian = (
                 optical_path_lengths_backwards_minus_trivial / final_points_distances_to_trivial ** 2)  # n_rays | 2 (dtheta, dphi)
+    # To see if the resulted displacement vectors are orthogonal, we can check the inner product of the normalized vectors:
     # final_points_backwards_minus_trivial_normalized = normalize_vector(final_points_backwards_minus_trivial)
     # final_points_spanning_vectors_inner_product = np.einsum('ij,ij->i', final_points_backwards_minus_trivial_normalized[:, 0, :], final_points_backwards_minus_trivial_normalized[:, 1, :])
-    return quadratic_coefficients
+    return hessian
 
 def hessian_ABCD_matrices(cavity: Cavity, n_rays: int = 30, phi_max: float = 0.02):
     end_points, end_directions_inverted, optical_system_inverted_reduced = orthonormal_rays_end_points(cavity=cavity,
                                                                                                        n_rays=n_rays,
                                                                                                        phi_max=phi_max)
     initial_rays_backwards = Ray(origin=end_points, k_vector=end_directions_inverted)
+    propagated_ray_backwards = optical_system_inverted_reduced.propagate_ray(ray=initial_rays_backwards, propagate_with_first_surface_first=False)
+    ABCD_matrices_optical_system = optical_system_inverted_reduced.ABCD_matrices(ray_sequence=propagated_ray_backwards)  # n_arms | *n_rays | 4 | 4
+    one_way_ABCD_matrix = reduce(np.matmul, ABCD_matrices_optical_system)  # *n_rays | 4 | 4
+
+    return one_way_ABCD_matrix
+
 
 # %% Cavity does not need to be concentric for the analysis.
 params = [
@@ -77,7 +84,8 @@ cavity = Cavity.from_params(params=params,
                             debug_printing_level=1,
                             )
 # %%
-quadratic_coefficients = extract_mass_tensor(cavity=cavity, n_rays=100, phi_max=0.1)
+hessian_ray_tracing_value = hessian_ray_tracing(cavity=cavity, n_rays=100, phi_max=0.1)
+hessian_ABCD_matrices_value = hessian_ABCD_matrices(cavity=cavity, n_rays=100, phi_max=0.1)
 
 # %%
 n = params[1].n_inside_or_after
@@ -108,5 +116,4 @@ cavity_fake = Cavity.from_params(params=[params[0], params[1], right_mirror_fake
                                 debug_printing_level=1,)
 cavity_fake.plot()
 plt.show()
-quadratic_coefficients_fake = extract_mass_tensor(cavity=cavity_fake, n_rays=100, phi_max=0.1)
-
+quadratic_coefficients_fake = hessian_ray_tracing(cavity=cavity_fake, n_rays=100, phi_max=0.1)
