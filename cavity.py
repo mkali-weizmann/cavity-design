@@ -547,6 +547,7 @@ class Surface:
         return -self.outwards_normal
 
     def normal_at_a_point(self, point: np.ndarray) -> np.ndarray:
+        # Pointing outwards towards the convex side
         raise NotImplementedError
 
     def forward_normal_at_a_point(self, point: np.ndarray, k_vector: Optional[np.ndarray]) -> np.ndarray:
@@ -5584,8 +5585,7 @@ def optical_system_to_cavity_completion(
         )
         center_of_curvature_image = (
             optical_system.surfaces[-1].center
-            + (-R_analytical - unconcentricity)
-            * optical_axis  # R_analytical is negative for converging wave, so COC is wave position - R_analytical
+            + -R_analytical * optical_axis  # R_analytical is negative for converging wave, so COC is wave position - R_analytical
         )
         if end_mirror_ROC is None and end_mirror_distance_to_last_element is None:
             raise ValueError("Both end_mirror_ROC or end_mirror_distance_to_last_element or both must be provided")

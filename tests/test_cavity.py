@@ -13,8 +13,9 @@ from cavity import (
     widget_convenient_exponent,
     perturb_cavity,
     evaluate_cavities_modes_on_surface,
-    mirror_lens_mirror_cavity_generator,
+    mirror_lens_mirror_cavity_generator, fabry_perot_generator,
 )
+
 from utils import (
     OpticalElementParams,
     MaterialProperties,
@@ -27,7 +28,7 @@ from utils import (
 from simple_analysis_scripts.potential_analysis.analyze_potential import (
     choose_source_position_for_desired_focus_analytic,
     known_lenses_generator, generate_one_lens_optical_system, initialize_rays, analyze_potential,
-    analyze_potential_given_cavity,
+    analyze_potential_given_cavity, hessian_ray_tracing, hessian_ABCD_matrices
 )
 
 
@@ -610,3 +611,52 @@ def test_free_potential_vs_cavity_potential_comparison():
                                        results_dict_cavity['polynomial_residuals_mirror'].coef[2],
                                        results_dict_cavity['polynomial_residuals_opposite'].coef[
                                            1]]))), "Results from analyze_potential_given_cavity do not match results from analyze_potential for the same cavity."
+
+
+def test_quadratic_potential_coefficient():
+    u = 1e-6
+    R = 5e-3
+    cavity_fabry_perot = fabry_perot_generator((R, R), unconcentricity=u, lambda_0_laser=LAMBDA_0_LASER,
+                                               use_paraxial_ray_tracing=False)
+    hessian_ray_tracing_value_fabry_perot = hessian_ray_tracing(cavity=cavity_fabry_perot, n_rays=1, phi_max=0.1)
+    hessian_ABCD_matrices_value_fabry_perot = hessian_ABCD_matrices(cavity=cavity_fabry_perot, n_rays=1, phi_max=0.1)
+    hessian_analytical = -1 / (2 * R)
+
+    results_dict = analyze_potential_given_cavity(cavity=cavity_fabry_perot, n_rays=10, phi_max=0.01, print_tests=False)
+    potential_quadratic_coefficient = results_dict['polynomial_residuals_mirror'].coef[1]
+    a_2_analytical = u / (2 * R ** 2)
+
+    w_squared_numerical = cavity_fabry_perot.arms[0].mode_parameters_on_surface_1.spot_size[0] ** 2
+    w_squared_analytical_potential = cavity_fabry_perot.lambda_0_laser / (
+                np.pi * np.sqrt(-2 * hessian_ABCD_matrices_value_fabry_perot[0, 0] * a_2_analytical))
+    w_squared_analytical_optics = R * cavity_fabry_perot.lambda_0_laser / np.pi * np.sqrt(2 * R / u)
+
+    energy_level_hessian_and_potential = np.sqrt(
+        potential_quadratic_coefficient / (-2 * hessian_analytical)) * cavity_fabry_perot.lambda_0_laser / np.pi
+    energy_level_hessian_only = cavity_fabry_perot.lambda_0_laser ** 2 / (2 * np.pi ** 2 * w_squared_numerical * hessian_analytical)
+
+    assert np.all(np.isclose(
+        potential_quadratic_coefficient, a_2_analytical, rtol=1e-3)
+    ), f"Quadratic potential coefficient test failed: expected approximately {a_2_analytical} but got {potential_quadratic_coefficient}"
+
+    assert np.all(np.isclose(
+        hessian_ray_tracing_value_fabry_perot, hessian_analytical, rtol=1e-3)
+    ), f"Hessian ray tracing test failed: expected approximately {hessian_analytical} but got {hessian_ray_tracing_value_fabry_perot}"
+
+    assert np.all(np.isclose(
+        hessian_ABCD_matrices_value_fabry_perot[0, 0], hessian_analytical, rtol=1e-3)
+    ), f"Hessian ABCD matrices test failed: expected approximately {hessian_analytical} but got {hessian_ABCD_matrices_value_fabry_perot[0, 0]}"
+
+    assert np.all(np.isclose(
+        w_squared_numerical, w_squared_analytical_potential, rtol=1e-3)
+    ), f"Spot size from potential test failed: expected approximately {w_squared_analytical_potential} but got {w_squared_numerical}"
+
+    assert np.all(np.isclose(
+        w_squared_numerical, w_squared_analytical_optics, rtol=1e-3)
+    ), f"Spot size from optics test failed: expected approximately {w_squared_analytical_optics} but got {w_squared_numerical}"
+
+    assert np.all(np.isclose(
+        energy_level_hessian_and_potential, energy_level_hessian_only, rtol=1e-3)
+    ), f"Energy level comparison test failed: expected approximately {energy_level_hessian_only} but got {energy_level_hessian_and_potential}"
+
+

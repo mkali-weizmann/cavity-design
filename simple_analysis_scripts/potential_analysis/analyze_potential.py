@@ -1,5 +1,5 @@
-import numpy as np
 from scipy.optimize import newton
+from functools import reduce
 
 from cavity import *
 from matplotlib.lines import Line2D
@@ -536,10 +536,12 @@ def analyze_output_wavefront(
     output_ray = ray_sequence[-1]
     optical_axis = output_ray.k_vector[..., 0, :]
     # Extract all wavefront features at the output surface of the lens.
-
-    relative_optical_path_length = (
-        ray_sequence.cumulative_optical_path_length[-2, :] - ray_sequence.cumulative_optical_path_length[-2, 0]
-    )
+    if len(ray_sequence.cumulative_optical_path_length) < 2:
+        relative_optical_path_length = np.zeros_like(ray_sequence.cumulative_optical_path_length[-1, :])
+    else:
+        relative_optical_path_length = (
+            ray_sequence.cumulative_optical_path_length[-2, :] - ray_sequence.cumulative_optical_path_length[-2, 0]
+        )
     wavefront_points_initial = output_ray.parameterization(t=-relative_optical_path_length)
 
     R_output_numerical, center_of_curvature_numerical = extract_matching_sphere(
@@ -589,7 +591,7 @@ def analyze_output_wavefront(
         -relative_optical_path_length - R_output + end_mirror_ROC - unconcentricity, optical_path_length=True
     )  # R_output is in minus because for converging wavefront it is negative, and so to step forwards we want to subtract it.
 
-    R_opposite = -(end_mirror_ROC - unconcentricity)  # negative because at this point the beam is diverging.
+    R_opposite = end_mirror_ROC - unconcentricity  # negative because at this point the beam is diverging.
     R_opposite_numerical, center_of_curvature_opposite_numerical = extract_matching_sphere(
         wavefront_points_opposite[..., 0, :], wavefront_points_opposite[..., 1, :], optical_axis
     )  # Should be the same as the original center of curvature
@@ -618,7 +620,14 @@ def analyze_output_wavefront(
     polynomial_residuals_mirror = Polynomial.fit(
         wavefront_points_opposite[:, 1] ** 2, residual_distances_mirror, 6
     ).convert()
-
+    if print_tests:
+        a_2_ray_tracing_fit = polynomial_residuals_mirror.coef[1]
+        a_2_analytical = unconcentricity / (2 * end_mirror_ROC ** 2)
+        a_2_ray_tracing_diff = (residual_distances_mirror[1] - residual_distances_mirror[0]) / (
+                    wavefront_points_opposite[1, 1] - wavefront_points_opposite[0, 1]) ** 2
+        print(
+            f"Unconcentric mirror case - 2nd order term from ray tracing fit: {a_2_ray_tracing_fit:.3e}, analytical: {a_2_analytical:.3e}, numerical from first two points: {a_2_ray_tracing_diff:.3e}"
+        )
     # Generate dummy points for fitted spheres (used only for plotting, not for calculations):
     points_rel = wavefront_points_initial - center_of_curvature
     phi_dummy = np.linspace(0, np.arctan(points_rel[-1, 1] / points_rel[-1, 0]), wavefront_points_initial.shape[0])
@@ -734,9 +743,9 @@ def analyze_potential(
 
 
 def analyze_potential_given_cavity(cavity: Cavity, n_rays: int, phi_max: float, print_tests: bool = True):
-    assert np.all(
-        np.isclose(cavity.surfaces[0].origin, ORIGIN)
-    ), "Currently assumes the center of the small mirror is at the origin for the extraction of the Analytical R. probably it will work otherwise, but needs to be debugged"  #
+    # assert np.all(
+    #     np.isclose(cavity.surfaces[0].origin, ORIGIN)
+    # ), "Currently assumes the center of the small mirror is at the origin for the extraction of the Analytical R. probably it will work otherwise, but needs to be debugged"  #
     optical_system_reduced = OpticalSystem(
         surfaces=cavity.surfaces[1:-1],
         lambda_0_laser=cavity.lambda_0_laser,
@@ -746,7 +755,7 @@ def analyze_potential_given_cavity(cavity: Cavity, n_rays: int, phi_max: float, 
         given_initial_central_line=cavity.central_line[1],
     )
     first_mirror = cavity.physical_surfaces[0]
-    rays_0 = initialize_rays(n_rays=n_rays, phi_max=phi_max)
+    rays_0 = initialize_rays(n_rays=n_rays, phi_max=phi_max, starting_mirror=first_mirror)
     ray_sequence = optical_system_reduced.propagate_ray(rays_0, propagate_with_first_surface_first=True)
     ray_sequence_cleaned = ray_sequence.remove_escaped_rays
     if len(optical_system_reduced.surfaces) == 0:
@@ -969,3 +978,89 @@ def plot_results(
             )
             ax[0].legend(handles=handles)
     return fig, ax
+
+
+def orthonormal_rays_end_points(cavity: Cavity, n_rays: int = 30, phi_max: float = 0.02):
+    rays_initial = initialize_rays(starting_mirror=cavity.surfaces[0], phi_max=phi_max, n_rays=n_rays)
+    propagated_ray = cavity.propagate_ray(ray=rays_initial, n_arms=len(cavity.arms) // 2,
+                                          propagate_with_first_surface_first=False)
+    end_points = propagated_ray[-1].origin
+    end_directions_inverted = -propagated_ray[-2].k_vector
+    optical_system_inverted_reduced = OpticalSystem(
+        surfaces=cavity.surfaces_ordered[len(cavity.surfaces_ordered) // 2:],
+        use_paraxial_ray_tracing=False,
+        p_is_trivial=True,
+        t_is_trivial=True, )
+    return end_points, end_directions_inverted, optical_system_inverted_reduced
+
+def hessian_ray_tracing(cavity: Cavity, n_rays: int = 30, phi_max: float = 0.02):
+    end_points, end_directions_inverted, optical_system_inverted_reduced = orthonormal_rays_end_points(cavity=cavity, n_rays=n_rays, phi_max=phi_max)
+    d_angle = 1e-5
+    initial_angles = angles_of_unit_vector(end_directions_inverted)  # (n_rays, n_rays)
+    initial_angles_plus_dtheta = (initial_angles[0] + d_angle, initial_angles[1])  # (n_rays, n_rays)
+    initial_angles_plus_dphi = (initial_angles[0], initial_angles[1] + d_angle)  # (n_rays, n_rays)
+    k_vector_0 = end_directions_inverted  # n_rays | 3
+    k_vector_dtheta = unit_vector_of_angles(theta=initial_angles_plus_dtheta[0],
+                                            phi=initial_angles_plus_dtheta[1])  # n_rays | 3
+    k_vector_dphi = unit_vector_of_angles(theta=initial_angles_plus_dphi[0],
+                                          phi=initial_angles_plus_dphi[1])  # n_rays | 3
+    k_vectors_tilted = np.stack([k_vector_0, k_vector_dtheta, k_vector_dphi],
+                                axis=1)  # n_rays | 3 (0, dtheta, dphi) | 3 (xyz)
+    initial_starting_points = np.stack([end_points, end_points, end_points],
+                                       axis=1)  # n_rays | 3 (0, dtheta, dphi) | 3 (xyz)
+    initial_rays_backwards = Ray(origin=initial_starting_points,
+                                 k_vector=k_vectors_tilted)  # origin.shape = n_rays | 3 (0, dtheta, dphi) | 3 (xyz)
+    propagated_ray_backwards = optical_system_inverted_reduced.propagate_ray(ray=initial_rays_backwards,
+                                                                             propagate_with_first_surface_first=False)  # origin.shape = n_arms (one way) | n_rays | 3 (0, dtheta, dphi) | 3 (xyz)
+    optical_path_lengths_backwards = propagated_ray_backwards.cumulative_optical_path_length[
+        -2]  # n_rays | 3 (0, dtheta, dphi)
+    # DELETE ME
+    M_1_prime_points = propagated_ray_backwards.parameterization(t=optical_path_lengths_backwards[0, 0], optical_path_length=True)
+    p_1 = M_1_prime_points[0, 0, :]
+    p_2 = M_1_prime_points[0, 2, :]
+    k_1 = -propagated_ray_backwards[-2].k_vector[0, 0, :]
+    R, center = extract_matching_sphere(p_1=p_1, p_2=p_2, k_1=k_1)
+    # DELETE ME
+    optical_path_lengths_backwards_minus_trivial = optical_path_lengths_backwards[:, 1:] - \
+                                                   optical_path_lengths_backwards[:, 0:1]  # n_rays | 2 (dtheta, dphi)
+    final_points_backwards = propagated_ray_backwards[-1].origin  # n_rays | 3 (0,dtheta,dphi) | 3 (xyz)
+    final_points_backwards_minus_trivial = final_points_backwards[:, 1:, :] - final_points_backwards[
+        :, 0:1, :]  # n_rays | 2 (dtheta, dphi) | 3 (xyz)
+    final_points_distances_to_trivial = np.linalg.norm(final_points_backwards_minus_trivial,
+                                                       axis=-1)  # n_rays | 2 (dtheta, dphi)
+    # Factor of two is because y=(1/2) * y'' * x^2 is the same as y'' = 2 * y / x^2.
+    hessian = 2 * (
+                optical_path_lengths_backwards_minus_trivial / final_points_distances_to_trivial ** 2)  # n_rays | 2 (dtheta, dphi)
+
+    # To see if the resulted displacement vectors are orthogonal, we can check the inner product of the normalized vectors:
+    # final_points_backwards_minus_trivial_normalized = normalize_vector(final_points_backwards_minus_trivial)
+    # final_points_spanning_vectors_inner_product = np.einsum('ij,ij->i', final_points_backwards_minus_trivial_normalized[:, 0, :], final_points_backwards_minus_trivial_normalized[:, 1, :])
+    return hessian
+
+def hessian_ABCD_matrices(cavity: Cavity, n_rays: int = 30, phi_max: float = 0.02):
+    end_points, end_directions_inverted, optical_system_inverted_reduced = orthonormal_rays_end_points(cavity=cavity,
+                                                                                                       n_rays=n_rays,
+                                                                                                       phi_max=phi_max)
+    initial_rays_backwards = Ray(origin=end_points, k_vector=end_directions_inverted)
+    propagated_ray_backwards = optical_system_inverted_reduced.propagate_ray(ray=initial_rays_backwards, propagate_with_first_surface_first=False)
+    ABCD_matrices_optical_system = optical_system_inverted_reduced.ABCD_matrices(ray_sequence=propagated_ray_backwards[:-1])  # n_arms | *n_rays | 4 | 4
+    one_way_ABCD_matrix = reduce(np.matmul, ABCD_matrices_optical_system[:-1][::-1])  # *n_rays | 4 | 4, [:-1] because the last ABCD matrix corresponds to the last surface, but we want the propagation up to the last surface.
+    A, B, C, D = decompose_ABCD_matrix(one_way_ABCD_matrix)
+    output_ROC = B / D
+    hessian = -(output_ROC - optical_system_inverted_reduced.surfaces[-1].radius) / (output_ROC * optical_system_inverted_reduced.surfaces[-1].radius)
+    return hessian
+
+def energy_level(cavity: Cavity, hessian_method: str = 'ray_tracing'):
+    if hessian_method == 'ray_tracing':
+        hessian = hessian_ray_tracing(cavity=cavity, n_rays = 1)[0, 0]
+    elif hessian_method == 'ABCD_matrices':
+        hessian = hessian_ABCD_matrices(cavity=cavity, n_rays = 1)[0, 0]
+    else:
+        raise ValueError(f'Invalid hessian method: {hessian_method}')
+    # The energy level of the mode is proportional to the square root of the product of the two eigenvalues of the Hessian matrix.
+    spot_size_end = cavity.arms[len(cavity.arms) // 2].mode_parameters_on_surface_0.spot_size[0]
+    energy_level_hessian_only = -cavity.lambda_0_laser ** 2 / (2 * np.pi ** 2 * spot_size_end ** 2 * hessian)
+    results_dict = analyze_potential_given_cavity(cavity=cavity, n_rays = 10, phi_max = 0.01, print_tests=False)
+    potential_quadratic_coefficient = results_dict['polynomial_residuals_mirror'].coef[1]  # it is a polynomial of x**2, so quadratic term is the second term in the array
+    energy_level_hessian_and_potential = np.sqrt(potential_quadratic_coefficient / (-2 * hessian)) * cavity.lambda_0_laser / np.pi
+    return energy_level_hessian_only, energy_level_hessian_and_potential
