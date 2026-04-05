@@ -205,8 +205,7 @@ def generate_two_lenses_optical_system(
         distance_to_face_1=desired_focus, R_1=R_2_spherical, R_2=-R_1_spherical, n=n_actual_aspheric, T_c=T_c_spherical
     )
     aspheric_output_ROC = optical_system.output_radius_of_curvature(
-        initial_distance=back_focal_length_aspheric - defocus
-    )
+        initial_distance=back_focal_length_aspheric - defocus)
     lens_distance_to_aspheric_curved_face = (
         lens_distance_to_aspheric_output_COC + aspheric_output_ROC
     )  # aspheric_output_ROC Should be negative, so this is effectively a subtraction

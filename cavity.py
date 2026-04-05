@@ -3003,16 +3003,18 @@ class OpticalSystem:
         return sum(gouy_phases)
 
     def output_radius_of_curvature(
-        self, initial_distance: Optional[float] = None, source_position: Optional[np.ndarray] = None, propagate_through_first_surface: bool = True
+        self, initial_distance: Optional[float] = None, source_position: Optional[np.ndarray] = None, propagate_with_first_surface: bool = True
     ) -> float:
         # Currently assume 1d problem for simplicity (only the :2, :2 elements for the first dimension are used), if required it can be expanded
         # For system with mirror as first surface, we usually don't want to propagate using the first surface.
-        if not propagate_through_first_surface:
+        if not propagate_with_first_surface:
             optical_system_reduced = OpticalSystem(surfaces=self.surfaces[1:], lambda_0_laser=self.lambda_0_laser,
                                                    p_is_trivial=self.p_is_trivial, t_is_trivial=self.t_is_trivial, use_paraxial_ray_tracing=self.use_paraxial_ray_tracing,
                                                    given_initial_central_line=self.central_line[1] if self.central_line is not None else True)
 
-            R_out = optical_system_reduced.output_radius_of_curvature(initial_distance=initial_distance, source_position=source_position, propagate_through_first_surface=True)
+            R_out = optical_system_reduced.output_radius_of_curvature(initial_distance=initial_distance,
+                                                                      source_position=source_position,
+                                                                      propagate_with_first_surface=True)
         else:
             if initial_distance is None and source_position is not None:
                 initial_distance = (self.surfaces[0].center - source_position) @ self.central_line[
@@ -4836,7 +4838,8 @@ def calculate_incidence_angle(surface: Surface, mode_parameters: ModeParameters)
     discriminant = B**2 - 4.0 * A * C
 
     if discriminant < 0:
-        raise ValueError("No real intersection between Gaussian envelope and sphere.")
+        warnings.warn("No real intersection between Gaussian envelope and sphere.")
+        return np.nan
 
     sqrt_disc = np.sqrt(discriminant)
 
@@ -5555,7 +5558,8 @@ def optical_system_to_cavity_completion(
                 f"Did not achieve the desired NA, got {cavity.arms[-1].mode_parameters.NA[0]:.3e} instead of {NA:.3e}"
             )
     elif unconcentricity is not None:  # Find the image of the center of the first mirror after the system and place the center of the end mirror there, then adjust the ROC to achieve the desired unconcentricity.
-        R_analytical = optical_system.output_radius_of_curvature(source_position=optical_system.surfaces[0].origin)
+        R_analytical = optical_system.output_radius_of_curvature(source_position=optical_system.surfaces[0].origin,
+                                                                 propagate_with_first_surface=False)
         center_of_curvature_image = (
                 optical_system.surfaces[-1].center + (R_analytical - unconcentricity) * optical_axis
         )
@@ -5566,7 +5570,6 @@ def optical_system_to_cavity_completion(
         elif end_mirror_ROC is None and end_mirror_distance_to_last_element is not None:
             end_mirror_ROC = np.linalg.norm(end_mirror_distance_to_last_element - optical_system.surfaces[-1].center)
         center_of_curvature_mirror = center_of_curvature_image - unconcentricity * optical_axis
-        end_mirror_ROC = nvl(end_mirror_ROC, )
         end_mirror = CurvedMirror(  # Assumes concave mirror, can be generalized if needed
             radius=end_mirror_ROC,
             outwards_normal=optical_axis,
@@ -5575,8 +5578,8 @@ def optical_system_to_cavity_completion(
             **end_mirror_kwargs,
         )
         cavity = Cavity.from_params(
-            params=[optical_system.to_params, end_mirror.to_params],
-            lambda_0_laser=optical_system.LAMBDA_0_LASER,
+            params=[*optical_system.to_params, end_mirror.to_params],
+            lambda_0_laser=optical_system.lambda_0_laser,
             p_is_trivial=optical_system.p_is_trivial,
             t_is_trivial=optical_system.t_is_trivial,
             use_paraxial_ray_tracing=optical_system.use_paraxial_ray_tracing,
