@@ -207,7 +207,7 @@ def generate_two_lenses_optical_system(
     aspheric_output_ROC = optical_system.output_radius_of_curvature(
         initial_distance=back_focal_length_aspheric - defocus)
     lens_distance_to_aspheric_curved_face = (
-        lens_distance_to_aspheric_output_COC + aspheric_output_ROC
+        lens_distance_to_aspheric_output_COC - aspheric_output_ROC
     )  # aspheric_output_ROC Should be negative, so this is effectively a subtraction
     spherical_0 = CurvedRefractiveSurface(
         radius=np.abs(R_1_spherical),
@@ -352,7 +352,7 @@ def generate_negative_lens_cavity(
         )
         R_analytical = optical_system_lenses_only.output_radius_of_curvature(source_position=ORIGIN)
         center_of_curvature = (
-            optical_system_lenses_only.surfaces[-1].center + (R_analytical - unconcentricity) * optical_axis
+            optical_system_lenses_only.surfaces[-1].center + (-R_analytical - unconcentricity) * optical_axis
         )
         right_mirror_center = (
             optical_system_lenses_only.surfaces[-1].center + right_mirror_distance_to_negative_lens_front * optical_axis
@@ -544,7 +544,7 @@ def analyze_output_wavefront(
     )
     if R_output_analytical is not None:
         R_output = R_output_analytical
-        center_of_curvature = ray_sequence[-1].parameterization(R_output_analytical, optical_path_length=False)[
+        center_of_curvature = ray_sequence[-1].parameterization(-R_output_analytical, optical_path_length=False)[
             0, :
         ]  # Along the optical axis.
         if print_tests:
@@ -571,7 +571,7 @@ def analyze_output_wavefront(
             f" Fourth order term: {polynomial_residuals_initial.coef[2]:.3e}, should be significantly larger than y_max ** -2 * second order term = {wavefront_points_initial[-1, 1] ** -2 * polynomial_residuals_initial.coef[1]:.26e}"
         )
     if end_mirror_ROC is None:
-        end_mirror_ROC = R_output
+        end_mirror_ROC = -R_output  # For convergin wave we have negative R_output
 
     if unconcentricity is None and end_mirror_center is not None:
         end_mirror_origin = end_mirror_center - end_mirror_ROC * optical_axis
@@ -583,8 +583,8 @@ def analyze_output_wavefront(
 
     # Extract wavefront features at a far away plane (2*ROC - u from the lens):
     wavefront_points_opposite = output_ray.parameterization(
-        -relative_optical_path_length + R_output + end_mirror_ROC - unconcentricity, optical_path_length=True
-    )
+        -relative_optical_path_length - R_output + end_mirror_ROC - unconcentricity, optical_path_length=True
+    ) # R_output is in minus because for converging wavefront it is negative, and so to step forwards we want to subtract it.
 
     R_opposite = -(end_mirror_ROC - unconcentricity)  # negative because at this point the beam is diverging.
     R_opposite_numerical, center_of_curvature_opposite_numerical = extract_matching_sphere(
@@ -619,7 +619,7 @@ def analyze_output_wavefront(
     # Generate dummy points for fitted spheres (used only for plotting, not for calculations):
     points_rel = wavefront_points_initial - center_of_curvature
     phi_dummy = np.linspace(0, np.arctan(points_rel[-1, 1] / points_rel[-1, 0]), wavefront_points_initial.shape[0])
-    dummy_points_curvature_initial = center_of_curvature - R_output * np.stack(
+    dummy_points_curvature_initial = center_of_curvature + R_output * np.stack(
         (np.cos(phi_dummy), np.sin(phi_dummy), np.zeros_like(phi_dummy)), axis=-1
     )
     dummy_points_curvature_opposite = center_of_curvature - R_opposite * np.stack(  # R_opposite is negative
@@ -629,7 +629,7 @@ def analyze_output_wavefront(
         (np.cos(phi_dummy), np.sin(phi_dummy), np.zeros_like(phi_dummy)), axis=-1
     )  # Mirror has the radius of the original wavefront sphere, but centered at the shifted center.
 
-    L_long_arm = R_output + end_mirror_ROC - unconcentricity
+    L_long_arm = - R_output + end_mirror_ROC - unconcentricity
     assert (
         L_long_arm > 0
     ), f"Long arm length should be positive, but got {L_long_arm:.3e} m. Try increasing end mirror ROC. The default end mirror ROC works only for output converging wavefront"
@@ -783,9 +783,8 @@ def plot_results(
     fig_and_ax=None,
     plot_final_arm_backwards_rays: bool = False,
 ):
-    (ray_sequence, R, center_of_curvature, NA_paraxial, spot_size_paraxial, zero_derivative_points) = (
+    (ray_sequence, center_of_curvature, NA_paraxial, spot_size_paraxial, zero_derivative_points) = (
         results_dict["ray_sequence"],
-        results_dict["R_output"],
         results_dict["center_of_curvature"],
         results_dict["NA_paraxial"],
         results_dict["spot_size_paraxial"],

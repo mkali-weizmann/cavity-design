@@ -1284,7 +1284,7 @@ def extract_matching_sphere(p_1: np.ndarray, p_2: np.ndarray, k_1: np.ndarray):
     if k_1 @ (p_2 - p_1) == 0:
         return np.inf, -np.inf * k_1
 
-    numerator = np.linalg.norm(p_2 - p_1) ** 2
+    numerator = -np.linalg.norm(p_2 - p_1) ** 2  # Negative for converging, positive for diverging
     denominator = 2 * np.dot(k_1, p_2 - p_1)
     R = numerator / denominator
     center = p_1 + R * k_1

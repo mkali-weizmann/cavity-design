@@ -29,7 +29,7 @@ optical_system_initial, optical_axis = generate_one_lens_optical_system(R_1=R_1,
 output_ROC = optical_system_initial.output_radius_of_curvature(
     initial_distance=optical_system_initial.surfaces[0].center[0])
 
-spherical_back_center = optical_system_initial.surfaces[-1].center + output_ROC * (1+relative_position_spherical) * OPTICAL_AXIS
+spherical_back_center = optical_system_initial.surfaces[-1].center - output_ROC * (1+relative_position_spherical) * OPTICAL_AXIS
 spherical_back = CurvedRefractiveSurface(
     radius=spherical_radii,
     center=spherical_back_center,

@@ -3023,7 +3023,7 @@ class OpticalSystem:
             first_ABCD = self.surfaces[0].ABCD_matrix(cos_theta_incoming=1)[:2, :2]
             ABCD = self.ABCD_round_trip[:2, :2] @ first_ABCD
             A, B, C, D = ABCD[0, 0], ABCD[0, 1], ABCD[1, 0], ABCD[1, 1]
-            R_out = -(A * initial_distance + B) / (C * initial_distance + D)
+            R_out = (A * initial_distance + B) / (C * initial_distance + D)
         return R_out
 
     def required_initial_distance_for_desired_output_radius_of_curvature(self, desired_R_out: float) -> float:
@@ -5561,7 +5561,7 @@ def optical_system_to_cavity_completion(
         R_analytical = optical_system.output_radius_of_curvature(source_position=optical_system.surfaces[0].origin,
                                                                  propagate_with_first_surface=False)
         center_of_curvature_image = (
-                optical_system.surfaces[-1].center + (R_analytical - unconcentricity) * optical_axis
+                optical_system.surfaces[-1].center + (-R_analytical - unconcentricity) * optical_axis  # R_analytical is negative for converging wave, so COC is wave position - R_analytical
         )
         if end_mirror_ROC is None and end_mirror_distance_to_last_element is None:
             raise ValueError(

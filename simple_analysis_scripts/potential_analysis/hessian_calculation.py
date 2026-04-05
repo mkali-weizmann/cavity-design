@@ -72,7 +72,6 @@ def hessian_ABCD_matrices(cavity: Cavity, n_rays: int = 30, phi_max: float = 0.0
     A, B, C, D = decompose_ABCD_matrix(one_way_ABCD_matrix)
     output_ROC = B / D
     hessian = -(output_ROC - optical_system_inverted_reduced.surfaces[-1].radius) / (output_ROC * optical_system_inverted_reduced.surfaces[-1].radius)
-    # DRAFT
     return hessian
 
 
