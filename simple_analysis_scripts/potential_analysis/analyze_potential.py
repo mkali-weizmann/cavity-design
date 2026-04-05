@@ -376,18 +376,16 @@ def generate_negative_lens_cavity(
             use_paraxial_ray_tracing=False,
         )
     else:
-        cavity = fixed_NA_cavity_generator(
-            optical_system=optical_system_without_last_mirror,
-            NA=first_arm_NA,
-            end_mirror_ROC=right_mirror_ROC,
-            end_mirror_distance_to_last_element=right_mirror_distance_to_negative_lens_front,
-            material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"],
-            diameter=large_elements_CA,
-        )
+        cavity = optical_system_to_cavity_completion(optical_system=optical_system_without_last_mirror, NA=first_arm_NA,
+                                                     end_mirror_distance_to_last_element=right_mirror_distance_to_negative_lens_front,
+                                                     end_mirror_ROC=right_mirror_ROC,
+                                                     material_properties=PHYSICAL_SIZES_DICT[
+                                                         "material_properties_fused_silica"],
+                                                     diameter=large_elements_CA)
     return cavity
 
 
-def gnerate_negative_lens_cavity_smart(
+def generate_negative_lens_cavity_smart(
     phi_max_marginal,
     phi_max_polynomial,
     n_actual,

@@ -28,10 +28,9 @@ mirror_left = CurvedMirror(radius=5e-3, outwards_normal=LEFT, origin=ORIGIN, cur
 optical_system_without_large_mirror = OpticalSystem.from_params(params=[mirror_left.to_params, *optical_system_lens.params],
                                                     lambda_0_laser=LAMBDA_0_LASER, p_is_trivial=True, t_is_trivial=True,
                                                     use_paraxial_ray_tracing=True)
-cavity = fixed_NA_cavity_generator(optical_system=optical_system_without_large_mirror,
-                                   NA=first_arm_NA,
-                                   end_mirror_ROC=right_mirror_ROC,
-                                   end_mirror_distance_to_last_element=right_mirror_distance_to_lens_front,)
+cavity = optical_system_to_cavity_completion(optical_system=optical_system_without_large_mirror, NA=first_arm_NA,
+                                             end_mirror_distance_to_last_element=right_mirror_distance_to_lens_front,
+                                             end_mirror_ROC=right_mirror_ROC)
 
 plot_mirror_lens_mirror_cavity_analysis(cavity=cavity, CA=12.7e-3)
 plt.show()

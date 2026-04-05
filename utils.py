@@ -273,7 +273,7 @@ class OpticalElementParams:
     phi: float  # the in-plane angle normal vector to the surface. when the plane is x,y, this is the phi angle.
     r_1: float  # radius of curvature. np.inf for flat surfaces.
     r_2: float  # nan if the optical object has only one face, or if the two faces are fixed to the same radius of curvature.
-    curvature_sign: int  # 1 if the surface is concave, -1 if it is convex  # ATTENTION: ONCE CONCAVE ELEMENTS WILL BE USED, THERE WILL HAVE TO BE TWO CURVATURE SIGNS
+    curvature_sign: Union[int, float]  # 1 if the surface is concave, -1 if it is convex  # ATTENTION: ONCE CONCAVE ELEMENTS WILL BE USED, THERE WILL HAVE TO BE TWO CURVATURE SIGNS
     T_c: float  # center thickness of the element
     n_inside_or_after: (
         float  # refractive index inside the optical object (for a ThickLens) or after it (for a refractive surface)

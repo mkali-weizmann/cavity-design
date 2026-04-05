@@ -3003,17 +3003,25 @@ class OpticalSystem:
         return sum(gouy_phases)
 
     def output_radius_of_curvature(
-        self, initial_distance: Optional[float] = None, source_position: Optional[np.ndarray] = None
+        self, initial_distance: Optional[float] = None, source_position: Optional[np.ndarray] = None, propagate_through_first_surface: bool = True
     ) -> float:
-        # Currently assume 1d problem for simplicty (only the :2, :2 elements for the first dimension are used), if required it can be expanded
-        if initial_distance is None and source_position is not None:
-            initial_distance = (self.surfaces[0].center - source_position) @ self.central_line[
-                0
-            ].k_vector  # ATTENTION, THIS MIGHT NOT BE THE OPTICAL AXIS OUTSIDE THE FIRST ARM
-        first_ABCD = self.surfaces[0].ABCD_matrix(cos_theta_incoming=1)[:2, :2]
-        ABCD = self.ABCD_round_trip[:2, :2] @ first_ABCD
-        A, B, C, D = ABCD[0, 0], ABCD[0, 1], ABCD[1, 0], ABCD[1, 1]
-        R_out = -(A * initial_distance + B) / (C * initial_distance + D)
+        # Currently assume 1d problem for simplicity (only the :2, :2 elements for the first dimension are used), if required it can be expanded
+        # For system with mirror as first surface, we usually don't want to propagate using the first surface.
+        if not propagate_through_first_surface:
+            optical_system_reduced = OpticalSystem(surfaces=self.surfaces[1:], lambda_0_laser=self.lambda_0_laser,
+                                                   p_is_trivial=self.p_is_trivial, t_is_trivial=self.t_is_trivial, use_paraxial_ray_tracing=self.use_paraxial_ray_tracing,
+                                                   given_initial_central_line=self.central_line[1] if self.central_line is not None else True)
+
+            R_out = optical_system_reduced.output_radius_of_curvature(initial_distance=initial_distance, source_position=source_position, propagate_through_first_surface=True)
+        else:
+            if initial_distance is None and source_position is not None:
+                initial_distance = (self.surfaces[0].center - source_position) @ self.central_line[
+                    0
+                ].k_vector  # ATTENTION, THIS MIGHT NOT BE THE OPTICAL AXIS OUTSIDE THE FIRST ARM
+            first_ABCD = self.surfaces[0].ABCD_matrix(cos_theta_incoming=1)[:2, :2]
+            ABCD = self.ABCD_round_trip[:2, :2] @ first_ABCD
+            A, B, C, D = ABCD[0, 0], ABCD[0, 1], ABCD[1, 0], ABCD[1, 1]
+            R_out = -(A * initial_distance + B) / (C * initial_distance + D)
         return R_out
 
     def required_initial_distance_for_desired_output_radius_of_curvature(self, desired_R_out: float) -> float:
@@ -5468,76 +5476,114 @@ def fabry_perot_generator(
     )
 
 
-def fixed_NA_cavity_generator(
-    optical_system: OpticalSystem,
-    NA: float,
+def optical_system_to_cavity_completion(
+    optical_system: OpticalSystem,  # Optical system without last mirror
+    NA: Optional[float] = None,  # Desired NA in the first arm
+    unconcentricity: Optional[float] = None,  # Desire unconcentricity in last arm
     end_mirror_distance_to_last_element: Optional[float] = None,
     end_mirror_ROC: Optional[float] = None,
     **end_mirror_kwargs,
 ):
-    # Assumes the optical system's optical axis is RIGHT
-    # Can be generalized to a general direction by propagating a ray through the optical system, defining the optical
-    # axis after it.
-    optical_axis = RIGHT
-    z_R_first_arm = z_R_of_NA(NA=NA, lambda_laser=LAMBDA_0_LASER)
-    first_mirror: CurvedMirror = optical_system.surfaces[0]
-    last_surface = optical_system.surfaces[-1]
-    local_mode_parameters_first_mirror = match_a_local_mode_to_mirror(
-        mirror=first_mirror, z_R=z_R_first_arm, lambda_0_laser=LAMBDA_0_LASER
-    )
-    mode_parameters_first_arm = local_mode_parameters_first_mirror.to_mode_parameters(
-        location_of_local_mode_parameter=first_mirror.center, k_vector=optical_axis
-    )
-    output_mode_local = optical_system.propagate_mode_parameters(
-        mode_parameters=mode_parameters_first_arm, propagate_with_first_surface_first=False
-    )[-1]
-    output_mode = output_mode_local.to_mode_parameters(
-        location_of_local_mode_parameter=optical_system.arms[-1].surface_1.center, k_vector=optical_axis
-    )
-    if end_mirror_ROC is not None and end_mirror_distance_to_last_element is not None:  # Overrides the NA
-        end_mirror = CurvedMirror(
+    # Chooses end mirror's geometry to satisfy mode's NA or unconcentricity.
+
+    # Currently assumes the optical system's optical axis is constant across the system, but can be generalized to a
+    # general direction by propagating a ray through the optical system, defining the optical axis after it.
+    assert isinstance(optical_system.surfaces[0], CurvedMirror), "The first surface of the optical system must be a mirror for it to become a cavity"
+
+    if len(optical_system.surfaces) < 2:
+        optical_axis = optical_system.surfaces[0].inwards_normal
+    else:
+        optical_axis = normalize_vector(optical_system.surfaces[-1].center - optical_system.surfaces[-2].center)
+    if NA is not None:  # Generate the appropriate mode, propagate it through the system, and then match the end mirror to the output mode.
+        z_R_first_arm = z_R_of_NA(NA=NA, lambda_laser=LAMBDA_0_LASER)
+        first_mirror: CurvedMirror = optical_system.surfaces[0]
+        last_surface = optical_system.surfaces[-1]
+        local_mode_parameters_first_mirror = match_a_local_mode_to_mirror(
+            mirror=first_mirror, z_R=z_R_first_arm, lambda_0_laser=LAMBDA_0_LASER
+        )
+        mode_parameters_first_arm = local_mode_parameters_first_mirror.to_mode_parameters(
+            location_of_local_mode_parameter=first_mirror.center, k_vector=optical_axis
+        )
+        output_mode_local = optical_system.propagate_mode_parameters(
+            mode_parameters=mode_parameters_first_arm, propagate_with_first_surface_first=False
+        )[-1]
+        output_mode = output_mode_local.to_mode_parameters(
+            location_of_local_mode_parameter=optical_system.arms[-1].surface_1.center, k_vector=optical_axis
+        )
+        if end_mirror_ROC is not None and end_mirror_distance_to_last_element is not None:  # Overrides the NA
+            end_mirror = CurvedMirror(
+                radius=end_mirror_ROC,
+                outwards_normal=RIGHT,
+                center=last_surface.center + end_mirror_distance_to_last_element * RIGHT,
+                **end_mirror_kwargs,
+            )
+        elif end_mirror_distance_to_last_element is not None and end_mirror_ROC is None:  # Fixed NA and last arm length
+            z_minus_z_0 = (
+                np.linalg.norm(output_mode.center[0, :] - last_surface.center) + end_mirror_distance_to_last_element
+            )
+            end_mirror = match_a_mirror_to_mode(mode=output_mode, z=z_minus_z_0, name="End mirror", **end_mirror_kwargs)
+        elif end_mirror_ROC is not None and end_mirror_distance_to_last_element is None:  # Fixed NA and last mirror ROC
+            end_mirror = match_a_mirror_to_mode(mode=output_mode, R=end_mirror_ROC, name="End mirror", **end_mirror_kwargs)
+        else:
+            raise ValueError(
+                "Either right_mirror_ROC or right_mirror_distance_to_negative_lens_front or both must be provided"
+            )
+        if optical_system.params is not None:
+            cavity = Cavity.from_params(
+                params=[*optical_system.params, end_mirror.to_params],
+                lambda_0_laser=optical_system.lambda_0_laser,
+                t_is_trivial=True,
+                p_is_trivial=True,
+                use_paraxial_ray_tracing=optical_system.use_paraxial_ray_tracing,
+                standing_wave=True,
+            )
+        else:
+            cavity = Cavity(
+                surfaces=[*optical_system.surfaces, end_mirror],
+                lambda_0_laser=optical_system.lambda_0_laser,
+                t_is_trivial=True,
+                p_is_trivial=True,
+                use_paraxial_ray_tracing=optical_system.use_paraxial_ray_tracing,
+                standing_wave=True,
+            )
+        if not (
+            end_mirror_ROC is not None and end_mirror_distance_to_last_element is not None
+        ) and not np.isclose(  # If NA should not be overridden
+            cavity.arms[-1].mode_parameters.NA[0], NA, rtol=0, atol=1e-3
+        ):  # and it is not the desired one:
+            warnings.warn(
+                f"Did not achieve the desired NA, got {cavity.arms[-1].mode_parameters.NA[0]:.3e} instead of {NA:.3e}"
+            )
+    elif unconcentricity is not None:  # Find the image of the center of the first mirror after the system and place the center of the end mirror there, then adjust the ROC to achieve the desired unconcentricity.
+        R_analytical = optical_system.output_radius_of_curvature(source_position=optical_system.surfaces[0].origin)
+        center_of_curvature_image = (
+                optical_system.surfaces[-1].center + (R_analytical - unconcentricity) * optical_axis
+        )
+        if end_mirror_ROC is None and end_mirror_distance_to_last_element is None:
+            raise ValueError(
+                "Both end_mirror_ROC or end_mirror_distance_to_last_element or both must be provided"
+            )
+        elif end_mirror_ROC is None and end_mirror_distance_to_last_element is not None:
+            end_mirror_ROC = np.linalg.norm(end_mirror_distance_to_last_element - optical_system.surfaces[-1].center)
+        center_of_curvature_mirror = center_of_curvature_image - unconcentricity * optical_axis
+        end_mirror_ROC = nvl(end_mirror_ROC, )
+        end_mirror = CurvedMirror(  # Assumes concave mirror, can be generalized if needed
             radius=end_mirror_ROC,
-            outwards_normal=RIGHT,
-            center=last_surface.center + end_mirror_distance_to_last_element * RIGHT,
+            outwards_normal=optical_axis,
+            origin=center_of_curvature_mirror,
+            curvature_sign=CurvatureSigns.concave,
             **end_mirror_kwargs,
         )
-    elif end_mirror_distance_to_last_element is not None and end_mirror_ROC is None:  # Fixed NA and last arm length
-        z_minus_z_0 = (
-            np.linalg.norm(output_mode.center[0, :] - last_surface.center) + end_mirror_distance_to_last_element
-        )
-        end_mirror = match_a_mirror_to_mode(mode=output_mode, z=z_minus_z_0, name="End mirror", **end_mirror_kwargs)
-    elif end_mirror_ROC is not None and end_mirror_distance_to_last_element is None:  # Fixed NA and last mirror ROC
-        end_mirror = match_a_mirror_to_mode(mode=output_mode, R=end_mirror_ROC, name="End mirror", **end_mirror_kwargs)
-    else:
-        raise ValueError(
-            "Either right_mirror_ROC or right_mirror_distance_to_negative_lens_front or both must be provided"
-        )
-    if optical_system.params is not None:
         cavity = Cavity.from_params(
-            params=[*optical_system.params, end_mirror.to_params],
-            lambda_0_laser=optical_system.lambda_0_laser,
-            t_is_trivial=True,
-            p_is_trivial=True,
+            params=[optical_system.to_params, end_mirror.to_params],
+            lambda_0_laser=optical_system.LAMBDA_0_LASER,
+            p_is_trivial=optical_system.p_is_trivial,
+            t_is_trivial=optical_system.t_is_trivial,
             use_paraxial_ray_tracing=optical_system.use_paraxial_ray_tracing,
             standing_wave=True,
         )
     else:
-        cavity = Cavity(
-            surfaces=[*optical_system.surfaces, end_mirror],
-            lambda_0_laser=optical_system.lambda_0_laser,
-            t_is_trivial=True,
-            p_is_trivial=True,
-            use_paraxial_ray_tracing=optical_system.use_paraxial_ray_tracing,
-            standing_wave=True,
-        )
-    if not (
-        end_mirror_ROC is not None and end_mirror_distance_to_last_element is not None
-    ) and not np.isclose(  # If NA should not be overridden
-        cavity.arms[-1].mode_parameters.NA[0], NA, rtol=0, atol=1e-3
-    ):  # and it is not the desired one:
-        warnings.warn(
-            f"Did not achieve the desired NA, got {cavity.arms[-1].mode_parameters.NA[0]:.3e} instead of {NA:.3e}"
-        )
+        raise ValueError("Either NA or unconcentricity must be provided.")
     return cavity
 
 
