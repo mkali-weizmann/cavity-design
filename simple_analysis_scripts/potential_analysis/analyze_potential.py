@@ -205,7 +205,8 @@ def generate_two_lenses_optical_system(
         distance_to_face_1=desired_focus, R_1=R_2_spherical, R_2=-R_1_spherical, n=n_actual_aspheric, T_c=T_c_spherical
     )
     aspheric_output_ROC = optical_system.output_radius_of_curvature(
-        initial_distance=back_focal_length_aspheric - defocus)
+        initial_distance=back_focal_length_aspheric - defocus
+    )
     lens_distance_to_aspheric_curved_face = (
         lens_distance_to_aspheric_output_COC - aspheric_output_ROC
     )  # aspheric_output_ROC Should be negative, so this is effectively a subtraction
@@ -375,12 +376,14 @@ def generate_negative_lens_cavity(
             use_paraxial_ray_tracing=False,
         )
     else:
-        cavity = optical_system_to_cavity_completion(optical_system=optical_system_without_last_mirror, NA=first_arm_NA,
-                                                     end_mirror_distance_to_last_element=right_mirror_distance_to_negative_lens_front,
-                                                     end_mirror_ROC=right_mirror_ROC,
-                                                     material_properties=PHYSICAL_SIZES_DICT[
-                                                         "material_properties_fused_silica"],
-                                                     diameter=large_elements_CA)
+        cavity = optical_system_to_cavity_completion(
+            optical_system=optical_system_without_last_mirror,
+            NA=first_arm_NA,
+            end_mirror_distance_to_last_element=right_mirror_distance_to_negative_lens_front,
+            end_mirror_ROC=right_mirror_ROC,
+            material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"],
+            diameter=large_elements_CA,
+        )
     return cavity
 
 
@@ -584,7 +587,7 @@ def analyze_output_wavefront(
     # Extract wavefront features at a far away plane (2*ROC - u from the lens):
     wavefront_points_opposite = output_ray.parameterization(
         -relative_optical_path_length - R_output + end_mirror_ROC - unconcentricity, optical_path_length=True
-    ) # R_output is in minus because for converging wavefront it is negative, and so to step forwards we want to subtract it.
+    )  # R_output is in minus because for converging wavefront it is negative, and so to step forwards we want to subtract it.
 
     R_opposite = -(end_mirror_ROC - unconcentricity)  # negative because at this point the beam is diverging.
     R_opposite_numerical, center_of_curvature_opposite_numerical = extract_matching_sphere(
@@ -629,7 +632,7 @@ def analyze_output_wavefront(
         (np.cos(phi_dummy), np.sin(phi_dummy), np.zeros_like(phi_dummy)), axis=-1
     )  # Mirror has the radius of the original wavefront sphere, but centered at the shifted center.
 
-    L_long_arm = - R_output + end_mirror_ROC - unconcentricity
+    L_long_arm = -R_output + end_mirror_ROC - unconcentricity
     assert (
         L_long_arm > 0
     ), f"Long arm length should be positive, but got {L_long_arm:.3e} m. Try increasing end mirror ROC. The default end mirror ROC works only for output converging wavefront"
@@ -906,9 +909,14 @@ def plot_results(
             unconcentricity_um = unconcentricity * 1e6
         else:
             unconcentricity_um = np.nan
-        differential_second_order_mirror = (residual_distances_mirror[1] - residual_distances_mirror[0]) / (wavefront_points[1, 1] - wavefront_points[0, 1]) ** 2
+        differential_second_order_mirror = (residual_distances_mirror[1] - residual_distances_mirror[0]) / (
+            wavefront_points[1, 1] - wavefront_points[0, 1]
+        ) ** 2
         title += (
-            f"\nmirror deviation fit (unconcentricity = {unconcentricity_um:.1f} µm):\n" + terms_mirror + f"a_2_diff = {differential_second_order_mirror:.2e}" + mode_terms
+            f"\nmirror deviation fit (unconcentricity = {unconcentricity_um:.1f} µm):\n"
+            + terms_mirror
+            + f"a_2_diff = {differential_second_order_mirror:.2e}"
+            + mode_terms
         )
         ax[0].set_title(title)
         if not potential_x_axis_angles:

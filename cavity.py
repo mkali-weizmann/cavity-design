@@ -1712,8 +1712,10 @@ class CurvedMirror(CurvedSurface, ReflectiveSurface):
         ABCD[..., 0, 0] = 1
         ABCD[..., 1, 0] = -2 * cos_theta_incoming / self.radius
         ABCD[..., 1, 1] = 1
-        ABCD[..., 2, 2] = -1  # Minus due to axis inversion (moving a bit to the left in plane before incidence results in moving a bit to the right after reflection)
-        ABCD[..., 3, 2] =  2 / (self.radius * cos_theta_incoming)
+        ABCD[..., 2, 2] = (
+            -1
+        )  # Minus due to axis inversion (moving a bit to the left in plane before incidence results in moving a bit to the right after reflection)
+        ABCD[..., 3, 2] = 2 / (self.radius * cos_theta_incoming)
         ABCD[..., 3, 3] = -1
         return ABCD
 
@@ -2150,11 +2152,14 @@ class Arm:
         return matrix
 
     def ABCD_matrix_surface_1(self, ray: Ray = None):
-        if ray is None and self.central_line is None :
+        if ray is None and self.central_line is None:
             raise ValueError("Central line not set, and another ray was not given")
         elif ray is None and self.central_line is not None:
             ray = self.central_line
-        inner_product = np.sum(ray.k_vector * self.surface_1.normal_at_a_point(point=self.surface_1.find_intersection_with_ray_exact(ray)), axis=-1)  # Inner product is written this way because shapes are unknown
+        inner_product = np.sum(
+            ray.k_vector * self.surface_1.normal_at_a_point(point=self.surface_1.find_intersection_with_ray_exact(ray)),
+            axis=-1,
+        )  # Inner product is written this way because shapes are unknown
         cos_theta = np.abs(inner_product)  # ABS because we want the
         # angle between the ray and the normal to be positive
         if isinstance(self.surface_1, PhysicalSurface):
@@ -2562,7 +2567,7 @@ class OpticalSystem:
         base_shape[0] *= 2  # number of matrices is 2 per arm, one for the free space and one for the surface
         ABCDs = np.zeros((*base_shape, 4, 4))
         for i in range(len(self.arms)):
-            ABCDs[2*i:2*i+2, ...] = self.arms[i].ABCD_matrices(ray=ray_sequence[i])
+            ABCDs[2 * i : 2 * i + 2, ...] = self.arms[i].ABCD_matrices(ray=ray_sequence[i])
         return ABCDs
 
     @property
@@ -3003,18 +3008,26 @@ class OpticalSystem:
         return sum(gouy_phases)
 
     def output_radius_of_curvature(
-        self, initial_distance: Optional[float] = None, source_position: Optional[np.ndarray] = None, propagate_with_first_surface: bool = True
+        self,
+        initial_distance: Optional[float] = None,
+        source_position: Optional[np.ndarray] = None,
+        propagate_with_first_surface: bool = True,
     ) -> float:
         # Currently assume 1d problem for simplicity (only the :2, :2 elements for the first dimension are used), if required it can be expanded
         # For system with mirror as first surface, we usually don't want to propagate using the first surface.
         if not propagate_with_first_surface:
-            optical_system_reduced = OpticalSystem(surfaces=self.surfaces[1:], lambda_0_laser=self.lambda_0_laser,
-                                                   p_is_trivial=self.p_is_trivial, t_is_trivial=self.t_is_trivial, use_paraxial_ray_tracing=self.use_paraxial_ray_tracing,
-                                                   given_initial_central_line=self.central_line[1] if self.central_line is not None else True)
+            optical_system_reduced = OpticalSystem(
+                surfaces=self.surfaces[1:],
+                lambda_0_laser=self.lambda_0_laser,
+                p_is_trivial=self.p_is_trivial,
+                t_is_trivial=self.t_is_trivial,
+                use_paraxial_ray_tracing=self.use_paraxial_ray_tracing,
+                given_initial_central_line=self.central_line[1] if self.central_line is not None else True,
+            )
 
-            R_out = optical_system_reduced.output_radius_of_curvature(initial_distance=initial_distance,
-                                                                      source_position=source_position,
-                                                                      propagate_with_first_surface=True)
+            R_out = optical_system_reduced.output_radius_of_curvature(
+                initial_distance=initial_distance, source_position=source_position, propagate_with_first_surface=True
+            )
         else:
             if initial_distance is None and source_position is not None:
                 initial_distance = (self.surfaces[0].center - source_position) @ self.central_line[
@@ -5491,13 +5504,17 @@ def optical_system_to_cavity_completion(
 
     # Currently assumes the optical system's optical axis is constant across the system, but can be generalized to a
     # general direction by propagating a ray through the optical system, defining the optical axis after it.
-    assert isinstance(optical_system.surfaces[0], CurvedMirror), "The first surface of the optical system must be a mirror for it to become a cavity"
+    assert isinstance(
+        optical_system.surfaces[0], CurvedMirror
+    ), "The first surface of the optical system must be a mirror for it to become a cavity"
 
     if len(optical_system.surfaces) < 2:
         optical_axis = optical_system.surfaces[0].inwards_normal
     else:
         optical_axis = normalize_vector(optical_system.surfaces[-1].center - optical_system.surfaces[-2].center)
-    if NA is not None:  # Generate the appropriate mode, propagate it through the system, and then match the end mirror to the output mode.
+    if (
+        NA is not None
+    ):  # Generate the appropriate mode, propagate it through the system, and then match the end mirror to the output mode.
         z_R_first_arm = z_R_of_NA(NA=NA, lambda_laser=LAMBDA_0_LASER)
         first_mirror: CurvedMirror = optical_system.surfaces[0]
         last_surface = optical_system.surfaces[-1]
@@ -5526,7 +5543,9 @@ def optical_system_to_cavity_completion(
             )
             end_mirror = match_a_mirror_to_mode(mode=output_mode, z=z_minus_z_0, name="End mirror", **end_mirror_kwargs)
         elif end_mirror_ROC is not None and end_mirror_distance_to_last_element is None:  # Fixed NA and last mirror ROC
-            end_mirror = match_a_mirror_to_mode(mode=output_mode, R=end_mirror_ROC, name="End mirror", **end_mirror_kwargs)
+            end_mirror = match_a_mirror_to_mode(
+                mode=output_mode, R=end_mirror_ROC, name="End mirror", **end_mirror_kwargs
+            )
         else:
             raise ValueError(
                 "Either right_mirror_ROC or right_mirror_distance_to_negative_lens_front or both must be provided"
@@ -5557,16 +5576,19 @@ def optical_system_to_cavity_completion(
             warnings.warn(
                 f"Did not achieve the desired NA, got {cavity.arms[-1].mode_parameters.NA[0]:.3e} instead of {NA:.3e}"
             )
-    elif unconcentricity is not None:  # Find the image of the center of the first mirror after the system and place the center of the end mirror there, then adjust the ROC to achieve the desired unconcentricity.
-        R_analytical = optical_system.output_radius_of_curvature(source_position=optical_system.surfaces[0].origin,
-                                                                 propagate_with_first_surface=False)
+    elif (
+        unconcentricity is not None
+    ):  # Find the image of the center of the first mirror after the system and place the center of the end mirror there, then adjust the ROC to achieve the desired unconcentricity.
+        R_analytical = optical_system.output_radius_of_curvature(
+            source_position=optical_system.surfaces[0].origin, propagate_with_first_surface=False
+        )
         center_of_curvature_image = (
-                optical_system.surfaces[-1].center + (-R_analytical - unconcentricity) * optical_axis  # R_analytical is negative for converging wave, so COC is wave position - R_analytical
+            optical_system.surfaces[-1].center
+            + (-R_analytical - unconcentricity)
+            * optical_axis  # R_analytical is negative for converging wave, so COC is wave position - R_analytical
         )
         if end_mirror_ROC is None and end_mirror_distance_to_last_element is None:
-            raise ValueError(
-                "Both end_mirror_ROC or end_mirror_distance_to_last_element or both must be provided"
-            )
+            raise ValueError("Both end_mirror_ROC or end_mirror_distance_to_last_element or both must be provided")
         elif end_mirror_ROC is None and end_mirror_distance_to_last_element is not None:
             end_mirror_ROC = np.linalg.norm(end_mirror_distance_to_last_element - optical_system.surfaces[-1].center)
         center_of_curvature_mirror = center_of_curvature_image - unconcentricity * optical_axis
