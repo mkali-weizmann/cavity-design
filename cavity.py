@@ -458,7 +458,7 @@ class RaySequence:
                 self.origin[first_step_before_t, *full_index]
                 + remaining_t * self.k_vector[first_step_before_t, *full_index] / relevant_n[first_step_before_t]
             )
-            output_points[full_index, :] = point_at_t
+            output_points[*full_index, :] = point_at_t
         return output_points
 
     @property

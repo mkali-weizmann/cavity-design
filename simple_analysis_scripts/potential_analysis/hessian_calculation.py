@@ -19,7 +19,7 @@ def orthonormal_rays_end_points(cavity: Cavity, n_rays: int = 30, phi_max: float
 
 def hessian_ray_tracing(cavity: Cavity, n_rays: int = 30, phi_max: float = 0.02):
     end_points, end_directions_inverted, optical_system_inverted_reduced = orthonormal_rays_end_points(cavity=cavity, n_rays=n_rays, phi_max=phi_max)
-    d_angle = 1e-6
+    d_angle = 1e-5
     initial_angles = angles_of_unit_vector(end_directions_inverted)  # (n_rays, n_rays)
     initial_angles_plus_dtheta = (initial_angles[0] + d_angle, initial_angles[1])  # (n_rays, n_rays)
     initial_angles_plus_dphi = (initial_angles[0], initial_angles[1] + d_angle)  # (n_rays, n_rays)
@@ -38,15 +38,24 @@ def hessian_ray_tracing(cavity: Cavity, n_rays: int = 30, phi_max: float = 0.02)
                                                                              propagate_with_first_surface_first=False)  # origin.shape = n_arms (one way) | n_rays | 3 (0, dtheta, dphi) | 3 (xyz)
     optical_path_lengths_backwards = propagated_ray_backwards.cumulative_optical_path_length[
         -2]  # n_rays | 3 (0, dtheta, dphi)
+    # DELETE ME
+    M_1_prime_points = propagated_ray_backwards.parameterization(t=optical_path_lengths_backwards[0, 0], optical_path_length=True)
+    p_1 = M_1_prime_points[0, 0, :]
+    p_2 = M_1_prime_points[0, 2, :]
+    k_1 = -propagated_ray_backwards[-2].k_vector[0, 0, :]
+    R, center = extract_matching_sphere(p_1=p_1, p_2=p_2, k_1=k_1)
+    # DELETE ME
     optical_path_lengths_backwards_minus_trivial = optical_path_lengths_backwards[:, 1:] - \
                                                    optical_path_lengths_backwards[:, 0:1]  # n_rays | 2 (dtheta, dphi)
-    final_points_backwards = propagated_ray_backwards[-1].origin  # n_rays | 3 (0, dtheta, dphi) | 3 (xyz)
+    final_points_backwards = propagated_ray_backwards[-1].origin  # n_rays | 3 (0,dtheta,dphi) | 3 (xyz)
     final_points_backwards_minus_trivial = final_points_backwards[:, 1:, :] - final_points_backwards[
         :, 0:1, :]  # n_rays | 2 (dtheta, dphi) | 3 (xyz)
     final_points_distances_to_trivial = np.linalg.norm(final_points_backwards_minus_trivial,
                                                        axis=-1)  # n_rays | 2 (dtheta, dphi)
-    hessian = (
+    # Factor of two is because y=(1/2) * y'' * x^2 is the same as y'' = 2 * y / x^2.
+    hessian = 2 * (
                 optical_path_lengths_backwards_minus_trivial / final_points_distances_to_trivial ** 2)  # n_rays | 2 (dtheta, dphi)
+
     # To see if the resulted displacement vectors are orthogonal, we can check the inner product of the normalized vectors:
     # final_points_backwards_minus_trivial_normalized = normalize_vector(final_points_backwards_minus_trivial)
     # final_points_spanning_vectors_inner_product = np.einsum('ij,ij->i', final_points_backwards_minus_trivial_normalized[:, 0, :], final_points_backwards_minus_trivial_normalized[:, 1, :])
@@ -59,10 +68,11 @@ def hessian_ABCD_matrices(cavity: Cavity, n_rays: int = 30, phi_max: float = 0.0
     initial_rays_backwards = Ray(origin=end_points, k_vector=end_directions_inverted)
     propagated_ray_backwards = optical_system_inverted_reduced.propagate_ray(ray=initial_rays_backwards, propagate_with_first_surface_first=False)
     ABCD_matrices_optical_system = optical_system_inverted_reduced.ABCD_matrices(ray_sequence=propagated_ray_backwards[:-1])  # n_arms | *n_rays | 4 | 4
-    one_way_ABCD_matrix = reduce(np.matmul, ABCD_matrices_optical_system)  # *n_rays | 4 | 4
+    one_way_ABCD_matrix = reduce(np.matmul, ABCD_matrices_optical_system[:-1][::-1])  # *n_rays | 4 | 4, [:-1] because the last ABCD matrix corresponds to the last surface, but we want the propagation up to the last surface.
     A, B, C, D = decompose_ABCD_matrix(one_way_ABCD_matrix)
     output_ROC = B / D
     hessian = -(output_ROC - optical_system_inverted_reduced.surfaces[-1].radius) / (output_ROC * optical_system_inverted_reduced.surfaces[-1].radius)
+    # DRAFT
     return hessian
 
 
@@ -84,13 +94,16 @@ cavity = Cavity.from_params(params=params,
                             debug_printing_level=1,
                             )
 # %%
-# hessian_ray_tracing_value = hessian_ray_tracing(cavity=cavity, n_rays=1, phi_max=0.1)
-# hessian_ABCD_matrices_value = hessian_ABCD_matrices(cavity=cavity, n_rays=1, phi_max=0.1)
-
+hessian_ray_tracing_value = hessian_ray_tracing(cavity=cavity, n_rays=1, phi_max=0.1)
+hessian_ABCD_matrices_value = hessian_ABCD_matrices(cavity=cavity, n_rays=1, phi_max=0.1)
+print(hessian_ray_tracing_value)
+print(hessian_ABCD_matrices_value)
 # %%
-cavity_fabry_perot = fabry_perot_generator((0.005, 0.005), NA=0.02, lambda_0_laser=LAMBDA_0_LASER, use_paraxial_ray_tracing=False)
+cavity_fabry_perot = fabry_perot_generator((0.005, 0.005), unconcentricity=0, lambda_0_laser=LAMBDA_0_LASER, use_paraxial_ray_tracing=False)
 hessian_ray_tracing_value_fabry_perot = hessian_ray_tracing(cavity=cavity_fabry_perot, n_rays=1, phi_max=0.1)
 hessian_ABCD_matrices_value_fabry_perot = hessian_ABCD_matrices(cavity=cavity_fabry_perot, n_rays=1, phi_max=0.1)
+print(hessian_ray_tracing_value_fabry_perot)
+print(hessian_ABCD_matrices_value_fabry_perot)
 
 # %%
 n = params[1].n_inside_or_after
