@@ -13,7 +13,7 @@ from cavity import (
     widget_convenient_exponent,
     perturb_cavity,
     evaluate_cavities_modes_on_surface,
-    mirror_lens_mirror_cavity_generator, fabry_perot_generator,
+    mirror_lens_mirror_cavity_generator, fabry_perot_generator, OpticalSystem, optical_system_to_cavity_completion,
 )
 
 from utils import (
@@ -28,7 +28,7 @@ from utils import (
 from simple_analysis_scripts.potential_analysis.analyze_potential import (
     choose_source_position_for_desired_focus_analytic,
     known_lenses_generator, generate_one_lens_optical_system, initialize_rays, analyze_potential,
-    analyze_potential_given_cavity, hessian_ray_tracing, hessian_ABCD_matrices
+    analyze_potential_given_cavity, hessian_ray_tracing, hessian_ABCD_matrices, mirrors_jacobian
 )
 
 
@@ -613,50 +613,107 @@ def test_free_potential_vs_cavity_potential_comparison():
                                            1]]))), "Results from analyze_potential_given_cavity do not match results from analyze_potential for the same cavity."
 
 
-def test_quadratic_potential_coefficient():
-    u = 1e-6
-    R = 5e-3
-    cavity_fabry_perot = fabry_perot_generator((R, R), unconcentricity=u, lambda_0_laser=LAMBDA_0_LASER,
-                                               use_paraxial_ray_tracing=False)
-    hessian_ray_tracing_value_fabry_perot = hessian_ray_tracing(cavity=cavity_fabry_perot, n_rays=1, phi_max=0.1)
-    hessian_ABCD_matrices_value_fabry_perot = hessian_ABCD_matrices(cavity=cavity_fabry_perot, n_rays=1, phi_max=0.1)
-    hessian_analytical = -1 / (2 * R)
+def test_spot_size_from_potential_and_ray_tracing():
+    params = [
+        OpticalElementParams(name='LaserOptik mirror', surface_type='curved_mirror', x=-5e-03, y=0, z=0, theta=0,
+                             phi=1e+00 * np.pi, r_1=5e-03, r_2=np.nan, curvature_sign=CurvatureSigns.concave,
+                             T_c=np.nan, n_inside_or_after=1e+00, n_outside_or_before=1e+00, diameter=7.75e-03,
+                             material_properties=MaterialProperties(refractive_index=1.45e+00, alpha_expansion=5.2e-07,
+                                                                    beta_surface_absorption=1e-06,
+                                                                    kappa_conductivity=1.38e+00, dn_dT=1.2e-05,
+                                                                    nu_poisson_ratio=1.6e-01,
+                                                                    alpha_volume_absorption=1e-03,
+                                                                    intensity_reflectivity=1e-04,
+                                                                    intensity_transmittance=9.99899e-01,
+                                                                    temperature=np.nan), polynomial_coefficients=None),
+        OpticalElementParams(name='spherical_lens', surface_type='thick_lens', x=6.776592092031389e-03, y=0, z=0,
+                             theta=0, phi=0, r_1=2.422e-02, r_2=-5.488e-03, curvature_sign=CurvatureSigns.convex,
+                             T_c=2.913797540986543e-03, n_inside_or_after=1.76e+00, n_outside_or_before=1e+00,
+                             diameter=7.75e-03,
+                             material_properties=MaterialProperties(refractive_index=1.76e+00, alpha_expansion=5.5e-06,
+                                                                    beta_surface_absorption=1e-06,
+                                                                    kappa_conductivity=4.606e+01, dn_dT=1.17e-05,
+                                                                    nu_poisson_ratio=3e-01,
+                                                                    alpha_volume_absorption=1e-02,
+                                                                    intensity_reflectivity=1e-04,
+                                                                    intensity_transmittance=9.99899e-01,
+                                                                    temperature=np.nan), polynomial_coefficients=None),
+        OpticalElementParams(name='Negative Lens', surface_type='thick_lens', x=4.190164703571147e-01, y=0, z=0,
+                             theta=0, phi=0, r_1=-3.561084685817112e-02, r_2=1.732922172776388e-01,
+                             curvature_sign=CurvatureSigns.concave, T_c=4.350000000000001e-03,
+                             n_inside_or_after=1.45e+00, n_outside_or_before=1e+00, diameter=5e-02,
+                             material_properties=MaterialProperties(refractive_index=1.45e+00, alpha_expansion=5.2e-07,
+                                                                    beta_surface_absorption=1e-06,
+                                                                    kappa_conductivity=1.38e+00, dn_dT=1.2e-05,
+                                                                    nu_poisson_ratio=1.6e-01,
+                                                                    alpha_volume_absorption=1e-03,
+                                                                    intensity_reflectivity=1e-04,
+                                                                    intensity_transmittance=9.99899e-01,
+                                                                    temperature=np.nan), polynomial_coefficients=None),
+        OpticalElementParams(name='big mirror', surface_type='curved_mirror', x=4.330042644697557e-01, y=0, z=0,
+                             theta=0, phi=0, r_1=6.896719562240133e-02, r_2=np.nan,
+                             curvature_sign=CurvatureSigns.concave, T_c=np.nan, n_inside_or_after=1e+00,
+                             n_outside_or_before=1e+00, diameter=5e-02,
+                             material_properties=MaterialProperties(refractive_index=1.45e+00, alpha_expansion=5.2e-07,
+                                                                    beta_surface_absorption=1e-06,
+                                                                    kappa_conductivity=1.38e+00, dn_dT=1.2e-05,
+                                                                    nu_poisson_ratio=1.6e-01,
+                                                                    alpha_volume_absorption=1e-03,
+                                                                    intensity_reflectivity=1e-04,
+                                                                    intensity_transmittance=9.99899e-01,
+                                                                    temperature=np.nan), polynomial_coefficients=None)]
 
-    results_dict = analyze_potential_given_cavity(cavity=cavity_fabry_perot, n_rays=10, phi_max=0.01, print_tests=False)
-    potential_quadratic_coefficient = results_dict['polynomial_residuals_mirror'].coef[1]
+    optical_system_small_elements = OpticalSystem.from_params(params[:-1], lambda_0_laser=LAMBDA_0_LASER,
+                                                              use_paraxial_ray_tracing=False, p_is_trivial=True,
+                                                              t_is_trivial=True)
+    R = params[-1].r_1
+    u = 5e-6
+    # Cavity with a known unconcentricity in the last arm:
+    cavity = optical_system_to_cavity_completion(optical_system=optical_system_small_elements, unconcentricity=u,
+                                                 end_mirror_ROC=R)
+
+    results_dict = analyze_potential_given_cavity(cavity=cavity, n_rays=10, phi_max=0.01, print_tests=False)
+    a_2_numerical = results_dict['polynomial_residuals_mirror'].coef[1]
     a_2_analytical = u / (2 * R ** 2)
+    assert np.isclose(
+        a_2_numerical, a_2_analytical, rtol=5e-3
+    ), f"Spot size from potential test failed: expected quadratic coefficient of approximately {a_2_analytical} but got {a_2_numerical}"
 
-    w_squared_numerical = cavity_fabry_perot.arms[0].mode_parameters_on_surface_1.spot_size[0] ** 2
-    w_squared_analytical_potential = cavity_fabry_perot.lambda_0_laser / (
-                np.pi * np.sqrt(-2 * hessian_ABCD_matrices_value_fabry_perot[0, 0] * a_2_analytical))
-    w_squared_analytical_optics = R * cavity_fabry_perot.lambda_0_laser / np.pi * np.sqrt(2 * R / u)
+    hessian = hessian_ABCD_matrices(cavity=cavity, n_rays=1, phi_max=0.01)[
+        0, 0]  # First zero because we have one ray, second 0 because hessian is isotropic for non astigmatic systems at the optical axis.
+
+    jacobian = mirrors_jacobian(cavity=cavity)
+
+    hessian_normalized = hessian * jacobian
+    a_2_normalized = a_2_analytical * jacobian
+
+    spot_size_squared_from_potential = cavity.lambda_0_laser / (np.pi * np.sqrt(-2 * hessian_normalized * a_2_normalized))
+    spot_size_squared_from_optics = cavity.arms[len(cavity.arms) // 2-1].mode_parameters_on_surface_1.spot_size[0] ** 2
+    assert np.isclose(
+        spot_size_squared_from_potential, spot_size_squared_from_optics, rtol=5e-3
+    ), f"Spot size comparison test failed: expected spot size squared from potential of approximately {spot_size_squared_from_potential} but got {spot_size_squared_from_optics}"
 
     energy_level_hessian_and_potential = np.sqrt(
-        potential_quadratic_coefficient / (-2 * hessian_analytical)) * cavity_fabry_perot.lambda_0_laser / np.pi
-    energy_level_hessian_only = cavity_fabry_perot.lambda_0_laser ** 2 / (2 * np.pi ** 2 * w_squared_numerical * hessian_analytical)
-
-    assert np.all(np.isclose(
-        potential_quadratic_coefficient, a_2_analytical, rtol=1e-3)
-    ), f"Quadratic potential coefficient test failed: expected approximately {a_2_analytical} but got {potential_quadratic_coefficient}"
-
-    assert np.all(np.isclose(
-        hessian_ray_tracing_value_fabry_perot, hessian_analytical, rtol=1e-3)
-    ), f"Hessian ray tracing test failed: expected approximately {hessian_analytical} but got {hessian_ray_tracing_value_fabry_perot}"
-
-    assert np.all(np.isclose(
-        hessian_ABCD_matrices_value_fabry_perot[0, 0], hessian_analytical, rtol=1e-3)
-    ), f"Hessian ABCD matrices test failed: expected approximately {hessian_analytical} but got {hessian_ABCD_matrices_value_fabry_perot[0, 0]}"
-
-    assert np.all(np.isclose(
-        w_squared_numerical, w_squared_analytical_potential, rtol=1e-3)
-    ), f"Spot size from potential test failed: expected approximately {w_squared_analytical_potential} but got {w_squared_numerical}"
-
-    assert np.all(np.isclose(
-        w_squared_numerical, w_squared_analytical_optics, rtol=1e-3)
-    ), f"Spot size from optics test failed: expected approximately {w_squared_analytical_optics} but got {w_squared_numerical}"
-
-    assert np.all(np.isclose(
-        energy_level_hessian_and_potential, energy_level_hessian_only, rtol=1e-3)
-    ), f"Energy level comparison test failed: expected approximately {energy_level_hessian_only} but got {energy_level_hessian_and_potential}"
+        a_2_normalized / (-2 * hessian_normalized)) * cavity.lambda_0_laser / np.pi
+    energy_level_hessian_and_spot_size = cavity.lambda_0_laser ** 2 / (
+                2 * np.pi ** 2 * spot_size_squared_from_potential * hessian_normalized)
+    assert np.isclose(
+        energy_level_hessian_and_potential, energy_level_hessian_and_spot_size, rtol=1e-3
+    ), f"Energy level comparison test failed: expected energy level from hessian and potential of approximately {energy_level_hessian_and_potential} but got {energy_level_hessian_and_spot_size}"
 
 
+def test_analytical_hessian_for_fabry_perot():
+    u = 1e-6
+    R_0 = 5e-3
+    R_1 = 15e-3
+    cavity = fabry_perot_generator((R_0, R_1), unconcentricity=u, lambda_0_laser=LAMBDA_0_LASER,
+                                   use_paraxial_ray_tracing=False)
+    hessian_ray_tracing_value = hessian_ray_tracing(cavity=cavity, n_rays=1, phi_max=0.1)[0, 0]
+    hessian_ABCD_matrices_value = hessian_ABCD_matrices(cavity=cavity, n_rays=1, phi_max=0.1)[0, 0]
+    hessian_analytical = -R_1 / ((R_0 + R_1) * R_0)
+    assert np.isclose(
+        hessian_ray_tracing_value, hessian_analytical, rtol=1e-3
+    ), f"Hessian ray tracing test failed: expected approximately {hessian_analytical} but got {hessian_ray_tracing_value}"
+    assert np.isclose(
+        hessian_ABCD_matrices_value, hessian_analytical, rtol=1e-3
+    ), f"Hessian ABCD matrices test failed: expected approximately {hessian_analytical} but got {hessian_ABCD_matrices_value}"

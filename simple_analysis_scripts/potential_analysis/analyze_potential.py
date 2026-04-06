@@ -1064,3 +1064,17 @@ def energy_level(cavity: Cavity, hessian_method: str = 'ray_tracing'):
     potential_quadratic_coefficient = results_dict['polynomial_residuals_mirror'].coef[1]  # it is a polynomial of x**2, so quadratic term is the second term in the array
     energy_level_hessian_and_potential = np.sqrt(potential_quadratic_coefficient / (-2 * hessian)) * cavity.lambda_0_laser / np.pi
     return energy_level_hessian_only, energy_level_hessian_and_potential
+
+def mirrors_jacobian(cavity: Cavity):
+    # Returns the jacobian of the mapping between points on the first mirror to their conjugate points on the end mirror.
+    # Currently assumes a constant and symmetric jacobian, which is fine for systems without many aberrations and without astigmatism.
+    # Generally, it should be a function f: R^2 -> R^2, or even f: R^2 -> R^4 (if transformation is not diagonal)
+    dp = 1e-6
+    slightly_shifted_ray = Ray(origin=cavity.surfaces[0].parameterization(0, dp),
+                               k_vector=-cavity.surfaces[0].normal_at_a_point(
+                                   cavity.surfaces[0].parameterization(0, dp)))
+    slightly_shifted_ray_propagated = cavity.propagate_ray(ray=slightly_shifted_ray, n_arms=len(cavity.arms) // 2)
+    landing_point = slightly_shifted_ray_propagated[-1].origin
+    landing_point_parameterization = cavity.surfaces[-1].get_parameterization(landing_point)[1]
+    jacobian = dp / landing_point_parameterization
+    return jacobian
