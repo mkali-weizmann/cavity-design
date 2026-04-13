@@ -1038,6 +1038,7 @@ def hessian_ray_tracing(cavity: Cavity, n_rays: int = 30, phi_max: float = 0.02)
     return hessian
 
 def hessian_ABCD_matrices(cavity: Cavity, n_rays: int = 30, phi_max: float = 0.02):
+
     end_points, end_directions_inverted, optical_system_inverted_reduced = orthonormal_rays_end_points(cavity=cavity,
                                                                                                        n_rays=n_rays,
                                                                                                        phi_max=phi_max)
@@ -1046,11 +1047,14 @@ def hessian_ABCD_matrices(cavity: Cavity, n_rays: int = 30, phi_max: float = 0.0
     ABCD_matrices_optical_system = optical_system_inverted_reduced.ABCD_matrices(ray_sequence=propagated_ray_backwards[:-1])  # n_arms | *n_rays | 4 | 4
     one_way_ABCD_matrix = reduce(np.matmul, ABCD_matrices_optical_system[:-1][::-1])  # *n_rays | 4 | 4, [:-1] because the last ABCD matrix corresponds to the last surface, but we want the propagation up to the last surface.
     A, B, C, D = decompose_ABCD_matrix(one_way_ABCD_matrix)
+    # Corresponds to equation eq:radius of curvature of a point source after ABCD
     output_ROC = B / D
+    # Corresponds to equation eq:Hessian for a given mismatch
     hessian = -(output_ROC - optical_system_inverted_reduced.surfaces[-1].radius) / (output_ROC * optical_system_inverted_reduced.surfaces[-1].radius)
     return hessian
 
 def energy_level(cavity: Cavity, hessian_method: str = 'ray_tracing'):
+    # Corresponds to equations  eq: potential scaling - fixed mode width and eq:potential scaling - general (commented out here) in my notes.
     if hessian_method == 'ray_tracing':
         hessian = hessian_ray_tracing(cavity=cavity, n_rays = 1)[0, 0]
     elif hessian_method == 'ABCD_matrices':
@@ -1059,15 +1063,18 @@ def energy_level(cavity: Cavity, hessian_method: str = 'ray_tracing'):
         raise ValueError(f'Invalid hessian method: {hessian_method}')
     # The energy level of the mode is proportional to the square root of the product of the two eigenvalues of the Hessian matrix.
     spot_size_end = cavity.arms[len(cavity.arms) // 2].mode_parameters_on_surface_0.spot_size[0]
-    energy_level_hessian_only = -cavity.lambda_0_laser ** 2 / (2 * np.pi ** 2 * spot_size_end ** 2 * hessian)
-    results_dict = analyze_potential_given_cavity(cavity=cavity, n_rays = 10, phi_max = 0.01, print_tests=False)
-    potential_quadratic_coefficient = results_dict['polynomial_residuals_mirror'].coef[1]  # it is a polynomial of x**2, so quadratic term is the second term in the array
-    energy_level_hessian_and_potential = np.sqrt(potential_quadratic_coefficient / (-2 * hessian)) * cavity.lambda_0_laser / np.pi
-    return energy_level_hessian_only, energy_level_hessian_and_potential
+    # results_dict = analyze_potential_given_cavity(cavity=cavity, n_rays = 10, phi_max = 0.01, print_tests=False)
+    # potential_quadratic_coefficient = results_dict['polynomial_residuals_mirror'].coef[1]  # it is a polynomial of x**2, so quadratic term is the second term in the array
+    jacobian = mirrors_jacobian(cavity=cavity)
+    # potential_quadratic_coefficient_normalized = potential_quadratic_coefficient * jacobian
+    hessian_normalized = hessian * jacobian
+    # energy_level_hessian_and_potential = np.sqrt(potential_quadratic_coefficient / (-2 * hessian)) * cavity.lambda_0_laser / np.pi
+    energy_level_hessian_only = -cavity.lambda_0_laser ** 2 / (2 * np.pi ** 2 * spot_size_end ** 2 * hessian_normalized)
+    return energy_level_hessian_only  # , energy_level_hessian_and_potential
 
 def mirrors_jacobian(cavity: Cavity):
     # Returns the jacobian of the mapping between points on the first mirror to their conjugate points on the end mirror.
-    # Currently assumes a constant and symmetric jacobian, which is fine for systems without many aberrations and without astigmatism.
+    # Currently, assumes a constant and symmetric jacobian, which is fine for systems without many aberrations and without astigmatism.
     # Generally, it should be a function f: R^2 -> R^2, or even f: R^2 -> R^4 (if transformation is not diagonal)
     dp = 1e-6
     slightly_shifted_ray = Ray(origin=cavity.surfaces[0].parameterization(0, dp),

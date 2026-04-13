@@ -3865,9 +3865,8 @@ class Cavity(OpticalSystem):
         boolean_array = np.eye(N).astype(bool)
         boolean_array = np.vstack((np.zeros((1, N), dtype=bool), np.ones((1, N), dtype=bool), boolean_array))
         cavities = []  # [self]
-        NA_orgiginal = self.arms[arm_index_for_NA].mode_parameters.NA[0]
+        NA_original = self.arms[arm_index_for_NA].mode_parameters.NA[0]
         NAs = np.zeros(N + 2)
-        # NAs[0] = NA_orgiginal
         for i in range(N + 2):
             (
                 curvature_transform_lens,
@@ -3889,10 +3888,10 @@ class Cavity(OpticalSystem):
             "Only lens curvature ",
             "Only lens n surface ",
             "Only lens n volumetric ",
-            "Only lens z ",
+            # "Only lens z ",
             "Only mirror",
         ]
-        results_dict = dict(zip(names_list, NA_orgiginal / NAs))
+        results_dict = dict(zip(names_list, NA_original / NAs))
         return results_dict, cavities
 
     def specs(
