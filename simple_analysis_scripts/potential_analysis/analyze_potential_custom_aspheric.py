@@ -3,10 +3,56 @@ use("TkAgg")  # or 'Qt5Agg', 'GTK3Agg', etc
 from simple_analysis_scripts.potential_analysis.analyze_potential import *
 
 # %%
+R_1 = 6.574e-3
+R_2 = 5.009e-3
+T_c = 4.098e-3
+waist_to_lens = 5.5e-3
+OPTICAL_AXIS = RIGHT
+diameter = 7.75e-3
+a_2 = 1 / (2*R_1)
+a_4 = 1000
+a_6 = 0
+
+laseroptik_mirror = CurvedMirror(radius=5e-3, outwards_normal=LEFT, center=np.array([-0.00499995, 0, 0]), curvature_sign=CurvatureSigns.concave, diameter=7.75e-3, name="LaserOptik mirror", material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"])
+polynomial_coefficients_back = np.array([0, a_2, a_4, a_6])  # widget_convenient_exponent(-2.470e-1,scale=0)
+lens_left = AsphericRefractiveSurface(polynomial_coefficients=polynomial_coefficients_back,
+                                                  center=np.array([waist_to_lens, 0, 0]),
+                                                  n_1=1,
+                                                  n_2=1.45,
+                                                  outwards_normal=-OPTICAL_AXIS,
+                                                  name="Lens aspherical back",
+                                                  material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"],
+                                                  thickness=T_c / 2,
+                                                  diameter=diameter,
+                                                  curvature_sign=CurvatureSigns.convex
+                                                        )
+lens_right = CurvedRefractiveSurface(radius=R_2,
+                                     curvature_sign=CurvatureSigns.concave,
+                                     outwards_normal=OPTICAL_AXIS,
+                                     center = lens_left.center + np.array([T_c, 0, 0]),
+                                     name="Lens_right",
+                                     n_1=1.45,
+                                     n_2=1,
+                                     material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"],
+                                     thickness=T_c / 2,
+                                     diameter=diameter,
+                                    )
+
+optical_system = OpticalSystem(surfaces=[laseroptik_mirror, lens_left, lens_right],
+                               lambda_0_laser=LAMBDA_0_LASER, t_is_trivial=True, p_is_trivial=True, use_paraxial_ray_tracing=False)
+cavity = optical_system_to_cavity_completion(optical_system=optical_system, NA=0.15)
+# # %%
+# cavity.plot()
+# plt.show()
+
+results_dict = analyze_potential_given_cavity(cavity=cavity, n_rays=30, phi_max=0.3)
+plot_results(results_dict=results_dict, far_away_plane=True)
+plt.show()
+# %%
 plot = True
 print_tests = True
 n_rays = 15
-unconcentricity = 1e-3  # np.float64(0.007610344827586207)  # ,  np.float64(0.007268965517241379)
+unconcentricity = 1e-3
 phi_max = 0.05
 OPTICAL_AXIS = RIGHT
 back_focal_length_aspheric = 20e-3
