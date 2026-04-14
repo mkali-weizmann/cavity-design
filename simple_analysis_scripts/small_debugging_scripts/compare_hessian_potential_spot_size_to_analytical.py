@@ -81,16 +81,17 @@ results_dict = analyze_potential_given_cavity(cavity=cavity, n_rays = 10, phi_ma
 a_2_numerical = results_dict['polynomial_residuals_mirror'].coef[1]
 a_2_analytical = u / (2 * R_1 ** 2)
 
-hessian_normalized = hessian_ABCD_matrices_value * jacobian
-a_2_normalized = a_2_analytical * jacobian
+hessian_normalized = hessian_ABCD_matrices_value * jacobian ** 2
+# a_2_normalized = a_2_analytical * jacobian
 
 w_squared_numerical = cavity.arms[0].mode_parameters_on_surface_1.spot_size[0] ** 2
 w_squared_analytical_potential = cavity.lambda_0_laser / (np.pi * np.sqrt(-2 * hessian_ABCD_matrices_value * a_2_analytical))
-w_squared_analytical_potential_normalized = cavity.lambda_0_laser / (np.pi * np.sqrt(-2 * hessian_normalized * a_2_normalized))
+w_squared_analytical_potential_normalized = cavity.lambda_0_laser / (np.pi * np.sqrt(-2 * hessian_normalized * a_2_analytical))
 # w_squared_analytical_optics = R * cavity.lambda_0_laser / np.pi * np.sqrt(2 * R / u)
 
-energy_level_hessian_and_potential = np.sqrt(a_2_numerical / (-2 * hessian_analytical)) * cavity.lambda_0_laser / np.pi
-energy_level_hessian_only = cavity.lambda_0_laser ** 2 / (2 * np.pi ** 2 * w_squared_analytical_potential_normalized * hessian_normalized)
+energy_level_hessian_only = cavity.lambda_0_laser ** 2 / (2 * np.pi ** 2 * w_squared_numerical * hessian_normalized)
+energy_level_hessian_and_potential = np.sqrt(a_2_analytical / (-2 * hessian_normalized)) * cavity.lambda_0_laser / np.pi
+energy_level_spot_size_and_potential = a_2_analytical * w_squared_numerical
 
 # plot_results(results_dict)
 # plt.show()
@@ -105,5 +106,6 @@ print(f'Analytical spot size potential squared normalized: {w_squared_analytical
 print(f'Spot sizes squared ratio: {w_squared_numerical / w_squared_analytical_potential:.5f}')
 print(f'Energy level from Hessian only: {energy_level_hessian_only:.3e} m')
 print(f'Energy level from Hessian and potential: {energy_level_hessian_and_potential:.3e} m')
+print(f'Energy level from spot size and potential: {energy_level_spot_size_and_potential:.3e} m')
 
 energy_level_ABCD_matrices_value = energy_level(cavity=cavity, hessian_method = 'ABCD_matrices')

@@ -1038,7 +1038,6 @@ def hessian_ray_tracing(cavity: Cavity, n_rays: int = 30, phi_max: float = 0.02)
     return hessian
 
 def hessian_ABCD_matrices(cavity: Cavity, n_rays: int = 30, phi_max: float = 0.02):
-
     end_points, end_directions_inverted, optical_system_inverted_reduced = orthonormal_rays_end_points(cavity=cavity,
                                                                                                        n_rays=n_rays,
                                                                                                        phi_max=phi_max)
@@ -1053,7 +1052,7 @@ def hessian_ABCD_matrices(cavity: Cavity, n_rays: int = 30, phi_max: float = 0.0
     hessian = -(output_ROC - optical_system_inverted_reduced.surfaces[-1].radius) / (output_ROC * optical_system_inverted_reduced.surfaces[-1].radius)
     return hessian
 
-def energy_level(cavity: Cavity, hessian_method: str = 'ray_tracing'):
+def energy_level(cavity: Cavity, hessian_method: str = 'ABCD_matrices'):
     # Corresponds to equations  eq: potential scaling - fixed mode width and eq:potential scaling - general (commented out here) in my notes.
     if hessian_method == 'ray_tracing':
         hessian = hessian_ray_tracing(cavity=cavity, n_rays = 1)[0, 0]
@@ -1063,13 +1062,14 @@ def energy_level(cavity: Cavity, hessian_method: str = 'ray_tracing'):
         raise ValueError(f'Invalid hessian method: {hessian_method}')
     # The energy level of the mode is proportional to the square root of the product of the two eigenvalues of the Hessian matrix.
     spot_size_end = cavity.arms[len(cavity.arms) // 2].mode_parameters_on_surface_0.spot_size[0]
-    # results_dict = analyze_potential_given_cavity(cavity=cavity, n_rays = 10, phi_max = 0.01, print_tests=False)
-    # potential_quadratic_coefficient = results_dict['polynomial_residuals_mirror'].coef[1]  # it is a polynomial of x**2, so quadratic term is the second term in the array
+    results_dict = analyze_potential_given_cavity(cavity=cavity, n_rays = 10, phi_max = 0.01, print_tests=False)
+    potential_quadratic_coefficient = results_dict['polynomial_residuals_mirror'].coef[1]  # it is a polynomial of x**2, so quadratic term is the second term in the array
     jacobian = mirrors_jacobian(cavity=cavity)
     # potential_quadratic_coefficient_normalized = potential_quadratic_coefficient * jacobian
-    hessian_normalized = hessian * jacobian
-    # energy_level_hessian_and_potential = np.sqrt(potential_quadratic_coefficient / (-2 * hessian)) * cavity.lambda_0_laser / np.pi
-    energy_level_hessian_only = -cavity.lambda_0_laser ** 2 / (2 * np.pi ** 2 * spot_size_end ** 2 * hessian_normalized)
+    hessian_normalized = hessian * jacobian**2
+    energy_level_hessian_only = cavity.lambda_0_laser ** 2 / (2 * np.pi ** 2 * spot_size_end**2 * hessian_normalized)
+    energy_level_hessian_and_potential = np.sqrt(potential_quadratic_coefficient / (-2 * hessian_normalized)) * cavity.lambda_0_laser / np.pi
+    energy_level_spot_size_and_potential = potential_quadratic_coefficient * spot_size_end**2
     return energy_level_hessian_only  # , energy_level_hessian_and_potential
 
 def mirrors_jacobian(cavity: Cavity):

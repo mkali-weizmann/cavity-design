@@ -2474,7 +2474,7 @@ class OpticalSystem:
         if given_initial_central_line is not None:
             if isinstance(given_initial_central_line, Ray):
                 self.set_given_central_line(initial_ray=given_initial_central_line)
-            elif given_initial_central_line is True:
+            elif given_initial_central_line is True and len(self.arms) > 0:
                 self.set_given_central_line(initial_ray=self.default_initial_ray)
         if given_initial_local_mode_parameters is not None:
             self.set_given_mode_parameters(
@@ -5511,7 +5511,10 @@ def optical_system_to_cavity_completion(
     if len(optical_system.surfaces) < 2:
         optical_axis = optical_system.surfaces[0].inwards_normal
     else:
-        optical_axis = normalize_vector(optical_system.surfaces[-1].center - optical_system.surfaces[-2].center)
+        if optical_system.central_line is None:
+            optical_system.set_given_central_line(initial_ray=optical_system.default_initial_ray)
+        output_ray = optical_system.surfaces[-1].propagate_ray(optical_system.central_line[-1])
+        optical_axis = output_ray.k_vector
     if (
         NA is not None
     ):  # Generate the appropriate mode, propagate it through the system, and then match the end mirror to the output mode.
@@ -5528,7 +5531,7 @@ def optical_system_to_cavity_completion(
             mode_parameters=mode_parameters_first_arm, propagate_with_first_surface_first=False
         )[-1]
         output_mode = output_mode_local.to_mode_parameters(
-            location_of_local_mode_parameter=optical_system.arms[-1].surface_1.center, k_vector=optical_axis
+            location_of_local_mode_parameter=optical_system.surfaces[-1].center, k_vector=optical_axis
         )
         if end_mirror_ROC is not None and end_mirror_distance_to_last_element is not None:  # Overrides the NA
             end_mirror = CurvedMirror(
@@ -5539,7 +5542,7 @@ def optical_system_to_cavity_completion(
             )
         elif end_mirror_distance_to_last_element is not None and end_mirror_ROC is None:  # Fixed NA and last arm length
             z_minus_z_0 = (
-                np.linalg.norm(output_mode.center[0, :] - last_surface.center) + end_mirror_distance_to_last_element
+                (last_surface.center - output_mode.center[0, :]) @ optical_axis + end_mirror_distance_to_last_element
             )
             end_mirror = match_a_mirror_to_mode(mode=output_mode, z=z_minus_z_0, name="End mirror", **end_mirror_kwargs)
         elif end_mirror_ROC is not None and end_mirror_distance_to_last_element is None:  # Fixed NA and last mirror ROC
