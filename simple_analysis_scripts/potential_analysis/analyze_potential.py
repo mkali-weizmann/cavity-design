@@ -1,3 +1,4 @@
+from scipy.linalg import eigh_tridiagonal
 from scipy.optimize import newton
 from functools import reduce
 
@@ -1085,3 +1086,141 @@ def mirrors_jacobian(cavity: Cavity):
     landing_point_parameterization = cavity.surfaces[-1].get_parameterization(landing_point)[1]
     jacobian = dp / landing_point_parameterization
     return jacobian
+
+def ground_state_2d_radial_polar(r_max: float,
+                                 V: Union[Callable, np.ndarray],
+                                 m: float,
+                                 n: int):
+    """
+    Ground state of the 2D radial Schrödinger equation for a central potential V(r),
+    solved directly for psi(r), without the substitution u = sqrt(r) psi.
+
+    Uses the self-adjoint radial operator in flux form:
+        H psi = -(1/2m) * (1/r) d/dr ( r dpsi/dr ) + V(r) psi
+    with ħ = 1.
+
+    Boundary conditions:
+        psi'(0) = 0      (regularity at origin)
+        psi(r_max) = 0   (box boundary)
+
+    Returns
+    -------
+    r, E0, psi0, H
+    """
+    if r_max <= 0:
+        raise ValueError("r_max must be positive.")
+    if m <= 0:
+        raise ValueError("m must be positive.")
+    if n < 3:
+        raise ValueError("n must be at least 3.")
+
+    r = np.linspace(0.0, r_max, n)
+    dr = r[1] - r[0]
+
+    Vr = np.asarray(V(r), dtype=float)
+    if Vr.shape != r.shape:
+        raise ValueError("V(r) must return an array of same shape as r.")
+
+    # We solve on points 0..n-2 and impose psi(r_max)=0 separately.
+    N = n - 1
+    H = np.zeros((N, N), dtype=float)
+
+    # Origin row: regularity psi'(0)=0
+    # Radial Laplacian at r=0 for a regular function:
+    #   (1/r) d/dr (r dpsi/dr) |_{r=0} = 4 (psi1 - psi0) / dr^2
+    H[0, 0] = 2.0 / (m * dr ** 2) + Vr[0]
+    H[0, 1] = -2.0 / (m * dr ** 2)
+
+    # Interior rows, using flux form
+    for i in range(1, N):
+        ri = r[i]
+        r_imh = ri - 0.5 * dr
+        r_iph = ri + 0.5 * dr
+
+        c_minus = -r_imh / (2.0 * m * ri * dr ** 2)
+        c_plus = -r_iph / (2.0 * m * ri * dr ** 2)
+        c_diag = (r_imh + r_iph) / (2.0 * m * ri * dr ** 2) + Vr[i]
+
+        if i - 1 >= 0:
+            H[i, i - 1] = c_minus
+        H[i, i] = c_diag
+        if i + 1 < N:
+            H[i, i + 1] = c_plus
+        # if i+1 == N, that neighbor is psi(r_max)=0, so nothing to add
+
+    # Solve
+    evals, evecs = np.linalg.eig(H)
+    evals = np.real(evals)
+    evecs = np.real(evecs)
+
+    k0 = np.argmin(evals)
+    E0 = evals[k0]
+    psi_inner = evecs[:, k0]
+
+    # Extend to full grid with psi(r_max)=0
+    psi0 = np.zeros(n, dtype=float)
+    psi0[:-1] = psi_inner
+    psi0[-1] = 0.0
+
+    # Fix sign
+    idx = np.argmax(np.abs(psi0))
+    if psi0[idx] < 0:
+        psi0 = -psi0
+
+    # Normalize in radial measure
+    norm = np.sqrt(np.trapz(np.abs(psi0) ** 2 * r, r))
+    psi0 /= norm
+
+    return r, E0, psi0, H
+
+
+# %%
+import numpy as np
+import matplotlib.pyplot as plt
+
+
+# --- use the function from before ---
+# ground_state_2d_radial_polar(r_max, V, m, n)
+
+
+# Parameters
+m = 1.0
+omega = 1.0
+r_max = 8.0
+n = 2000
+
+# Harmonic potential
+def V_ho(r):
+    return 0.5 * m * omega**2 * r**2
+
+# Numerical solution
+r, E0_num, psi0_num, H = ground_state_2d_radial_polar(r_max, V_ho, m, n)
+
+# Exact solution
+E0_exact = omega
+psi0_exact = np.sqrt(2 * m * omega) * np.exp(-0.5 * m * omega * r**2)
+
+# Compare energies
+print(f"Numerical E0 = {E0_num:.10f}")
+print(f"Exact     E0 = {E0_exact:.10f}")
+print(f"Absolute error = {abs(E0_num - E0_exact):.3e}")
+
+# Compare wavefunctions
+# Since eigenvectors are defined up to an overall sign, align sign if needed
+if np.dot(psi0_num, psi0_exact) < 0:
+    psi0_num = -psi0_num
+
+# L2-like grid error for the radial normalization measure
+wavefunc_error = np.sqrt(np.trapezoid((psi0_num - psi0_exact)**2 * r, r))
+print(f"Wavefunction error = {wavefunc_error:.3e}")
+
+# Plot
+plt.figure(figsize=(8, 5))
+plt.plot(r, psi0_num, label="Numerical $\\psi_0(r)$")
+plt.plot(r, psi0_exact, "--", label="Exact $\\psi_0(r)$")
+plt.xlabel("r")
+plt.ylabel("$\\psi_0(r)$")
+plt.title("2D Harmonic Oscillator Ground State")
+plt.legend()
+plt.grid(True)
+plt.show()

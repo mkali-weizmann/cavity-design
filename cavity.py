@@ -1493,18 +1493,17 @@ class FlatRefractiveSurface(FlatSurface, RefractiveSurface):
         self.n_2 = n_2
 
     def ABCD_matrix(self, cos_theta_incoming: Union[float, np.ndarray] = None) -> np.ndarray:
-        # Note ! this code assumes the ray is in the x-y plane! Until it is fixed, the only perturbations in x,y,phi should be calculated!
+        # Note \! this code assumes the ray is in the x\-y plane\! Until it is fixed, the only perturbations in x,y,phi should be calculated\!
+        cos_theta_incoming = np.asarray(cos_theta_incoming)
         sin_theta_incoming = np.sqrt(1 - cos_theta_incoming**2)
         sin_theta_outgoing = (self.n_1 / self.n_2) * sin_theta_incoming
         cos_theta_outgoing = stable_sqrt(1 - sin_theta_outgoing**2)
-        return np.array(
-            [
-                [1, 0, 0, 0],
-                [0, self.n_1 / self.n_2, 0, 0],
-                [0, 0, cos_theta_outgoing / cos_theta_incoming, 0],
-                [0, 0, 0, (self.n_1 * cos_theta_incoming) / (self.n_2 * cos_theta_outgoing)],
-            ]
-        )
+        mat = np.zeros(cos_theta_incoming.shape + (4, 4), dtype=cos_theta_outgoing.dtype)
+        mat[..., 0, 0] = 1
+        mat[..., 1, 1] = self.n_1 / self.n_2
+        mat[..., 2, 2] = cos_theta_outgoing / cos_theta_incoming
+        mat[..., 3, 3] = (self.n_1 * cos_theta_incoming) / (self.n_2 * cos_theta_outgoing)
+        return mat
 
 
 class IdealLens(FlatSurface, PhysicalSurface):
