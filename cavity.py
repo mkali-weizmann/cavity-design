@@ -780,6 +780,7 @@ class Surface:
                 n_2=p.n_inside_or_after,
                 material_properties=p.material_properties,
                 polynomial_coefficients=p.polynomial_coefficients,
+                curvature_sign=p.curvature_sign
             )
         elif p.surface_type == SurfacesTypes.thick_aspheric_lens:
             return generate_aspheric_lens_from_params(p)
@@ -839,6 +840,8 @@ class Surface:
             n_1 = self.n_1
             n_2 = self.n_2
             curvature_sign = self.curvature_sign
+            r_1 = self.radius
+            r_2 = np.nan
         else:
             raise ValueError(f"Unknown surface type {type(self)}")
         if isinstance(self, AsphericSurface):
@@ -1278,6 +1281,45 @@ class AsphericRefractiveSurface(AsphericSurface, RefractiveSurface):
     def thermal_transformation(self, P_laser_power: float, w_spot_size: float, **kwargs):
         raise NotImplementedError
 
+    @staticmethod
+    def pseudo_spherical(radius: float,
+                         center: np.ndarray,
+                         outwards_normal: np.ndarray,
+                         polynomial_coefficients: Union[Polynomial, np.ndarray, List[float]],  # a0, a2, a4...
+                         n_1: float,
+                         n_2: float,
+                         name: Optional[str] = None,
+                         diameter: Optional[float] = None,
+                         curvature_sign: int = CurvatureSigns.concave,  # With respect to the incoming beam.
+                         material_properties: MaterialProperties = None,
+                         **kwargs,
+                         ):
+        base_polynomial_coefficients = np.array([0, 1/(2 * radius), 1/(8*radius**3), 1/(16*radius**5), 5/(128*radius**7), 7/(256*radius**9)])
+        # pad polynomial_coefficients to be the same length as base_polynomial_coefficients, if it is longer, trim it ad ad a warning:
+        if isinstance(polynomial_coefficients, Polynomial):
+            polynomial_coefficients_array = polynomial_coefficients.coef
+        else:
+            polynomial_coefficients_array = np.array(polynomial_coefficients)
+        if len(polynomial_coefficients_array) > len(base_polynomial_coefficients):
+            warnings.warn("Polynomial coefficients are longer than the base polynomial coefficients, trimming them.")
+            polynomial_coefficients_array = polynomial_coefficients_array[:len(base_polynomial_coefficients)]
+        elif len(polynomial_coefficients_array) < len(base_polynomial_coefficients):
+            polynomial_coefficients_array = np.pad(polynomial_coefficients_array, (0, len(base_polynomial_coefficients) - len(polynomial_coefficients_array)), mode='constant')
+        final_polynomial_coefficients = base_polynomial_coefficients + polynomial_coefficients_array
+        return AsphericRefractiveSurface(
+            center=center,
+            outwards_normal=outwards_normal,
+            polynomial_coefficients=final_polynomial_coefficients,
+            name=name,
+            diameter=diameter,
+            material_properties=material_properties,
+            n_1=n_1,
+            n_2=n_2,
+            curvature_sign=curvature_sign,
+            **kwargs,
+        )
+
+
 
 class FlatSurface(Surface):
     def __init__(
@@ -1310,6 +1352,8 @@ class FlatSurface(Surface):
         return intersection_point
 
     def find_intersection_with_ray_paraxial(self, ray: Ray) -> np.ndarray:
+        if ray.k_vector.ndim > 1:
+            raise NotImplementedError("function is not yet implemented for multiple rays, consider using non-paraxial ray tracing")
         # Notes are available here: https://mynotebook.labarchives.com/MTM3NjE3My41fDEwNTg1OTUvMTA1ODU5NS9Ob3RlYm9vay8zMjQzMzA0MzY1fDM0OTMzNjMuNQ==/page/11290221-36
         cos_theta = self.outwards_normal @ ray.k_vector
         if cos_theta > 0:
@@ -2258,11 +2302,21 @@ class Arm:
     def mode_parameters_on_surfaces(self):
         return [self.mode_parameters_on_surface_0, self.mode_parameters_on_surface_1]
 
-    def calculate_incidence_angle(self, surface_index: int) -> float:
-
+    def calculate_incidence_angle(self, surface_index: int, NA: Optional[float] = None) -> float:
+        if NA is None:
+            mode_parameters = self.mode_parameters
+        else:
+            z_R = z_R_of_NA(NA=NA, lambda_laser=self.lambda_0_laser)
+            mode_parameters = ModeParameters(center=self.mode_parameters.center,
+                                             k_vector=self.mode_parameters.k_vector,
+                                             lambda_0_laser=self.mode_parameters.lambda_0_laser,
+                                             z_R=np.array([z_R, z_R]),
+                                             n=self.mode_parameters.n,
+                                             principle_axes=self.mode_parameters.principle_axes,
+                                             )
         return calculate_incidence_angle(
             surface=self.surfaces[surface_index],
-            mode_parameters=self.mode_parameters,
+            mode_parameters=mode_parameters,
         )
 
     def specs(self):
@@ -4979,7 +5033,7 @@ def find_equal_angles_surface(
             central_line=Ray(
                 origin=surface_0.center,
                 k_vector=normalize_vector(second_surface.center - surface_0.center),
-                length=np.linalg.norm(second_surface.center - surface_0.center),
+                length=float(np.linalg.norm(second_surface.center - surface_0.center)),
             ),
             mode_parameters_on_surface_0=mode_parameters_right_after_surface_0,
         )
@@ -5605,7 +5659,7 @@ def optical_system_to_cavity_completion(
     else:
         end_mirror = CurvedMirror(radius=end_mirror_ROC,
                                   outwards_normal = optical_axis,
-                                  center = last_surface + end_mirror_distance_to_last_element * optical_axis,
+                                  center = last_surface.center + end_mirror_distance_to_last_element * optical_axis,
                                   curvature_sign=CurvatureSigns.concave,
                                   **end_mirror_kwargs
                                   )
@@ -5662,6 +5716,7 @@ def generate_mirror_lens_mirror_cavity_textual_summary(
     minimal_h_divided_by_spot_size: float = 2.5,
     set_h_instead_of_w: bool = True,
     left_mirror_is_first=True,
+    NA_angles: Optional[float] = None,
 ):
     if left_mirror_is_first:
         small_mirror_index = 0
@@ -5685,6 +5740,17 @@ def generate_mirror_lens_mirror_cavity_textual_summary(
     R_short_side = cavity.surfaces_ordered[lens_short_arm_surface_index].radius
     R_long_side = cavity.surfaces_ordered[lens_long_arm_surface_index].radius
     # try: # I should add a non-existent mode and initialize it with np.nan when there is no mode instead of this solution.
+    if NA_angles is not None:
+        marginal_ray = Ray(origin=cavity.surfaces[0].origin,
+                           k_vector=np.array([np.sqrt(1 - NA_angles ** 2), NA_angles, 0]), n=1)
+        marginal_ray_propagated = cavity.propagate_ray(ray=marginal_ray, n_arms=3,
+                                                       propagate_with_first_surface_first=False)
+        angle_left = np.arccos(np.abs(
+            cavity.surfaces[1].normal_at_a_point(marginal_ray_propagated[1].origin) @ marginal_ray_propagated[
+                0].k_vector)) * 360 / (2 * np.pi)
+        angle_right = np.arccos(np.abs(
+            cavity.surfaces[2].normal_at_a_point(marginal_ray_propagated[2].origin) @ marginal_ray_propagated[
+                2].k_vector)) * 360 / (2 * np.pi)
     valid_mode = cavity.resonating_mode_successfully_traced
     if valid_mode:
         spot_size_lens_long_side = (
@@ -5697,18 +5763,19 @@ def generate_mirror_lens_mirror_cavity_textual_summary(
             cavity.surfaces_ordered[lens_short_arm_surface_index].center[0]
             - cavity.mode_parameters[short_arm_index].center[0, 0]
         )
-        if not isinstance(cavity.surfaces[1], AsphericSurface):
-            angle_left = cavity.arms[short_arm_index].calculate_incidence_angle(
-                surface_index=lens_long_arm_surface_in_arm_index
-            )
-        else:
-            angle_left = np.nan
-        if not isinstance(cavity.surfaces[2], AsphericSurface):
-            angle_right = cavity.arms[long_arm_index].calculate_incidence_angle(
-                surface_index=lens_short_arm_surface_in_arm_index
-            )
-        else:
-            angle_right = np.nan
+        if NA_angles is None:
+            if not isinstance(cavity.surfaces[1], AsphericSurface):
+                angle_left = cavity.arms[short_arm_index].calculate_incidence_angle(
+                    surface_index=lens_long_arm_surface_in_arm_index
+                )
+            else:
+                angle_left = np.nan
+            if not isinstance(cavity.surfaces[2], AsphericSurface):
+                angle_right = cavity.arms[long_arm_index].calculate_incidence_angle(
+                    surface_index=lens_short_arm_surface_in_arm_index
+                )
+            else:
+                angle_right = np.nan
         spot_size_left_mirror = (
             cavity.arms[short_arm_index].mode_parameters_on_surfaces[lens_short_arm_surface_in_arm_index].spot_size[0]
         )
@@ -5813,14 +5880,13 @@ def plot_mirror_lens_mirror_cavity_analysis(
     ax: Optional[plt.Axes] = None,
     add_unheated_cavity: Union[bool, Cavity] = False,
     left_mirror_is_first=True,
+    NA_angles: Optional[float] = None,
     **kwargs,
 ):
     if left_mirror_is_first is False:
         raise NotImplementedError
     # Assumes: surfaces[0] is the left mirror, surfaces[1] is the lens_left side, surfaces[2] is the lens_right side,
     # surfaces[3] is the right mirror.
-    R_left = cavity.surfaces_ordered[1].radius
-    T_c = np.linalg.norm(cavity.surfaces_ordered[2].center - cavity.surfaces_ordered[1].center)
     x_left_mirror = cavity.surfaces_ordered[0].center[0]
 
     assert ax is None or add_unheated_cavity is False, "Can't add unheated cavity when ax is given"
@@ -5841,6 +5907,7 @@ def plot_mirror_lens_mirror_cavity_analysis(
         T_edge=T_edge,
         minimal_h_divided_by_spot_size=minimal_h_divided_by_spot_size,
         set_h_instead_of_w=set_h_instead_of_w,
+        NA_angles=NA_angles,
     )
 
     ax[0].set_title(textual_summary)

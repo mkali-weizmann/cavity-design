@@ -150,16 +150,16 @@ class MaterialProperties:
     def __repr__(self):
         return (
             f"MaterialProperties("
-            f"refractive_index={pretty_print_number(self.refractive_index)}, "
-            f"alpha_expansion={pretty_print_number(self.alpha_expansion)}, "
-            f"beta_surface_absorption={pretty_print_number(self.beta_surface_absorption)}, "
-            f"kappa_conductivity={pretty_print_number(self.kappa_conductivity)}, "
-            f"dn_dT={pretty_print_number(self.dn_dT)}, "
-            f"nu_poisson_ratio={pretty_print_number(self.nu_poisson_ratio)}, "
-            f"alpha_volume_absorption={pretty_print_number(self.alpha_volume_absorption)}, "
-            f"intensity_reflectivity={pretty_print_number(self.intensity_reflectivity)}, "
-            f"intensity_transmittance={pretty_print_number(self.intensity_transmittance)}, "
-            f"temperature={pretty_print_number(self.temperature)})"
+            f"refractive_index={pretty_str_number(self.refractive_index)}, "
+            f"alpha_expansion={pretty_str_number(self.alpha_expansion)}, "
+            f"beta_surface_absorption={pretty_str_number(self.beta_surface_absorption)}, "
+            f"kappa_conductivity={pretty_str_number(self.kappa_conductivity)}, "
+            f"dn_dT={pretty_str_number(self.dn_dT)}, "
+            f"nu_poisson_ratio={pretty_str_number(self.nu_poisson_ratio)}, "
+            f"alpha_volume_absorption={pretty_str_number(self.alpha_volume_absorption)}, "
+            f"intensity_reflectivity={pretty_str_number(self.intensity_reflectivity)}, "
+            f"intensity_transmittance={pretty_str_number(self.intensity_transmittance)}, "
+            f"temperature={pretty_str_number(self.temperature)})"
         )
 
     @property
@@ -298,20 +298,20 @@ class OpticalElementParams:
             f"OpticalElementParams("
             f"name={name_string},"
             f"surface_type={surface_type_string}, "
-            f"x={pretty_print_number(self.x)}, "
-            f"y={pretty_print_number(self.y)}, "
-            f"z={pretty_print_number(self.z)}, "
-            f"theta={pretty_print_number(self.theta, represents_angle=True)}, "
-            f"phi={pretty_print_number(self.phi, represents_angle=True)}, "
-            f"r_1={pretty_print_number(self.r_1)}, "
-            f"r_2={pretty_print_number(self.r_2)}, "
+            f"x={pretty_str_number(self.x)}, "
+            f"y={pretty_str_number(self.y)}, "
+            f"z={pretty_str_number(self.z)}, "
+            f"theta={pretty_str_number(self.theta, represents_angle=True)}, "
+            f"phi={pretty_str_number(self.phi, represents_angle=True)}, "
+            f"r_1={pretty_str_number(self.r_1)}, "
+            f"r_2={pretty_str_number(self.r_2)}, "
             f"curvature_sign={curvature_sign_string}, "
-            f"T_c={pretty_print_number(self.T_c)}, "
-            f"n_inside_or_after={pretty_print_number(self.n_inside_or_after)}, "
-            f"n_outside_or_before={pretty_print_number(self.n_outside_or_before)}, "
-            f"diameter={pretty_print_number(self.diameter)}, "
+            f"T_c={pretty_str_number(self.T_c)}, "
+            f"n_inside_or_after={pretty_str_number(self.n_inside_or_after)}, "
+            f"n_outside_or_before={pretty_str_number(self.n_outside_or_before)}, "
+            f"diameter={pretty_str_number(self.diameter)}, "
             f"material_properties={self.material_properties}, "
-            f"polynomial_coefficients={self.polynomial_coefficients})"
+            f"polynomial_coefficients={pretty_str_array(self.polynomial_coefficients)})"
         )
 
     @property
@@ -451,20 +451,20 @@ class PerturbationPointer:
         setattr(params[self.element_index], self.parameter_name, new_value)
 
 
+def pretty_str_array(array: Optional[np.ndarray]) -> Optional[str]:
+    if array is None:
+        return None
+    s = f"np.{array=}".replace("array=", "").replace("nan", "np.nan").replace("\n", "").replace("],", "],\n").replace(",        ", ", ").replace(",      ", ", ").replace("       [", "          [")
+    return s
+
 def pretty_print_array(array: np.ndarray):
     # Prints an array in a way that can be copy-pasted into the code.
     print(
-        f"np.{array=}".replace("array=", "")
-        .replace("nan", "np.nan")
-        .replace("\n", "")
-        .replace("],", "],\n")
-        .replace(",        ", ", ")
-        .replace(",      ", ", ")
-        .replace("       [", "          [")
+        pretty_str_array(array)
     )
 
 
-def pretty_print_number(number: Optional[float], represents_angle: bool = False):
+def pretty_str_number(number: Optional[float], represents_angle: bool = False):
     if number is None:
         pre_padded = "None"
     elif np.isnan(number):
