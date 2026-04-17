@@ -3172,6 +3172,8 @@ class Cavity(OpticalSystem):
         if set_central_line:
             self.set_central_line()
         if set_mode_parameters:
+            if self.lambda_0_laser is None:
+                raise ValueError('Can not set mode parameters without defining the wavelength. set self.lambda_0_laser')
             self.set_mode_parameters(
                 mode_parameters_first_arm=initial_mode_parameters,
                 local_mode_parameters_first_surface=initial_local_mode_parameters,
@@ -4148,6 +4150,8 @@ class Cavity(OpticalSystem):
         ax2.set_title("Lorentzian Function - Reverse Frequency")
 
         plt.tight_layout()
+
+    # def calculate_eigenstates
 
 
 def generate_tolerance_of_NA(

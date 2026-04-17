@@ -1,10 +1,11 @@
+import numpy as np
 from scipy.linalg import eigh_tridiagonal
 from scipy.optimize import newton
 from functools import reduce
 
 from cavity import *
 from matplotlib.lines import Line2D
-
+H_BAR =  1.0545718e-34
 
 # %%
 def initialize_rays(
@@ -525,15 +526,17 @@ def generate_negative_lens_cavity_smart(
         cavity,
     )
 
-
 def analyze_output_wavefront(
     ray_sequence: RaySequence,
     unconcentricity: Optional[float] = None,
     end_mirror_center: Optional[float] = None,
     R_output_analytical: Optional[float] = None,
     end_mirror_ROC: Optional[float] = None,
+    potential_horizontal_axis_in_angles: bool = False,  # Alternative is in transverse coordinates [meters].
     print_tests: bool = True,
 ):
+    if potential_horizontal_axis_in_angles:
+        potential_horizontal_array = np.arcsin(ray_sequence[0].k_vector[..., 1])
     output_ray = ray_sequence[-1]
     optical_axis = output_ray.k_vector[..., 0, :]
     # Extract all wavefront features at the output surface of the lens.
@@ -566,9 +569,12 @@ def analyze_output_wavefront(
     residual_distances_initial = np.abs(R_output) - np.linalg.norm(
         wavefront_points_initial - center_of_curvature, axis=-1
     )
+
     polynomial_residuals_initial = Polynomial.fit(
-        wavefront_points_initial[:, 1] ** 2, residual_distances_initial, 4
+        (potential_horizontal_array if potential_horizontal_axis_in_angles else wavefront_points_initial[:, 1]) ** 2,
+        residual_distances_initial, 4
     ).convert()
+
     if print_tests:
         print(
             f"Initial wavefront residual from fitted sphere. 2nd order term should be singificantly smaller than 1/(2*R_output) = {1 / (2 * R_output):.3e}, actual: {polynomial_residuals_initial.coef[1]:.3e}"
@@ -592,7 +598,7 @@ def analyze_output_wavefront(
         -relative_optical_path_length - R_output + end_mirror_ROC - unconcentricity, optical_path_length=True
     )  # R_output is in minus because for converging wavefront it is negative, and so to step forwards we want to subtract it.
 
-    R_opposite = end_mirror_ROC - unconcentricity  # negative because at this point the beam is diverging.
+    R_opposite = end_mirror_ROC - unconcentricity  # positive because at this point the beam is diverging.
     R_opposite_numerical, center_of_curvature_opposite_numerical = extract_matching_sphere(
         wavefront_points_opposite[..., 0, :], wavefront_points_opposite[..., 1, :], optical_axis
     )  # Should be the same as the original center of curvature
@@ -611,7 +617,7 @@ def analyze_output_wavefront(
         wavefront_points_opposite - center_of_curvature, axis=-1
     )
     polynomial_residuals_opposite = Polynomial.fit(
-        wavefront_points_opposite[:, 1] ** 2, residual_distances_opposite, 6
+        (potential_horizontal_array if potential_horizontal_axis_in_angles else wavefront_points_opposite[:, 1]) ** 2, residual_distances_opposite, 6
     ).convert()
 
     # Analyze unconcentric mirror case:
@@ -619,7 +625,7 @@ def analyze_output_wavefront(
         wavefront_points_opposite - end_mirror_origin, axis=-1
     )  # Mirror has a radius of R_output, not R_opposite.
     polynomial_residuals_mirror = Polynomial.fit(
-        wavefront_points_opposite[:, 1] ** 2, residual_distances_mirror, 6
+        (potential_horizontal_array if potential_horizontal_axis_in_angles else wavefront_points_opposite[:, 1]) ** 2, residual_distances_mirror, 6
     ).convert()
     if print_tests:
         a_2_ray_tracing_fit = polynomial_residuals_mirror.coef[1]
@@ -629,18 +635,6 @@ def analyze_output_wavefront(
         print(
             f"Unconcentric mirror case - 2nd order term from ray tracing fit: {a_2_ray_tracing_fit:.3e}, analytical: {a_2_analytical:.3e}, numerical from first two points: {a_2_ray_tracing_diff:.3e}"
         )
-    # Generate dummy points for fitted spheres (used only for plotting, not for calculations):
-    points_rel = wavefront_points_initial - center_of_curvature
-    phi_dummy = np.linspace(0, np.arctan(points_rel[-1, 1] / points_rel[-1, 0]), wavefront_points_initial.shape[0])
-    dummy_points_curvature_initial = center_of_curvature + R_output * np.stack(
-        (np.cos(phi_dummy), np.sin(phi_dummy), np.zeros_like(phi_dummy)), axis=-1
-    )
-    dummy_points_curvature_opposite = center_of_curvature - R_opposite * np.stack(  # R_opposite is negative
-        (np.cos(phi_dummy), np.sin(phi_dummy), np.zeros_like(phi_dummy)), axis=-1
-    )
-    dummy_points_mirror = end_mirror_origin + end_mirror_ROC * np.stack(
-        (np.cos(phi_dummy), np.sin(phi_dummy), np.zeros_like(phi_dummy)), axis=-1
-    )  # Mirror has the radius of the original wavefront sphere, but centered at the shifted center.
 
     L_long_arm = -R_output + end_mirror_ROC - unconcentricity
     assert (
@@ -648,8 +642,8 @@ def analyze_output_wavefront(
     ), f"Long arm length should be positive, but got {L_long_arm:.3e} m. Try increasing end mirror ROC. The default end mirror ROC works only for output converging wavefront"
     end_mirror_object = CurvedMirror(
         radius=end_mirror_ROC,
-        outwards_normal=RIGHT,
-        center=end_mirror_origin + end_mirror_ROC * RIGHT,
+        outwards_normal=optical_axis,
+        center=end_mirror_origin + end_mirror_ROC * optical_axis,
         curvature_sign=CurvatureSigns.concave,
         name="big mirror",
     )
@@ -667,19 +661,17 @@ def analyze_output_wavefront(
         "wavefront_points_initial": wavefront_points_initial,
         "R_output": R_output,
         "center_of_curvature": center_of_curvature,
-        "dummy_points_curvature_initial": dummy_points_curvature_initial,
         "residual_distances_initial": residual_distances_initial,
         "polynomial_residuals_initial": polynomial_residuals_initial,
         "R_opposite": R_opposite,
         "wavefront_points_opposite": wavefront_points_opposite,
-        "dummy_points_curvature_opposite": dummy_points_curvature_opposite,
-        "dummy_points_mirror": dummy_points_mirror,
         "residual_distances_opposite": residual_distances_opposite,
         "residual_distances_mirror": residual_distances_mirror,
         "polynomial_residuals_opposite": polynomial_residuals_opposite,
         "polynomial_residuals_mirror": polynomial_residuals_mirror,
         "zero_derivative_points": zero_derivative_points,
         "end_mirror_object": end_mirror_object,
+        "potential_horizontal_axis_in_angles": potential_horizontal_axis_in_angles,
     }
 
     return results_dict
@@ -743,7 +735,7 @@ def analyze_potential(
     return results_dict
 
 
-def analyze_potential_given_cavity(cavity: Cavity, n_rays: int, phi_max: float, print_tests: bool = True):
+def analyze_potential_given_cavity(cavity: Cavity, n_rays: int, phi_max: float, print_tests: bool = True, potential_horizontal_axis_in_angles: bool = False):
     # assert np.all(
     #     np.isclose(cavity.surfaces[0].origin, ORIGIN)
     # ), "Currently assumes the center of the small mirror is at the origin for the extraction of the Analytical R. probably it will work otherwise, but needs to be debugged"  #
@@ -765,7 +757,7 @@ def analyze_potential_given_cavity(cavity: Cavity, n_rays: int, phi_max: float, 
         R_analytical = optical_system_reduced.output_radius_of_curvature(source_position=first_mirror.origin)
     if ray_sequence_cleaned.origin.shape[1] == 1:
         raise ValueError(
-            "All rays escaped the system, cannot analyze wavefront. Try increasing the number of rays or the maximum angle phi_max."
+            "All rays escaped the system, cannot analyze wavefront. Try increasing the number of rays or reduce the maximum angle phi_max."
         )
     results_dict = analyze_output_wavefront(
         ray_sequence=ray_sequence_cleaned,
@@ -773,6 +765,7 @@ def analyze_potential_given_cavity(cavity: Cavity, n_rays: int, phi_max: float, 
         end_mirror_center=cavity.physical_surfaces[-1].center,
         end_mirror_ROC=cavity.physical_surfaces[-1].radius,
         print_tests=print_tests,
+        potential_horizontal_axis_in_angles=potential_horizontal_axis_in_angles,
     )
     results_dict["optical_system"] = optical_system_reduced
     results_dict["cavity"] = cavity
@@ -789,7 +782,7 @@ def analyze_potential_given_cavity(cavity: Cavity, n_rays: int, phi_max: float, 
 
 def plot_results(
     results_dict,
-    far_away_plane: bool = False,
+    far_away_plane: bool = True,
     unconcentricity: Optional[float] = None,
     potential_x_axis_angles: bool = False,
     rays_labels: Optional[List[str]] = None,
@@ -845,7 +838,6 @@ def plot_results(
         ray_sequence.origin[0, 0, 0] - 0.01, results_dict["end_mirror_object"].center[0] + 0.01
     )  # (-1e-3, 100e-3)
     ax[1].set_ylim(-5e-3, 5e-3)  # surface_1.diameter / 2, surface_1.diameter / 2
-    ax[1].grid()
     ax[1].scatter(wavefront_points[:, 0], wavefront_points[:, 1], s=8, color="purple")
     ax[1].scatter(center_of_curvature[0], center_of_curvature[1], s=20, color="cyan", label="Center of curvature")
     if plot_final_arm_backwards_rays:
@@ -1053,24 +1045,33 @@ def hessian_ABCD_matrices(cavity: Cavity, n_rays: int = 30, phi_max: float = 0.0
     hessian = -(output_ROC - optical_system_inverted_reduced.surfaces[-1].radius) / (output_ROC * optical_system_inverted_reduced.surfaces[-1].radius)
     return hessian
 
+def hessian(cavity: Cavity, n_rays: int = 30, phi_max: float = 0.02, normalize: bool = True, method: str = 'ABCD_matrices'):
+    if method == 'ray_tracing':
+        hessian_value = hessian_ray_tracing(cavity=cavity, n_rays=n_rays, phi_max=phi_max)
+    elif method == 'ABCD_matrices':
+        hessian_value = hessian_ABCD_matrices(cavity=cavity, n_rays=n_rays, phi_max=phi_max)
+    else:
+        raise ValueError(f'Invalid method: {method}')
+    if normalize:
+        jacobian = mirrors_jacobian(cavity=cavity)
+        hessian_value = hessian_value * jacobian ** 2
+    return hessian_value
+
+
 def energy_level(cavity: Cavity, hessian_method: str = 'ABCD_matrices'):
     # Corresponds to equations  eq: potential scaling - fixed mode width and eq:potential scaling - general (commented out here) in my notes.
-    if hessian_method == 'ray_tracing':
-        hessian = hessian_ray_tracing(cavity=cavity, n_rays = 1)[0, 0]
-    elif hessian_method == 'ABCD_matrices':
-        hessian = hessian_ABCD_matrices(cavity=cavity, n_rays = 1)[0, 0]
-    else:
-        raise ValueError(f'Invalid hessian method: {hessian_method}')
+    hessian_normalized = hessian(cavity=cavity, n_rays = 1, normalize=True, method=hessian_method)[0, 0]
     # The energy level of the mode is proportional to the square root of the product of the two eigenvalues of the Hessian matrix.
     spot_size_end = cavity.arms[len(cavity.arms) // 2].mode_parameters_on_surface_0.spot_size[0]
     results_dict = analyze_potential_given_cavity(cavity=cavity, n_rays = 10, phi_max = 0.01, print_tests=False)
-    potential_quadratic_coefficient = results_dict['polynomial_residuals_mirror'].coef[1]  # it is a polynomial of x**2, so quadratic term is the second term in the array
-    jacobian = mirrors_jacobian(cavity=cavity)
+    # potential_quadratic_coefficient = results_dict['polynomial_residuals_mirror'].coef[1]  # it is a polynomial of x**2, so quadratic term is the second term in the array
+    # hessian_value = hessian(cavity=cavity, n_rays = 1, normalize=False, method=hessian_method)[0, 0]
+    # jacobian = mirrors_jacobian(cavity=cavity)
     # potential_quadratic_coefficient_normalized = potential_quadratic_coefficient * jacobian
-    hessian_normalized = hessian * jacobian**2
+    # hessian_normalized = hessian_value * jacobian ** 2
     energy_level_hessian_only = cavity.lambda_0_laser ** 2 / (2 * np.pi ** 2 * spot_size_end**2 * hessian_normalized)
-    energy_level_hessian_and_potential = np.sqrt(potential_quadratic_coefficient / (-2 * hessian_normalized)) * cavity.lambda_0_laser / np.pi
-    energy_level_spot_size_and_potential = potential_quadratic_coefficient * spot_size_end**2
+    # energy_level_hessian_and_potential = np.sqrt(potential_quadratic_coefficient / (-2 * hessian_normalized)) * cavity.lambda_0_laser / np.pi
+    # energy_level_spot_size_and_potential = potential_quadratic_coefficient * spot_size_end**2
     return energy_level_hessian_only  # , energy_level_hessian_and_potential
 
 def mirrors_jacobian(cavity: Cavity):
@@ -1086,6 +1087,28 @@ def mirrors_jacobian(cavity: Cavity):
     landing_point_parameterization = cavity.surfaces[-1].get_parameterization(landing_point)[1]
     jacobian = dp / landing_point_parameterization
     return jacobian
+
+def solve_cavity_eigenstate(cavity: Cavity, results_dict: Optional[dict] = None, n_rays: int = 1000, phi_max: float = 0.3):
+    # Assumes cylindrical symmetry
+    if results_dict is None:
+        results_dict = analyze_potential_given_cavity(cavity=cavity, n_rays=n_rays, phi_max=phi_max, print_tests=False, potential_horizontal_axis_in_angles=True)
+    else: assert results_dict['potential_horizontal_axis_in_angles'], 'Potential must be in angles'
+    # mirror_intersection_points = cavity.surfaces[-1].find_intersection_with_ray_exact(results_dict['ray_sequence'][-1])
+    mirror_deviation_polynomial = results_dict['polynomial_residuals_mirror']
+    hessian_value = hessian(cavity=cavity, n_rays = 1, phi_max=0,)[0, 0]
+    m = 1  # arbitrary.
+    k = 2 * np.pi / cavity.lambda_0_laser
+    V_potential = lambda t: -(k * H_BAR) ** 2 * np.abs(hessian_value) * mirror_deviation_polynomial(t) / m
+    r_max = phi_max # cavity.surfaces[-1].get_parameterization(mirror_intersection_points[-1])  # ATTENTION: I need to think weather this solution is the solution in the original linspaced coordinates or in the final distorted coordinates.
+    n = 1000
+    r, E0, psi0, H = ground_state_2d_radial_polar(r_max=r_max, V=V_potential, m=m, n=n)
+    # %% DELETE ME
+    omega = np.sqrt(2 / m * (k*H_BAR)**2 * np.abs(hessian_value) * mirror_deviation_polynomial.coef[1])
+    print(f"width_analytical = {np.sqrt(2 * H_BAR / (m * omega))}")
+    # E0_analytical = H_BAR * omega / 2
+    E_0, r_grid, psi_0 = solve_2d_direct_ground_state(V=V_potential, m=m, h_bar=H_BAR, r_max=r_max, N=n)
+    return r, E0, psi0, H
+
 
 def ground_state_2d_radial_polar(r_max: float,
                                  V: Union[Callable, np.ndarray],
@@ -1128,8 +1151,8 @@ def ground_state_2d_radial_polar(r_max: float,
     # Origin row: regularity psi'(0)=0
     # Radial Laplacian at r=0 for a regular function:
     #   (1/r) d/dr (r dpsi/dr) |_{r=0} = 4 (psi1 - psi0) / dr^2
-    H[0, 0] = 2.0 / (m * dr ** 2) + Vr[0]
-    H[0, 1] = -2.0 / (m * dr ** 2)
+    H[0, 0] = 2.0 * H_BAR**2 / (m * dr ** 2) + Vr[0]
+    H[0, 1] = -2.0 * H_BAR**2 / (m * dr ** 2)
 
     # Interior rows, using flux form
     for i in range(1, N):
@@ -1137,9 +1160,9 @@ def ground_state_2d_radial_polar(r_max: float,
         r_imh = ri - 0.5 * dr
         r_iph = ri + 0.5 * dr
 
-        c_minus = -r_imh / (2.0 * m * ri * dr ** 2)
-        c_plus = -r_iph / (2.0 * m * ri * dr ** 2)
-        c_diag = (r_imh + r_iph) / (2.0 * m * ri * dr ** 2) + Vr[i]
+        c_minus = -r_imh * H_BAR**2 / (2.0 * m * ri * dr ** 2)
+        c_plus = -r_iph * H_BAR**2 / (2.0 * m * ri * dr ** 2)
+        c_diag = (r_imh + r_iph) * H_BAR**2 / (2.0 * m * ri * dr ** 2) + Vr[i]
 
         if i - 1 >= 0:
             H[i, i - 1] = c_minus
@@ -1168,59 +1191,65 @@ def ground_state_2d_radial_polar(r_max: float,
         psi0 = -psi0
 
     # Normalize in radial measure
-    norm = np.sqrt(np.trapz(np.abs(psi0) ** 2 * r, r))
+    norm = np.sqrt(np.trapezoid(np.abs(psi0) ** 2 * r, r))
     psi0 /= norm
 
     return r, E0, psi0, H
 
 
 # %%
-import numpy as np
+from scipy.sparse import lil_matrix
+from scipy.sparse.linalg import eigs
 import matplotlib.pyplot as plt
 
 
-# --- use the function from before ---
-# ground_state_2d_radial_polar(r_max, V, m, n)
+def solve_2d_direct_ground_state(V, m, h_bar, r_max, N=2000):
+    """
+    Solves the 2D radial Schrödinger equation directly for psi(r).
+    """
+    dr = r_max / N
+    # Grid goes from r=0 to r_max-dr. We assume psi(r_max) = 0.
+    r_grid = np.linspace(0, r_max - dr, N)
 
+    t0 = (h_bar ** 2) / (2 * m * dr ** 2)
 
-# Parameters
-m = 1.0
-omega = 1.0
-r_max = 8.0
-n = 2000
+    # We use lil_matrix for efficient element-wise construction
+    H = lil_matrix((N, N))
 
-# Harmonic potential
-def V_ho(r):
-    return 0.5 * m * omega**2 * r**2
+    # --- 1. Boundary condition at r = 0 (L'Hopital's rule) ---
+    H[0, 0] = 4 * t0 + V(0)
+    H[0, 1] = -4 * t0
 
-# Numerical solution
-r, E0_num, psi0_num, H = ground_state_2d_radial_polar(r_max, V_ho, m, n)
+    # --- 2. Inner grid points r > 0 ---
+    for i in range(1, N):
+        H[i, i] = 2 * t0 + V(r_grid[i])
 
-# Exact solution
-E0_exact = omega
-psi0_exact = np.sqrt(2 * m * omega) * np.exp(-0.5 * m * omega * r**2)
+        # Lower diagonal
+        H[i, i - 1] = -t0 * (1 - 1 / (2 * i))
 
-# Compare energies
-print(f"Numerical E0 = {E0_num:.10f}")
-print(f"Exact     E0 = {E0_exact:.10f}")
-print(f"Absolute error = {abs(E0_num - E0_exact):.3e}")
+        # Upper diagonal (prevent out-of-bounds at the very end)
+        if i + 1 < N:
+            H[i, i + 1] = -t0 * (1 + 1 / (2 * i))
 
-# Compare wavefunctions
-# Since eigenvectors are defined up to an overall sign, align sign if needed
-if np.dot(psi0_num, psi0_exact) < 0:
-    psi0_num = -psi0_num
+    # Convert to Compressed Sparse Row for fast matrix math
+    H = H.tocsr()
 
-# L2-like grid error for the radial normalization measure
-wavefunc_error = np.sqrt(np.trapezoid((psi0_num - psi0_exact)**2 * r, r))
-print(f"Wavefunction error = {wavefunc_error:.3e}")
+    # --- 3. Solve non-symmetric Eigenvalue Problem ---
+    # 'SR' finds the eigenvalues with the Smallest Real part
+    eigenvalues, eigenvectors = eigs(H, k=1, which='SR', tol=1e-10)
 
-# Plot
-plt.figure(figsize=(8, 5))
-plt.plot(r, psi0_num, label="Numerical $\\psi_0(r)$")
-plt.plot(r, psi0_exact, "--", label="Exact $\\psi_0(r)$")
-plt.xlabel("r")
-plt.ylabel("$\\psi_0(r)$")
-plt.title("2D Harmonic Oscillator Ground State")
-plt.legend()
-plt.grid(True)
-plt.show()
+    # eigs returns complex types, but physical solutions are real
+    E0 = np.real(eigenvalues[0])
+    psi_0 = np.real(eigenvectors[:, 0])
+
+    # Ensure the wavefunction starts positive at r=0
+    if psi_0[0] < 0:
+        psi_0 = -psi_0
+
+    # --- 4. Normalize in 2D ---
+    # Integral of |psi(r)|^2 * 2*pi*r dr = 1
+    # Note: the r=0 point naturally contributes 0 to the integral sum
+    norm_sq = np.sum(psi_0 ** 2 * 2 * np.pi * r_grid) * dr
+    psi_0 = psi_0 / np.sqrt(norm_sq)
+
+    return E0, r_grid, psi_0
