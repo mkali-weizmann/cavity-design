@@ -1,5 +1,3 @@
-import numpy as np
-from scipy.linalg import eigh_tridiagonal
 from scipy.optimize import newton
 from functools import reduce
 
@@ -1057,9 +1055,9 @@ def hessian(cavity: Cavity, n_rays: int = 30, phi_max: float = 0.02, normalize: 
         hessian_value = hessian_value * jacobian ** 2
     return hessian_value
 
-
 def energy_level(cavity: Cavity, hessian_method: str = 'ABCD_matrices'):
     # Corresponds to equations  eq: potential scaling - fixed mode width and eq:potential scaling - general (commented out here) in my notes.
+    # All the terms in comments are also valid different ways to calculate the same thing.
     hessian_normalized = hessian(cavity=cavity, n_rays = 1, normalize=True, method=hessian_method)[0, 0]
     # The energy level of the mode is proportional to the square root of the product of the two eigenvalues of the Hessian matrix.
     spot_size_end = cavity.arms[len(cavity.arms) // 2].mode_parameters_on_surface_0.spot_size[0]
@@ -1092,7 +1090,8 @@ def solve_cavity_eigenstate(cavity: Cavity, results_dict: Optional[dict] = None,
     # Assumes cylindrical symmetry
     if results_dict is None:
         results_dict = analyze_potential_given_cavity(cavity=cavity, n_rays=n_rays, phi_max=phi_max, print_tests=False, potential_horizontal_axis_in_angles=True)
-    else: assert results_dict['potential_horizontal_axis_in_angles'], 'Potential must be in angles'
+    else:
+        assert results_dict['potential_horizontal_axis_in_angles'], 'Potential must be in angles'
     # mirror_intersection_points = cavity.surfaces[-1].find_intersection_with_ray_exact(results_dict['ray_sequence'][-1])
     mirror_deviation_polynomial = results_dict['polynomial_residuals_mirror']
     hessian_value = hessian(cavity=cavity, n_rays = 1, phi_max=0,)[0, 0]
@@ -1101,20 +1100,23 @@ def solve_cavity_eigenstate(cavity: Cavity, results_dict: Optional[dict] = None,
     V_potential = lambda t: -(k * H_BAR) ** 2 * np.abs(hessian_value) * mirror_deviation_polynomial(t) / m
     r_max = phi_max # cavity.surfaces[-1].get_parameterization(mirror_intersection_points[-1])  # ATTENTION: I need to think weather this solution is the solution in the original linspaced coordinates or in the final distorted coordinates.
     n = 1000
-    r, E0, psi0, H = ground_state_2d_radial_polar(r_max=r_max, V=V_potential, m=m, n=n)
-    # %% DELETE ME
-    omega = np.sqrt(2 / m * (k*H_BAR)**2 * np.abs(hessian_value) * mirror_deviation_polynomial.coef[1])
-    print(f"width_analytical = {np.sqrt(2 * H_BAR / (m * omega))}")
-    # E0_analytical = H_BAR * omega / 2
-    E_0, r_grid, psi_0 = solve_2d_direct_ground_state(V=V_potential, m=m, h_bar=H_BAR, r_max=r_max, N=n)
-    return r, E0, psi0, H
+    r, E_0, psi_0, H = ground_state_2d_radial_polar(r_max=r_max, V=V_potential, m=m, n=n)
+    E_0_meters = E_0 / ((k * H_BAR) ** 2 * np.abs(hessian_value) / m)  # convert from energy in the potential to energy in meters, using the scaling of the potential.
 
+    # % DELETE ME
+    # omega = np.sqrt(2 / m * (k*H_BAR)**2 * np.abs(hessian_value) * mirror_deviation_polynomial.coef[1])
+    # print(f"width_analytical = {np.sqrt(2 * H_BAR / (m * omega))}")
+    # E0_analytical = H_BAR * omega / 2
+    # E_0, r_grid, psi_0 = solve_2d_direct_ground_state(V=V_potential, m=m, h_bar=H_BAR, r_max=r_max, N=n)
+    # %
+    return r, E_0_meters, psi_0, H
 
 def ground_state_2d_radial_polar(r_max: float,
                                  V: Union[Callable, np.ndarray],
                                  m: float,
                                  n: int):
     """
+    Made by ChatGPT
     Ground state of the 2D radial Schrödinger equation for a central potential V(r),
     solved directly for psi(r), without the substitution u = sqrt(r) psi.
 
@@ -1205,6 +1207,7 @@ import matplotlib.pyplot as plt
 
 def solve_2d_direct_ground_state(V, m, h_bar, r_max, N=2000):
     """
+    Made by Gemini
     Solves the 2D radial Schrödinger equation directly for psi(r).
     """
     dr = r_max / N

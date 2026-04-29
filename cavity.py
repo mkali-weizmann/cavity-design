@@ -4891,7 +4891,6 @@ def calculate_incidence_angle(surface: Surface, mode_parameters: ModeParameters)
         raise NotImplementedError("Calculate incidence angle for aspheric surfaces is not implemented yet.")
     optical_axis = surface.outwards_normal
     surface_center_to_waist_position_vector = mode_parameters.center[0, :] - surface.center
-    from_the_convex_side = np.sign(surface.outwards_normal @ surface_center_to_waist_position_vector)
     w_0, z_R, R, z_0, z_s = (
         mode_parameters.w_0[0],
         mode_parameters.z_R[0],

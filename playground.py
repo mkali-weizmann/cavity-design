@@ -1,27 +1,76 @@
 from matplotlib import use
 use('TkAgg')
 from simple_analysis_scripts.potential_analysis.analyze_potential import *
-from delete_me import solve_2d_direct_ground_state
+# from delete_me import solve_2d_direct_ground_state
 
-cavity_disordered = fabry_perot_generator(radii=(1, 1), NA=0.1, lambda_0_laser=LAMBDA_0_LASER)
+# cavity_disordered = fabry_perot_generator(radii=(1, 1), NA=0.1, lambda_0_laser=LAMBDA_0_LASER)
+
+
+u = 2.8e-3
+R_0 = 1
+R_1 = 1
+
+cavity_disordered = fabry_perot_generator((R_0, R_1), unconcentricity=u, lambda_0_laser=LAMBDA_0_LASER, use_paraxial_ray_tracing=False)
 cavity = Cavity(surfaces=[cavity_disordered.surfaces[1], cavity_disordered.surfaces[0]],
                 p_is_trivial=True,
                 t_is_trivial=True,
                 use_paraxial_ray_tracing=False,
                 set_mode_parameters=True,
                 lambda_0_laser=LAMBDA_0_LASER)
+hessian_ray_tracing_value = hessian_ray_tracing(cavity=cavity, n_rays=1, phi_max=0.1)[0, 0]
+hessian_ABCD_matrices_value = hessian_ABCD_matrices(cavity=cavity, n_rays=1, phi_max=0.1)[0, 0]
+hessian_analytical = -R_1 / ((R_0 + R_1) * R_0)
+
+dp = 1e-3
+slightly_shifted_ray = Ray(origin=cavity.surfaces[0].parameterization(0, dp),
+                           k_vector=-cavity.surfaces[0].normal_at_a_point(cavity.surfaces[0].parameterization(0, dp)))
+slightly_shifted_ray_propagated = cavity.propagate_ray(ray=slightly_shifted_ray, n_arms = len(cavity.arms) // 2)
+landing_point = slightly_shifted_ray_propagated[-1].origin
+landing_point_parameterization = cavity.surfaces[-1].get_parameterization(landing_point)[1]
+jacobian = dp / landing_point_parameterization
+
+results_dict = analyze_potential_given_cavity(cavity=cavity, n_rays = 10, phi_max = 0.01, print_tests=False)
+a_2_numerical = results_dict['polynomial_residuals_mirror'].coef[1]
+a_2_analytical = u / (2 * R_1 ** 2)
+
+hessian_normalized = hessian_ABCD_matrices_value * jacobian ** 2
+
+w_squared_ABCD = cavity.arms[0].mode_parameters_on_surface_1.spot_size[0] ** 2
+w_squared_geometrical = cavity.lambda_0_laser / (np.pi * np.sqrt(2 * np.abs(hessian_ABCD_matrices_value) * a_2_analytical))
+w_squared_geometrical_normalized = cavity.lambda_0_laser / (np.pi * np.sqrt(2 * np.abs(hessian_normalized) * a_2_analytical))
+# w_squared_analytical_optics = R * cavity.lambda_0_laser / np.pi * np.sqrt(2 * R / u)
+
+energy_level_hessian_only = cavity.lambda_0_laser ** 2 / (2 * np.pi ** 2 * w_squared_ABCD * hessian_normalized)
+energy_level_hessian_and_potential = np.sqrt(a_2_analytical / (-2 * hessian_normalized)) * cavity.lambda_0_laser / np.pi
+energy_level_spot_size_and_potential = a_2_analytical * w_squared_ABCD
+
+# plot_results(results_dict)
+# plt.show()
+print(f'Potential quadratic coefficient: {a_2_numerical:.3e} m^-1')
+print(f'Analytical potential quadratic coefficient: {a_2_analytical:.3e} m^-1')
+print(f'Hessian ray tracing: {hessian_ray_tracing_value}')
+print(f'Hessian ABCD matrices: {hessian_ABCD_matrices_value}')
+print(f'Analytical Hessian: {hessian_analytical}')
+print(f'Numerical spot size squared: {w_squared_ABCD:.3e} m^2')
+print(f'Analytical spot size potential squared: {w_squared_geometrical:.3e} m^2')
+print(f'Analytical spot size potential squared normalized: {w_squared_geometrical_normalized:.3e} m^2')
+print(f'Spot sizes squared ratio: {w_squared_ABCD / w_squared_geometrical:.5f}')
+print(f'Energy level from Hessian only: {energy_level_hessian_only:.3e} m')
+print(f'Energy level from Hessian and potential: {energy_level_hessian_and_potential:.3e} m')
+print(f'Energy level from spot size and potential: {energy_level_spot_size_and_potential:.3e} m')
+
+energy_level_value = energy_level(cavity=cavity, hessian_method ='ABCD_matrices')
+print(energy_level_value)
 results_dict = analyze_potential_given_cavity(cavity=cavity, n_rays=100, phi_max=0.3, print_tests=False)
 # fig, ax = plot_results(results_dict)
 # plt.show()
 hessian_value = hessian(cavity=cavity, n_rays=1, phi_max=0)[0, 0]
 
 # DRAFT
-r, E0, psi0, H = solve_cavity_eigenstate(cavity=cavity, phi_max=0.1)
+r, E_0, psi_0, H = solve_cavity_eigenstate(cavity=cavity, phi_max=0.005)
 # solve_2d_direct_ground_state()
 plt.figure(figsize=(8, 5))
-plt.plot(r, psi0, label="Numerical $\\psi_0(r)$ chatGPT")
-# Plot to verify the origin is well-behaved
-plt.plot(r, psi_0, label=r'Numerical $\psi_0(r)$ gemini')
+plt.plot(r, psi_0, label="Numerical $\\psi_0(r)$ chatGPT")
 plt.title("2D Harmonic Oscillator Ground State (Direct Method)")
 plt.xlabel("r")
 plt.ylabel(r"$\psi_0(r)$")
