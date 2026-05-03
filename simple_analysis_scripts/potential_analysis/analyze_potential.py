@@ -169,6 +169,7 @@ def generate_two_lenses_optical_system(
     T_c_spherical: float,
     f_spherical: float,
     diameter: float = 12.7e-3,
+    spherical_aspherical_distance: float = 5e-3,
 ):
     OPTICAL_AXIS = RIGHT
     desired_focus = 200e-3
@@ -196,24 +197,29 @@ def generate_two_lenses_optical_system(
         use_paraxial_ray_tracing=False,
     )
 
-    R = (
-        f_spherical * (n_design_spherical - 1) * (1 + np.sqrt(1 - T_c_aspheric / (f_spherical * n_design_spherical)))
+    R_estimate = (
+            f_spherical * (n_design_spherical - 1) * (
+                1 + np.sqrt(1 - T_c_aspheric / (f_spherical * n_design_spherical)))
     )  # This is the R value that results in f=f_lens
-    R_1_spherical = R
-    R_2_spherical = R
-    lens_distance_to_aspheric_output_COC = image_of_a_point_with_thick_lens(
-        distance_to_face_1=desired_focus, R_1=R_2_spherical, R_2=-R_1_spherical, n=n_actual_aspheric, T_c=T_c_spherical
-    )
+
+    h_1_estimate, h_2_estimate = principal_planes_of_lens(R_1=R_estimate, R_2=-R_estimate, n=n_actual_spherical, T_c=T_c_spherical) # h_1 is positive, h_2 is negative
+
     aspheric_output_ROC = optical_system.output_radius_of_curvature(
-        initial_distance=back_focal_length_aspheric - defocus
+        initial_distance=aspheric_flat.center[0]
     )
-    lens_distance_to_aspheric_curved_face = (
-        lens_distance_to_aspheric_output_COC - aspheric_output_ROC
-    )  # aspheric_output_ROC Should be negative, so this is effectively a subtraction
+
+    spherical_face_distance_to_aspheric_output_COC = aspheric_output_ROC + spherical_aspherical_distance - h_1_estimate
+    spherical_actual_focal_length = 1 / (1 / spherical_face_distance_to_aspheric_output_COC + 1 / (desired_focus - h_2_estimate))  # h_2 is negative, so desired_focus - h_2 is slightly larger than desired_focus.
+    R_1_spherical = (
+            spherical_actual_focal_length * (n_design_spherical - 1) * (
+                1 + np.sqrt(1 - T_c_aspheric / (spherical_actual_focal_length * n_design_spherical))))
+    R_2_spherical = R_1_spherical
+
+
     spherical_0 = CurvedRefractiveSurface(
         radius=np.abs(R_1_spherical),
         outwards_normal=-OPTICAL_AXIS,
-        center=aspheric_curved.center + lens_distance_to_aspheric_curved_face * OPTICAL_AXIS,
+        center=aspheric_curved.center + spherical_aspherical_distance * OPTICAL_AXIS,
         n_1=1,
         n_2=n_actual_spherical,
         curvature_sign=CurvatureSigns.convex,
