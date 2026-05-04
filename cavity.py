@@ -93,6 +93,16 @@ class LocalModeParameters:
         self.lambda_0_laser = lambda_0_laser
         self.n = n
 
+    def __repr__(self) -> str:
+        return (
+            f"LocalModeParameters(z_minus_z_0={self.z_minus_z_0}, "
+            f"z_R={self.z_R}, spot_size={self.spot_size}), NA={self.NA}"
+        )
+
+    @property
+    def NA(self):
+        return NA_of_z_R(z_R=self.z_R, lambda_0_laser=self.lambda_0_laser)
+
     @property
     def z_minus_z_0(self):
         return self.q.real
@@ -194,7 +204,7 @@ class ModeParameters:
             if self.z_R[0] == 0 or self.z_R[1] == 0:
                 return np.array([np.nan, np.nan])
             else:
-                return np.sqrt(self.lambda_0_laser / (np.pi * self.z_R))
+                return NA_of_z_R(z_R=self.z_R, lambda_0_laser=self.lambda_0_laser)
 
     def local_mode_parameters(self, z_minus_z_0):
         return LocalModeParameters(z_minus_z_0=z_minus_z_0, z_R=self.z_R, lambda_0_laser=self.lambda_0_laser, n=self.n)
@@ -1078,7 +1088,7 @@ class AsphericSurface(Surface):
             self.radius = 1 / (2 * self.polynomial.coef[1])
 
     def find_intersection_with_ray_exact(self, ray: Ray) -> np.ndarray:
-        # For a sketch and a detalied explanation on the calculation, go to:
+        # For a sketch and a detailed explanation on the calculation, go to:
         # "Intersection with a cyllindrically symmetric surface with polynominal parameterization x\left(\rho\right)" in my research lyx file #TODO: convert to PDF
 
         # Flatten rays for independent solves

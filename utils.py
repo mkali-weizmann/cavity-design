@@ -712,6 +712,9 @@ def z_R_of_NA(NA: Union[np.ndarray, float], lambda_laser: float):
     z_R = z_R_of_w_0(w_0, lambda_laser)
     return z_R
 
+def NA_of_z_R(z_R: Union[np.ndarray, float], lambda_0_laser: float):
+    NA = np.sqrt(lambda_0_laser / (np.pi * z_R))
+    return NA
 
 def w_0_of_NA(NA: Union[np.ndarray, float], lambda_laser: float):
     return lambda_laser / (np.pi * NA)
