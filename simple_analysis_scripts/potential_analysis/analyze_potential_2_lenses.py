@@ -26,7 +26,14 @@ target_fourth_order = 1e3
 
 unconcentricity = widget_convenient_exponent(unconcentricity)
 def f_optimize(defocus):
-    optical_system = generate_two_lenses_optical_system(defocus=defocus, back_focal_length_aspheric=back_focal_length_aspheric, T_c_aspheric=T_c_aspheric, n_design_aspheric=n_design_aspheric, n_actual_aspheric=n_actual_aspheric, n_design_spherical=n_design_spherical, n_actual_spherical=n_actual_spherical, T_c_spherical=T_c_spherical, f_spherical=f_spherical, diameter=diameter,)
+    optical_system = generate_two_lenses_optical_system(defocus=defocus,
+                                                        back_focal_length_aspheric=back_focal_length_aspheric,
+                                                        T_c_aspheric=T_c_aspheric, n_aspheric=n_design_aspheric,
+                                                        n_actual_aspheric=n_actual_aspheric,
+                                                        n_spherical=n_design_spherical,
+                                                        n_actual_spherical=n_actual_spherical,
+                                                        T_c_spherical=T_c_spherical, f_spherical=f_spherical,
+                                                        diameter=diameter)
     rays_0 = initialize_rays(n_rays=n_rays, phi_max=np.arcsin(max_NA_for_polynomial))
     results_dict = analyze_potential(optical_system=optical_system, rays_0=rays_0, unconcentricity=unconcentricity, print_tests=False, end_mirror_ROC=2e-1)
     print(results_dict['polynomial_residuals_opposite'].coef[2])
