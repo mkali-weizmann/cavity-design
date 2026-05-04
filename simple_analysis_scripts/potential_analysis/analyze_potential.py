@@ -957,7 +957,7 @@ def plot_results(
                 handles, labels = ax[0].get_legend_handles_labels()
                 handles.append(legend_line)
                 ax2.set_ylabel("Relative intensity (a.u.)")
-                # ax2.grid(False)
+                ax2.set_ylim(-0.01, 1.01)
 
             zero_derivative_point_plot = np.nan if zero_derivative_points is None else zero_derivative_points
             ax[0].axvline(
