@@ -1296,6 +1296,8 @@ def copy_parameters_func(local_parameters):
     for key, value in local_parameters.items():
         # if key.startswith("t_") or key.startswith("p_") or key in ["t", "p"]:
             # print(f"{key} = 1j*{value/np.pi:.10e}")
+        if key in ["copy_input_parameters", "copy_cavity_parameters", "copy_image"]:
+            continue
         if isinstance(value, float):
             l.append(f"{key} = {value:.10e}")
         elif isinstance(value, str):
