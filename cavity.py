@@ -22,7 +22,6 @@ pd.set_option("display.max_rows", 500)
 pd.options.display.float_format = "{:.3e}".format
 # np.seterr(all="raise") #TODO: some functions need it on and some need it off.
 
-
 def params_to_perturbable_params_names(
     params_list: List[OpticalElementParams], remove_one_of_the_angles: bool = False
 ) -> List[str]:
@@ -5956,3 +5955,7 @@ def plot_mirror_lens_mirror_cavity_analysis(
         )
     plt.subplots_adjust(hspace=0.35)
     plt.gcf().tight_layout()
+
+LASER_OPTIK_MIRROR = CurvedMirror(radius=5e-3, diameter=7.75e-3, outwards_normal=LEFT, origin=ORIGIN, name="Laser Optik Mirror", material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"])
+COASTLINE_20CM_MIRROR = CurvedMirror(radius=20e-2, diameter=25.4e-3, outwards_normal=RIGHT, origin=ORIGIN, name="Coastline 20cm Mirror", material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"])
+COASTLINE_50CM_MIRROR = CurvedMirror(radius=50e-2, diameter=25.4e-3, outwards_normal=RIGHT, origin=ORIGIN, name="Coastline 50cm Mirror", material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"])
