@@ -557,15 +557,9 @@ def test_potential_single_lens():
     desired_focus = 200e-3
     print_tests = True
 
-    defocus = choose_source_position_for_desired_focus_analytic(
-        desired_focus=desired_focus,
-        T_c=T_c,
-        n_design=n_design,
-        diameter=diameter,
-        back_focal_length=back_focal_length,
-        R_1=R_1,
-        R_2=R_2_signed,
-    )
+    defocus = choose_source_position_for_desired_focus_analytic(back_focal_length=back_focal_length,
+                                                                desired_focus=desired_focus, T_c=T_c, n=n_design,
+                                                                diameter=diameter, R_1=R_1, R_2=R_2_signed)
 
     optical_system, optical_axis = generate_one_lens_optical_system(R_1=R_1, R_2=R_2_signed,
                                                                     back_focal_length=back_focal_length,
@@ -591,9 +585,9 @@ def test_free_potential_vs_cavity_potential_comparison():
     desired_focus = 200e-3
     print_tests = True
 
-    defocus = choose_source_position_for_desired_focus_analytic(desired_focus=desired_focus, T_c=T_c, n_design=n_design,
-                                                                diameter=diameter, back_focal_length=back_focal_length,
-                                                                R_1=R_1, R_2=R_2_signed, )
+    defocus = choose_source_position_for_desired_focus_analytic(back_focal_length=back_focal_length,
+                                                                desired_focus=desired_focus, T_c=T_c, n=n_design,
+                                                                diameter=diameter, R_1=R_1, R_2=R_2_signed)
     optical_system, optical_axis = generate_one_lens_optical_system(R_1=R_1, R_2=R_2_signed,
                                                                     back_focal_length=back_focal_length,
                                                                     defocus=defocus, T_c=T_c, n_design=n_design,

@@ -22,7 +22,9 @@ elif mirror_setting_mode == "Set distance to spherical":
     right_mirror_distance_to_lens_front += right_mirror_ROC_fine
 
 n_actual, n_design, T_c, back_focal_length, R_1, R_2, R_2_signed, diameter = known_lenses_generator(lens_type=lens_type, dn=0)
-defocus = choose_source_position_for_desired_focus_analytic(desired_focus=desired_focus, T_c=T_c, n_design=n_design, diameter=diameter, back_focal_length=back_focal_length, R_1=R_1, R_2=R_2_signed)
+defocus = choose_source_position_for_desired_focus_analytic(back_focal_length=back_focal_length,
+                                                            desired_focus=desired_focus, T_c=T_c, n=n_design,
+                                                            diameter=diameter, R_1=R_1, R_2=R_2_signed)
 optical_system_lens, optical_axis = generate_one_lens_optical_system(R_1=R_1, R_2=R_2_signed, back_focal_length=back_focal_length, defocus=defocus, T_c=T_c, n_design=n_design, diameter=diameter, n_actual=n_actual)
 mirror_left = CurvedMirror(radius=5e-3, outwards_normal=LEFT, origin=ORIGIN, curvature_sign=CurvatureSigns.concave, name="LaserOptik mirror", diameter=7.75e-3, material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"])
 optical_system_without_large_mirror = OpticalSystem.from_params(params=[mirror_left.to_params, *optical_system_lens.params],

@@ -4703,6 +4703,7 @@ def match_a_mirror_to_mode(
     R: Optional[float] = None,
     **mirror_kwargs,
 ) -> Union[FlatMirror, CurvedMirror]:
+    # Derivation is in section "Matching a mode to a mirror:" in my research file.
     if z is None and R is None or (z is not None and R is not None):
         raise ValueError("You must provide either z or R, but not both, and not neither.")
     elif z is not None:

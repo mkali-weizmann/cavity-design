@@ -1242,7 +1242,7 @@ def rhs_factory(p: LensParams):
 def solve_aspheric_profile(
     p: LensParams,
     y_max: float,
-    degree: int = 6,
+    degree: int = 8,
     return_raw_values: bool = False,
     *,
     n_points: int = 1500,

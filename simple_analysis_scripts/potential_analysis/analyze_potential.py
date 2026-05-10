@@ -81,19 +81,19 @@ def known_lenses_generator(lens_type, dn):
 
 
 def choose_source_position_for_desired_focus_analytic(
-    back_focal_length, desired_focus, T_c, n_design, diameter, R_1=None, R_2=None
+    back_focal_length, desired_focus, T_c, n, diameter, R_1=None, R_2=None
 ):
     if R_1 is None and R_2 is None:
-        p = LensParams(n=n_design, f=back_focal_length, T_c=T_c)
+        p = LensParams(n=n, f=back_focal_length, T_c=T_c)
         coeffs = solve_aspheric_profile(p, y_max=diameter / 2, degree=8)
         R_2 = -1 / (2 * coeffs[1])
         R_1 = np.inf
     elif R_1 is not None and R_2 is not None:
-        back_focal_length = back_focal_length_of_lens(R_1=R_1, R_2=R_2, n=n_design, T_c=T_c)
+        back_focal_length = back_focal_length_of_lens(R_1=R_1, R_2=R_2, n=n, T_c=T_c)
     else:
         raise ValueError("Either both R_1 and R_2 must be provided, or neither.")
     distance_to_flat_face = image_of_a_point_with_thick_lens(
-        distance_to_face_1=desired_focus, R_1=-R_2, R_2=-R_1, n=n_design, T_c=T_c
+        distance_to_face_1=desired_focus, R_1=-R_2, R_2=-R_1, n=n, T_c=T_c
     )
     defocus = back_focal_length - distance_to_flat_face
     return defocus
@@ -158,7 +158,7 @@ def generate_one_lens_optical_system(
     return optical_system, optical_axis
 
 
-def generate_two_lenses_optical_system(
+def generate_two_positive_lenses_optical_system(
     defocus: float,
     back_focal_length_aspheric: float,
     T_c_aspheric: float,
@@ -169,6 +169,7 @@ def generate_two_lenses_optical_system(
     diameter: float = 12.7e-3,
     spherical_aspherical_distance: float = 5e-3,
     desired_focus: float = 200e-3,
+    spherical_lens_type: str = "bi-convex"
 ):
     OPTICAL_AXIS = RIGHT
     back_center = (back_focal_length_aspheric + defocus) * OPTICAL_AXIS
@@ -180,7 +181,7 @@ def generate_two_lenses_optical_system(
             forward_normal=OPTICAL_AXIS,
             flat_faces_center=back_center,
             diameter=diameter,
-            polynomial_degree=8,
+            polynomial_degree=24,
             name="aspheric_lens_automatic",
         )
     )
@@ -198,27 +199,31 @@ def generate_two_lenses_optical_system(
     aspheric_output_ROC = optical_system.output_radius_of_curvature(
         initial_distance=aspheric_flat.center[0]
     )
+
+    lens_left_center = aspheric_curved.center + spherical_aspherical_distance * OPTICAL_AXIS
+
     # Derivation is here: https://chatgpt.com/share/69f75421-cf44-838e-b842-d7b28a2d1916
     # (Derivation is correct because it produces the correct results)
     u = aspheric_output_ROC + spherical_aspherical_distance
     v = desired_focus
+    if spherical_lens_type == "bi-convex":
+        root = np.sqrt(T_c_spherical ** 2 * (u - v) ** 2 + 4 * n_spherical ** 2 * u ** 2 * v ** 2)
+        base = T_c_spherical * (u + v) + 2 * n_spherical * u * v
+        denominator = 2 * T_c_spherical * u * v * (n_spherical - 1)
+        x_plus = (base + root) / denominator
+        x_minus = (base - root) / denominator
 
-    root = np.sqrt(T_c_spherical ** 2 * (u - v) ** 2 + 4 * n_spherical ** 2 * u ** 2 * v ** 2)
+        R_plus = 1 / x_plus
+        R_minus = 1 / x_minus
+        R_chosen = max(R_plus, R_minus)
+        R_left = R_chosen
+        R_right = R_chosen
+    else:
+        R_left = (n_spherical - 1) / ( 1/u + 1/(v - T_c_spherical / n_spherical) )
 
-    base = T_c_spherical * (u + v) + 2 * n_spherical * u * v
-
-    denominator = 2 * T_c_spherical * u * v * (n_spherical - 1)
-
-    x_plus = (base + root) / denominator
-    x_minus = (base - root) / denominator
-
-    R_plus = 1 / x_plus
-    R_minus = 1 / x_minus
-    R_chosen = max(R_plus, R_minus)
-    lens_left_center = aspheric_curved.center + spherical_aspherical_distance * OPTICAL_AXIS
 
     spherical_0 = CurvedRefractiveSurface(
-        radius=R_chosen,
+        radius=R_left,
         outwards_normal=-OPTICAL_AXIS,
         center=lens_left_center,
         n_1=1,
@@ -230,7 +235,7 @@ def generate_two_lenses_optical_system(
     )
 
     spherical_1 = CurvedRefractiveSurface(
-        radius=R_chosen,
+        radius=R_right,
         outwards_normal=OPTICAL_AXIS,
         center=spherical_0.center + T_c_spherical * OPTICAL_AXIS,
         n_1=n_spherical,
@@ -271,13 +276,15 @@ def generate_two_positive_lenses_cavity(defocus: float,
         NA_small_arm = None
         unconcentricity = widget_convenient_exponent(unconcentricity)
 
-    optical_system = generate_two_lenses_optical_system(defocus=defocus,
-                                                        back_focal_length_aspheric=back_focal_length_aspheric,
-                                                        T_c_aspheric=T_c_aspheric, n_aspheric_design=n_aspheric_design,
-                                                        n_aspheric_actual=n_aspheric_actual, n_spherical=n_spherical,
-                                                        T_c_spherical=T_c_spherical, diameter=diameter,
-                                                        spherical_aspherical_distance=spherical_aspherical_distance,
-                                                        desired_focus=desired_focus)
+    optical_system = generate_two_positive_lenses_optical_system(defocus=defocus,
+                                                                 back_focal_length_aspheric=back_focal_length_aspheric,
+                                                                 T_c_aspheric=T_c_aspheric,
+                                                                 n_aspheric_design=n_aspheric_design,
+                                                                 n_aspheric_actual=n_aspheric_actual,
+                                                                 n_spherical=n_spherical, T_c_spherical=T_c_spherical,
+                                                                 diameter=diameter,
+                                                                 spherical_aspherical_distance=spherical_aspherical_distance,
+                                                                 desired_focus=desired_focus)
     optical_system_with_small_mirror = OpticalSystem(surfaces=[LASER_OPTIK_MIRROR, *optical_system.surfaces],
                                                      t_is_trivial=True, p_is_trivial=True,
                                                      use_paraxial_ray_tracing=False, lambda_0_laser=LAMBDA_0_LASER)
@@ -307,15 +314,11 @@ def generate_negative_lens_cavity(
     large_elements_CA: float = 25e-3,
     unconcentricity: Optional[float] = None,
 ):
-    defocus = choose_source_position_for_desired_focus_analytic(
-        desired_focus=approximate_focus_distance_long_arm,
-        T_c=T_c_first_lens,
-        n_design=n_design_first_lens,
-        diameter=diameter_first_lens,
-        back_focal_length=back_focal_length_first_lens,
-        R_1=R_1_first_lens,
-        R_2=R_2_signed_first_lens,
-    )
+    defocus = choose_source_position_for_desired_focus_analytic(back_focal_length=back_focal_length_first_lens,
+                                                                desired_focus=approximate_focus_distance_long_arm,
+                                                                T_c=T_c_first_lens, n=n_design_first_lens,
+                                                                diameter=diameter_first_lens, R_1=R_1_first_lens,
+                                                                R_2=R_2_signed_first_lens)
     optical_system_lens, optical_axis = generate_one_lens_optical_system(
         R_1=R_1_first_lens,
         R_2=R_2_signed_first_lens,

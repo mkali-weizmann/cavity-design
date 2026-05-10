@@ -16,7 +16,9 @@ desired_focus = 200e-3
 plot = True
 print_tests = True
 
-defocus = choose_source_position_for_desired_focus_analytic(desired_focus=desired_focus, T_c=T_c, n_design=n_design, diameter=diameter, back_focal_length=back_focal_length, R_1=R_1, R_2=R_2_signed,)
+defocus = choose_source_position_for_desired_focus_analytic(back_focal_length=back_focal_length,
+                                                            desired_focus=desired_focus, T_c=T_c, n=n_design,
+                                                            diameter=diameter, R_1=R_1, R_2=R_2_signed)
 optical_system, optical_axis = generate_one_lens_optical_system(R_1=R_1, R_2=R_2_signed, back_focal_length=back_focal_length, defocus=defocus, T_c=T_c, n_design=n_design, diameter=diameter, n_actual=n_actual,)
 rays_0 = initialize_rays(n_rays=n_rays, phi_max=phi_max)
 results_dict = analyze_potential(optical_system=optical_system, rays_0=rays_0, unconcentricity=unconcentricity, print_tests=print_tests)
@@ -57,14 +59,18 @@ n_actual, n_design, T_c, back_focal_length, R_1, R_2, R_2_signed, diameter = kno
 maximal_unconcentricitiy = 1e-3  # np.float64(0.007610344827586207)  # ,  np.float64(0.007268965517241379)
 print_tests=True
 
-defocus = choose_source_position_for_desired_focus_analytic(desired_focus=desired_focus, T_c=T_c, n_design=n_design, diameter=diameter, back_focal_length=back_focal_length, R_1=R_1, R_2=R_2_signed)
+defocus = choose_source_position_for_desired_focus_analytic(back_focal_length=back_focal_length,
+                                                            desired_focus=desired_focus, T_c=T_c, n=n_design,
+                                                            diameter=diameter, R_1=R_1, R_2=R_2_signed)
 unconcentricities = np.linspace(maximal_unconcentricitiy, 0.1e-3, 30)
 paraxial_spot_sizes = np.zeros_like(unconcentricities)
 spot_size_boundaries = np.zeros_like(unconcentricities)
 paraxial_NAs = np.zeros_like(unconcentricities)
 left_NAs = np.zeros_like(unconcentricities)
 for i, u in enumerate(unconcentricities):
-    defocus = choose_source_position_for_desired_focus_analytic(desired_focus=desired_focus, T_c=T_c, n_design=n_design, diameter=diameter, back_focal_length=back_focal_length, R_1=R_1, R_2=R_2_signed,)
+    defocus = choose_source_position_for_desired_focus_analytic(back_focal_length=back_focal_length,
+                                                                desired_focus=desired_focus, T_c=T_c, n=n_design,
+                                                                diameter=diameter, R_1=R_1, R_2=R_2_signed)
     optical_system, optical_axis = generate_one_lens_optical_system(R_1=R_1, R_2=R_2_signed, back_focal_length=back_focal_length, defocus=defocus, T_c=T_c, n_design=n_design, diameter=diameter, n_actual=n_actual, )
     rays_0 = initialize_rays(defocus=defocus, n_rays=n_rays, phi_max=phi_max, diameter=diameter, back_focal_length=back_focal_length)
     results_dict = analyze_potential(optical_system=optical_system, rays_0=rays_0, unconcentricity=u, print_tests=print_tests)
