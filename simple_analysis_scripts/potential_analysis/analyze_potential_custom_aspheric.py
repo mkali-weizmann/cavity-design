@@ -131,5 +131,7 @@ rays_0 = initialize_rays(defocus=defocus, n_rays=n_rays, phi_max=phi_max)
 # plt.show()
 # %%
 results_dict_aspherical_back = analyze_potential(optical_system=optical_system_aspherical_back, rays_0=rays_0, unconcentricity=unconcentricity, print_tests=True)
-fig, ax = plot_results(results_dict=results_dict_aspherical_back, far_away_plane=True, unconcentricity=unconcentricity, potential_x_axis_angles=False, rays_labels=["Before lens", "After flat surface", "After aspherical surface"])
+fig, ax = plot_results(results_dict=results_dict_aspherical_back, far_away_plane=True, unconcentricity=unconcentricity,
+                       potential_horizontal_axis_in_NAs=False,
+                       rays_labels=["Before lens", "After flat surface", "After aspherical surface"])
 plt.show()

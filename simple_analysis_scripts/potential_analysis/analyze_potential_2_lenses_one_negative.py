@@ -75,11 +75,7 @@ results_dict = analyze_potential(
     end_mirror_ROC=20e-2,
     print_tests=print_tests,
 )
-plot_results(
-    results_dict=results_dict,
-    far_away_plane=True,
-    unconcentricity=unconcentricity,
-    potential_x_axis_angles=False,
-)
+plot_results(results_dict=results_dict, far_away_plane=True, unconcentricity=unconcentricity,
+             potential_horizontal_axis_in_NAs=False)
 
 plt.show()

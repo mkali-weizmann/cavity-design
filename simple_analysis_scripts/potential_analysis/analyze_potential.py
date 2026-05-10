@@ -558,9 +558,8 @@ def generate_negative_lens_cavity_smart(
         right_mirror_ROC=right_mirror_ROC,
         right_mirror_distance_to_negative_lens_front=right_mirror_distance_to_negative_lens_front,
     )
-    results_dict = analyze_potential_given_cavity(
-        cavity=cavity, n_rays=n_rays, phi_max=phi_max_polynomial, print_tests=False
-    )
+    results_dict = analyze_potential_given_cavity(cavity=cavity, n_rays=n_rays, phi_max=phi_max_polynomial,
+                                                  print_tests=False)
     return (
         results_dict["polynomial_residuals_mirror"].coef[2],
         negative_lens_focal_length,
@@ -574,11 +573,10 @@ def analyze_output_wavefront(
     end_mirror_center: Optional[float] = None,
     R_output_analytical: Optional[float] = None,
     end_mirror_ROC: Optional[float] = None,
-    potential_horizontal_axis_in_angles: bool = False,  # Alternative is in transverse coordinates [meters].
+    potential_horizontal_axis_in_NAs: bool = False,  # Alternative is in transverse coordinates [meters].
     print_tests: bool = True,
 ):
-    if potential_horizontal_axis_in_angles:
-        potential_horizontal_array = np.arcsin(ray_sequence[0].k_vector[..., 1])
+    NAs_0 = ray_sequence[0].k_vector[..., 1]
     output_ray = ray_sequence[-1]
     optical_axis = output_ray.k_vector[..., 0, :]
     # Extract all wavefront features at the output surface of the lens.
@@ -613,7 +611,7 @@ def analyze_output_wavefront(
     )
 
     polynomial_residuals_initial = Polynomial.fit(
-        (potential_horizontal_array if potential_horizontal_axis_in_angles else wavefront_points_initial[:, 1]) ** 2,
+        (NAs_0 if potential_horizontal_axis_in_NAs else wavefront_points_initial[:, 1]) ** 2,
         residual_distances_initial, 4
     ).convert()
 
@@ -659,7 +657,7 @@ def analyze_output_wavefront(
         wavefront_points_opposite - center_of_curvature, axis=-1
     )
     polynomial_residuals_opposite = Polynomial.fit(
-        (potential_horizontal_array if potential_horizontal_axis_in_angles else wavefront_points_opposite[:, 1]) ** 2, residual_distances_opposite, 6
+        (NAs_0 if potential_horizontal_axis_in_NAs else wavefront_points_opposite[:, 1]) ** 2, residual_distances_opposite, 6
     ).convert()
 
     # Analyze unconcentric mirror case:
@@ -667,7 +665,7 @@ def analyze_output_wavefront(
         wavefront_points_opposite - end_mirror_origin, axis=-1
     )  # Mirror has a radius of R_output, not R_opposite.
     polynomial_residuals_mirror = Polynomial.fit(
-        (potential_horizontal_array if potential_horizontal_axis_in_angles else wavefront_points_opposite[:, 1]) ** 2, residual_distances_mirror, 6
+        (NAs_0 if potential_horizontal_axis_in_NAs else wavefront_points_opposite[:, 1]) ** 2, residual_distances_mirror, 6
     ).convert()
     if print_tests:
         a_2_ray_tracing_fit = polynomial_residuals_mirror.coef[1]
@@ -713,7 +711,7 @@ def analyze_output_wavefront(
         "polynomial_residuals_mirror": polynomial_residuals_mirror,
         "zero_derivative_points": zero_derivative_points,
         "end_mirror_object": end_mirror_object,
-        "potential_horizontal_axis_in_angles": potential_horizontal_axis_in_angles,
+        "potential_horizontal_axis_in_NAs": potential_horizontal_axis_in_NAs,
     }
 
     return results_dict
@@ -725,6 +723,7 @@ def analyze_potential(
     unconcentricity: float,
     end_mirror_ROC: Optional[float] = None,
     small_mirror_object: Optional[CurvedMirror] = None,
+    potential_horizontal_axis_in_NAs: bool = False,
     print_tests: bool = True,
 ):
     ray_sequence = optical_system.propagate_ray(rays_0, propagate_with_first_surface_first=True)
@@ -734,24 +733,12 @@ def analyze_potential(
 
     R_analytical = optical_system.output_radius_of_curvature(source_position=rays_0.origin[0, :])
 
-    results_dict = analyze_output_wavefront(
-        ray_sequence,
-        unconcentricity=unconcentricity,
-        R_output_analytical=R_analytical,
-        end_mirror_ROC=end_mirror_ROC,
-        print_tests=print_tests,
-    )
+    results_dict = analyze_output_wavefront(ray_sequence, unconcentricity=unconcentricity,
+                                            R_output_analytical=R_analytical, end_mirror_ROC=end_mirror_ROC,
+                                            print_tests=print_tests, potential_horizontal_axis_in_NAs=potential_horizontal_axis_in_NAs)
 
     if small_mirror_object is None:
-        small_mirror_object = CurvedMirror(
-            radius=5e-3,
-            outwards_normal=LEFT,
-            origin=ORIGIN,
-            curvature_sign=CurvatureSigns.concave,
-            name="LaserOptik mirror",
-            diameter=7.75e-3,
-            material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"],
-        )
+        small_mirror_object = LASER_OPTIK_MIRROR
 
     cavity = Cavity.from_params(
         params=[small_mirror_object.to_params, *optical_system.to_params, results_dict["end_mirror_object"].to_params],
@@ -777,7 +764,7 @@ def analyze_potential(
     return results_dict
 
 
-def analyze_potential_given_cavity(cavity: Cavity, n_rays: int, phi_max: float, print_tests: bool = True, potential_horizontal_axis_in_angles: bool = False):
+def analyze_potential_given_cavity(cavity: Cavity, n_rays: int, phi_max: float, print_tests: bool = True, potential_horizontal_axis_in_NAs: bool = False):
     # assert np.all(
     #     np.isclose(cavity.surfaces[0].origin, ORIGIN)
     # ), "Currently assumes the center of the small mirror is at the origin for the extraction of the Analytical R. probably it will work otherwise, but needs to be debugged"  #
@@ -801,14 +788,12 @@ def analyze_potential_given_cavity(cavity: Cavity, n_rays: int, phi_max: float, 
         raise ValueError(
             "All rays escaped the system, cannot analyze wavefront. Try increasing the number of rays or reduce the maximum angle phi_max."
         )
-    results_dict = analyze_output_wavefront(
-        ray_sequence=ray_sequence_cleaned,
-        R_output_analytical=R_analytical,
-        end_mirror_center=cavity.physical_surfaces[-1].center,
-        end_mirror_ROC=cavity.physical_surfaces[-1].radius,
-        print_tests=print_tests,
-        potential_horizontal_axis_in_angles=potential_horizontal_axis_in_angles,
-    )
+    results_dict = analyze_output_wavefront(ray_sequence=ray_sequence_cleaned,
+                                            end_mirror_center=cavity.physical_surfaces[-1].center,
+                                            R_output_analytical=R_analytical,
+                                            end_mirror_ROC=cavity.physical_surfaces[-1].radius,
+                                            potential_horizontal_axis_in_NAs=potential_horizontal_axis_in_NAs,
+                                            print_tests=print_tests)
     results_dict["optical_system"] = optical_system_reduced
     results_dict["cavity"] = cavity
     if cavity.resonating_mode_successfully_traced:
@@ -826,17 +811,17 @@ def plot_results(
     results_dict,
     far_away_plane: bool = True,
     unconcentricity: Optional[float] = None,
-    potential_x_axis_angles: bool = False,
     rays_labels: Optional[List[str]] = None,
     fig_and_ax=None,
     plot_final_arm_backwards_rays: bool = False,
 ):
-    (ray_sequence, center_of_curvature, NA_paraxial, spot_size_paraxial, zero_derivative_points) = (
+    (ray_sequence, center_of_curvature, NA_paraxial, spot_size_paraxial, zero_derivative_points, potential_horizontal_axis_in_NAs) = (
         results_dict["ray_sequence"],
         results_dict["center_of_curvature"],
         results_dict["NA_paraxial"],
         results_dict["spot_size_paraxial"],
         results_dict["zero_derivative_points"],
+        results_dict["potential_horizontal_axis_in_NAs"],
     )
     if far_away_plane:
         (
@@ -888,15 +873,16 @@ def plot_results(
         backwards_rays.plot(ax=ax[1], linewidth=0.5, linestyle="--", color="orange", length=0.5)
     ax[1].legend()
 
-    if potential_x_axis_angles:
-        angles_theta, angles_phi = angles_of_unit_vector(ray_sequence[0].k_vector)
-        potential_x_axis = angles_phi
-        potential_x_label = "phi (rad)"
+    if potential_horizontal_axis_in_NAs:
+        potential_x_axis = ray_sequence[0].k_vector[:, 1]
+        potential_x_axis_scaled = potential_x_axis
+        potential_x_label = "Ray initial NA"
     else:
-        potential_x_axis = wavefront_points[:, 1] * 1e3
+        potential_x_axis = wavefront_points[:, 1]
+        potential_x_axis_scaled = potential_x_axis * 1e3
         potential_x_label = "y (mm)"
     ax[0].plot(
-        potential_x_axis,
+        potential_x_axis_scaled,
         residual_distances * 1e6,
         label="wavefront residual from matching sphere",
         marker="o",
@@ -905,8 +891,12 @@ def plot_results(
         markersize=5,
         alpha=0.6,
     )
-    x_fit = np.linspace(np.min(wavefront_points[:, 1]), np.max(wavefront_points[:, 1]), 100)
-    ax[0].set_xlim(x_fit[0] * 1e3, x_fit[-1] * 1e3)
+    x_fit = np.linspace(np.min(potential_x_axis), np.max(potential_x_axis), 100)
+    if potential_horizontal_axis_in_NAs:
+        x_fit_scaled = x_fit
+    else:
+        x_fit_scaled = x_fit * 1e3
+    ax[0].set_xlim(x_fit_scaled[0], x_fit_scaled[-1])
     ax[0].set_xlabel(potential_x_label)
     ax[0].set_ylabel("wavefront difference (µm)")
     ax[0].grid()
@@ -925,7 +915,7 @@ def plot_results(
     terms_parts_mirror = []
     if polynomial_residuals_mirror is not None:
         ax[0].plot(
-            potential_x_axis,
+            potential_x_axis_scaled,
             residual_distances_mirror * 1e6,
             marker="x",
             linestyle="",
@@ -963,55 +953,59 @@ def plot_results(
             + mode_terms
         )
         ax[0].set_title(title)
-        if not potential_x_axis_angles:
-            ax[0].plot(
-                x_fit * 1e3,
-                polynomial_residuals_mirror(x_fit**2) * 1e6,
-                color="green",
+        ax[0].plot(
+            x_fit_scaled,
+            polynomial_residuals_mirror(x_fit**2) * 1e6,
+            color="green",
+            linestyle="dashed",
+            label="Mirror residuals Polynomial fit",
+            linewidth=0.5,
+        )
+        ax[0].plot(
+            x_fit_scaled,
+            polynomial(x_fit**2) * 1e6,
+            color="red",
+            linestyle="dashed",
+            label="Matching sphere residuals Polynomial fit",
+            linewidth=0.5,
+        )
+        # Plot intensity profile on a new y axis for ax[0] if NA_paraxial is not None: using the formula: e^{-2y^{2} / (spot_size_paraxial)^{2})}
+        if NA_paraxial is not None and spot_size_paraxial is not None:
+            ax2 = ax[0].twinx()
+            if not potential_horizontal_axis_in_NAs:
+                intensity_profile = np.exp(-(2 * x_fit**2) / spot_size_paraxial ** 2)
+                one_spot_size_point = spot_size_paraxial * 1e3
+            else:
+                intensity_profile = np.exp(-(2 * x_fit ** 2) / NA_paraxial ** 2)
+                one_spot_size_point = NA_paraxial
+            ax2.plot(
+                x_fit_scaled,
+                intensity_profile,
+                color="orange",
                 linestyle="dashed",
-                label="Mirror residuals Polynomial fit",
-                linewidth=0.5,
+                label="Paraxial Gaussian intensity profile",
+                linewidth=1,
             )
-            ax[0].plot(
-                x_fit * 1e3,
-                polynomial(x_fit**2) * 1e6,
-                color="red",
+            ax2.axvline(
+                one_spot_size_point * np.sign(x_fit[0] + 1e-19),
+                color="orange",
                 linestyle="dashed",
-                label="Matching sphere residuals Polynomial fit",
-                linewidth=0.5,
+                linewidth=1,
+                label="Paraxial spot size ($w_{0}$)",
             )
-            # Plot intensity profile on a new y axis for ax[0] if NA_paraxial is not None: using the formula: e^{-2y^{2} / (spot_size_paraxial)^{2})}
-            if NA_paraxial is not None and spot_size_paraxial is not None:
-                ax2 = ax[0].twinx()
-                intensity_profile = np.exp(-(2 * x_fit**2) / (spot_size_paraxial) ** 2)
-                ax2.plot(
-                    x_fit * 1e3,
-                    intensity_profile,
-                    color="orange",
-                    linestyle="dashed",
-                    label="Paraxial Gaussian intensity profile",
-                    linewidth=1,
-                )
-                ax2.axvline(
-                    spot_size_paraxial * 1e3 * np.sign(x_fit[0] + 1e-19),
-                    color="orange",
-                    linestyle="dashed",
-                    linewidth=1,
-                    label="Paraxial spot size ($w_{0}$)",
-                )
-                legend_line = Line2D(
-                    [], [], color="orange", linestyle="dashed", linewidth=1, label="Paraxial Gaussian intensity profile"
-                )
-                handles, labels = ax[0].get_legend_handles_labels()
-                handles.append(legend_line)
-                ax2.set_ylabel("Relative intensity (a.u.)")
-                ax2.set_ylim(-0.01, 1.01)
+            legend_line = Line2D(
+                [], [], color="orange", linestyle="dashed", linewidth=1, label="Paraxial Gaussian intensity profile"
+            )
+            handles, labels = ax[0].get_legend_handles_labels()
+            handles.append(legend_line)
+            ax2.set_ylabel("Relative intensity (a.u.)")
+            ax2.set_ylim(-0.01, 1.01)
 
-            zero_derivative_point_plot = np.nan if zero_derivative_points is None else zero_derivative_points
-            ax[0].axvline(
-                zero_derivative_point_plot * 1e3, label="2nd vs 4th order max", color="purple", linestyle="dotted"
-            )
-            ax[0].legend(handles=handles)
+        zero_derivative_point_plot = np.nan if zero_derivative_points is None else zero_derivative_points
+        ax[0].axvline(
+            zero_derivative_point_plot * 1e3, label="2nd vs 4th order max", color="purple", linestyle="dotted"
+        )
+        ax[0].legend(handles=handles)
     return fig, ax
 
 
@@ -1105,7 +1099,7 @@ def energy_level(cavity: Cavity, hessian_method: str = 'ABCD_matrices'):
     hessian_normalized = hessian(cavity=cavity, n_rays = 1, normalize=True, method=hessian_method)[0, 0]
     # The energy level of the mode is proportional to the square root of the product of the two eigenvalues of the Hessian matrix.
     spot_size_end = cavity.arms[len(cavity.arms) // 2].mode_parameters_on_surface_0.spot_size[0]
-    results_dict = analyze_potential_given_cavity(cavity=cavity, n_rays = 10, phi_max = 0.01, print_tests=False)
+    results_dict = analyze_potential_given_cavity(cavity=cavity, n_rays=10, phi_max=0.01, print_tests=False)
     # potential_quadratic_coefficient = results_dict['polynomial_residuals_mirror'].coef[1]  # it is a polynomial of x**2, so quadratic term is the second term in the array
     # hessian_value = hessian(cavity=cavity, n_rays = 1, normalize=False, method=hessian_method)[0, 0]
     # jacobian = mirrors_jacobian(cavity=cavity)
@@ -1133,7 +1127,8 @@ def mirrors_jacobian(cavity: Cavity):
 def solve_cavity_eigenstate(cavity: Cavity, results_dict: Optional[dict] = None, n_rays: int = 1000, phi_max: float = 0.3):
     # Assumes cylindrical symmetry
     if results_dict is None:
-        results_dict = analyze_potential_given_cavity(cavity=cavity, n_rays=n_rays, phi_max=phi_max, print_tests=False, potential_horizontal_axis_in_angles=True)
+        results_dict = analyze_potential_given_cavity(cavity=cavity, n_rays=n_rays, phi_max=phi_max, print_tests=False,
+                                                      potential_horizontal_axis_in_NAs=True)
     else:
         assert results_dict['potential_horizontal_axis_in_angles'], 'Potential must be in angles'
     # mirror_intersection_points = cavity.surfaces[-1].find_intersection_with_ray_exact(results_dict['ray_sequence'][-1])

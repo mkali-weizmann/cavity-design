@@ -19,12 +19,12 @@ cavity = Cavity.from_params(params=params,
                             debug_printing_level=1,
                             )
 
-results_dict = analyze_potential_given_cavity(cavity=cavity, phi_max=np.arcsin(0.3), n_rays=100)
+results_dict = analyze_potential_given_cavity(cavity=cavity, n_rays=100, phi_max=np.arcsin(0.3))
 wavefront_points = results_dict['wavefront_points_opposite']
 plt.close('all')
 ax = cavity.plot(fine_resolution=True)
 ax.plot(wavefront_points[:, 0], wavefront_points[:, 1])
 plt.show()
 
-plot_results(results_dict=results_dict, far_away_plane=True, potential_x_axis_angles=False)
+plot_results(results_dict=results_dict, far_away_plane=True, potential_horizontal_axis_in_NAs=False)
 plt.show()

@@ -54,7 +54,7 @@ cavity_non_paraxial = Cavity.from_params(params=params,
                             )
 
 print(2*energy_level(cavity_non_paraxial))
-results_dict = analyze_potential_given_cavity(cavity=cavity_non_paraxial, phi_max=0.2, n_rays=30)
+results_dict = analyze_potential_given_cavity(cavity=cavity_non_paraxial, n_rays=30, phi_max=0.2)
 plot_results(results_dict=results_dict, far_away_plane=True)
 plt.show()
 

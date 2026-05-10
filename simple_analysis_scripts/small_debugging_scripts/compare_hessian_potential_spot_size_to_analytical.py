@@ -32,7 +32,7 @@ landing_point = slightly_shifted_ray_propagated[-1].origin
 landing_point_parameterization = cavity.surfaces[-1].get_parameterization(landing_point)[1]
 jacobian = dp / landing_point_parameterization
 
-results_dict = analyze_potential_given_cavity(cavity=cavity, n_rays = 10, phi_max = 0.01, print_tests=False)
+results_dict = analyze_potential_given_cavity(cavity=cavity, n_rays=10, phi_max=0.01, print_tests=False)
 a_2_numerical = results_dict['polynomial_residuals_mirror'].coef[1]
 a_2_analytical = u / (2 * R ** 2)
 
@@ -77,7 +77,7 @@ landing_point = slightly_shifted_ray_propagated[-1].origin
 landing_point_parameterization = cavity.surfaces[-1].get_parameterization(landing_point)[1]
 jacobian = dp / landing_point_parameterization
 
-results_dict = analyze_potential_given_cavity(cavity=cavity, n_rays = 10, phi_max = 0.01, print_tests=False)
+results_dict = analyze_potential_given_cavity(cavity=cavity, n_rays=10, phi_max=0.01, print_tests=False)
 a_2_numerical = results_dict['polynomial_residuals_mirror'].coef[1]
 a_2_analytical = u / (2 * R_1 ** 2)
 

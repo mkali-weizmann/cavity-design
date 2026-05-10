@@ -32,7 +32,7 @@ OPTICAL_AXIS = RIGHT
 #
 # defocus = choose_source_position_for_desired_focus_analytic(T_c=T_c_aspheric, R_1=np.inf, R_2=-aspheric_curved.radius, n=n_aspheric_actual, back_focal_length = None, desired_focus=200e-3, diameter = None)
 # print(defocus)
-for i in range(len(defocuses)):
+for i in [0]:  # range(len(defocuses)):
     defocus = defocuses[i]
     n_aspheric_actual = n_aspheric_actuals[i]
     back_center = (back_focal_length_aspheric + defocus) * OPTICAL_AXIS
@@ -59,7 +59,8 @@ for i in range(len(defocuses)):
     cavity = optical_system_to_cavity_completion(optical_system=optical_system_with_small_mirror, NA=NA_small_arm, unconcentricity=None,
                                                  end_mirror_ROC=2e-1)
 
-    results_dict = analyze_potential_given_cavity(cavity=cavity, n_rays=n_rays, phi_max=np.arcsin(max_NA_for_polynomial), print_tests=False, )
+    results_dict = analyze_potential_given_cavity(cavity=cavity, n_rays=n_rays,
+                                                  phi_max=np.arcsin(max_NA_for_polynomial), print_tests=False)
     print(cavity.surfaces[-1].center[0], defocus, results_dict['residual_distances_opposite'][-1], n_aspheric_actual, aspheric_curved.polynomial)
     plt.close('all')
     fig, ax = plt.subplots(2, 1, figsize=(12, 6))

@@ -19,9 +19,11 @@ mirror_setting_mode = 'Set NA'
 
 
 cavity = generate_two_positive_lenses_cavity(defocus=defocus, back_focal_length_aspheric=back_focal_length_aspheric, T_c_aspheric=T_c_aspheric, n_aspheric_design=n_aspheric_design, n_aspheric_actual=n_aspheric_actual, n_spherical=n_spherical, T_c_spherical=T_c_spherical, diameter=diameter, spherical_aspherical_distance=spherical_aspherical_distance, desired_focus=desired_focus, mirror_setting_mode=mirror_setting_mode, NA_small_arm=NA_small_arm, unconcentricity=unconcentricity)
-results_dict = analyze_potential_given_cavity(cavity=cavity, n_rays=n_rays, phi_max=np.arcsin(max_NA_for_polynomial), potential_horizontal_axis_in_angles=False, print_tests=False, )
+results_dict = analyze_potential_given_cavity(cavity=cavity, n_rays=n_rays, phi_max=np.arcsin(max_NA_for_polynomial),
+                                              print_tests=False, potential_horizontal_axis_in_NAs=False)
 
-fig, ax = plot_results(results_dict=results_dict, far_away_plane=True, unconcentricity=unconcentricity, potential_x_axis_angles=False)
+fig, ax = plot_results(results_dict=results_dict, far_away_plane=True, unconcentricity=unconcentricity,
+                       potential_horizontal_axis_in_NAs=False)
 unconcentricity = np.nan if mirror_setting_mode == 'Set NA' else unconcentricity
 ax[1].set_title(f"f_spherical={focal_length_of_lens(R_1=results_dict['cavity'].surfaces[3].radius, R_2=-results_dict['cavity'].surfaces[3].radius, T_c=results_dict['cavity'].surfaces[4].center[0] - results_dict['cavity'].surfaces[3].center[0], n=results_dict['cavity'].surfaces[3].n_2)*1e3:.3f} mm, "
                 f"EFL aspheric = {focal_length_of_lens(R_1=np.inf, R_2=-results_dict['cavity'].surfaces[2].radius, T_c=results_dict['cavity'].surfaces[2].center[0] - results_dict['cavity'].surfaces[1].center[0], n=results_dict['cavity'].surfaces[1].n_2)*1e3:.3f}, "

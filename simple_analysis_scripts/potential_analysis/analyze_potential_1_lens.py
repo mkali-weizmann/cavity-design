@@ -35,7 +35,9 @@ if print_tests:
     )
 if plot:
     # plt.close('all')
-    fig, ax = plot_results(results_dict, far_away_plane=True, unconcentricity=unconcentricity, potential_x_axis_angles=False, rays_labels=["Before lens", "After flat surface", "After aspheric surface"])
+    fig, ax = plot_results(results_dict, far_away_plane=True, unconcentricity=unconcentricity,
+                           potential_horizontal_axis_in_NAs=False,
+                           rays_labels=["Before lens", "After flat surface", "After aspheric surface"])
     center = results_dict["center_of_curvature"]
     plt.suptitle(
         f"lens_type={lens_type}, desired_focus = {desired_focus:.3e}m, n_design: {n_design:.3f}, n_actual: {n_actual:.3f}, Lens focal length: {back_focal_length * 1e3:.1f} mm, Defocus: z_lens -> z_lens + {defocus * 1e3:.1f} mm, T_c: {T_c * 1e3:.1f} mm, Diameter: {diameter * 1e3:.2f} mm"
