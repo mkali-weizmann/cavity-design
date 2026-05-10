@@ -573,7 +573,7 @@ def analyze_output_wavefront(
     end_mirror_center: Optional[float] = None,
     R_output_analytical: Optional[float] = None,
     end_mirror_ROC: Optional[float] = None,
-    potential_horizontal_axis_in_NAs: bool = False,  # Alternative is in transverse coordinates [meters].
+    potential_horizontal_axis_in_NAs: bool = True,  # Alternative is in transverse coordinates [meters].
     print_tests: bool = True,
 ):
     NAs_0 = ray_sequence[0].k_vector[..., 1]
@@ -723,7 +723,7 @@ def analyze_potential(
     unconcentricity: float,
     end_mirror_ROC: Optional[float] = None,
     small_mirror_object: Optional[CurvedMirror] = None,
-    potential_horizontal_axis_in_NAs: bool = False,
+    potential_horizontal_axis_in_NAs: bool = True,
     print_tests: bool = True,
 ):
     ray_sequence = optical_system.propagate_ray(rays_0, propagate_with_first_surface_first=True)
@@ -764,7 +764,7 @@ def analyze_potential(
     return results_dict
 
 
-def analyze_potential_given_cavity(cavity: Cavity, n_rays: int, phi_max: float, print_tests: bool = True, potential_horizontal_axis_in_NAs: bool = False):
+def analyze_potential_given_cavity(cavity: Cavity, n_rays: int, phi_max: float, print_tests: bool = True, potential_horizontal_axis_in_NAs: bool = True):
     # assert np.all(
     #     np.isclose(cavity.surfaces[0].origin, ORIGIN)
     # ), "Currently assumes the center of the small mirror is at the origin for the extraction of the Analytical R. probably it will work otherwise, but needs to be debugged"  #
@@ -973,11 +973,12 @@ def plot_results(
         if NA_paraxial is not None and spot_size_paraxial is not None:
             ax2 = ax[0].twinx()
             if not potential_horizontal_axis_in_NAs:
-                intensity_profile = np.exp(-(2 * x_fit**2) / spot_size_paraxial ** 2)
+                intensity_profile = np.exp(-(2 * x_fit**2) / spot_size_paraxial ** 2)  # 2 because the intensity is the filed squared.
                 one_spot_size_point = spot_size_paraxial * 1e3
             else:
-                intensity_profile = np.exp(-(2 * x_fit ** 2) / NA_paraxial ** 2)
-                one_spot_size_point = NA_paraxial
+                NA_first_arm = results_dict["cavity"].arms[0].mode_parameters.NA[0]
+                intensity_profile = np.exp(-(2 * x_fit ** 2) / (NA_first_arm) ** 2)
+                one_spot_size_point = NA_first_arm
             ax2.plot(
                 x_fit_scaled,
                 intensity_profile,

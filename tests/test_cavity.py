@@ -567,7 +567,7 @@ def test_potential_single_lens():
                                                                     diameter=diameter, n_actual=n_actual, )
     rays_0 = initialize_rays(n_rays=n_rays, phi_max=phi_max)
     results_dict = analyze_potential(optical_system=optical_system, rays_0=rays_0, unconcentricity=unconcentricity,
-                                     print_tests=print_tests)
+                                     print_tests=print_tests, potential_horizontal_axis_in_NAs=False)
     assert np.isclose(
         np.abs(results_dict["zero_derivative_points"] * 1e3), 0.15342637331775477
     ), f"Potential single lens test failed: expected zero derivative point at approximately 0.15342637331775477 mm but got {results_dict['zero_derivative_points']*1e3} mm"
@@ -594,10 +594,10 @@ def test_free_potential_vs_cavity_potential_comparison():
                                                                     diameter=diameter, n_actual=n_actual, )
     rays_0 = initialize_rays(n_rays=n_rays, phi_max=phi_max)
     results_dict = analyze_potential(optical_system=optical_system, rays_0=rays_0, unconcentricity=unconcentricity,
-                                     print_tests=print_tests)
+                                     print_tests=print_tests, potential_horizontal_axis_in_NAs=False)
     cavity = results_dict['cavity']
     print(cavity.ABCD_round_trip)
-    results_dict_cavity = analyze_potential_given_cavity(cavity=cavity, n_rays=30, phi_max=0.14, print_tests=True)
+    results_dict_cavity = analyze_potential_given_cavity(cavity=cavity, n_rays=30, phi_max=0.14, print_tests=True, potential_horizontal_axis_in_NAs=False)
     assert np.all(np.isclose(np.array(
         [results_dict['zero_derivative_points'], results_dict['polynomial_residuals_mirror'].coef[2],
          results_dict['polynomial_residuals_opposite'].coef[1]]),
@@ -666,7 +666,7 @@ def test_spot_size_from_potential_and_ray_tracing():
     cavity = optical_system_to_cavity_completion(optical_system=optical_system_small_elements, unconcentricity=u,
                                                  end_mirror_ROC=R)
 
-    results_dict = analyze_potential_given_cavity(cavity=cavity, n_rays=10, phi_max=0.01, print_tests=False)
+    results_dict = analyze_potential_given_cavity(cavity=cavity, n_rays=10, phi_max=0.01, print_tests=False, potential_horizontal_axis_in_NAs=False)
     a_2_numerical = results_dict['polynomial_residuals_mirror'].coef[1]
     a_2_analytical = u / (2 * R ** 2)
     assert np.isclose(
