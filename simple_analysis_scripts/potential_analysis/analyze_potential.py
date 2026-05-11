@@ -181,7 +181,7 @@ def generate_two_positive_lenses_optical_system(
             forward_normal=OPTICAL_AXIS,
             flat_faces_center=back_center,
             diameter=diameter,
-            polynomial_degree=24,
+            polynomial_degree=8,
             name="aspheric_lens_automatic",
         )
     )
@@ -936,7 +936,8 @@ def plot_results(
             NA_short_arm = (
                 np.nan if results_dict["cavity"] is None else results_dict["cavity"].arms[0].mode_parameters.NA[0]
             )
-            mode_terms = f"\n Paraxial spot size: {spot_size_paraxial * 1e3:.2f} mm, NA long arm: {NA_paraxial:.2e}, NA short arm: {NA_short_arm:.2e}"
+            energy_level_value = np.nan if results_dict["cavity"] is None else np.abs(energy_level(cavity=results_dict["cavity"]))
+            mode_terms = f"\n Paraxial spot size: {spot_size_paraxial * 1e3:.2f} mm, NA long arm: {NA_paraxial:.2e}, NA short arm: {NA_short_arm:.2e}, Ground state energy: {energy_level_value * 1e9:.2f} nm"
         else:
             mode_terms = ""
         if unconcentricity is not None:
@@ -1106,7 +1107,8 @@ def energy_level(cavity: Cavity, hessian_method: str = 'ABCD_matrices'):
     # jacobian = mirrors_jacobian(cavity=cavity)
     # potential_quadratic_coefficient_normalized = potential_quadratic_coefficient * jacobian
     # hessian_normalized = hessian_value * jacobian ** 2
-    energy_level_hessian_only = cavity.lambda_0_laser ** 2 / (2 * np.pi ** 2 * spot_size_end**2 * hessian_normalized)
+    # ATTENTION: I ADDED A FACTOR OF TWO TO AGREE WITH OSIPS CONVENTION! COMMENTED LINES DO NOT HAVE THIS, SO A FACTOR OF TWO RATIO IS EXPECTED
+    energy_level_hessian_only = cavity.lambda_0_laser ** 2 / (np.pi ** 2 * spot_size_end**2 * hessian_normalized)
     # energy_level_hessian_and_potential = np.sqrt(potential_quadratic_coefficient / (-2 * hessian_normalized)) * cavity.lambda_0_laser / np.pi
     # energy_level_spot_size_and_potential = potential_quadratic_coefficient * spot_size_end**2
     return energy_level_hessian_only  # , energy_level_hessian_and_potential
