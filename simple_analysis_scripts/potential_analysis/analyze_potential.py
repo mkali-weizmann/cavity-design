@@ -181,7 +181,7 @@ def generate_two_positive_lenses_optical_system(
             forward_normal=OPTICAL_AXIS,
             flat_faces_center=back_center,
             diameter=diameter,
-            polynomial_degree=8,
+            polynomial_degree=24,
             name="aspheric_lens_automatic",
         )
     )
