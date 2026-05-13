@@ -18,7 +18,14 @@ NA_small_arm = 0.15
 mirror_setting_mode = 'Set NA'
 
 
-cavity = generate_two_positive_lenses_cavity(defocus=defocus, back_focal_length_aspheric=back_focal_length_aspheric, T_c_aspheric=T_c_aspheric, n_aspheric_design=n_aspheric_design, n_aspheric_actual=n_aspheric_actual, n_spherical=n_spherical, T_c_spherical=T_c_spherical, diameter=diameter, spherical_aspherical_distance=spherical_aspherical_distance, desired_focus=desired_focus, mirror_setting_mode=mirror_setting_mode, NA_small_arm=NA_small_arm, unconcentricity=unconcentricity)
+cavity = generate_two_positive_lenses_cavity(defocus=defocus, back_focal_length_aspheric=back_focal_length_aspheric,
+                                             T_c_aspheric=T_c_aspheric, n_aspheric_design=n_aspheric_design,
+                                             n_aspheric_actual=n_aspheric_actual, n_spherical=n_spherical,
+                                             T_c_spherical=T_c_spherical, unconcentricity=unconcentricity,
+                                             NA_small_arm=NA_small_arm, mirror_setting_mode=mirror_setting_mode,
+                                             diameter=diameter,
+                                             spherical_aspherical_distance=spherical_aspherical_distance,
+                                             desired_focus=desired_focus)
 results_dict = analyze_potential_given_cavity(cavity=cavity, n_rays=n_rays, phi_max=np.arcsin(max_NA_for_polynomial),
                                               print_tests=False, potential_horizontal_axis_in_NAs=False)
 

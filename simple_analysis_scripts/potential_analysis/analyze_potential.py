@@ -169,8 +169,12 @@ def generate_two_positive_lenses_optical_system(
     diameter: float = 12.7e-3,
     spherical_aspherical_distance: float = 5e-3,
     desired_focus: float = 200e-3,
-    spherical_lens_type: str = "bi-convex"
+    spherical_type: str = "bi-convex",
+    spherical_focal_length: float = None,
+    spherical_setting_mode: str = "Set position and desired_focus"
 ):
+
+    assert spherical_setting_mode in ["Set position and desired focus", "Set focal length and desired focus", "Set position and focal length"]
     OPTICAL_AXIS = RIGHT
     back_center = (back_focal_length_aspheric + defocus) * OPTICAL_AXIS
     aspheric_flat, aspheric_curved = Surface.from_params(
@@ -200,26 +204,54 @@ def generate_two_positive_lenses_optical_system(
         initial_distance=aspheric_flat.center[0]
     )
 
-    lens_left_center = aspheric_curved.center + spherical_aspherical_distance * OPTICAL_AXIS
 
-    # Derivation is here: https://chatgpt.com/share/69f75421-cf44-838e-b842-d7b28a2d1916
-    # (Derivation is correct because it produces the correct results)
-    u = aspheric_output_ROC + spherical_aspherical_distance
-    v = desired_focus
-    if spherical_lens_type == "bi-convex":
-        root = np.sqrt(T_c_spherical ** 2 * (u - v) ** 2 + 4 * n_spherical ** 2 * u ** 2 * v ** 2)
-        base = T_c_spherical * (u + v) + 2 * n_spherical * u * v
-        denominator = 2 * T_c_spherical * u * v * (n_spherical - 1)
-        x_plus = (base + root) / denominator
-        x_minus = (base - root) / denominator
+    if spherical_type == "Set position and desired focus":
+        # If the focal length is not given, but the distance and the desired focus are, we need to choose geometry
+        # such that the focal point is where we want it,
+        lens_left_center = aspheric_curved.center + spherical_aspherical_distance * OPTICAL_AXIS
+        # Derivation is here: https://chatgpt.com/share/69f75421-cf44-838e-b842-d7b28a2d1916
+        # (Derivation is correct because it produces the correct results)
+        u = aspheric_output_ROC + spherical_aspherical_distance
+        v = desired_focus
+        if spherical_type == "bi-convex":
+            root = np.sqrt(T_c_spherical ** 2 * (u - v) ** 2 + 4 * n_spherical ** 2 * u ** 2 * v ** 2)
+            base = T_c_spherical * (u + v) + 2 * n_spherical * u * v
+            denominator = 2 * T_c_spherical * u * v * (n_spherical - 1)
+            x_plus = (base + root) / denominator
+            x_minus = (base - root) / denominator
 
-        R_plus = 1 / x_plus
-        R_minus = 1 / x_minus
-        R_chosen = max(R_plus, R_minus)
-        R_left = R_chosen
-        R_right = R_chosen
+            R_plus = 1 / x_plus
+            R_minus = 1 / x_minus
+            R_chosen = max(R_plus, R_minus)
+            R_left = R_chosen
+        else:
+            R_left = (n_spherical - 1) / ( 1/u + 1/(v - T_c_spherical / n_spherical) )
     else:
-        R_left = (n_spherical - 1) / ( 1/u + 1/(v - T_c_spherical / n_spherical) )
+        # If the focal length is given, we need to choose geometry and position to put the desired focus where we want it.
+        if spherical_type == "bi-convex":
+            # Derivation is at Optical elements design, Biconvex lens radius given the focal length in the research file:
+            R_left = (n_spherical-1) * spherical_focal_length * (1 + np.sqrt(1 - T_c_spherical / (n_spherical * spherical_focal_length)))
+            R_right = R_left
+        else:
+            R_left = spherical_focal_length * (n_spherical - 1)
+            R_right = np.inf
+
+        lens_distance_to_aspheric_output_COC = image_of_a_point_with_thick_lens(
+            distance_to_face_1=desired_focus, R_1=R_right, R_2=-R_left, n=n_spherical,  # reversed on purpose because the lens is flipped for this calculation
+            T_c=T_c_spherical
+        )
+        if spherical_setting_mode == "Set focal length and desired focus":
+            if np.abs(aspheric_output_ROC) > 1e1:
+                # If the output wave from aspheric is collimated, treat it as collumated.
+                warnings.warn(
+                    "The aspheric output wave is almost collimated, so the position of the spherical lens is set based on the distance to the aspheric lens, not based on the focal length. If you want to set the position based on the focal length, try increasing the defocus or changing the back focal length of the aspheric lens.")
+                lens_left_center = aspheric_curved.center + spherical_aspherical_distance * OPTICAL_AXIS
+            else:
+                lens_left_center = aspheric_curved.center + (lens_distance_to_aspheric_output_COC - aspheric_output_ROC) * OPTICAL_AXIS
+                assert lens_left_center[0] > aspheric_curved.center[0], 'Solution for spherical lens positioning is to the left of the aspheric right face. This happens when the given focal length is too small. Try increasing it'
+                assert lens_left_center[0] - aspheric_curved.center[0] < 2, 'Solution for spherical lens positioning is very far to the right of the aspheric right face. This happens when the given focal length is too large. Try decreasing it.'
+        else:  # Set position and focal length
+            lens_left_center = aspheric_curved.center + spherical_aspherical_distance * OPTICAL_AXIS
 
 
     spherical_0 = CurvedRefractiveSurface(
@@ -234,7 +266,7 @@ def generate_two_positive_lenses_optical_system(
         diameter=diameter,
     )
 
-    if spherical_lens_type == "bi-convex":
+    if spherical_type == "bi-convex":
         R_right = R_left
         spherical_1 = CurvedRefractiveSurface(
             radius=R_right,
@@ -280,7 +312,9 @@ def generate_two_positive_lenses_cavity(defocus: float,
     diameter: float = 12.7e-3,
     spherical_aspherical_distance: float = 5e-3,
     desired_focus: float = 200e-3,
-    spherical_lens_type: str = 'bi-convex'):
+    spherical_type: str = 'bi-convex',
+    spherical_focal_length: float = 200e-3,
+    spherical_setting_mode: str = "Set position and desired focus"):
 
     if mirror_setting_mode == 'Set NA':
         unconcentricity = None
@@ -296,7 +330,10 @@ def generate_two_positive_lenses_cavity(defocus: float,
                                                                  n_spherical=n_spherical, T_c_spherical=T_c_spherical,
                                                                  diameter=diameter,
                                                                  spherical_aspherical_distance=spherical_aspherical_distance,
-                                                                 desired_focus=desired_focus, spherical_lens_type=spherical_lens_type)
+                                                                 desired_focus=desired_focus,
+                                                                 spherical_type=spherical_type,
+                                                                 spherical_focal_length=spherical_focal_length,
+                                                                 spherical_setting_mode=spherical_setting_mode)
     optical_system_with_small_mirror = OpticalSystem(surfaces=[LASER_OPTIK_MIRROR, *optical_system.surfaces],
                                                      t_is_trivial=True, p_is_trivial=True,
                                                      use_paraxial_ray_tracing=False, lambda_0_laser=LAMBDA_0_LASER)
@@ -311,7 +348,6 @@ def generate_negative_lens_cavity(
     T_c_first_lens,
     back_focal_length_first_lens,
     R_1_first_lens,
-    R_2_first_lens,
     R_2_signed_first_lens,
     diameter_first_lens,
     approximate_focus_distance_long_arm: float,
