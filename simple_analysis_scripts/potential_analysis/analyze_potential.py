@@ -174,7 +174,7 @@ def generate_two_positive_lenses_optical_system(
     spherical_setting_mode: str = "Set position and desired_focus"
 ):
 
-    assert spherical_setting_mode in ["Set position and desired focus", "Set focal length and desired focus", "Set position and focal length"]
+    assert spherical_setting_mode in ["Set position and desired focus", "Set focal length and desired focus", "Set position and focal length"], "spherical_setting_mode must be either 'Set position and desired focus', 'Set focal length and desired focus' or 'Set position and focal length'"
     OPTICAL_AXIS = RIGHT
     back_center = (back_focal_length_aspheric + defocus) * OPTICAL_AXIS
     aspheric_flat, aspheric_curved = Surface.from_params(
@@ -320,7 +320,6 @@ def generate_two_positive_lenses_cavity(defocus: float,
         unconcentricity = None
     else:
         NA_small_arm = None
-        unconcentricity = widget_convenient_exponent(unconcentricity)
 
     optical_system = generate_two_positive_lenses_optical_system(defocus=defocus,
                                                                  back_focal_length_aspheric=back_focal_length_aspheric,
