@@ -234,17 +234,28 @@ def generate_two_positive_lenses_optical_system(
         diameter=diameter,
     )
 
-    spherical_1 = CurvedRefractiveSurface(
-        radius=R_right,
-        outwards_normal=OPTICAL_AXIS,
-        center=spherical_0.center + T_c_spherical * OPTICAL_AXIS,
-        n_1=n_spherical,
-        n_2=1,
-        curvature_sign=CurvatureSigns.concave,
-        name="spherical_1",
-        thickness=T_c_aspheric / 2,
-        diameter=diameter,
-    )
+    if spherical_lens_type == "bi-convex":
+        R_right = R_left
+        spherical_1 = CurvedRefractiveSurface(
+            radius=R_right,
+            outwards_normal=OPTICAL_AXIS,
+            center=spherical_0.center + T_c_spherical * OPTICAL_AXIS,
+            n_1=n_spherical,
+            n_2=1,
+            curvature_sign=CurvatureSigns.concave,
+            name="spherical_1",
+            thickness=T_c_aspheric / 2,
+            diameter=diameter,
+        )
+    else:
+        spherical_1 = FlatRefractiveSurface(
+            outwards_normal=OPTICAL_AXIS,
+            center=spherical_0.center + T_c_spherical * OPTICAL_AXIS,
+            n_1=n_spherical,
+            n_2=1,
+            name="spherical_1",
+            diameter=diameter,
+        )
 
     optical_system_combined = OpticalSystem(
         surfaces=[aspheric_flat, aspheric_curved, spherical_0, spherical_1],
@@ -268,7 +279,8 @@ def generate_two_positive_lenses_cavity(defocus: float,
     mirror_setting_mode: str = 'Set NA',
     diameter: float = 12.7e-3,
     spherical_aspherical_distance: float = 5e-3,
-    desired_focus: float = 200e-3,):
+    desired_focus: float = 200e-3,
+    spherical_lens_type: str = 'bi-convex'):
 
     if mirror_setting_mode == 'Set NA':
         unconcentricity = None
@@ -284,7 +296,7 @@ def generate_two_positive_lenses_cavity(defocus: float,
                                                                  n_spherical=n_spherical, T_c_spherical=T_c_spherical,
                                                                  diameter=diameter,
                                                                  spherical_aspherical_distance=spherical_aspherical_distance,
-                                                                 desired_focus=desired_focus)
+                                                                 desired_focus=desired_focus, spherical_lens_type=spherical_lens_type)
     optical_system_with_small_mirror = OpticalSystem(surfaces=[LASER_OPTIK_MIRROR, *optical_system.surfaces],
                                                      t_is_trivial=True, p_is_trivial=True,
                                                      use_paraxial_ray_tracing=False, lambda_0_laser=LAMBDA_0_LASER)
