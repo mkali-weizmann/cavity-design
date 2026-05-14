@@ -205,7 +205,7 @@ def generate_two_positive_lenses_optical_system(
     )
 
 
-    if spherical_type == "Set position and desired focus":
+    if spherical_setting_mode == "Set position and desired focus":
         # If the focal length is not given, but the distance and the desired focus are, we need to choose geometry
         # such that the focal point is where we want it,
         lens_left_center = aspheric_curved.center + spherical_aspherical_distance * OPTICAL_AXIS
