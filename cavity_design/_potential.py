@@ -130,7 +130,7 @@ def generate_one_lens_optical_system(
             material_properties=PHYSICAL_SIZES_DICT["material_properties_sapphire"],
             name="spherical_lens",
         )
-        params = [s.to_params for s in surfaces]
+        params = surfaces.to_params
     elif back_focal_length is not None:
         back_center = (back_focal_length - defocus) * optical_axis
         params = generate_aspheric_lens_params(

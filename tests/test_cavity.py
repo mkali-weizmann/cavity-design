@@ -81,12 +81,12 @@ def test_mirror_lens_mirror_design():
             radius=5e-03, curvature_sign=CurvatureSigns.concave, T_c=np.nan,
             n_inside_or_after=1e00, n_outside_or_before=1e00, material_properties=_mirror_mat,
         ),
-        [s.to_params for s in generate_lens_from_params(
+        generate_lens_from_params(
             center=np.array([6.387599281689135e-03, 0, 0]),
             forward_direction=np.array([1.0, 0.0, 0.0]),
             r_1=2.422e-02, r_2=-5.488e-03, T_c=2.913797540986543e-03,
             n_inside=1.76e00, n_outside=1e00, material_properties=_lens_mat, name="Lens",
-        )],
+        ).to_params,
         OpticalSurfaceParams(
             name="Big Mirror", surface_type="curved_mirror",
             x=4.078081462362321e-01, y=0, z=0, theta=0, phi=0,
@@ -256,13 +256,13 @@ def test_perturbation():
                              theta=0, phi=-1e+00 * np.pi, radius=5e-03, curvature_sign=CurvatureSigns.concave,
                              T_c=np.nan, n_inside_or_after=1e+00, n_outside_or_before=1e+00, diameter=7.75e-03,
                              material_properties=_ule_mat, polynomial_coefficients=None),
-        [s.to_params for s in generate_lens_from_params(
+        generate_lens_from_params(
             center=np.array([6.387599281689135e-03, 0, 0]),
             forward_direction=np.array([1.0, 0.0, 0.0]),
             r_1=2.422e-02, r_2=-5.488e-03, T_c=2.913797540986543e-03,
             n_inside=1.76e+00, n_outside=1e+00, diameter=7.75e-03,
             material_properties=_sapphire_mat, name='Lens',
-        )],
+        ).to_params,
         OpticalSurfaceParams(name='Big Mirror', surface_type='curved_mirror', x=4.074677357638641e-01, y=0, z=0,
                              theta=0, phi=0, radius=2e-01, curvature_sign=CurvatureSigns.concave, T_c=np.nan,
                              n_inside_or_after=1e+00, n_outside_or_before=1e+00, diameter=2.54e-02,
@@ -523,20 +523,20 @@ def test_spot_size_from_potential_and_ray_tracing():
                              phi=1e+00 * np.pi, radius=5e-03, curvature_sign=CurvatureSigns.concave,
                              T_c=np.nan, n_inside_or_after=1e+00, n_outside_or_before=1e+00, diameter=7.75e-03,
                              material_properties=_fused_silica_mat, polynomial_coefficients=None),
-        [s.to_params for s in generate_lens_from_params(
+        generate_lens_from_params(
             center=np.array([6.776592092031389e-03, 0, 0]),
             forward_direction=np.array([1.0, 0.0, 0.0]),
             r_1=2.422e-02, r_2=-5.488e-03, T_c=2.913797540986543e-03,
             n_inside=1.76e+00, n_outside=1e+00, diameter=7.75e-03,
             material_properties=_sapphire_mat2, name='spherical_lens',
-        )],
-        [s.to_params for s in generate_lens_from_params(
+        ).to_params,
+        generate_lens_from_params(
             center=np.array([4.190164703571147e-01, 0, 0]),
             forward_direction=np.array([1.0, 0.0, 0.0]),
             r_1=-3.561084685817112e-02, r_2=1.732922172776388e-01, T_c=4.350000000000001e-03,
             n_inside=1.45e+00, n_outside=1e+00, diameter=5e-02,
             material_properties=_fused_silica_mat, name='Negative Lens',
-        )],
+        ).to_params,
         OpticalSurfaceParams(name='big mirror', surface_type='curved_mirror', x=4.330042644697557e-01, y=0, z=0,
                              theta=0, phi=0, radius=6.896719562240133e-02,
                              curvature_sign=CurvatureSigns.concave, T_c=np.nan, n_inside_or_after=1e+00,

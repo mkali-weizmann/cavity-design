@@ -42,7 +42,8 @@ from ._utils import (
     INDICES_DICT,
     CurvatureSigns,
     z_R_of_NA, interval_parameterization, safe_exponent, gaussians_overlap_integral,
-    convert_material_to_mirror_or_lens, PHYSICAL_SIZES_DICT, INDICES_DICT_INVERSE, functions_first_crossing
+    convert_material_to_mirror_or_lens, PHYSICAL_SIZES_DICT, INDICES_DICT_INVERSE, functions_first_crossing,
+    MaterialProperties
 )
 from ._modes import (
     LocalModeParameters,
@@ -62,8 +63,7 @@ from ._surfaces import (
     FlatMirror,
     IdealLens,
     AsphericSurface,
-    generate_lens_from_params,
-    generate_aspheric_lens_from_params,
+    FlatRefractiveSurface, AsphericRefractiveSurface,
 )
 
 
@@ -4051,3 +4051,115 @@ def params_to_perturbable_params_names(
     if remove_one_of_the_angles:
         perturbable_params.remove(ParamsNames.theta)
     return perturbable_params
+
+def generate_lens_from_params(
+    center: np.ndarray,
+    forward_direction: np.ndarray,
+    r_1: float,
+    r_2: float,
+    T_c: float,
+    n_inside: float,
+    n_outside: float = 1.0,
+    diameter: float = np.nan,
+    material_properties: Optional[MaterialProperties] = None,
+    name: Optional[str] = None,
+) -> List[Surface]:
+    main_axis = np.argmax(np.abs(forward_direction))
+    directions_nams = [["_left", "_right"], ["_down", "_up"], ["_back", "_front"]]
+    suffixes = directions_nams[main_axis]
+    if forward_direction[main_axis] < 0:
+        suffixes = suffixes[::-1]
+    if name is None:
+        name = "Lens"
+    names = [name + suffix for suffix in suffixes]
+
+    center_1 = center - (1 / 2) * T_c * forward_direction
+    center_2 = center + (1 / 2) * T_c * forward_direction
+    if r_1 == np.inf:
+        surface_1 = FlatRefractiveSurface(
+            outwards_normal=-forward_direction,
+            center=center_1,
+            n_1=n_outside,
+            n_2=n_inside,
+            name=names[0],
+            diameter=diameter,
+        )
+    else:
+        surface_1 = CurvedRefractiveSurface(
+            radius=np.abs(r_1),
+            outwards_normal=-forward_direction * np.sign(r_1),
+            center=center_1,
+            n_1=n_outside,
+            n_2=n_inside,
+            curvature_sign=np.sign(r_1),
+            name=names[0],
+            material_properties=material_properties,
+            thickness=T_c / 2,
+            diameter=diameter,
+        )
+    if r_2 == np.inf:
+        surface_2 = FlatRefractiveSurface(
+            outwards_normal=forward_direction,
+            center=center_2,
+            n_1=n_inside,
+            n_2=n_outside,
+            name=names[1],
+            diameter=diameter,
+        )
+    else:
+        surface_2 = CurvedRefractiveSurface(
+            radius=np.abs(r_2),
+            outwards_normal=-forward_direction * np.sign(r_2),
+            center=center_2,
+            n_1=n_inside,
+            n_2=n_outside,
+            curvature_sign=np.sign(r_2),
+            name=names[1],
+            material_properties=material_properties,
+            thickness=T_c / 2,
+            diameter=diameter,
+        )
+    optical_system = OpticalSystem(surfaces=[surface_1, surface_2], use_paraxial_ray_tracing=False)
+    return optical_system
+
+
+def generate_aspheric_lens_from_params(
+    center: np.ndarray,
+    forward_direction: np.ndarray,
+    polynomial_coefficients: np.ndarray,
+    T_c: float,
+    n_inside: float,
+    n_outside: float = 1.0,
+    diameter: float = np.nan,
+    material_properties: Optional[MaterialProperties] = None,
+    name: Optional[str] = None,
+) -> [Surface]:
+    if name is None:
+        name = "Aspheric Lens"
+    names = [name + " - flat side", name + " - curved side"]
+
+    center_1 = center
+    center_2 = center + T_c * forward_direction
+    surface_1 = FlatRefractiveSurface(
+        outwards_normal=-forward_direction,
+        center=center_1,
+        n_1=n_outside,
+        n_2=n_inside,
+        name=names[0],
+        thermal_properties=material_properties,
+        diameter=diameter,
+    )
+
+    surface_2 = AsphericRefractiveSurface(
+        polynomial_coefficients=polynomial_coefficients,
+        outwards_normal=forward_direction,
+        center=center_2,
+        n_1=n_inside,
+        n_2=n_outside,
+        name=names[1],
+        thermal_properties=material_properties,
+        thickness=T_c / 2,
+        diameter=diameter,
+    )
+    optical_system = OpticalSystem(surfaces=[surface_1, surface_2], use_paraxial_ray_tracing=False)
+    return optical_system
