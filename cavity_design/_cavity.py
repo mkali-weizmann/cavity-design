@@ -43,7 +43,7 @@ from ._utils import (
     CurvatureSigns,
     z_R_of_NA, interval_parameterization, safe_exponent, gaussians_overlap_integral,
     convert_material_to_mirror_or_lens, PHYSICAL_SIZES_DICT, INDICES_DICT_INVERSE, functions_first_crossing,
-    MaterialProperties
+    MaterialProperties, w_0_of_NA, focal_length_of_lens, spot_size, dT_c_of_a_lens
 )
 from ._modes import (
     LocalModeParameters,
@@ -4063,7 +4063,7 @@ def generate_lens_from_params(
     diameter: float = np.nan,
     material_properties: Optional[MaterialProperties] = None,
     name: Optional[str] = None,
-) -> List[Surface]:
+) -> OpticalSystem:
     main_axis = np.argmax(np.abs(forward_direction))
     directions_nams = [["_left", "_right"], ["_down", "_up"], ["_back", "_front"]]
     suffixes = directions_nams[main_axis]
@@ -4119,7 +4119,10 @@ def generate_lens_from_params(
             thickness=T_c / 2,
             diameter=diameter,
         )
-    optical_system = OpticalSystem(surfaces=[surface_1, surface_2], use_paraxial_ray_tracing=False)
+    # if forward_direction is np.array([+-1, 0, 0]) set p_is_trivial to True and p_is_trivial to True, elif forward_direction[3] == 0 set t_is_trivial to True and p_is_trivial to False, else set both to False:
+    p_is_trivial = np.allclose(forward_direction, np.array([1, 0, 0])) or np.allclose(forward_direction, np.array([-1, 0, 0]))
+    t_is_trivial = forward_direction[0] == 0
+    optical_system = OpticalSystem(surfaces=[surface_1, surface_2], use_paraxial_ray_tracing=False, p_is_trivial=p_is_trivial, t_is_trivial=t_is_trivial)
     return optical_system
 
 
@@ -4133,7 +4136,7 @@ def generate_aspheric_lens_from_params(
     diameter: float = np.nan,
     material_properties: Optional[MaterialProperties] = None,
     name: Optional[str] = None,
-) -> [Surface]:
+) -> OpticalSystem:
     if name is None:
         name = "Aspheric Lens"
     names = [name + " - flat side", name + " - curved side"]
@@ -4161,5 +4164,8 @@ def generate_aspheric_lens_from_params(
         thickness=T_c / 2,
         diameter=diameter,
     )
-    optical_system = OpticalSystem(surfaces=[surface_1, surface_2], use_paraxial_ray_tracing=False)
+    # if forward_direction is np.array([+-1, 0, 0]) set p_is_trivial to True and p_is_trivial to True, elif forward_direction[3] == 0 set t_is_trivial to True and p_is_trivial to False, else set both to False:
+    p_is_trivial = np.allclose(forward_direction, np.array([1, 0, 0])) or np.allclose(forward_direction, np.array([-1, 0, 0]))
+    t_is_trivial = forward_direction[0] == 0
+    optical_system = OpticalSystem(surfaces=[surface_1, surface_2], use_paraxial_ray_tracing=False, p_is_trivial=p_is_trivial, t_is_trivial=t_is_trivial)
     return optical_system
