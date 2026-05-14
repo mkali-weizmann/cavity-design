@@ -484,6 +484,8 @@ class OpticalSystem:
         self.t_is_trivial = t_is_trivial
         self.use_paraxial_ray_tracing = use_paraxial_ray_tracing
 
+        self._sync_config_to_nested()
+
         if given_initial_central_line is not None:
             if isinstance(given_initial_central_line, Ray):
                 self.set_given_central_line(initial_ray=given_initial_central_line)
@@ -503,6 +505,34 @@ class OpticalSystem:
             else:
                 flat.append(el)
         return flat
+
+    def _sync_config_to_nested(self):
+        for el in self._elements:
+            if not isinstance(el, OpticalSystem):
+                continue
+            el.use_paraxial_ray_tracing = self.use_paraxial_ray_tracing
+            el.lambda_0_laser = self.lambda_0_laser
+            el.power = self.power
+            el.p_is_trivial = self.p_is_trivial
+            el.t_is_trivial = self.t_is_trivial
+            for arm in el.arms:
+                arm.central_line = None
+                arm.mode_parameters_on_surface_0 = LocalModeParameters(q=np.nan, lambda_0_laser=np.nan, n=arm.n)
+                arm.mode_parameters_on_surface_1 = LocalModeParameters(q=np.nan, lambda_0_laser=np.nan, n=arm.n)
+
+    def _sync_arms_to_nested(self):
+        surface_to_parent_arm = {id(arm.surface_0): arm for arm in self.arms}
+        for el in self._elements:
+            if not isinstance(el, OpticalSystem):
+                continue
+            for child_arm in el.arms:
+                parent_arm = surface_to_parent_arm.get(id(child_arm.surface_0))
+                if parent_arm is None:
+                    continue
+                child_arm.central_line = parent_arm.central_line
+                child_arm.mode_parameters_on_surface_0 = parent_arm.mode_parameters_on_surface_0
+                child_arm.mode_parameters_on_surface_1 = parent_arm.mode_parameters_on_surface_1
+                child_arm.mode_principle_axes = parent_arm.mode_principle_axes
 
     @property
     def mechanical_center(self) -> np.ndarray:
@@ -805,6 +835,7 @@ class OpticalSystem:
         central_line = self.propagate_ray(initial_ray)
         for i, arm in enumerate(self.arms):
             arm.central_line = central_line[i]
+        self._sync_arms_to_nested()
 
     def set_given_mode_parameters(
         self,
@@ -826,6 +857,7 @@ class OpticalSystem:
         for i, arm in enumerate(self.arms):
             arm.mode_parameters_on_surface_0 = mode_parameters_history[2 * i]
             arm.mode_parameters_on_surface_1 = mode_parameters_history[2 * i + 1]
+        self._sync_arms_to_nested()
 
     def principle_axes(self, k_vector: np.ndarray):
         # Returns two vectors that are orthogonal to k_vector and each other, one lives in the central line plane,
@@ -1503,6 +1535,7 @@ class Cavity(OpticalSystem):
                 for i, arm in enumerate(self.arms):
                     arm.central_line = central_line[i]
             self.central_line_successfully_traced = central_line_successfully_traced
+            self._sync_arms_to_nested()
         else:
             self.central_line_successfully_traced = False
             return central_line_initial_parameters, self.central_line_successfully_traced
@@ -1561,6 +1594,7 @@ class Cavity(OpticalSystem):
                     z_R=np.array([np.nan, np.nan]),
                     lambda_0_laser=self.lambda_0_laser,
                 )
+        self._sync_arms_to_nested()
 
     def principle_axes(self, k_vector: np.ndarray):
         # Returns two vectors that are orthogonal to k_vector and each other, one lives in the central line plane,
