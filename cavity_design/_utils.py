@@ -62,11 +62,9 @@ INDICES_DICT_INVERSE = {v: k for k, v in INDICES_DICT.items()}
 # set numpy to raise an error on warnings:
 SURFACE_TYPES_DICT = {
     "curved_mirror": 0,
-    "thick_lens": 1,
     "curved_refractive_surface": 2,
     "ideal_lens": 3,
     "flat_mirror": 4,
-    "ideal_thick_lens": 5,
 }
 SURFACE_TYPES_DICT_INVERSE = {v: k for k, v in SURFACE_TYPES_DICT.items()}
 
@@ -77,8 +75,7 @@ class ParamsNames:
     y: str = "y"
     theta: str = "theta"
     phi: str = "phi"
-    r_1: str = "r_1"
-    r_2: str = "r_2"
+    radius: str = "radius"
     n_outside_or_before: str = "n_outside_or_before"
     T_c: str = "T_c"
     n_inside_or_after: str = "n_inside_or_after"
@@ -99,15 +96,12 @@ class ParamsNames:
 
 @dataclass
 class SurfacesTypes:
-    thick_lens = "thick_lens"
     curved_mirror = "curved_mirror"
     curved_refractive_surface = "curved_refractive_surface"
     ideal_lens = "ideal_lens"
     flat_mirror = "flat_mirror"
-    ideal_thick_lens = "ideal_thick_lens"
     flat_surface = "flat_surface"  # Not an optical element, just a helper for the central line.
     aspheric_surface = "aspheric_surface"
-    thick_aspheric_lens = "thick_aspheric_lens"
     flat_refractive_surface = "flat_refractive_surface"
 
     @staticmethod
@@ -118,10 +112,8 @@ class SurfacesTypes:
     def has_refractive_index(surface_type: str) -> bool:
         return surface_type in [
             SurfacesTypes.curved_refractive_surface,
-            SurfacesTypes.thick_lens,
-            SurfacesTypes.ideal_thick_lens,
             SurfacesTypes.aspheric_surface,
-            SurfacesTypes.thick_aspheric_lens,
+            SurfacesTypes.flat_refractive_surface,
         ]
 
 
@@ -177,7 +169,7 @@ class MaterialProperties:
                 nvl(self.intensity_transmittance),
                 nvl(self.temperature, np.nan),
             ]
-        )  # Note: When changing the order or adding this list - the order or added items should be also updated in the from_array method of OpticalElementParams
+        )  # Note: When changing the order or adding this list - the order or added items should be also updated in the from_array method of OpticalSurfaceParams
 
 
 PHYSICAL_SIZES_DICT = {
@@ -263,7 +255,7 @@ def convert_material_to_mirror_or_lens(
 
 
 @dataclass
-class OpticalElementParams:
+class OpticalSurfaceParams:
     name: Optional[str]
     surface_type: str
     x: float  # Of the center of the surface (the estimated point of intersection with the central line of the beam)
@@ -271,22 +263,18 @@ class OpticalElementParams:
     z: float
     theta: float  # the out-of-plane angle normal vector to the surface. when the plane is x,y, this is the theta angle.
     phi: float  # the in-plane angle normal vector to the surface. when the plane is x,y, this is the phi angle.
-    r_1: float  # radius of curvature. np.inf for flat surfaces.
-    r_2: float  # nan if the optical object has only one face, or if the two faces are fixed to the same radius of curvature.
-    curvature_sign: Union[int, float]  # 1 if the surface is concave, -1 if it is convex  # ATTENTION: ONCE CONCAVE ELEMENTS WILL BE USED, THERE WILL HAVE TO BE TWO CURVATURE SIGNS
-    T_c: float  # center thickness of the element
+    radius: float  # radius of curvature. np.inf for flat surfaces, np.nan if not applicable.
+    curvature_sign: Union[int, float]  # 1 if the surface is concave, -1 if it is convex
+    T_c: float  # center thickness of the element (used for CurvedRefractiveSurface thermal calculations)
     n_inside_or_after: (
-        float  # refractive index inside the optical object (for a ThickLens) or after it (for a refractive surface)
+        float  # refractive index after the surface (for a refractive surface)
     )
     n_outside_or_before: (
-        float  # refractive index outside the optical object (for a ThickLens) or before it (for a refractive surface)
+        float  # refractive index before the surface (for a refractive surface)
     )
     material_properties: MaterialProperties
     diameter: float = np.nan  # diameter of the optical element, None if not specified.
     polynomial_coefficients: Optional[np.ndarray] = None  # For aspheric surfaces only.
-
-    # def __post_init__(self):
-    #     assert self.material_properties.refractive_index == self.n_inside_or_after or self.material_properties.refractive_index == self.n_outside_or_before or np.isnan(self.material_properties.refractive_index), "The refractive index of the material properties is neither of the refractive indices of the optical element!"
 
     def __repr__(self):
         surface_type_string = f"'{self.surface_type}'"
@@ -295,7 +283,7 @@ class OpticalElementParams:
         name_string = name_string.ljust(25)
         curvature_sign_string = "CurvatureSigns.convex" if self.curvature_sign == CurvatureSigns.convex else "CurvatureSigns.concave"
         return (
-            f"OpticalElementParams("
+            f"OpticalSurfaceParams("
             f"name={name_string},"
             f"surface_type={surface_type_string}, "
             f"x={pretty_str_number(self.x)}, "
@@ -303,8 +291,7 @@ class OpticalElementParams:
             f"z={pretty_str_number(self.z)}, "
             f"theta={pretty_str_number(self.theta, represents_angle=True)}, "
             f"phi={pretty_str_number(self.phi, represents_angle=True)}, "
-            f"r_1={pretty_str_number(self.r_1)}, "
-            f"r_2={pretty_str_number(self.r_2)}, "
+            f"radius={pretty_str_number(self.radius)}, "
             f"curvature_sign={curvature_sign_string}, "
             f"T_c={pretty_str_number(self.T_c)}, "
             f"n_inside_or_after={pretty_str_number(self.n_inside_or_after)}, "
@@ -313,6 +300,7 @@ class OpticalElementParams:
             f"material_properties={self.material_properties}, "
             f"polynomial_coefficients={pretty_str_array(self.polynomial_coefficients)})"
         )
+
 
     @property
     def to_array(self) -> np.ndarray:
@@ -444,7 +432,7 @@ class PerturbationPointer:
         else:
             return len(self.perturbation_value)
 
-    def apply_to_params(self, params: List[OpticalElementParams]):
+    def apply_to_params(self, params: list):
         # Changes the original params
         current_value = getattr(params[self.element_index], self.parameter_name)
         new_value = current_value + self.perturbation_value

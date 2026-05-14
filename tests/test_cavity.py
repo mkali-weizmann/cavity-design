@@ -16,7 +16,8 @@ from cavity_design import (
     fabry_perot_generator,
     OpticalSystem,
     optical_system_to_cavity_completion,
-    OpticalElementParams,
+    OpticalSurfaceParams,
+    generate_lens_from_params,
     MaterialProperties,
     PerturbationPointer,
     gaussians_overlap_integral,
@@ -61,87 +62,36 @@ def test_fabry_perot_mode_finding():
 
 
 def test_mirror_lens_mirror_design():
+    _mirror_mat = MaterialProperties(
+        refractive_index=None, alpha_expansion=7.5e-08, beta_surface_absorption=1e-06,
+        kappa_conductivity=1.31e00, dn_dT=None, nu_poisson_ratio=1.7e-01,
+        alpha_volume_absorption=None, intensity_reflectivity=9.99889e-01,
+        intensity_transmittance=1e-04, temperature=np.nan,
+    )
+    _lens_mat = MaterialProperties(
+        refractive_index=1.76e00, alpha_expansion=5.5e-06, beta_surface_absorption=1e-06,
+        kappa_conductivity=4.606e01, dn_dT=1.17e-05, nu_poisson_ratio=3e-01,
+        alpha_volume_absorption=1e-02, intensity_reflectivity=1e-04,
+        intensity_transmittance=9.99899e-01, temperature=np.nan,
+    )
     params = [
-        OpticalElementParams(
-            name="Small Mirror",
-            surface_type="curved_mirror",
-            x=-4.999961263669513e-03,
-            y=0,
-            z=0,
-            theta=0,
-            phi=-1e00 * np.pi,
-            r_1=5e-03,
-            r_2=np.nan,
-            curvature_sign=CurvatureSigns.concave,
-            T_c=np.nan,
-            n_inside_or_after=1e00,
-            n_outside_or_before=1e00,
-            material_properties=MaterialProperties(
-                refractive_index=None,
-                alpha_expansion=7.5e-08,
-                beta_surface_absorption=1e-06,
-                kappa_conductivity=1.31e00,
-                dn_dT=None,
-                nu_poisson_ratio=1.7e-01,
-                alpha_volume_absorption=None,
-                intensity_reflectivity=9.99889e-01,
-                intensity_transmittance=1e-04,
-                temperature=np.nan,
-            ),
+        OpticalSurfaceParams(
+            name="Small Mirror", surface_type="curved_mirror",
+            x=-4.999961263669513e-03, y=0, z=0, theta=0, phi=-1e00 * np.pi,
+            radius=5e-03, curvature_sign=CurvatureSigns.concave, T_c=np.nan,
+            n_inside_or_after=1e00, n_outside_or_before=1e00, material_properties=_mirror_mat,
         ),
-        OpticalElementParams(
-            name="Lens",
-            surface_type="thick_lens",
-            x=6.387599281689135e-03,
-            y=0,
-            z=0,
-            theta=0,
-            phi=0,
-            r_1=2.422e-02,
-            r_2=-5.488e-03,
-            curvature_sign=CurvatureSigns.convex,
-            T_c=2.913797540986543e-03,
-            n_inside_or_after=1.76e00,
-            n_outside_or_before=1e00,
-            material_properties=MaterialProperties(
-                refractive_index=1.76e00,
-                alpha_expansion=5.5e-06,
-                beta_surface_absorption=1e-06,
-                kappa_conductivity=4.606e01,
-                dn_dT=1.17e-05,
-                nu_poisson_ratio=3e-01,
-                alpha_volume_absorption=1e-02,
-                intensity_reflectivity=1e-04,
-                intensity_transmittance=9.99899e-01,
-                temperature=np.nan,
-            ),
-        ),
-        OpticalElementParams(
-            name="Big Mirror",
-            surface_type="curved_mirror",
-            x=4.078081462362321e-01,
-            y=0,
-            z=0,
-            theta=0,
-            phi=0,
-            r_1=2e-01,
-            r_2=np.nan,
-            curvature_sign=CurvatureSigns.concave,
-            T_c=np.nan,
-            n_inside_or_after=1e00,
-            n_outside_or_before=1e00,
-            material_properties=MaterialProperties(
-                refractive_index=None,
-                alpha_expansion=7.5e-08,
-                beta_surface_absorption=1e-06,
-                kappa_conductivity=1.31e00,
-                dn_dT=None,
-                nu_poisson_ratio=1.7e-01,
-                alpha_volume_absorption=None,
-                intensity_reflectivity=9.99889e-01,
-                intensity_transmittance=1e-04,
-                temperature=np.nan,
-            ),
+        [s.to_params for s in generate_lens_from_params(
+            center=np.array([6.387599281689135e-03, 0, 0]),
+            forward_direction=np.array([1.0, 0.0, 0.0]),
+            r_1=2.422e-02, r_2=-5.488e-03, T_c=2.913797540986543e-03,
+            n_inside=1.76e00, n_outside=1e00, material_properties=_lens_mat, name="Lens",
+        )],
+        OpticalSurfaceParams(
+            name="Big Mirror", surface_type="curved_mirror",
+            x=4.078081462362321e-01, y=0, z=0, theta=0, phi=0,
+            radius=2e-01, curvature_sign=CurvatureSigns.concave, T_c=np.nan,
+            n_inside_or_after=1e00, n_outside_or_before=1e00, material_properties=_mirror_mat,
         ),
     ]
 
@@ -292,41 +242,31 @@ def test_perturbation():
     perturbation_value_special_log_0_fine = 6.7924969500e-01
 
 
+    _ule_mat = MaterialProperties(refractive_index=None, alpha_expansion=7.5e-08,
+                                 beta_surface_absorption=1e-06, kappa_conductivity=1.31e+00, dn_dT=None,
+                                 nu_poisson_ratio=1.7e-01, alpha_volume_absorption=None,
+                                 intensity_reflectivity=9.99889e-01, intensity_transmittance=1e-04, temperature=np.nan)
+    _sapphire_mat = MaterialProperties(refractive_index=1.76e+00, alpha_expansion=5.5e-06,
+                                       beta_surface_absorption=1e-06, kappa_conductivity=4.606e+01, dn_dT=1.17e-05,
+                                       nu_poisson_ratio=3e-01, alpha_volume_absorption=1e-02,
+                                       intensity_reflectivity=1e-04, intensity_transmittance=9.99899e-01,
+                                       temperature=np.nan)
     params = [
-        OpticalElementParams(name='Small Mirror', surface_type='curved_mirror', x=-4.999954683912563e-03, y=0, z=0,
-                             theta=0, phi=-1e+00 * np.pi, r_1=5e-03, r_2=np.nan, curvature_sign=CurvatureSigns.concave,
+        OpticalSurfaceParams(name='Small Mirror', surface_type='curved_mirror', x=-4.999954683912563e-03, y=0, z=0,
+                             theta=0, phi=-1e+00 * np.pi, radius=5e-03, curvature_sign=CurvatureSigns.concave,
                              T_c=np.nan, n_inside_or_after=1e+00, n_outside_or_before=1e+00, diameter=7.75e-03,
-                             material_properties=MaterialProperties(refractive_index=None, alpha_expansion=7.5e-08,
-                                                                    beta_surface_absorption=1e-06,
-                                                                    kappa_conductivity=1.31e+00, dn_dT=None,
-                                                                    nu_poisson_ratio=1.7e-01,
-                                                                    alpha_volume_absorption=None,
-                                                                    intensity_reflectivity=9.99889e-01,
-                                                                    intensity_transmittance=1e-04, temperature=np.nan),
-                             polynomial_coefficients=None),
-        OpticalElementParams(name='Lens', surface_type='thick_lens', x=6.387599281689135e-03, y=0, z=0, theta=0, phi=0,
-                             r_1=2.422e-02, r_2=-5.488e-03, curvature_sign=CurvatureSigns.concave,
-                             T_c=2.913797540986543e-03, n_inside_or_after=1.76e+00, n_outside_or_before=1e+00,
-                             diameter=7.75e-03,
-                             material_properties=MaterialProperties(refractive_index=1.76e+00, alpha_expansion=5.5e-06,
-                                                                    beta_surface_absorption=1e-06,
-                                                                    kappa_conductivity=4.606e+01, dn_dT=1.17e-05,
-                                                                    nu_poisson_ratio=3e-01,
-                                                                    alpha_volume_absorption=1e-02,
-                                                                    intensity_reflectivity=1e-04,
-                                                                    intensity_transmittance=9.99899e-01,
-                                                                    temperature=np.nan), polynomial_coefficients=None),
-        OpticalElementParams(name='Big Mirror', surface_type='curved_mirror', x=4.074677357638641e-01, y=0, z=0,
-                             theta=0, phi=0, r_1=2e-01, r_2=np.nan, curvature_sign=CurvatureSigns.concave, T_c=np.nan,
+                             material_properties=_ule_mat, polynomial_coefficients=None),
+        [s.to_params for s in generate_lens_from_params(
+            center=np.array([6.387599281689135e-03, 0, 0]),
+            forward_direction=np.array([1.0, 0.0, 0.0]),
+            r_1=2.422e-02, r_2=-5.488e-03, T_c=2.913797540986543e-03,
+            n_inside=1.76e+00, n_outside=1e+00, diameter=7.75e-03,
+            material_properties=_sapphire_mat, name='Lens',
+        )],
+        OpticalSurfaceParams(name='Big Mirror', surface_type='curved_mirror', x=4.074677357638641e-01, y=0, z=0,
+                             theta=0, phi=0, radius=2e-01, curvature_sign=CurvatureSigns.concave, T_c=np.nan,
                              n_inside_or_after=1e+00, n_outside_or_before=1e+00, diameter=2.54e-02,
-                             material_properties=MaterialProperties(refractive_index=None, alpha_expansion=7.5e-08,
-                                                                    beta_surface_absorption=1e-06,
-                                                                    kappa_conductivity=1.31e+00, dn_dT=None,
-                                                                    nu_poisson_ratio=1.7e-01,
-                                                                    alpha_volume_absorption=None,
-                                                                    intensity_reflectivity=9.99889e-01,
-                                                                    intensity_transmittance=1e-04, temperature=np.nan),
-                             polynomial_coefficients=None)]
+                             material_properties=_ule_mat, polynomial_coefficients=None)]
 
     perturbation_value_0 = widget_convenient_exponent(perturbation_value_special_log_0, base=10, scale=-10)
 
@@ -441,62 +381,26 @@ def test_fabry_perot_perturbation():
     perturbation_value_special_log_1 = -2.0200114290e00
     perturbation_value_special_log_1_fine = 1.7763568394e-15
     eval_box = ""
+    _fp_mat = MaterialProperties(
+        refractive_index=1.45e00, alpha_expansion=5.2e-07, beta_surface_absorption=1e-06,
+        kappa_conductivity=1.38e00, dn_dT=1.2e-05, nu_poisson_ratio=1.6e-01,
+        alpha_volume_absorption=1e-03, intensity_reflectivity=1e-04,
+        intensity_transmittance=9.99899e-01, temperature=np.nan,
+    )
     params = [
-        OpticalElementParams(
-            name="None",
-            surface_type="curved_mirror",
-            x=-4.999964994473332e-03,
-            y=0,
-            z=0,
-            theta=0,
-            phi=-1e00 * np.pi,
-            r_1=5e-03,
-            r_2=np.nan,
-            curvature_sign=CurvatureSigns.concave,
-            T_c=np.nan,
-            n_inside_or_after=1e00,
-            n_outside_or_before=1e00,
-            diameter=np.nan,
-            material_properties=MaterialProperties(
-                refractive_index=1.45e00,
-                alpha_expansion=5.2e-07,
-                beta_surface_absorption=1e-06,
-                kappa_conductivity=1.38e00,
-                dn_dT=1.2e-05,
-                nu_poisson_ratio=1.6e-01,
-                alpha_volume_absorption=1e-03,
-                intensity_reflectivity=1e-04,
-                intensity_transmittance=9.99899e-01,
-                temperature=np.nan,
-            ),
+        OpticalSurfaceParams(
+            name="None", surface_type="curved_mirror",
+            x=-4.999964994473332e-03, y=0, z=0, theta=0, phi=-1e00 * np.pi,
+            radius=5e-03, curvature_sign=CurvatureSigns.concave, T_c=np.nan,
+            n_inside_or_after=1e00, n_outside_or_before=1e00, diameter=np.nan,
+            material_properties=_fp_mat,
         ),
-        OpticalElementParams(
-            name="None",
-            surface_type="curved_mirror",
-            x=4.999964994473332e-03,
-            y=0,
-            z=0,
-            theta=0,
-            phi=0,
-            r_1=5e-03,
-            r_2=np.nan,
-            curvature_sign=CurvatureSigns.concave,
-            T_c=np.nan,
-            n_inside_or_after=1e00,
-            n_outside_or_before=1e00,
-            diameter=np.nan,
-            material_properties=MaterialProperties(
-                refractive_index=1.45e00,
-                alpha_expansion=5.2e-07,
-                beta_surface_absorption=1e-06,
-                kappa_conductivity=1.38e00,
-                dn_dT=1.2e-05,
-                nu_poisson_ratio=1.6e-01,
-                alpha_volume_absorption=1e-03,
-                intensity_reflectivity=1e-04,
-                intensity_transmittance=9.99899e-01,
-                temperature=np.nan,
-            ),
+        OpticalSurfaceParams(
+            name="None", surface_type="curved_mirror",
+            x=4.999964994473332e-03, y=0, z=0, theta=0, phi=0,
+            radius=5e-03, curvature_sign=CurvatureSigns.concave, T_c=np.nan,
+            n_inside_or_after=1e00, n_outside_or_before=1e00, diameter=np.nan,
+            material_properties=_fp_mat,
         ),
     ]
     perturbation_value_0 = widget_convenient_exponent(perturbation_value_special_log_0, base=10, scale=-10)
@@ -604,59 +508,45 @@ def test_free_potential_vs_cavity_potential_comparison():
 
 
 def test_spot_size_from_potential_and_ray_tracing():
+    _fused_silica_mat = MaterialProperties(refractive_index=1.45e+00, alpha_expansion=5.2e-07,
+                                           beta_surface_absorption=1e-06, kappa_conductivity=1.38e+00, dn_dT=1.2e-05,
+                                           nu_poisson_ratio=1.6e-01, alpha_volume_absorption=1e-03,
+                                           intensity_reflectivity=1e-04, intensity_transmittance=9.99899e-01,
+                                           temperature=np.nan)
+    _sapphire_mat2 = MaterialProperties(refractive_index=1.76e+00, alpha_expansion=5.5e-06,
+                                        beta_surface_absorption=1e-06, kappa_conductivity=4.606e+01, dn_dT=1.17e-05,
+                                        nu_poisson_ratio=3e-01, alpha_volume_absorption=1e-02,
+                                        intensity_reflectivity=1e-04, intensity_transmittance=9.99899e-01,
+                                        temperature=np.nan)
     params = [
-        OpticalElementParams(name='LaserOptik mirror', surface_type='curved_mirror', x=-5e-03, y=0, z=0, theta=0,
-                             phi=1e+00 * np.pi, r_1=5e-03, r_2=np.nan, curvature_sign=CurvatureSigns.concave,
+        OpticalSurfaceParams(name='LaserOptik mirror', surface_type='curved_mirror', x=-5e-03, y=0, z=0, theta=0,
+                             phi=1e+00 * np.pi, radius=5e-03, curvature_sign=CurvatureSigns.concave,
                              T_c=np.nan, n_inside_or_after=1e+00, n_outside_or_before=1e+00, diameter=7.75e-03,
-                             material_properties=MaterialProperties(refractive_index=1.45e+00, alpha_expansion=5.2e-07,
-                                                                    beta_surface_absorption=1e-06,
-                                                                    kappa_conductivity=1.38e+00, dn_dT=1.2e-05,
-                                                                    nu_poisson_ratio=1.6e-01,
-                                                                    alpha_volume_absorption=1e-03,
-                                                                    intensity_reflectivity=1e-04,
-                                                                    intensity_transmittance=9.99899e-01,
-                                                                    temperature=np.nan), polynomial_coefficients=None),
-        OpticalElementParams(name='spherical_lens', surface_type='thick_lens', x=6.776592092031389e-03, y=0, z=0,
-                             theta=0, phi=0, r_1=2.422e-02, r_2=-5.488e-03, curvature_sign=CurvatureSigns.convex,
-                             T_c=2.913797540986543e-03, n_inside_or_after=1.76e+00, n_outside_or_before=1e+00,
-                             diameter=7.75e-03,
-                             material_properties=MaterialProperties(refractive_index=1.76e+00, alpha_expansion=5.5e-06,
-                                                                    beta_surface_absorption=1e-06,
-                                                                    kappa_conductivity=4.606e+01, dn_dT=1.17e-05,
-                                                                    nu_poisson_ratio=3e-01,
-                                                                    alpha_volume_absorption=1e-02,
-                                                                    intensity_reflectivity=1e-04,
-                                                                    intensity_transmittance=9.99899e-01,
-                                                                    temperature=np.nan), polynomial_coefficients=None),
-        OpticalElementParams(name='Negative Lens', surface_type='thick_lens', x=4.190164703571147e-01, y=0, z=0,
-                             theta=0, phi=0, r_1=-3.561084685817112e-02, r_2=1.732922172776388e-01,
-                             curvature_sign=CurvatureSigns.concave, T_c=4.350000000000001e-03,
-                             n_inside_or_after=1.45e+00, n_outside_or_before=1e+00, diameter=5e-02,
-                             material_properties=MaterialProperties(refractive_index=1.45e+00, alpha_expansion=5.2e-07,
-                                                                    beta_surface_absorption=1e-06,
-                                                                    kappa_conductivity=1.38e+00, dn_dT=1.2e-05,
-                                                                    nu_poisson_ratio=1.6e-01,
-                                                                    alpha_volume_absorption=1e-03,
-                                                                    intensity_reflectivity=1e-04,
-                                                                    intensity_transmittance=9.99899e-01,
-                                                                    temperature=np.nan), polynomial_coefficients=None),
-        OpticalElementParams(name='big mirror', surface_type='curved_mirror', x=4.330042644697557e-01, y=0, z=0,
-                             theta=0, phi=0, r_1=6.896719562240133e-02, r_2=np.nan,
+                             material_properties=_fused_silica_mat, polynomial_coefficients=None),
+        [s.to_params for s in generate_lens_from_params(
+            center=np.array([6.776592092031389e-03, 0, 0]),
+            forward_direction=np.array([1.0, 0.0, 0.0]),
+            r_1=2.422e-02, r_2=-5.488e-03, T_c=2.913797540986543e-03,
+            n_inside=1.76e+00, n_outside=1e+00, diameter=7.75e-03,
+            material_properties=_sapphire_mat2, name='spherical_lens',
+        )],
+        [s.to_params for s in generate_lens_from_params(
+            center=np.array([4.190164703571147e-01, 0, 0]),
+            forward_direction=np.array([1.0, 0.0, 0.0]),
+            r_1=-3.561084685817112e-02, r_2=1.732922172776388e-01, T_c=4.350000000000001e-03,
+            n_inside=1.45e+00, n_outside=1e+00, diameter=5e-02,
+            material_properties=_fused_silica_mat, name='Negative Lens',
+        )],
+        OpticalSurfaceParams(name='big mirror', surface_type='curved_mirror', x=4.330042644697557e-01, y=0, z=0,
+                             theta=0, phi=0, radius=6.896719562240133e-02,
                              curvature_sign=CurvatureSigns.concave, T_c=np.nan, n_inside_or_after=1e+00,
                              n_outside_or_before=1e+00, diameter=5e-02,
-                             material_properties=MaterialProperties(refractive_index=1.45e+00, alpha_expansion=5.2e-07,
-                                                                    beta_surface_absorption=1e-06,
-                                                                    kappa_conductivity=1.38e+00, dn_dT=1.2e-05,
-                                                                    nu_poisson_ratio=1.6e-01,
-                                                                    alpha_volume_absorption=1e-03,
-                                                                    intensity_reflectivity=1e-04,
-                                                                    intensity_transmittance=9.99899e-01,
-                                                                    temperature=np.nan), polynomial_coefficients=None)]
+                             material_properties=_fused_silica_mat, polynomial_coefficients=None)]
 
     optical_system_small_elements = OpticalSystem.from_params(params[:-1], lambda_0_laser=LAMBDA_0_LASER,
                                                               use_paraxial_ray_tracing=False, p_is_trivial=True,
                                                               t_is_trivial=True)
-    R = params[-1].r_1
+    R = params[-1].radius
     u = 5e-6
     # Cavity with a known unconcentricity in the last arm:
     cavity = optical_system_to_cavity_completion(optical_system=optical_system_small_elements, unconcentricity=u,
@@ -779,11 +669,11 @@ def test_nested_to_params_from_params_roundtrip():
     sys = OpticalSystem([m1, lens, m2], given_initial_central_line=None)
     params = sys.to_params
 
-    # params[0] is a single OpticalElementParams, params[1] is a list, params[2] is single
-    assert not isinstance(params[0], list), "First element should be a flat OpticalElementParams"
+    # params[0] is a single OpticalSurfaceParams, params[1] is a list, params[2] is single
+    assert not isinstance(params[0], list), "First element should be a flat OpticalSurfaceParams"
     assert isinstance(params[1], list), "Second element should be a nested list for the lens group"
     assert len(params[1]) == 2, "Lens group should have 2 surface params"
-    assert not isinstance(params[2], list), "Third element should be a flat OpticalElementParams"
+    assert not isinstance(params[2], list), "Third element should be a flat OpticalSurfaceParams"
 
     # Roundtrip: from_params should reconstruct a system with the same arm count
     reconstructed = OpticalSystem.from_params(params, given_initial_central_line=None)

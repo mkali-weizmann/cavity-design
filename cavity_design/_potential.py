@@ -117,24 +117,20 @@ def generate_one_lens_optical_system(
         n_actual = n_design
     if R_1 is not None and R_2 is not None:
         back_focal_length = back_focal_length_of_lens(R_1=R_1, R_2=R_2, n=n_design, T_c=T_c)
-        params = OpticalElementParams(
-            name="spherical_lens",
-            surface_type=SurfacesTypes.thick_lens,
-            x=back_focal_length - defocus + T_c / 2,
-            y=0,
-            z=0,
+        center = np.array([back_focal_length - defocus + T_c / 2, 0.0, 0.0])
+        surfaces = generate_lens_from_params(
+            center=center,
+            forward_direction=optical_axis,
             r_1=np.abs(R_1),
             r_2=-np.abs(R_2),
-            theta=0,
-            phi=0,
             T_c=T_c,
-            n_inside_or_after=n_actual,
-            n_outside_or_before=1,
+            n_inside=n_actual,
+            n_outside=1.0,
             diameter=diameter,
-            curvature_sign=CurvatureSigns.convex,
-            polynomial_coefficients=None,
             material_properties=PHYSICAL_SIZES_DICT["material_properties_sapphire"],
+            name="spherical_lens",
         )
+        params = [s.to_params for s in surfaces]
     elif back_focal_length is not None:
         back_center = (back_focal_length - defocus) * optical_axis
         params = generate_aspheric_lens_params(
@@ -147,7 +143,8 @@ def generate_one_lens_optical_system(
             polynomial_degree=8,
             name="Aspheric lens",
         )
-        params.n_inside_or_after = n_actual
+        params[0].n_inside_or_after = n_actual
+        params[1].n_outside_or_before = n_actual
     else:
         raise ValueError("Either R_1 and R_2, or back_focal_length must be provided.")
 
@@ -183,18 +180,18 @@ def generate_two_positive_lenses_optical_system(
     ], "spherical_setting_mode must be either 'Set position and desired focus', 'Set focal length and desired focus' or 'Set position and focal length'"
     OPTICAL_AXIS = RIGHT
     back_center = (back_focal_length_aspheric + defocus) * OPTICAL_AXIS
-    aspheric_flat, aspheric_curved = Surface.from_params(
-        generate_aspheric_lens_params(
-            back_focal_length=back_focal_length_aspheric,
-            T_c=T_c_aspheric,
-            n=n_aspheric_design,
-            forward_normal=OPTICAL_AXIS,
-            flat_faces_center=back_center,
-            diameter=diameter,
-            polynomial_degree=24,
-            name="aspheric_lens_automatic",
-        )
+    aspheric_params_list = generate_aspheric_lens_params(
+        back_focal_length=back_focal_length_aspheric,
+        T_c=T_c_aspheric,
+        n=n_aspheric_design,
+        forward_normal=OPTICAL_AXIS,
+        flat_faces_center=back_center,
+        diameter=diameter,
+        polynomial_degree=24,
+        name="aspheric_lens_automatic",
     )
+    aspheric_flat = Surface.from_params(aspheric_params_list[0])
+    aspheric_curved = Surface.from_params(aspheric_params_list[1])
     aspheric_flat.n_2 = n_aspheric_actual
     aspheric_curved.n_1 = n_aspheric_actual
 
@@ -437,24 +434,20 @@ def generate_negative_lens_cavity(
     negative_lens_back_center = (
         approximate_focus_distance_long_arm + negative_lens_back_relative_position
     ) * optical_axis + optical_system_lens.surfaces[-1].center
-    negative_lens_params = OpticalElementParams(
-        x=negative_lens_back_center[0] + negative_lens_center_thickness / 2,
-        y=0,
-        z=0,
+    negative_lens_center = negative_lens_back_center + (negative_lens_center_thickness / 2) * optical_axis
+    negative_lens_surfaces = generate_lens_from_params(
+        center=negative_lens_center,
+        forward_direction=optical_axis,
         r_1=negative_lens_R_1,
         r_2=negative_lens_R_2,
-        theta=0,
-        phi=0,
         T_c=negative_lens_center_thickness,
-        n_inside_or_after=negative_lens_refractive_index,
-        n_outside_or_before=1,
+        n_inside=negative_lens_refractive_index,
+        n_outside=1.0,
         diameter=large_elements_CA,
-        curvature_sign=np.nan,
-        name="Negative Lens",
         material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"],
-        polynomial_coefficients=None,
-        surface_type=SurfacesTypes.thick_lens,
+        name="Negative Lens",
     )
+    negative_lens_params = [s.to_params for s in negative_lens_surfaces]
     optical_system_without_last_mirror = OpticalSystem.from_params(
         params=[mirror_left.to_params, *optical_system_lens.params, negative_lens_params],
         lambda_0_laser=LAMBDA_0_LASER,

@@ -16,7 +16,7 @@ pd.set_option("display.max_rows", 500)
 pd.options.display.float_format = "{:.3e}".format
 
 from ._utils import (
-    OpticalElementParams,
+    OpticalSurfaceParams,
     SurfacesTypes,
     ParamsNames,
     PerturbationPointer,
@@ -61,8 +61,11 @@ from ._surfaces import (
     FlatSurface,
     FlatMirror,
     IdealLens,
-    AsphericSurface, generate_lens_from_params,
+    AsphericSurface,
+    generate_lens_from_params,
+    generate_aspheric_lens_from_params,
 )
+
 
 # Throughout the code, all tensors can take any number of dimensions, but the last dimension is always the coordinate
 # dimension. this allows a Ray to be either a single ray, a list of rays, or a list of lists of rays, etc.
@@ -452,7 +455,7 @@ class OpticalSystem:
         self,
         surfaces: List[Union[Surface, 'OpticalSystem']],
         lambda_0_laser: Optional[float] = None,
-        params: Optional[List[OpticalElementParams]] = None,
+        params: Optional[list] = None,
         power: Optional[float] = None,
         t_is_trivial: bool = True,
         p_is_trivial: bool = True,
@@ -532,9 +535,9 @@ class OpticalSystem:
     ):
         if isinstance(params, np.ndarray):
             raise ValueError(
-                "Cavity.from_params no longer supports np.ndarray input. Please provide a list of OpticalElementParams."
+                "Cavity.from_params no longer supports np.ndarray input. Please provide a list of OpticalSurfaceParams."
             )
-            # params = [OpticalElementParams.from_array(params[i, :]) for i in range(len(params))]
+            # params = [OpticalSurfaceParams.from_array(params[i, :]) for i in range(len(params))]
         elements = []
         for i, p in enumerate(params):
             if isinstance(p, list):
@@ -553,7 +556,7 @@ class OpticalSystem:
         return elements
 
     @staticmethod
-    def from_params(params: Union[np.ndarray, List[OpticalElementParams]], **kwargs):
+    def from_params(params: Union[np.ndarray, list], **kwargs):
         surfaces = OpticalSystem.params_to_surfaces(params)
         optical_system = OpticalSystem(
             surfaces,
@@ -579,7 +582,7 @@ class OpticalSystem:
         if self.to_params is None:
             return "No parameters set for this cavity."
         textual_representation = "params = " + str(self.to_params).replace(
-            "OpticalElementParams", "\n          OpticalElementParams"
+            "OpticalSurfaceParams", "\n          OpticalSurfaceParams"
         ).replace("))]", "))\n         ]")
         return textual_representation
 
@@ -1128,7 +1131,7 @@ class Cavity(OpticalSystem):
         surfaces: List[Surface],
         standing_wave: bool = True,
         lambda_0_laser: Optional[float] = None,
-        params: Optional[List[OpticalElementParams]] = None,
+        params: Optional[list] = None,
         set_central_line: bool = True,
         set_mode_parameters: bool = True,
         set_initial_surface: bool = False,
@@ -1174,7 +1177,7 @@ class Cavity(OpticalSystem):
             self.set_initial_surface()
 
     @staticmethod
-    def from_params(params: Union[np.ndarray, List[OpticalElementParams]], **kwargs):
+    def from_params(params: Union[np.ndarray, list], **kwargs):
         surfaces = OpticalSystem.params_to_surfaces(params)
         cavity = Cavity(
             surfaces,
@@ -1740,10 +1743,10 @@ class Cavity(OpticalSystem):
             for param_name in (pbar := tqdm(tolerance_df.columns, disable=self.debug_printing_level < 1)):
                 pbar.set_description(f"    Tolerance Matrix - {element_name} -  {param_name}")
                 if (
-                    self.to_params[element_index].surface_type == SurfacesTypes.thick_lens
+                    isinstance(self.to_params[element_index], list)
                     and param_name in ["theta", "phi"]
                     and self.use_paraxial_ray_tracing
-                ):  # Lens is invariant to small rotations under paraxial approx.
+                ):  # Lens group is invariant to small rotations under paraxial approx.
                     continue
                 tolerance_df.loc[element_name, param_name] = self.calculate_parameter_tolerance(
                     perturbation_pointer=PerturbationPointer(element_index, param_name),
@@ -1899,8 +1902,8 @@ class Cavity(OpticalSystem):
             names = None
         else:
             names = copy.copy(self.names)
-            for i, surface_type in enumerate([p.surface_type for p in self.to_params]):
-                if surface_type == SurfacesTypes.thick_lens:
+            for i, p in enumerate(self.to_params):
+                if isinstance(p, list):
                     names.insert(i + 1, names[i] + "_2")
                     names[i] = names[i] + "_1"
 
@@ -2797,8 +2800,16 @@ def local_mode_2_of_lens_parameters(
     lens_parameters: np.ndarray, local_mode_1: LocalModeParameters
 ):  # les_parameters = [r, n, w]
     R, w, n = lens_parameters
-    params = np.array([0, 0, 0, 0, R, n, w, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1])
-    surface_0, surface_2 = generate_lens_from_params(params)
+    surfaces = generate_lens_from_params(
+        center=np.array([0.0, 0.0, 0.0]),
+        forward_direction=np.array([1.0, 0.0, 0.0]),
+        r_1=R,
+        r_2=-R,
+        T_c=w,
+        n_inside=n,
+        n_outside=1.0,
+    )
+    surface_0, surface_2 = surfaces
     ABCD_first = surface_0.ABCD_matrix(cos_theta_incoming=1)
     ABCD_between = ABCD_free_space(w)
     ABCD_second = surface_2.ABCD_matrix(cos_theta_incoming=1)
@@ -3158,32 +3169,31 @@ def find_required_perturbation_for_desired_change(
     return cavity, perturbation_value
 
 
-def mirror_lens_mirror_generator_with_unconcentricity(unconcentricity: float, base_params: list[OpticalElementParams]):
+def mirror_lens_mirror_generator_with_unconcentricity(unconcentricity: float, base_params: list):
     # unconcentricity is the unconcentricity of the long arm
+    # base_params[0] and base_params[2] are OpticalSurfaceParams for mirrors,
+    # base_params[1] is a nested list [left_lens_params, right_lens_params]
     base_params_copy = copy.deepcopy(base_params)
-    base_params_copy[0].x = -base_params_copy[0].r_1
+    base_params_copy[0].x = -base_params_copy[0].radius
     base_params_copy[0].y = 0
     base_params_copy[0].z = 0
-    n = base_params_copy[1].n_inside_or_after
-    R_1 = base_params_copy[1].r_1
-    R_2 = base_params_copy[1].r_2
-    lens = generate_lens_from_params(base_params_copy[1])
-    lens_left_center = lens[0].center
-    T_c = base_params_copy[1].T_c
+    lens_params = base_params_copy[1]  # nested list of two OpticalSurfaceParams
+    left_p, right_p = lens_params[0], lens_params[1]
+    n = left_p.n_inside_or_after
+    R_1 = left_p.radius
+    R_2 = right_p.radius
+    T_c = np.linalg.norm(
+        np.array([right_p.x - left_p.x, right_p.y - left_p.y, right_p.z - left_p.z])
+    )
+    lens_left_center = np.array([left_p.x, left_p.y, left_p.z])
+    lens_right_center = np.array([right_p.x, right_p.y, right_p.z])
     f = focal_length_of_lens(R_1, -R_2, n, T_c)
     h_2 = f * (n - 1) * T_c / (R_1 * n)
     h_1 = f * (n - 1) * T_c / (R_2 * n)
     d_1 = np.linalg.norm(lens_left_center)
-    lens_right_center = lens[1].center
     d_2 = (1 / f - 1 / (d_1 + h_1)) ** -1 - h_2
-    # d_2_alternative = d2 = (
-    #             d_1*R_2*(n*(R_1 - T_c) + T_c) + R_1*R_2*T_c
-    #         ) / (
-    #             d_1*(n - 1)*(n*(R_1 + R_2 - T_c) + T_c) - R_1*(n*(R_2 - T_c) + T_c)
-    #         )  # This was extracted using ABCD matrices (in research file, 'Image of a point using a thick lens')
-    # # And leads to the same result
     right_mirror_coc = lens_right_center + np.array([d_2 - unconcentricity, 0, 0])
-    base_params_copy[2].x = right_mirror_coc[0] + base_params_copy[2].r_1
+    base_params_copy[2].x = right_mirror_coc[0] + base_params_copy[2].radius
     base_params_copy[2].y = right_mirror_coc[1]
     base_params_copy[2].z = right_mirror_coc[2]
     return Cavity.from_params(
@@ -3517,17 +3527,11 @@ def mirror_lens_mirror_cavity_generator(
     mirror_right_params.name = "Big Mirror"
     mirror_right.material_properties = mirrors_material_properties
 
-    params_lens = surface_right.to_params
-    params_lens.x = (surface_left.center[0] + surface_right.center[0]) / 2
-    params_lens.r_1 = surface_left.radius
-    params_lens.r_2 = -surface_right.radius
-    params_lens.T_c = T_c
-    params_lens.n_inside_or_after = n
-    params_lens.n_outside_or_before = 1
-    params_lens.surface_type = SurfacesTypes.thick_lens
-    params_lens.name = "Lens"
-    params_lens.material_properties = lens_material_properties
-    params_lens.diameter = 7.75e-3
+    params_lens_left = surface_left.to_params
+    params_lens_left.name = "Lens_left"
+    params_lens_right = surface_right.to_params
+    params_lens_right.name = "Lens_right"
+    params_lens = [params_lens_left, params_lens_right]
 
     params = [mirror_left_params, params_lens, mirror_right_params]
 
@@ -3754,17 +3758,18 @@ def optical_system_to_cavity_completion(
     #     )
 
 
-def reverse_elements_order_of_mirror_lens_mirror(params: Union[np.ndarray, List[OpticalElementParams]]) -> np.ndarray:
+def reverse_elements_order_of_mirror_lens_mirror(params: Union[np.ndarray, list]) -> list:
     if isinstance(params, np.ndarray):
-        # swap first and third rows of params:
         new_params = params.copy()
         new_params[[0, 2]] = new_params[[2, 0]]
         new_params[1, [4, 5]] = new_params[1, [5, 4]]
         new_params[1, 3] += 1j
     else:
-        new_params = [params[2], params[1], params[0]]
-        new_params[1].r_1, new_params[1].r_2 = new_params[1].r_2, new_params[1].r_1
-        new_params[1].phi += np.pi
+        # params[1] is a nested list [left_lens_params, right_lens_params]
+        reversed_lens = list(reversed(params[1]))
+        for p in reversed_lens:
+            p.phi += np.pi
+        new_params = [params[2], reversed_lens, params[0]]
     return new_params
 
 
@@ -4022,26 +4027,26 @@ def plot_mirror_lens_mirror_cavity_analysis(
     plt.gcf().tight_layout()
 
 def params_to_perturbable_params_names(
-    params_list: List[OpticalElementParams], remove_one_of_the_angles: bool = False
+    params_list: list, remove_one_of_the_angles: bool = False
 ) -> List[str]:
-    # Associates the cavity parameters with the number of parameters needed to describe the cavity.
-    # If there is a lens, then the number of parameters is 7 (x, y, theta, phi, r, n_2):
-
     perturbable_params = [
         ParamsNames.x,
         ParamsNames.y,
         ParamsNames.theta,
         ParamsNames.phi,
-        ParamsNames.r_1,
+        ParamsNames.radius,
         ParamsNames.n_inside_or_after,
     ]
 
-    surface_types = [params.surface_type for params in params_list]
-    if not (
-        SurfacesTypes.curved_refractive_surface in surface_types
-        or SurfacesTypes.thick_lens in surface_types
-        or SurfacesTypes.ideal_thick_lens in surface_types
-    ):
+    surface_types = [
+        p.surface_type
+        for p in params_list
+        if not isinstance(p, list)
+    ]
+    has_refractive = SurfacesTypes.curved_refractive_surface in surface_types or any(
+        isinstance(p, list) for p in params_list
+    )
+    if not has_refractive:
         perturbable_params.remove(ParamsNames.n_inside_or_after)
     if remove_one_of_the_angles:
         perturbable_params.remove(ParamsNames.theta)
