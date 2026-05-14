@@ -22,6 +22,7 @@ pd.set_option("display.max_rows", 500)
 pd.options.display.float_format = "{:.3e}".format
 # np.seterr(all="raise") #TODO: some functions need it on and some need it off.
 
+
 def params_to_perturbable_params_names(
     params_list: List[OpticalElementParams], remove_one_of_the_angles: bool = False
 ) -> List[str]:
@@ -789,7 +790,7 @@ class Surface:
                 n_2=p.n_inside_or_after,
                 material_properties=p.material_properties,
                 polynomial_coefficients=p.polynomial_coefficients,
-                curvature_sign=p.curvature_sign
+                curvature_sign=p.curvature_sign,
             )
         elif p.surface_type == SurfacesTypes.thick_aspheric_lens:
             return generate_aspheric_lens_from_params(p)
@@ -1291,19 +1292,29 @@ class AsphericRefractiveSurface(AsphericSurface, RefractiveSurface):
         raise NotImplementedError
 
     @staticmethod
-    def pseudo_spherical(radius: float,
-                         center: np.ndarray,
-                         outwards_normal: np.ndarray,
-                         polynomial_coefficients: Union[Polynomial, np.ndarray, List[float]],  # a0, a2, a4...
-                         n_1: float,
-                         n_2: float,
-                         name: Optional[str] = None,
-                         diameter: Optional[float] = None,
-                         curvature_sign: int = CurvatureSigns.concave,  # With respect to the incoming beam.
-                         material_properties: MaterialProperties = None,
-                         **kwargs,
-                         ):
-        base_polynomial_coefficients = np.array([0, 1/(2 * radius), 1/(8*radius**3), 1/(16*radius**5), 5/(128*radius**7), 7/(256*radius**9)])
+    def pseudo_spherical(
+        radius: float,
+        center: np.ndarray,
+        outwards_normal: np.ndarray,
+        polynomial_coefficients: Union[Polynomial, np.ndarray, List[float]],  # a0, a2, a4...
+        n_1: float,
+        n_2: float,
+        name: Optional[str] = None,
+        diameter: Optional[float] = None,
+        curvature_sign: int = CurvatureSigns.concave,  # With respect to the incoming beam.
+        material_properties: MaterialProperties = None,
+        **kwargs,
+    ):
+        base_polynomial_coefficients = np.array(
+            [
+                0,
+                1 / (2 * radius),
+                1 / (8 * radius**3),
+                1 / (16 * radius**5),
+                5 / (128 * radius**7),
+                7 / (256 * radius**9),
+            ]
+        )
         # pad polynomial_coefficients to be the same length as base_polynomial_coefficients, if it is longer, trim it ad ad a warning:
         if isinstance(polynomial_coefficients, Polynomial):
             polynomial_coefficients_array = polynomial_coefficients.coef
@@ -1311,9 +1322,13 @@ class AsphericRefractiveSurface(AsphericSurface, RefractiveSurface):
             polynomial_coefficients_array = np.array(polynomial_coefficients)
         if len(polynomial_coefficients_array) > len(base_polynomial_coefficients):
             warnings.warn("Polynomial coefficients are longer than the base polynomial coefficients, trimming them.")
-            polynomial_coefficients_array = polynomial_coefficients_array[:len(base_polynomial_coefficients)]
+            polynomial_coefficients_array = polynomial_coefficients_array[: len(base_polynomial_coefficients)]
         elif len(polynomial_coefficients_array) < len(base_polynomial_coefficients):
-            polynomial_coefficients_array = np.pad(polynomial_coefficients_array, (0, len(base_polynomial_coefficients) - len(polynomial_coefficients_array)), mode='constant')
+            polynomial_coefficients_array = np.pad(
+                polynomial_coefficients_array,
+                (0, len(base_polynomial_coefficients) - len(polynomial_coefficients_array)),
+                mode="constant",
+            )
         final_polynomial_coefficients = base_polynomial_coefficients + polynomial_coefficients_array
         return AsphericRefractiveSurface(
             center=center,
@@ -1327,7 +1342,6 @@ class AsphericRefractiveSurface(AsphericSurface, RefractiveSurface):
             curvature_sign=curvature_sign,
             **kwargs,
         )
-
 
 
 class FlatSurface(Surface):
@@ -1362,7 +1376,9 @@ class FlatSurface(Surface):
 
     def find_intersection_with_ray_paraxial(self, ray: Ray) -> np.ndarray:
         if ray.k_vector.ndim > 1:
-            raise NotImplementedError("function is not yet implemented for multiple rays, consider using non-paraxial ray tracing")
+            raise NotImplementedError(
+                "function is not yet implemented for multiple rays, consider using non-paraxial ray tracing"
+            )
         # Notes are available here: https://mynotebook.labarchives.com/MTM3NjE3My41fDEwNTg1OTUvMTA1ODU5NS9Ob3RlYm9vay8zMjQzMzA0MzY1fDM0OTMzNjMuNQ==/page/11290221-36
         cos_theta = self.outwards_normal @ ray.k_vector
         if cos_theta > 0:
@@ -2315,13 +2331,14 @@ class Arm:
             mode_parameters = self.mode_parameters
         else:
             z_R = z_R_of_NA(NA=NA, lambda_laser=self.lambda_0_laser)
-            mode_parameters = ModeParameters(center=self.mode_parameters.center,
-                                             k_vector=self.mode_parameters.k_vector,
-                                             lambda_0_laser=self.mode_parameters.lambda_0_laser,
-                                             z_R=np.array([z_R, z_R]),
-                                             n=self.mode_parameters.n,
-                                             principle_axes=self.mode_parameters.principle_axes,
-                                             )
+            mode_parameters = ModeParameters(
+                center=self.mode_parameters.center,
+                k_vector=self.mode_parameters.k_vector,
+                lambda_0_laser=self.mode_parameters.lambda_0_laser,
+                z_R=np.array([z_R, z_R]),
+                n=self.mode_parameters.n,
+                principle_axes=self.mode_parameters.principle_axes,
+            )
         return calculate_incidence_angle(
             surface=self.surfaces[surface_index],
             mode_parameters=mode_parameters,
@@ -3182,7 +3199,7 @@ class Cavity(OpticalSystem):
             self.set_central_line()
         if set_mode_parameters:
             if self.lambda_0_laser is None:
-                raise ValueError('Can not set mode parameters without defining the wavelength. set self.lambda_0_laser')
+                raise ValueError("Can not set mode parameters without defining the wavelength. set self.lambda_0_laser")
             self.set_mode_parameters(
                 mode_parameters_first_arm=initial_mode_parameters,
                 local_mode_parameters_first_surface=initial_local_mode_parameters,
@@ -5574,12 +5591,18 @@ def optical_system_to_cavity_completion(
     assert isinstance(
         optical_system.surfaces[0], CurvedMirror
     ), "The first surface of the optical system must be a mirror for it to become a cavity"
-    assert end_mirror_ROC is not None and end_mirror_distance_to_last_element is not None and unconcentricity is None and NA is None or \
-           not (end_mirror_ROC is not None and end_mirror_distance_to_last_element is not None) and \
-           (unconcentricity is None and NA is not None or unconcentricity is not None and NA is None), ("You must choose one of the next two options:\n"
-            "1) Specify both end_mirror_ROC and end_mirror_distance_to_last_element and none of unconcentricity, NA."
-            "2) Specify up to one of end_mirror_ROC, end_mirror_distance_to_last_element (but not both) and exactly one of unconcentricity, NA"
-            )
+    assert (
+        end_mirror_ROC is not None
+        and end_mirror_distance_to_last_element is not None
+        and unconcentricity is None
+        and NA is None
+        or not (end_mirror_ROC is not None and end_mirror_distance_to_last_element is not None)
+        and (unconcentricity is None and NA is not None or unconcentricity is not None and NA is None)
+    ), (
+        "You must choose one of the next two options:\n"
+        "1) Specify both end_mirror_ROC and end_mirror_distance_to_last_element and none of unconcentricity, NA."
+        "2) Specify up to one of end_mirror_ROC, end_mirror_distance_to_last_element (but not both) and exactly one of unconcentricity, NA"
+    )
 
     # Define optical axis and output_ray ------------------
     last_surface = optical_system.surfaces[-1]
@@ -5609,7 +5632,9 @@ def optical_system_to_cavity_completion(
         )
         if end_mirror_ROC is None and end_mirror_distance_to_last_element is None:
             if output_mode_local.z_minus_z_0[0] > 0:
-                raise ValueError("Can not have a symmetric last arm if the output mode is already diverging at the end of the system, try setting symmetric_last_arm to False or adjusting the system to make the output mode converging at the end.")
+                raise ValueError(
+                    "Can not have a symmetric last arm if the output mode is already diverging at the end of the system, try setting symmetric_last_arm to False or adjusting the system to make the output mode converging at the end."
+                )
             else:
                 z_minus_z_0 = (output_mode.center[0, :] - last_surface.center) @ optical_axis
                 end_mirror = match_a_mirror_to_mode(
@@ -5621,23 +5646,28 @@ def optical_system_to_cavity_completion(
             end_mirror = match_a_mirror_to_mode(
                 mode=output_mode, R=end_mirror_ROC, name="End mirror", **end_mirror_kwargs
             )
-        else: # end_mirror_ROC is None and end_mirror_distance_to_last_element is not None:  # Fixed NA and last arm length
+        else:  # end_mirror_ROC is None and end_mirror_distance_to_last_element is not None:  # Fixed NA and last arm length
             z_minus_z_0 = (
-                (last_surface.center - output_mode.center[0, :]) @ optical_axis + end_mirror_distance_to_last_element
-            )
+                last_surface.center - output_mode.center[0, :]
+            ) @ optical_axis + end_mirror_distance_to_last_element
             end_mirror = match_a_mirror_to_mode(mode=output_mode, z=z_minus_z_0, name="End mirror", **end_mirror_kwargs)
 
-    elif unconcentricity is not None:  # Find the image of the center of the first mirror after the system and place the center of the end mirror there, then adjust the ROC to achieve the desired unconcentricity.
+    elif (
+        unconcentricity is not None
+    ):  # Find the image of the center of the first mirror after the system and place the center of the end mirror there, then adjust the ROC to achieve the desired unconcentricity.
         R_analytical = optical_system.output_radius_of_curvature(
             source_position=optical_system.surfaces[0].origin, propagate_with_first_surface=False
         )
         center_of_curvature_image = (
-            optical_system.surfaces[-1].center -R_analytical * optical_axis  # R_analytical is negative for
+            optical_system.surfaces[-1].center
+            - R_analytical * optical_axis  # R_analytical is negative for
             # converging wave, so COC is wave position - R_analytical
         )
         if end_mirror_ROC is None and end_mirror_distance_to_last_element is None:
             if R_analytical > 0:
-                raise ValueError("Can not have a symmetric last arm if the image of the center of curvature is already past the last surface, try setting symmetric_last_arm to False or adjusting the system to make the image of the center of curvature before the last surface.")
+                raise ValueError(
+                    "Can not have a symmetric last arm if the image of the center of curvature is already past the last surface, try setting symmetric_last_arm to False or adjusting the system to make the image of the center of curvature before the last surface."
+                )
             else:
                 end_mirror_ROC = -R_analytical
                 center_of_curvature_mirror = center_of_curvature_image - unconcentricity * optical_axis
@@ -5657,9 +5687,10 @@ def optical_system_to_cavity_completion(
                 curvature_sign=CurvatureSigns.concave,
                 **end_mirror_kwargs,
             )
-        else: # end_mirror_ROC is None and end_mirror_distance_to_last_element is not None:
+        else:  # end_mirror_ROC is None and end_mirror_distance_to_last_element is not None:
             end_mirror_ROC = float(
-                np.linalg.norm(end_mirror_distance_to_last_element - optical_system.surfaces[-1].center))
+                np.linalg.norm(end_mirror_distance_to_last_element - optical_system.surfaces[-1].center)
+            )
             center_of_curvature_mirror = center_of_curvature_image - unconcentricity * optical_axis
             end_mirror = CurvedMirror(  # Assumes concave mirror, can be generalized if needed
                 radius=end_mirror_ROC,
@@ -5669,12 +5700,13 @@ def optical_system_to_cavity_completion(
                 **end_mirror_kwargs,
             )
     else:
-        end_mirror = CurvedMirror(radius=end_mirror_ROC,
-                                  outwards_normal = optical_axis,
-                                  center = last_surface.center + end_mirror_distance_to_last_element * optical_axis,
-                                  curvature_sign=CurvatureSigns.concave,
-                                  **end_mirror_kwargs
-                                  )
+        end_mirror = CurvedMirror(
+            radius=end_mirror_ROC,
+            outwards_normal=optical_axis,
+            center=last_surface.center + end_mirror_distance_to_last_element * optical_axis,
+            curvature_sign=CurvatureSigns.concave,
+            **end_mirror_kwargs,
+        )
 
     if optical_system.params is not None:
         cavity = Cavity.from_params(
@@ -5703,7 +5735,6 @@ def optical_system_to_cavity_completion(
     #     warnings.warn(
     #         f"Did not achieve the desired NA, got {cavity.arms[-1].mode_parameters.NA[0]:.3e} instead of {NA:.3e}"
     #     )
-
 
 
 def reverse_elements_order_of_mirror_lens_mirror(params: Union[np.ndarray, List[OpticalElementParams]]) -> np.ndarray:
@@ -5753,16 +5784,32 @@ def generate_mirror_lens_mirror_cavity_textual_summary(
     R_long_side = cavity.surfaces_ordered[lens_long_arm_surface_index].radius
     # try: # I should add a non-existent mode and initialize it with np.nan when there is no mode instead of this solution.
     if NA_angles is not None:
-        marginal_ray = Ray(origin=cavity.surfaces[0].origin,
-                           k_vector=np.array([np.sqrt(1 - NA_angles ** 2), NA_angles, 0]), n=1)
-        marginal_ray_propagated = cavity.propagate_ray(ray=marginal_ray, n_arms=3,
-                                                       propagate_with_first_surface_first=False)
-        angle_left = np.arccos(np.abs(
-            cavity.surfaces[1].normal_at_a_point(marginal_ray_propagated[1].origin) @ marginal_ray_propagated[
-                0].k_vector)) * 360 / (2 * np.pi)
-        angle_right = np.arccos(np.abs(
-            cavity.surfaces[2].normal_at_a_point(marginal_ray_propagated[2].origin) @ marginal_ray_propagated[
-                2].k_vector)) * 360 / (2 * np.pi)
+        marginal_ray = Ray(
+            origin=cavity.surfaces[0].origin, k_vector=np.array([np.sqrt(1 - NA_angles**2), NA_angles, 0]), n=1
+        )
+        marginal_ray_propagated = cavity.propagate_ray(
+            ray=marginal_ray, n_arms=3, propagate_with_first_surface_first=False
+        )
+        angle_left = (
+            np.arccos(
+                np.abs(
+                    cavity.surfaces[1].normal_at_a_point(marginal_ray_propagated[1].origin)
+                    @ marginal_ray_propagated[0].k_vector
+                )
+            )
+            * 360
+            / (2 * np.pi)
+        )
+        angle_right = (
+            np.arccos(
+                np.abs(
+                    cavity.surfaces[2].normal_at_a_point(marginal_ray_propagated[2].origin)
+                    @ marginal_ray_propagated[2].k_vector
+                )
+            )
+            * 360
+            / (2 * np.pi)
+        )
     valid_mode = cavity.resonating_mode_successfully_traced
     if valid_mode:
         spot_size_lens_long_side = (
@@ -5957,6 +6004,28 @@ def plot_mirror_lens_mirror_cavity_analysis(
     plt.subplots_adjust(hspace=0.35)
     plt.gcf().tight_layout()
 
-LASER_OPTIK_MIRROR = CurvedMirror(radius=5e-3, diameter=7.75e-3, outwards_normal=LEFT, origin=ORIGIN, name="Laser Optik Mirror", material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"])
-COASTLINE_20CM_MIRROR = CurvedMirror(radius=20e-2, diameter=25.4e-3, outwards_normal=RIGHT, origin=ORIGIN, name="Coastline 20cm Mirror", material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"])
-COASTLINE_50CM_MIRROR = CurvedMirror(radius=50e-2, diameter=25.4e-3, outwards_normal=RIGHT, origin=ORIGIN, name="Coastline 50cm Mirror", material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"])
+
+LASER_OPTIK_MIRROR = CurvedMirror(
+    radius=5e-3,
+    diameter=7.75e-3,
+    outwards_normal=LEFT,
+    origin=ORIGIN,
+    name="Laser Optik Mirror",
+    material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"],
+)
+COASTLINE_20CM_MIRROR = CurvedMirror(
+    radius=20e-2,
+    diameter=25.4e-3,
+    outwards_normal=RIGHT,
+    origin=ORIGIN,
+    name="Coastline 20cm Mirror",
+    material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"],
+)
+COASTLINE_50CM_MIRROR = CurvedMirror(
+    radius=50e-2,
+    diameter=25.4e-3,
+    outwards_normal=RIGHT,
+    origin=ORIGIN,
+    name="Coastline 50cm Mirror",
+    material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"],
+)
