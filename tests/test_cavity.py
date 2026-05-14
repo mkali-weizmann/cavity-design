@@ -707,3 +707,159 @@ def test_analytical_hessian_for_fabry_perot():
     assert np.isclose(
         hessian_ABCD_matrices_value, hessian_analytical, rtol=1e-3
     ), f"Hessian ABCD matrices test failed: expected approximately {hessian_analytical} but got {hessian_ABCD_matrices_value}"
+
+
+# ---------------------------------------------------------------------------
+# Nested OpticalSystem (rigid-body) tests
+# ---------------------------------------------------------------------------
+
+def _make_lens_group(center_x, forward=np.array([1.0, 0.0, 0.0])):
+    """Helper: returns an OpticalSystem wrapping two refractive surfaces (a thin lens group)."""
+    from cavity_design import CurvedRefractiveSurface
+    T_c = 3e-3
+    R = 20e-3
+    n_glass = 1.5
+    normal_in = -forward
+    normal_out = forward
+    s1 = CurvedRefractiveSurface(
+        radius=R,
+        outwards_normal=normal_in,
+        center=np.array([center_x - T_c / 2, 0.0, 0.0]),
+        n_1=1.0,
+        n_2=n_glass,
+        curvature_sign=1,
+        name="lens_front",
+    )
+    s2 = CurvedRefractiveSurface(
+        radius=R,
+        outwards_normal=normal_out,
+        center=np.array([center_x + T_c / 2, 0.0, 0.0]),
+        n_1=n_glass,
+        n_2=1.0,
+        curvature_sign=-1,
+        name="lens_back",
+    )
+    lens_center = np.array([center_x, 0.0, 0.0])
+    return OpticalSystem([s1, s2], given_initial_central_line=None, mechanical_center=lens_center)
+
+
+def test_nested_optical_system_flat_arms():
+    """Nesting an OpticalSystem inside another should flatten arms correctly."""
+    from cavity_design import CurvedMirror
+    R = 50e-3
+    L = 100e-3
+    m1 = CurvedMirror(radius=R, outwards_normal=np.array([-1.0, 0, 0]),
+                      center=np.array([-L/2, 0, 0]), curvature_sign=-1)
+    lens = _make_lens_group(center_x=0.0)
+    m2 = CurvedMirror(radius=R, outwards_normal=np.array([1.0, 0, 0]),
+                      center=np.array([L/2, 0, 0]), curvature_sign=-1)
+
+    sys = OpticalSystem([m1, lens, m2], given_initial_central_line=None)
+    # Flat arms: Arm(m1, lens_front), Arm(lens_front, lens_back), Arm(lens_back, m2)
+    assert len(sys.arms) == 3, f"Expected 3 arms, got {len(sys.arms)}"
+    assert sys.arms[0].surface_0 is m1
+    assert sys.arms[0].surface_1 is lens._surfaces[0]
+    assert sys.arms[1].surface_0 is lens._surfaces[0]
+    assert sys.arms[1].surface_1 is lens._surfaces[1]
+    assert sys.arms[2].surface_0 is lens._surfaces[1]
+    assert sys.arms[2].surface_1 is m2
+
+
+def test_nested_to_params_from_params_roundtrip():
+    """to_params on a system with a nested group returns a nested list; from_params reconstructs it."""
+    from cavity_design import CurvedMirror
+    R = 50e-3
+    L = 100e-3
+    m1 = CurvedMirror(radius=R, outwards_normal=np.array([-1.0, 0, 0]),
+                      center=np.array([-L/2, 0, 0]), curvature_sign=-1, name="m1")
+    lens = _make_lens_group(center_x=0.0)
+    m2 = CurvedMirror(radius=R, outwards_normal=np.array([1.0, 0, 0]),
+                      center=np.array([L/2, 0, 0]), curvature_sign=-1, name="m2")
+
+    sys = OpticalSystem([m1, lens, m2], given_initial_central_line=None)
+    params = sys.to_params
+
+    # params[0] is a single OpticalElementParams, params[1] is a list, params[2] is single
+    assert not isinstance(params[0], list), "First element should be a flat OpticalElementParams"
+    assert isinstance(params[1], list), "Second element should be a nested list for the lens group"
+    assert len(params[1]) == 2, "Lens group should have 2 surface params"
+    assert not isinstance(params[2], list), "Third element should be a flat OpticalElementParams"
+
+    # Roundtrip: from_params should reconstruct a system with the same arm count
+    reconstructed = OpticalSystem.from_params(params, given_initial_central_line=None)
+    assert len(reconstructed.arms) == 3, f"Expected 3 arms after roundtrip, got {len(reconstructed.arms)}"
+    # Surface positions should be preserved
+    for orig_arm, rec_arm in zip(sys.arms, reconstructed.arms):
+        assert np.allclose(orig_arm.surface_0.center, rec_arm.surface_0.center, atol=1e-12)
+        assert np.allclose(orig_arm.surface_1.center, rec_arm.surface_1.center, atol=1e-12)
+
+
+def test_rigid_body_translation_perturbation():
+    """perturb_cavity with a nested element and translation parameter moves both surfaces."""
+    R_mirror = 50e-3
+    L = 200e-3
+    m1 = CurvedMirror(radius=R_mirror, outwards_normal=np.array([-1.0, 0, 0]),
+                      center=np.array([-L/2, 0, 0]), curvature_sign=CurvatureSigns.concave, name="m1",
+                      diameter=25e-3)
+    lens = _make_lens_group(center_x=0.0)
+    m2 = CurvedMirror(radius=R_mirror, outwards_normal=np.array([1.0, 0, 0]),
+                      center=np.array([L/2, 0, 0]), curvature_sign=CurvatureSigns.concave, name="m2",
+                      diameter=25e-3)
+
+    cavity = Cavity(
+        [m1, lens, m2],
+        standing_wave=True,
+        lambda_0_laser=LAMBDA_0_LASER,
+        set_mode_parameters=False,
+    )
+
+    delta_y = 1e-4
+    pp = PerturbationPointer(element_index=1, parameter_name='y', perturbation_value=delta_y)
+    new_cavity = perturb_cavity(cavity, [pp])
+
+    # Both lens surfaces should have shifted by delta_y in y
+    lens_surfaces_new = [
+        arm.surface_0
+        for arm in new_cavity.arms
+        if hasattr(arm.surface_0, 'name') and arm.surface_0.name in ('lens_front', 'lens_back')
+    ]
+    for s in lens_surfaces_new:
+        assert np.isclose(s.center[1], delta_y, atol=1e-14), \
+            f"Expected y={delta_y} for {s.name}, got {s.center[1]}"
+
+
+def test_rigid_body_rotation_perturbation():
+    """perturb_cavity with a nested element and rotation parameter rotates both surfaces around mechanical_center."""
+    R_mirror = 50e-3
+    L = 200e-3
+    m1 = CurvedMirror(radius=R_mirror, outwards_normal=np.array([-1.0, 0, 0]),
+                      center=np.array([-L/2, 0, 0]), curvature_sign=CurvatureSigns.concave, name="m1",
+                      diameter=25e-3)
+    lens = _make_lens_group(center_x=0.0)
+    m2 = CurvedMirror(radius=R_mirror, outwards_normal=np.array([1.0, 0, 0]),
+                      center=np.array([L/2, 0, 0]), curvature_sign=CurvatureSigns.concave, name="m2",
+                      diameter=25e-3)
+
+    cavity = Cavity(
+        [m1, lens, m2],
+        standing_wave=True,
+        lambda_0_laser=LAMBDA_0_LASER,
+        set_mode_parameters=False,
+    )
+
+    delta_theta = 0.02  # small tilt
+    pp = PerturbationPointer(element_index=1, parameter_name='theta', perturbation_value=delta_theta)
+    new_cavity = perturb_cavity(cavity, [pp])
+
+    # Inspect the perturbed params: new_cavity.to_params[1] should be a list of 2 params
+    new_params = new_cavity.to_params
+    assert isinstance(new_params[1], list), "Lens group params should still be a nested list"
+    assert len(new_params[1]) == 2
+
+    for sp in new_params[1]:
+        # The normal's x-component must be < 1 (lens has been tilted away from pure x-axis)
+        normal = np.array([np.sin(sp.theta) * np.cos(sp.phi),
+                           np.sin(sp.theta) * np.sin(sp.phi),
+                           np.cos(sp.theta)])
+        assert abs(normal[0]) < 1.0 - 1e-6, \
+            f"Normal should no longer be purely along x after rotation, got normal={normal}"

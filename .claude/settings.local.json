@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m pytest tests/test_cavity.py -v --tb=short)",
+      "Bash(python -c \"import cavity_design; print\\(dir\\(cavity_design\\)\\)\")",
+      "Bash(python -c ' *)",
+      "Bash(python -m pytest tests/test_cavity.py -v --tb=short -k \"nested or rigid\")"
+    ]
+  }
+}

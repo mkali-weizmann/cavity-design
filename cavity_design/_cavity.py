@@ -26,6 +26,7 @@ from ._utils import (
     PRETTY_INDICES_NAMES,
     nvl,
     normalize_vector,
+    rotation_matrix_around_n,
     unit_vector_of_angles,
     angles_of_unit_vector,
     angles_difference,
@@ -449,7 +450,7 @@ def simple_mode_propagator(
 class OpticalSystem:
     def __init__(
         self,
-        surfaces: List[Surface],
+        surfaces: List[Union[Surface, 'OpticalSystem']],
         lambda_0_laser: Optional[float] = None,
         params: Optional[List[OpticalElementParams]] = None,
         power: Optional[float] = None,
@@ -458,15 +459,19 @@ class OpticalSystem:
         given_initial_central_line: Optional[Union[Ray, bool]] = True,
         given_initial_local_mode_parameters: Optional[LocalModeParameters] = None,
         use_paraxial_ray_tracing: bool = False,
+        mechanical_center: Optional[np.ndarray] = None,
     ):
+        self._elements: List[Union[Surface, 'OpticalSystem']] = list(surfaces)
+        flat_surfaces = OpticalSystem._flatten_elements(self._elements)
         self.arms: List[Arm] = [
             Arm(
-                surfaces[i],
-                surfaces[i + 1],
+                flat_surfaces[i],
+                flat_surfaces[i + 1],
             )
-            for i in range(len(surfaces) - 1)
+            for i in range(len(flat_surfaces) - 1)
         ]  # This can not be a property, as it is edited later
-        self._surfaces = list(surfaces)
+        self._surfaces = flat_surfaces
+        self._mechanical_center = mechanical_center
         self.central_line_successfully_traced: Optional[bool] = None
         self.resonating_mode_successfully_traced: Optional[bool] = None
         self.lambda_0_laser: Optional[float] = lambda_0_laser
@@ -486,6 +491,30 @@ class OpticalSystem:
                 local_mode_parameters_on_first_surface=given_initial_local_mode_parameters,
             )
 
+    @staticmethod
+    def _flatten_elements(elements: List) -> List[Surface]:
+        flat = []
+        for el in elements:
+            if isinstance(el, OpticalSystem):
+                flat.extend(el._surfaces)
+            else:
+                flat.append(el)
+        return flat
+
+    @property
+    def mechanical_center(self) -> np.ndarray:
+        if self._mechanical_center is not None:
+            return self._mechanical_center
+        centers = [s.center for s in self._surfaces if hasattr(s, 'center')]
+        if len(centers) == 0:
+            return np.zeros(3)
+        return np.mean(np.stack(centers, axis=0), axis=0)
+
+    @property
+    def inverse(self) -> 'OpticalSystem':
+        inverse_elements = [el.inverse for el in reversed(self._elements)]
+        return OpticalSystem(inverse_elements, mechanical_center=self._mechanical_center)
+
     @property
     def surfaces(self):
         if len(self.arms) == 0:
@@ -499,23 +528,29 @@ class OpticalSystem:
 
     @staticmethod
     def params_to_surfaces(
-        params: Union[np.ndarray, List[OpticalElementParams]],
+        params: Union[np.ndarray, List],
     ):
         if isinstance(params, np.ndarray):
             raise ValueError(
                 "Cavity.from_params no longer supports np.ndarray input. Please provide a list of OpticalElementParams."
             )
             # params = [OpticalElementParams.from_array(params[i, :]) for i in range(len(params))]
-        surfaces = []
+        elements = []
         for i, p in enumerate(params):
-            if p.name is None:
-                p.name = f"Surface_{i}"
-            surface_temp = Surface.from_params(p)
-            if isinstance(surface_temp, tuple):
-                surfaces.extend(surface_temp)
+            if isinstance(p, list):
+                # Nested group: recursively create inner OpticalSystem (rigid body)
+                inner_elements = OpticalSystem.params_to_surfaces(p)
+                inner_system = OpticalSystem(inner_elements, given_initial_central_line=None)
+                elements.append(inner_system)
             else:
-                surfaces.append(surface_temp)
-        return surfaces
+                if p.name is None:
+                    p.name = f"Surface_{i}"
+                surface_temp = Surface.from_params(p)
+                if isinstance(surface_temp, tuple):
+                    elements.extend(surface_temp)
+                else:
+                    elements.append(surface_temp)
+        return elements
 
     @staticmethod
     def from_params(params: Union[np.ndarray, List[OpticalElementParams]], **kwargs):
@@ -528,12 +563,16 @@ class OpticalSystem:
         return optical_system
 
     @property
-    def to_params(self) -> List[OpticalElementParams]:
-        if self.params is None:
-            params = [surface.to_params for surface in self.surfaces]
-        else:
-            params = self.params
-        return params
+    def to_params(self):
+        if self.params is not None:
+            return self.params
+        result = []
+        for el in self._elements:
+            if isinstance(el, OpticalSystem):
+                result.append(el.to_params)
+            else:
+                result.append(el.to_params)
+        return result
 
     @property  # TODO change it to be the __str__ function without breaking existing code
     def formatted_textual_params(self) -> str:
@@ -1102,6 +1141,7 @@ class Cavity(OpticalSystem):
         debug_printing_level: int = 0,  # 0 for no prints, 1 for main prints, 2 for all prints
         use_paraxial_ray_tracing: bool = False,
     ):
+        self._input_elements = list(surfaces)
         ordered_surfaces = self._order_surfaces_for_initialization(surfaces, standing_wave=standing_wave)
 
         super().__init__(
@@ -1176,6 +1216,18 @@ class Cavity(OpticalSystem):
         else:
             # A -> B -> C -> D
             return [arm.surface_0 for arm in self.arms]
+
+    @property
+    def to_params(self):
+        if self.params is not None:
+            return self.params
+        result = []
+        for el in self._input_elements:
+            if isinstance(el, OpticalSystem):
+                result.append(el.to_params)
+            else:
+                result.append(el.to_params)
+        return result
 
     @property
     def perturbable_params_names(self):
@@ -2408,6 +2460,39 @@ def evaluate_gaussian(A: np.ndarray, b: np.ndarray, c: complex, axis_span: float
     return functions_values
 
 
+def _apply_rigid_body_perturbation(sub_params, parameter_name, perturbation_value, mechanical_center):
+    """Apply a perturbation to all params in a nested (rigid-body) group."""
+    if parameter_name in ('x', 'y', 'z'):
+        for sp in sub_params:
+            setattr(sp, parameter_name, getattr(sp, parameter_name) + perturbation_value)
+    elif parameter_name in ('theta', 'phi'):
+        # Determine rotation axis and angle from the first surface's orientation.
+        n_old = unit_vector_of_angles(sub_params[0].theta, sub_params[0].phi)
+        if parameter_name == 'theta':
+            n_new = unit_vector_of_angles(sub_params[0].theta + perturbation_value, sub_params[0].phi)
+        else:
+            n_new = unit_vector_of_angles(sub_params[0].theta, sub_params[0].phi + perturbation_value)
+        cross = np.cross(n_old, n_new)
+        cross_norm = np.linalg.norm(cross)
+        if cross_norm < 1e-15:
+            return  # no rotation needed
+        rot_axis = cross / cross_norm
+        rot_angle = np.arccos(np.clip(np.dot(n_old, n_new), -1.0, 1.0))
+        R = rotation_matrix_around_n(rot_axis, rot_angle)
+        for sp in sub_params:
+            center = np.array([sp.x, sp.y, sp.z])
+            new_center = mechanical_center + R @ (center - mechanical_center)
+            sp.x, sp.y, sp.z = new_center
+            old_normal = unit_vector_of_angles(sp.theta, sp.phi)
+            new_normal = R @ old_normal
+            sp.theta, sp.phi = angles_of_unit_vector(new_normal)
+    else:
+        raise ValueError(
+            f"Perturbation of '{parameter_name}' is not supported for nested rigid-body OpticalSystem elements. "
+            f"Only 'x', 'y', 'z', 'theta', 'phi' are supported."
+        )
+
+
 def perturb_cavity(
     cavity: Cavity,
     perturbation_pointer: Union[PerturbationPointer, List[PerturbationPointer], Tuple[PerturbationPointer]],
@@ -2415,14 +2500,21 @@ def perturb_cavity(
 ):
     new_params = copy.deepcopy(cavity.to_params)
     for perturbation_pointer_temp in perturbation_pointer:
-        current_value = getattr(
-            new_params[perturbation_pointer_temp.element_index], perturbation_pointer_temp.parameter_name
-        )
-        new_value = current_value + perturbation_pointer_temp.perturbation_value
-        # Set the new value back to the attribute
-        setattr(
-            new_params[perturbation_pointer_temp.element_index], perturbation_pointer_temp.parameter_name, new_value
-        )
+        target = new_params[perturbation_pointer_temp.element_index]
+        if isinstance(target, list):
+            # Nested rigid-body group: get mechanical_center from original cavity element
+            original_element = cavity._input_elements[perturbation_pointer_temp.element_index]
+            mechanical_center = original_element.mechanical_center
+            _apply_rigid_body_perturbation(
+                target,
+                perturbation_pointer_temp.parameter_name,
+                perturbation_pointer_temp.perturbation_value,
+                mechanical_center,
+            )
+        else:
+            current_value = getattr(target, perturbation_pointer_temp.parameter_name)
+            new_value = current_value + perturbation_pointer_temp.perturbation_value
+            setattr(target, perturbation_pointer_temp.parameter_name, new_value)
 
     parameters_names = [p.parameter_name for p in perturbation_pointer]
 
