@@ -1,4 +1,4 @@
-from cavity import *
+from cavity_design import *
 # Run once per console session
 # %load_ext autoreload
 # %autoreload 2

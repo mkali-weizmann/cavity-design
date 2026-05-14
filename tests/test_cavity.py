@@ -2,7 +2,7 @@ import numpy as np
 from numpy.polynomial import Polynomial
 
 
-from cavity import (
+from cavity_design import (
     CurvedMirror,
     CurvatureSigns,
     Cavity,
@@ -10,27 +10,23 @@ from cavity import (
     FlatRefractiveSurface,
     AsphericRefractiveSurface,
     Ray,
-    widget_convenient_exponent,
     perturb_cavity,
     evaluate_cavities_modes_on_surface,
-    mirror_lens_mirror_cavity_generator, fabry_perot_generator, OpticalSystem, optical_system_to_cavity_completion,
-)
-
-from utils import (
+    mirror_lens_mirror_cavity_generator,
+    fabry_perot_generator,
+    OpticalSystem,
+    optical_system_to_cavity_completion,
     OpticalElementParams,
     MaterialProperties,
     PerturbationPointer,
     gaussians_overlap_integral,
     LensParams,
     solve_aspheric_profile,
-)
-
-from simple_analysis_scripts.potential_analysis.analyze_potential import (
+    widget_convenient_exponent,
     choose_source_position_for_desired_focus_analytic,
     known_lenses_generator, generate_one_lens_optical_system, initialize_rays, analyze_potential,
     analyze_potential_given_cavity, hessian_ray_tracing, hessian_ABCD_matrices, mirrors_jacobian
 )
-
 
 def test_fabry_perot_mode_finding():
     # Compares the numerical result from the analytical solution for a simple Fabry-Perot cavity

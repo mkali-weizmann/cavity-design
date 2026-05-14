@@ -1,4 +1,4 @@
-from cavity import *
+from cavity_design import *
 from matplotlib.lines import Line2D
 
 NA_left = 1.500000000e-01

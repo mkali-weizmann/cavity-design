@@ -1,4 +1,4 @@
-from cavity import *
+from cavity_design import *
 
 NA_left = 15.2000000000e-02
 waist_to_lens = 5.0000000000e-03

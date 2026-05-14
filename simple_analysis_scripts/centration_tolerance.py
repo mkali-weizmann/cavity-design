@@ -1,4 +1,4 @@
-from cavity import *
+from cavity_design import *
 
 from matplotlib.lines import Line2D
 

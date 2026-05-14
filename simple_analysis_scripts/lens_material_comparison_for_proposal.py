@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
 
-from cavity import *
+from cavity_design import *
 import pickle as pkl
 from matplotlib import rc
 from matplotlib.lines import Line2D

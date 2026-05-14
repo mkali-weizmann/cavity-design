@@ -1,6 +1,6 @@
 from matplotlib import use
 use('TkAgg')
-from simple_analysis_scripts.potential_analysis.analyze_potential import *
+from cavity_design import *
 
 # %% compare one lens and two lenses system energy level for the same spot_size:
 params = [

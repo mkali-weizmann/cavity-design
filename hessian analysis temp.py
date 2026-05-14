@@ -1,6 +1,6 @@
 from matplotlib import use
 use('TkAgg')
-from simple_analysis_scripts.potential_analysis.analyze_potential import *
+from cavity_design.analyze_potential import *
 # from delete_me import solve_2d_direct_ground_state
 
 # cavity_disordered = fabry_perot_generator(radii=(1, 1), NA=0.1, lambda_0_laser=LAMBDA_0_LASER)
@@ -85,7 +85,7 @@ plt.grid(True)
 plt.show()
 
 # %%
-from simple_analysis_scripts.potential_analysis.analyze_potential import *
+from cavity_design.analyze_potential import *
 
 import numpy as np
 import matplotlib.pyplot as plt

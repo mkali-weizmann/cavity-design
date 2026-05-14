@@ -1,6 +1,6 @@
 from matplotlib import use
 use("TkAgg")  # or 'Qt5Agg', 'GTK3Agg', etc
-from simple_analysis_scripts.potential_analysis.analyze_potential import *
+from cavity_design import *
 
 # %%
 R_1 = 6.574e-3

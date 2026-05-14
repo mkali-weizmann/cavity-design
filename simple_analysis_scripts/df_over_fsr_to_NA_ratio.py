@@ -1,8 +1,8 @@
 from copy import deepcopy
 # import matplotlib
 # matplotlib.use("Qt5Agg")  # Or "TkAgg" if Qt is unavailable
-from cavity import *
-from simple_analysis_scripts.df_over_fsr_to_NA_ratio_output import generate_lens_position_dependencies, delta_xs_lens_actual, params_actual_cavity, N
+from cavity_design import *
+from scripts.df_over_fsr_to_NA_ratio_output import generate_lens_position_dependencies, delta_xs_lens_actual, params_actual_cavity, N
 
 
 def theoretical_df_FSR(L, R_1, R_2):

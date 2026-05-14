@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
 
-from cavity import *
+from cavity_design import *
 
 NA_left = 1.500000000e-01
 mirror_on_waist = False

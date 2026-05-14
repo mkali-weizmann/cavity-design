@@ -1,4 +1,4 @@
-from cavity import *
+from cavity_design import *
 
 add_unheated_cavity = False
 copy_input_parameters = True

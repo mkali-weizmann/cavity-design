@@ -6,7 +6,7 @@ import time
 import matplotlib.pyplot as plt
 import numpy as np
 
-from cavity import *
+from cavity_design import *
 
 from matplotlib import use
 from matplotlib.lines import Line2D

@@ -1,4 +1,4 @@
-from cavity import *
+from cavity_design import *
 # %%
 
 for w in ['3mm', '4mm', '8mm']:

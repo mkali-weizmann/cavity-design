@@ -1,4 +1,4 @@
-from cavity import *
+from cavity_design import *
 # %% # Intersection debug cell:
 general_mirror = CurvedMirror(radius=5e-3, outwards_normal=np.array([-1, 0, 0]), origin=np.array([0, 0, 0]))
 right_mirror = CurvedMirror(radius=5e-3, outwards_normal=np.array([1, 0, 0]), origin=np.array([0, 0, 0]))

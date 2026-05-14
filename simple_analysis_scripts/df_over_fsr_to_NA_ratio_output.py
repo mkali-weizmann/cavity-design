@@ -1,5 +1,5 @@
 from copy import deepcopy
-from cavity import *
+from cavity_design import *
 from scipy.interpolate import interp1d
 
 

@@ -26,8 +26,8 @@ except Exception:
     running_in_notebook =  False
     from matplotlib import use
     use('TkAgg')
-from cavity import *
-from simple_analysis_scripts.potential_analysis.analyze_potential import initialize_rays
+from cavity_design import *
+from cavity_design.analyze_potential import initialize_rays
 
 def point_of_equal_angles(ray_1: Ray, ray_2: Ray, p_1: np.ndarray):
     # projects point p_1 (assumed to be on ray_1) onto ray_2 such that the angles between the segment p_1 to p_2 and the rays are equal.

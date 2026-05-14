@@ -1,4 +1,4 @@
-from simple_analysis_scripts.potential_analysis.analyze_potential import *
+from cavity_design.analyze_potential import *
 # --- use the function from before ---
 # ground_state_2d_radial_polar(r_max, V, m, n)
 

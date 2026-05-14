@@ -1,4 +1,4 @@
-from cavity import *
+from cavity_design import *
 NA = np.linspace(0.02, 0.16, 100)
 L = 0.01
 unconcentricity = 4 * LAMBDA_0_LASER ** 2 / (L * np.pi**2 * NA**4)

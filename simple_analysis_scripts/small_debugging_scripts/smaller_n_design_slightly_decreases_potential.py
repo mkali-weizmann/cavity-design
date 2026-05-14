@@ -1,6 +1,6 @@
 # from matplotlib import use
 # use('TkAgg')
-from simple_analysis_scripts.potential_analysis.analyze_potential import *
+from cavity_design.analyze_potential import *
 
 back_focal_length_aspheric = 5.9000000000e-03
 defocuses = [5.805e-4, 2.95e-4]

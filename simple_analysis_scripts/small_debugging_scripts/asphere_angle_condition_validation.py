@@ -1,4 +1,4 @@
-from cavity import *
+from cavity_design import *
 
 theta = 0.1
 initial_ray = Ray(origin=np.array([0.0, 0.0, -100.0]), k_vector=np.array([np.cos(theta), np.sin(theta), 0]))
@@ -22,7 +22,7 @@ plt.show()
 print(new_ray.k_vector)
 
 # %%
-from cavity import *
+from cavity_design import *
 
 theta = 0.2
 initial_ray = Ray(origin=np.array([0.0, 0.0, -100.0]), k_vector=np.array([np.cos(theta), np.sin(theta), 0]))

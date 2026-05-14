@@ -1,4 +1,4 @@
-from simple_analysis_scripts.potential_analysis.analyze_potential import *
+from cavity_design.analyze_potential import *
 
 import numpy as np
 import matplotlib.pyplot as plt

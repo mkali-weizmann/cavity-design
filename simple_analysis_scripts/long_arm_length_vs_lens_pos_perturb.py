@@ -1,4 +1,4 @@
-from cavity import *
+from cavity_design import *
 from matplotlib import use
 use('TkAgg')
 

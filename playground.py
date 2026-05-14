@@ -1,4 +1,4 @@
-from simple_analysis_scripts.potential_analysis.analyze_potential import *
+from cavity_design.analyze_potential import *
 back_focal_length_aspheric = 5.9000000000e-03
 back_focal_length_aspheric_fine = 0.0000000000e+00
 defocus = -1.7347234760e-18

@@ -1,4 +1,4 @@
-from cavity import *
+from cavity_design import *
 
 
 # %% ### Comparing sapphire and fused silica lenses, lengths measured from len's surfaces:

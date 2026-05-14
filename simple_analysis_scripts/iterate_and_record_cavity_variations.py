@@ -1,4 +1,4 @@
-from cavity import *
+from cavity_design import *
 
 symmetric_left_arm = False
 waist_to_left_mirror = -5.0000000000e-03

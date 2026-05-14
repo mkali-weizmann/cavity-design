@@ -2,7 +2,7 @@ from matplotlib import use
 from scipy.interpolate import interp1d
 
 use('TkAgg')
-from cavity import *
+from cavity_design import *
 
 radii = (5e-3, 5e-3)  # 5 mm
 NA_left = 1.5300000000e-01

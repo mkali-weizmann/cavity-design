@@ -1,7 +1,7 @@
 from scipy.optimize import newton
 from functools import reduce
 
-from cavity import *
+from cavity_design import *
 from matplotlib.lines import Line2D
 
 H_BAR = 1.0545718e-34

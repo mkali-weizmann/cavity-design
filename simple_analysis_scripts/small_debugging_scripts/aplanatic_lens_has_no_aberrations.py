@@ -1,6 +1,6 @@
 from matplotlib import use
 use('TkAgg')
-from cavity import *
+from cavity_design import *
 
 n = 1.8
 R_1 = -5e-3

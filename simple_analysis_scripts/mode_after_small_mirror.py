@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
 
-from cavity import *
+from cavity_design import *
 
 w_0_initial = w_0_of_NA(0.16, lambda_laser=LAMBDA_0_LASER)
 mode_0 = ModeParameters(center=np.array([0, 0, 0]),

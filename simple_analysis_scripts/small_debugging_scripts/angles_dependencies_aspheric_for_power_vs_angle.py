@@ -1,4 +1,4 @@
-from simple_analysis_scripts.potential_analysis.analyze_potential import *
+from cavity_design.analyze_potential import *
 
 def betas_of_NA(NAs, n):
     return np.arcsin(NAs/np.sqrt(n**2+1-2*np.sqrt(n**2-NAs**2)))

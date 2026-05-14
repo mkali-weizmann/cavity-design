@@ -1,4 +1,4 @@
-from cavity import *
+from cavity_design import *
 D = 10
 N = 1000
 
