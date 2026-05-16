@@ -768,6 +768,9 @@ class AsphericRefractiveSurface(AsphericSurface, RefractiveSurface):
         )
         self.curvature_sign = curvature_sign
 
+    def __str__(self):
+        return f"AsphericRefractiveSurface(name={self.name}, center={self.center}, outwards_normal={self.outwards_normal}, polynomial_coefficients={self.polynomial.coef}, n_1={self.n_1}, n_2={self.n_2}, curvature_sign={self.curvature_sign})"
+
     def ABCD_matrix(self, cos_theta_incoming: Union[float, np.ndarray] = None) -> np.ndarray:
         paraxial_approximation_surface = CurvedRefractiveSurface(
             radius=self.radius,
@@ -951,6 +954,8 @@ class FlatMirror(FlatSurface, ReflectiveSurface):
             radius=np.inf,
             diameter=diameter,
         )
+    def __str__(self):
+        return f"FlatMirror(name={self.name}, center={self.center}, outwards_normal={self.outwards_normal})"
 
     def plot(
         self,
@@ -1008,6 +1013,9 @@ class FlatRefractiveSurface(FlatSurface, RefractiveSurface):
         self.n_1 = n_1
         self.n_2 = n_2
 
+    def __str__(self):
+        return f"FlatRefractiveSurface(name={self.name}, center={self.center}, outwards_normal={self.outwards_normal}, n_1={self.n_1}, n_2={self.n_2})"
+
     def ABCD_matrix(self, cos_theta_incoming: Union[float, np.ndarray] = None) -> np.ndarray:
         # Note \! this code assumes the ray is in the x\-y plane\! Until it is fixed, the only perturbations in x,y,phi should be calculated\!
         cos_theta_incoming = np.asarray(cos_theta_incoming)
@@ -1042,6 +1050,9 @@ class IdealLens(FlatSurface, PhysicalSurface):
             diameter=diameter,
         )
         self.focal_length = focal_length
+
+    def __str__(self):
+        return f"IdealLens(name={self.name}, center={self.center}, outwards_normal={self.outwards_normal}, focal_length={self.focal_length})"
 
     def plot(
         self,
@@ -1244,6 +1255,9 @@ class CurvedMirror(CurvedSurface, ReflectiveSurface):
             curvature_sign=curvature_sign,
         )
 
+    def __str__(self):
+        return f"CurvedMirror(name={self.name}, center={self.center}, outwards_normal={self.outwards_normal}, radius={self.radius})"
+
     def scatter_direction_paraxial(self, ray: Ray) -> np.ndarray:
         # This is maybe wrong but does not matter too much because anyway they are not used for the central line finding
         # ATTENTION - THIS SHOULD NOT BE HERE FOR NON-STANDING WAVES CAVITIES - BUT i AM DEALING ONLY WITH THOSE...
@@ -1347,6 +1361,9 @@ class CurvedRefractiveSurface(CurvedSurface, RefractiveSurface):
         self.n_1 = n_1
         self.n_2 = n_2
         self.thickness = thickness
+
+    def __str__(self):
+        return f"CurvedRefractiveSurface(name={self.name}, center={self.center}, outwards_normal={self.outwards_normal}, radius={self.radius}, n_1={self.n_1}, n_2={self.n_2})"
 
     def ABCD_matrix(self, cos_theta_incoming: Union[float, np.ndarray] = None) -> np.ndarray:
         cos_theta_incoming = np.asarray(cos_theta_incoming)
