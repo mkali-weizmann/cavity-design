@@ -439,6 +439,79 @@ def test_fabry_perot_perturbation():
         NA_numerical, NA_analytical, rtol=0.0001
     ), f"Fabry-Perot perturbation test failed: expected NA of approximately {NA_analytical} but got {NA_numerical}"
 
+def test_complex_cavity_perturbation():
+    params = [
+        OpticalSurfaceParams(name='Small Mirror', surface_type='curved_mirror', x=-4.999954683912563e-03, y=0, z=0,
+                             theta=0, phi=-1e+00 * np.pi, radius=5e-03, curvature_sign=CurvatureSigns.concave,
+                             T_c=np.nan, n_inside_or_after=1e+00, n_outside_or_before=1e+00, diameter=7.75e-03,
+                             material_properties=MaterialProperties(refractive_index=None, alpha_expansion=7.5e-08,
+                                                                    beta_surface_absorption=1e-06,
+                                                                    kappa_conductivity=1.31e+00, dn_dT=None,
+                                                                    nu_poisson_ratio=1.7e-01,
+                                                                    alpha_volume_absorption=None,
+                                                                    intensity_reflectivity=9.99889e-01,
+                                                                    intensity_transmittance=1e-04, temperature=np.nan),
+                             polynomial_coefficients=None), [
+            OpticalSurfaceParams(name='Lens_left', surface_type='curved_refractive_surface', x=4.930700511195863e-03,
+                                 y=0, z=0, theta=0, phi=1e+00 * np.pi, radius=2.422e-02,
+                                 curvature_sign=CurvatureSigns.convex, T_c=np.nan, n_inside_or_after=1.76e+00,
+                                 n_outside_or_before=1e+00, diameter=7.75e-03,
+                                 material_properties=MaterialProperties(refractive_index=1.76e+00,
+                                                                        alpha_expansion=5.5e-06,
+                                                                        beta_surface_absorption=1e-06,
+                                                                        kappa_conductivity=4.606e+01, dn_dT=1.17e-05,
+                                                                        nu_poisson_ratio=3e-01,
+                                                                        alpha_volume_absorption=1e-02,
+                                                                        intensity_reflectivity=1e-04,
+                                                                        intensity_transmittance=9.99899e-01,
+                                                                        temperature=np.nan),
+                                 polynomial_coefficients=None),
+            OpticalSurfaceParams(name='Lens_right', surface_type='curved_refractive_surface', x=7.844498052182406e-03,
+                                 y=0, z=0, theta=0, phi=0, radius=5.488e-03, curvature_sign=CurvatureSigns.concave,
+                                 T_c=np.nan, n_inside_or_after=1e+00, n_outside_or_before=1.76e+00, diameter=7.75e-03,
+                                 material_properties=MaterialProperties(refractive_index=1.76e+00,
+                                                                        alpha_expansion=5.5e-06,
+                                                                        beta_surface_absorption=1e-06,
+                                                                        kappa_conductivity=4.606e+01, dn_dT=1.17e-05,
+                                                                        nu_poisson_ratio=3e-01,
+                                                                        alpha_volume_absorption=1e-02,
+                                                                        intensity_reflectivity=1e-04,
+                                                                        intensity_transmittance=9.99899e-01,
+                                                                        temperature=np.nan),
+                                 polynomial_coefficients=None)],
+        OpticalSurfaceParams(name='Big Mirror', surface_type='curved_mirror', x=4.074677357638641e-01, y=0, z=0,
+                             theta=0, phi=0, radius=2e-01, curvature_sign=CurvatureSigns.concave, T_c=np.nan,
+                             n_inside_or_after=1e+00, n_outside_or_before=1e+00, diameter=2.54e-02,
+                             material_properties=MaterialProperties(refractive_index=None, alpha_expansion=7.5e-08,
+                                                                    beta_surface_absorption=1e-06,
+                                                                    kappa_conductivity=1.31e+00, dn_dT=None,
+                                                                    nu_poisson_ratio=1.7e-01,
+                                                                    alpha_volume_absorption=None,
+                                                                    intensity_reflectivity=9.99889e-01,
+                                                                    intensity_transmittance=1e-04, temperature=np.nan),
+                             polynomial_coefficients=None)]
+
+    cavity_paraxial = Cavity.from_params(params=params,
+                                         standing_wave=True,
+                                         lambda_0_laser=LAMBDA_0_LASER,
+                                         set_central_line=True,
+                                         set_mode_parameters=True,
+                                         t_is_trivial=True,
+                                         p_is_trivial=True,
+                                         power=2e4,
+                                         use_paraxial_ray_tracing=True,
+                                         debug_printing_level=1,
+                                         )
+    perturbable_params_names = ['x', 'y', 'phi']
+    tolerance_df = cavity_paraxial.generate_tolerance_dataframe(perturbable_params_names=perturbable_params_names)
+    tolerance_df_numpy = tolerance_df.to_numpy()
+    known_result = np.array([[-2.01466680e-06,  3.11409932e-08, -6.23125000e-06],
+                             [ 2.02635293e-06,  3.02079512e-08,             np.nan],
+                             [ 2.02971058e-03, -9.82278238e-07,  4.91029984e-06]])
+    # relative tolerance is a bit high because results change slightly from one run to another.
+    assert np.allclose(np.abs(tolerance_df_numpy), np.abs(known_result), rtol=1e-2,equal_nan=True),\
+        f"Complex cavity perturbation test failed: expected tolerance dataframe \n{known_result}\n but got \n{tolerance_df_numpy}"
+
 
 def test_potential_single_lens():
     dn = 0
