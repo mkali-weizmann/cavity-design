@@ -39,13 +39,8 @@ def test_fabry_perot_mode_finding():
                              curvature_sign=CurvatureSigns.concave, diameter=0.01)
     surface_2 = CurvedMirror(radius=R_2, outwards_normal=np.array([0, 0, 1]), center=np.array([0, 0, -R_1 + L]),
                              curvature_sign=CurvatureSigns.concave, diameter=0.01)
-    cavity = Cavity(
-        surfaces=[surface_1, surface_2],
-        standing_wave=True,
-        lambda_0_laser=LAMBDA_0_LASER,
-        power=1e3,
-        use_paraxial_ray_tracing=False,
-    )
+    cavity = Cavity(elements=[surface_1, surface_2], standing_wave=True, lambda_0_laser=LAMBDA_0_LASER, power=1e3,
+                    use_paraxial_ray_tracing=False)
     theoretical_reighly_range = np.sqrt(u * L) / 2
     actual_reighly_range = cavity.arms[0].mode_parameters.z_R[0]
 
@@ -696,12 +691,7 @@ def test_rigid_body_translation_perturbation():
                       center=np.array([L/2, 0, 0]), curvature_sign=CurvatureSigns.concave, name="m2",
                       diameter=25e-3)
 
-    cavity = Cavity(
-        [m1, lens, m2],
-        standing_wave=True,
-        lambda_0_laser=LAMBDA_0_LASER,
-        set_mode_parameters=False,
-    )
+    cavity = Cavity([m1, lens, m2], standing_wave=True, lambda_0_laser=LAMBDA_0_LASER, set_mode_parameters=False)
 
     delta_y = 1e-4
     pp = PerturbationPointer(element_index=1, parameter_name='y', perturbation_value=delta_y)
@@ -730,12 +720,7 @@ def test_rigid_body_rotation_perturbation():
                       center=np.array([L/2, 0, 0]), curvature_sign=CurvatureSigns.concave, name="m2",
                       diameter=25e-3)
 
-    cavity = Cavity(
-        [m1, lens, m2],
-        standing_wave=True,
-        lambda_0_laser=LAMBDA_0_LASER,
-        set_mode_parameters=False,
-    )
+    cavity = Cavity([m1, lens, m2], standing_wave=True, lambda_0_laser=LAMBDA_0_LASER, set_mode_parameters=False)
 
     delta_theta = 0.02  # small tilt
     pp = PerturbationPointer(element_index=1, parameter_name='theta', perturbation_value=delta_theta)

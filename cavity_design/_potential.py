@@ -195,13 +195,8 @@ def generate_two_positive_lenses_optical_system(
     aspheric_flat.n_2 = n_aspheric_actual
     aspheric_curved.n_1 = n_aspheric_actual
 
-    optical_system = OpticalSystem(
-        surfaces=[aspheric_flat, aspheric_curved],
-        t_is_trivial=True,
-        p_is_trivial=True,
-        given_initial_central_line=True,
-        use_paraxial_ray_tracing=False,
-    )
+    optical_system = OpticalSystem(elements=[aspheric_flat, aspheric_curved], t_is_trivial=True, p_is_trivial=True,
+                                   given_initial_central_line=True, use_paraxial_ray_tracing=False)
 
     aspheric_output_ROC = optical_system.output_radius_of_curvature(initial_distance=aspheric_flat.center[0])
 
@@ -302,13 +297,9 @@ def generate_two_positive_lenses_optical_system(
             diameter=diameter,
         )
 
-    optical_system_combined = OpticalSystem(
-        surfaces=[aspheric_flat, aspheric_curved, spherical_0, spherical_1],
-        t_is_trivial=True,
-        p_is_trivial=True,
-        given_initial_central_line=True,
-        use_paraxial_ray_tracing=False,
-    )
+    optical_system_combined = OpticalSystem(elements=[aspheric_flat, aspheric_curved, spherical_0, spherical_1],
+                                            t_is_trivial=True, p_is_trivial=True, given_initial_central_line=True,
+                                            use_paraxial_ray_tracing=False)
 
     return optical_system_combined
 
@@ -352,13 +343,9 @@ def generate_two_positive_lenses_cavity(
         spherical_focal_length=spherical_focal_length,
         spherical_setting_mode=spherical_setting_mode,
     )
-    optical_system_with_small_mirror = OpticalSystem(
-        surfaces=[LASER_OPTIK_MIRROR, *optical_system.surfaces],
-        t_is_trivial=True,
-        p_is_trivial=True,
-        use_paraxial_ray_tracing=False,
-        lambda_0_laser=LAMBDA_0_LASER,
-    )
+    optical_system_with_small_mirror = OpticalSystem(elements=[LASER_OPTIK_MIRROR, *optical_system.surfaces],
+                                                     lambda_0_laser=LAMBDA_0_LASER, t_is_trivial=True,
+                                                     p_is_trivial=True, use_paraxial_ray_tracing=False)
     cavity = optical_system_to_cavity_completion(
         optical_system=optical_system_with_small_mirror,
         NA=NA_small_arm,
@@ -857,14 +844,10 @@ def analyze_potential_given_cavity(
     # assert np.all(
     #     np.isclose(cavity.surfaces[0].origin, ORIGIN)
     # ), "Currently assumes the center of the small mirror is at the origin for the extraction of the Analytical R. probably it will work otherwise, but needs to be debugged"  #
-    optical_system_reduced = OpticalSystem(
-        surfaces=cavity.surfaces[1:-1],
-        lambda_0_laser=cavity.lambda_0_laser,
-        t_is_trivial=cavity.t_is_trivial,
-        p_is_trivial=cavity.p_is_trivial,
-        use_paraxial_ray_tracing=cavity.use_paraxial_ray_tracing,
-        given_initial_central_line=cavity.central_line[1],
-    )
+    optical_system_reduced = OpticalSystem(elements=cavity.surfaces[1:-1], lambda_0_laser=cavity.lambda_0_laser,
+                                           t_is_trivial=cavity.t_is_trivial, p_is_trivial=cavity.p_is_trivial,
+                                           given_initial_central_line=cavity.central_line[1],
+                                           use_paraxial_ray_tracing=cavity.use_paraxial_ray_tracing)
     first_mirror = cavity.physical_surfaces[0]
     rays_0 = initialize_rays(n_rays=n_rays, phi_max=phi_max, starting_mirror=first_mirror)
     ray_sequence = optical_system_reduced.propagate_ray(rays_0, propagate_with_first_surface_first=True)
@@ -1121,11 +1104,8 @@ def orthonormal_rays_end_points(cavity: Cavity, n_rays: int = 30, phi_max: float
     end_points = propagated_ray[-1].origin
     end_directions_inverted = -propagated_ray[-2].k_vector
     optical_system_inverted_reduced = OpticalSystem(
-        surfaces=cavity.surfaces_ordered[len(cavity.surfaces_ordered) // 2 :],
-        use_paraxial_ray_tracing=False,
-        p_is_trivial=True,
-        t_is_trivial=True,
-    )
+        elements=cavity.surfaces_ordered[len(cavity.surfaces_ordered) // 2:], t_is_trivial=True, p_is_trivial=True,
+        use_paraxial_ray_tracing=False)
     return end_points, end_directions_inverted, optical_system_inverted_reduced
 
 

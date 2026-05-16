@@ -58,13 +58,9 @@ spherical_front = CurvedRefractiveSurface(
     curvature_sign=CurvatureSigns.convex,
 )
 
-optical_system = OpticalSystem(
-    surfaces=[*optical_system_initial.surfaces, spherical_back, spherical_front],
-    t_is_trivial=True,
-    p_is_trivial=True,
-    use_paraxial_ray_tracing=False,
-    given_initial_central_line=True,
-)
+optical_system = OpticalSystem(elements=[*optical_system_initial.surfaces, spherical_back, spherical_front],
+                               t_is_trivial=True, p_is_trivial=True, given_initial_central_line=True,
+                               use_paraxial_ray_tracing=False)
 
 rays_0 = initialize_rays(n_rays=n_rays, phi_max=phi_max)
 

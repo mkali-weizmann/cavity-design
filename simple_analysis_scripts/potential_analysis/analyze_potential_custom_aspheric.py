@@ -38,8 +38,8 @@ lens_right = CurvedRefractiveSurface(radius=R_2,
                                      diameter=diameter,
                                     )
 
-optical_system = OpticalSystem(surfaces=[laseroptik_mirror, lens_left, lens_right],
-                               lambda_0_laser=LAMBDA_0_LASER, t_is_trivial=True, p_is_trivial=True, use_paraxial_ray_tracing=False)
+optical_system = OpticalSystem(elements=[laseroptik_mirror, lens_left, lens_right], lambda_0_laser=LAMBDA_0_LASER,
+                               t_is_trivial=True, p_is_trivial=True, use_paraxial_ray_tracing=False)
 cavity = optical_system_to_cavity_completion(optical_system=optical_system, NA=0.15)
 # # %%
 # cavity.plot()
@@ -101,23 +101,16 @@ aspherical_back_alternative = AsphericRefractiveSurface(polynomial_coefficients=
                                                         curvature_sign=outwards_normal @ OPTICAL_AXIS
                                                         )
 
-optical_system_original = OpticalSystem(surfaces=[aspheric_flat, aspheric_front],
-                                       t_is_trivial=True,
-                                       p_is_trivial=True,
-                                       given_initial_central_line=True,
-                                       use_paraxial_ray_tracing=False,)
+optical_system_original = OpticalSystem(elements=[aspheric_flat, aspheric_front], t_is_trivial=True, p_is_trivial=True,
+                                        given_initial_central_line=True, use_paraxial_ray_tracing=False)
 
-optical_system_spherical_back = OpticalSystem(surfaces=[spherical_back_alternative, aspheric_front],
-                                              t_is_trivial=True,
-                                              p_is_trivial=True,
-                                              given_initial_central_line=True,
-                                              use_paraxial_ray_tracing=False,)
+optical_system_spherical_back = OpticalSystem(elements=[spherical_back_alternative, aspheric_front], t_is_trivial=True,
+                                              p_is_trivial=True, given_initial_central_line=True,
+                                              use_paraxial_ray_tracing=False)
 
-optical_system_aspherical_back = OpticalSystem(surfaces=[aspherical_back_alternative, aspheric_front],
-                                               t_is_trivial=True,
-                                               p_is_trivial=True,
-                                               given_initial_central_line=True,
-                                               use_paraxial_ray_tracing=False,)
+optical_system_aspherical_back = OpticalSystem(elements=[aspherical_back_alternative, aspheric_front],
+                                               t_is_trivial=True, p_is_trivial=True, given_initial_central_line=True,
+                                               use_paraxial_ray_tracing=False)
 
 rays_0 = initialize_rays(defocus=defocus, n_rays=n_rays, phi_max=phi_max)
 # %%

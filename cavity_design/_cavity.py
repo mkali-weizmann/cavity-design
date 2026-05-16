@@ -113,7 +113,7 @@ class Arm:
         self.surface_1: Surface = surface_1
         self.mode_parameters_on_surface_0: LocalModeParameters = mode_parameters_on_surface_0
         self.mode_parameters_on_surface_1: LocalModeParameters = mode_parameters_on_surface_1
-        self.central_line: Ray = central_line
+        self.central_line: Optional[Ray] = central_line
         self.mode_principle_axes: Optional[np.ndarray] = mode_principle_axes
 
         if isinstance(surface_0, CurvedRefractiveSurface) and isinstance(surface_1, CurvedRefractiveSurface):
@@ -453,7 +453,7 @@ def simple_mode_propagator(
 class OpticalSystem:
     def __init__(
         self,
-        surfaces: List[Union[Surface, 'OpticalSystem']],
+        elements: List[Union[Surface, 'OpticalSystem']],
         lambda_0_laser: Optional[float] = None,
         params: Optional[list] = None,
         power: Optional[float] = None,
@@ -463,8 +463,9 @@ class OpticalSystem:
         given_initial_local_mode_parameters: Optional[LocalModeParameters] = None,
         use_paraxial_ray_tracing: bool = False,
         mechanical_center: Optional[np.ndarray] = None,
+        name: Optional[str] = None,
     ):
-        self._elements: List[Union[Surface, 'OpticalSystem']] = list(surfaces)
+        self._elements: List[Union[Surface, 'OpticalSystem']] = list(elements)
         flat_surfaces = OpticalSystem._flatten_elements(self._elements)
         self.arms: List[Arm] = [
             Arm(
@@ -483,6 +484,7 @@ class OpticalSystem:
         self.p_is_trivial = p_is_trivial
         self.t_is_trivial = t_is_trivial
         self.use_paraxial_ray_tracing = use_paraxial_ray_tracing
+        self.name = name
 
         self._sync_config_to_nested()
 
@@ -505,6 +507,10 @@ class OpticalSystem:
             else:
                 flat.append(el)
         return flat
+
+    @property
+    def elements(self) -> List[Union[Surface, 'OpticalSystem']]:
+        return self._elements
 
     def _sync_config_to_nested(self):
         for el in self._elements:
@@ -560,7 +566,7 @@ class OpticalSystem:
         return physical_surfaces
 
     @staticmethod
-    def params_to_surfaces(
+    def params_to_elements(
         params: Union[np.ndarray, List],
     ):
         if isinstance(params, np.ndarray):
@@ -572,8 +578,8 @@ class OpticalSystem:
         for i, p in enumerate(params):
             if isinstance(p, list):
                 # Nested group: recursively create inner OpticalSystem (rigid body)
-                inner_elements = OpticalSystem.params_to_surfaces(p)
-                inner_system = OpticalSystem(inner_elements, given_initial_central_line=None)
+                inner_elements = OpticalSystem.params_to_elements(p)
+                inner_system = OpticalSystem(inner_elements, given_initial_central_line=None, name=f"element_{i}")
                 elements.append(inner_system)
             else:
                 if p.name is None:
@@ -587,12 +593,8 @@ class OpticalSystem:
 
     @staticmethod
     def from_params(params: Union[np.ndarray, list], **kwargs):
-        surfaces = OpticalSystem.params_to_surfaces(params)
-        optical_system = OpticalSystem(
-            surfaces,
-            params=params,
-            **kwargs,
-        )
+        elements = OpticalSystem.params_to_elements(params)
+        optical_system = OpticalSystem(elements, params=params, **kwargs)
         return optical_system
 
     @property
@@ -600,14 +602,14 @@ class OpticalSystem:
         if self.params is not None:
             return self.params
         result = []
-        for el in self._elements:
+        for el in self.elements:
             if isinstance(el, OpticalSystem):
                 result.append(el.to_params)
             else:
                 result.append(el.to_params)
         return result
 
-    @property  # TODO change it to be the __str__ function without breaking existing code
+    @property
     def formatted_textual_params(self) -> str:
         if self.to_params is None:
             return "No parameters set for this cavity."
@@ -690,7 +692,7 @@ class OpticalSystem:
 
     @property
     def names(self):
-        names = [p.name if p.name is not None else f"{i}: {p.surface_type}" for i, p in enumerate(self.to_params)]
+        names = [p.name if p.name is not None else f"{i}: {p.surface_type if isinstance(p, OpticalSurfaceParams) else 'OpticalSystem'}" for i, p in enumerate(self.elements)]
         return names
 
     @property
@@ -1096,14 +1098,11 @@ class OpticalSystem:
         # Currently assume 1d problem for simplicity (only the :2, :2 elements for the first dimension are used), if required it can be expanded
         # For system with mirror as first surface, we usually don't want to propagate using the first surface.
         if not propagate_with_first_surface:
-            optical_system_reduced = OpticalSystem(
-                surfaces=self.surfaces[1:],
-                lambda_0_laser=self.lambda_0_laser,
-                p_is_trivial=self.p_is_trivial,
-                t_is_trivial=self.t_is_trivial,
-                use_paraxial_ray_tracing=self.use_paraxial_ray_tracing,
-                given_initial_central_line=self.central_line[1] if self.central_line is not None else True,
-            )
+            optical_system_reduced = OpticalSystem(elements=self.surfaces[1:], lambda_0_laser=self.lambda_0_laser,
+                                                   t_is_trivial=self.t_is_trivial, p_is_trivial=self.p_is_trivial,
+                                                   given_initial_central_line=self.central_line[
+                                                       1] if self.central_line is not None else True,
+                                                   use_paraxial_ray_tracing=self.use_paraxial_ray_tracing)
 
             R_out = optical_system_reduced.output_radius_of_curvature(
                 initial_distance=initial_distance, source_position=source_position, propagate_with_first_surface=True
@@ -1145,12 +1144,9 @@ class OpticalSystem:
         else:
             initial_ray_inverted = None
 
-        inverted_system = OpticalSystem(
-            surfaces=inverted_surfaces,
-            lambda_0_laser=self.lambda_0_laser,
-            given_initial_central_line=initial_ray_inverted,
-            use_paraxial_ray_tracing=self.use_paraxial_ray_tracing,
-        )
+        inverted_system = OpticalSystem(elements=inverted_surfaces, lambda_0_laser=self.lambda_0_laser,
+                                        given_initial_central_line=initial_ray_inverted,
+                                        use_paraxial_ray_tracing=self.use_paraxial_ray_tracing)
         return inverted_system
 
 
@@ -1160,7 +1156,7 @@ class OpticalSystem:
 class Cavity(OpticalSystem):
     def __init__(
         self,
-        surfaces: List[Surface],
+        elements: List[Union[Surface, 'OpticalSystem']],
         standing_wave: bool = True,
         lambda_0_laser: Optional[float] = None,
         params: Optional[list] = None,
@@ -1176,18 +1172,12 @@ class Cavity(OpticalSystem):
         debug_printing_level: int = 0,  # 0 for no prints, 1 for main prints, 2 for all prints
         use_paraxial_ray_tracing: bool = False,
     ):
-        self._input_elements = list(surfaces)
-        ordered_surfaces = self._order_surfaces_for_initialization(surfaces, standing_wave=standing_wave)
+        self._input_elements = list(elements)
+        ordered_elements = self._order_surfaces_for_initialization(elements, standing_wave=standing_wave)
 
-        super().__init__(
-            surfaces=ordered_surfaces,
-            lambda_0_laser=lambda_0_laser,
-            params=params,
-            power=power,
-            t_is_trivial=t_is_trivial,
-            p_is_trivial=p_is_trivial,
-            use_paraxial_ray_tracing=use_paraxial_ray_tracing,
-        )
+        super().__init__(elements=ordered_elements, lambda_0_laser=lambda_0_laser, params=params, power=power,
+                         t_is_trivial=t_is_trivial, p_is_trivial=p_is_trivial,
+                         use_paraxial_ray_tracing=use_paraxial_ray_tracing)
 
         self.standing_wave = standing_wave
         self.central_line_successfully_traced: Optional[bool] = None
@@ -1210,12 +1200,8 @@ class Cavity(OpticalSystem):
 
     @staticmethod
     def from_params(params: Union[np.ndarray, list], **kwargs):
-        surfaces = OpticalSystem.params_to_surfaces(params)
-        cavity = Cavity(
-            surfaces,
-            params=params,
-            **kwargs,
-        )
+        elements = OpticalSystem.params_to_elements(params)
+        cavity = Cavity(elements, params=params, **kwargs)
         return cavity
 
     @staticmethod
@@ -1251,6 +1237,17 @@ class Cavity(OpticalSystem):
         else:
             # A -> B -> C -> D
             return [arm.surface_0 for arm in self.arms]
+
+    @property
+    def elements(self) -> List[Union[Surface, 'OpticalSystem']]:
+        # Overrides OpticalSystem.elements — returns unique input elements A -> B -> C -> D
+        return self._input_elements
+
+    @property
+    def elements_ordered(self) -> List[Union[Surface, 'OpticalSystem']]:
+        # Full round-trip sequence: A -> B -> C -> D -> C^-1 -> B^-1 -> A^-1 (standing wave)
+        # or A -> B -> C -> D -> A (ring)
+        return self._elements
 
     @property
     def to_params(self):
@@ -1827,8 +1824,8 @@ class Cavity(OpticalSystem):
                 # The condition inside is for the case it is a mirror and the parameter is n, and then we don't want
                 # to draw it.
                 if (
-                    SurfacesTypes.has_refractive_index(self.to_params[element_index].surface_type)
-                    or parameter_name != ParamsNames.n_inside_or_after
+                    # SurfacesTypes.has_refractive_index(self.to_params[element_index].surface_type) or
+                    parameter_name != ParamsNames.n_inside_or_after
                 ):
                     overlaps[element_index, j, :] = self.calculated_shifted_cavity_overlap_integral(
                         perturbation_pointer=PerturbationPointer(
@@ -1941,18 +1938,11 @@ class Cavity(OpticalSystem):
                     names.insert(i + 1, names[i] + "_2")
                     names[i] = names[i] + "_1"
 
-        unheated_cavity = Cavity(
-            surfaces=unheated_surfaces,
-            standing_wave=self.standing_wave,
-            lambda_0_laser=self.lambda_0_laser,
-            set_central_line=True,
-            set_mode_parameters=True,
-            set_initial_surface=False,
-            t_is_trivial=self.t_is_trivial,
-            p_is_trivial=self.p_is_trivial,
-            power=0,
-            use_paraxial_ray_tracing=self.use_paraxial_ray_tracing,
-        )
+        unheated_cavity = Cavity(elements=unheated_surfaces, standing_wave=self.standing_wave,
+                                 lambda_0_laser=self.lambda_0_laser, set_central_line=True, set_mode_parameters=True,
+                                 set_initial_surface=False, t_is_trivial=self.t_is_trivial,
+                                 p_is_trivial=self.p_is_trivial, power=0,
+                                 use_paraxial_ray_tracing=self.use_paraxial_ray_tracing)
 
         return unheated_cavity
 
@@ -3620,14 +3610,8 @@ def fabry_perot_generator(
         )
     else:
         raise ValueError("Either NA or unconcentricity must be provided.")
-    return Cavity(
-        surfaces=[mirror_1, mirror_2],
-        lambda_0_laser=lambda_0_laser,
-        t_is_trivial=True,
-        p_is_trivial=True,
-        standing_wave=True,
-        **kwargs,
-    )
+    return Cavity(elements=[mirror_1, mirror_2], standing_wave=True, lambda_0_laser=lambda_0_laser, t_is_trivial=True,
+                  p_is_trivial=True, **kwargs)
 
 
 def optical_system_to_cavity_completion(
@@ -3773,14 +3757,9 @@ def optical_system_to_cavity_completion(
             standing_wave=True,
         )
     else:
-        cavity = Cavity(
-            surfaces=[*optical_system.surfaces, end_mirror],
-            lambda_0_laser=optical_system.lambda_0_laser,
-            t_is_trivial=True,
-            p_is_trivial=True,
-            use_paraxial_ray_tracing=optical_system.use_paraxial_ray_tracing,
-            standing_wave=True,
-        )
+        cavity = Cavity(elements=[*optical_system.surfaces, end_mirror], standing_wave=True,
+                        lambda_0_laser=optical_system.lambda_0_laser, t_is_trivial=True, p_is_trivial=True,
+                        use_paraxial_ray_tracing=optical_system.use_paraxial_ray_tracing)
     return cavity
     # if not (
     #     end_mirror_ROC is not None and end_mirror_distance_to_last_element is not None
@@ -4063,6 +4042,10 @@ def plot_mirror_lens_mirror_cavity_analysis(
 def params_to_perturbable_params_names(
     params_list: list, remove_one_of_the_angles: bool = False
 ) -> List[str]:
+    # This function takes parameters of a cavity and returns the names of the parameters which are interesting to
+    # calculate perturbations tolerances for. for example, if a system is cylindrically symmetric, only one transverse
+    # displacement direction and one angle are interesting, and the other can be removed from the list of perturbable
+    # parameters to avoid redundant calculations.
     perturbable_params = [
         ParamsNames.x,
         ParamsNames.y,
@@ -4156,7 +4139,8 @@ def generate_lens_from_params(
     # if forward_direction is np.array([+-1, 0, 0]) set p_is_trivial to True and p_is_trivial to True, elif forward_direction[3] == 0 set t_is_trivial to True and p_is_trivial to False, else set both to False:
     p_is_trivial = np.allclose(forward_direction, np.array([1, 0, 0])) or np.allclose(forward_direction, np.array([-1, 0, 0]))
     t_is_trivial = forward_direction[0] == 0
-    optical_system = OpticalSystem(surfaces=[surface_1, surface_2], use_paraxial_ray_tracing=False, p_is_trivial=p_is_trivial, t_is_trivial=t_is_trivial)
+    optical_system = OpticalSystem(elements=[surface_1, surface_2], t_is_trivial=t_is_trivial,
+                                   p_is_trivial=p_is_trivial, use_paraxial_ray_tracing=False)
     return optical_system
 
 
@@ -4201,5 +4185,6 @@ def generate_aspheric_lens_from_params(
     # if forward_direction is np.array([+-1, 0, 0]) set p_is_trivial to True and p_is_trivial to True, elif forward_direction[3] == 0 set t_is_trivial to True and p_is_trivial to False, else set both to False:
     p_is_trivial = np.allclose(forward_direction, np.array([1, 0, 0])) or np.allclose(forward_direction, np.array([-1, 0, 0]))
     t_is_trivial = forward_direction[0] == 0
-    optical_system = OpticalSystem(surfaces=[surface_1, surface_2], use_paraxial_ray_tracing=False, p_is_trivial=p_is_trivial, t_is_trivial=t_is_trivial)
+    optical_system = OpticalSystem(elements=[surface_1, surface_2], t_is_trivial=t_is_trivial,
+                                   p_is_trivial=p_is_trivial, use_paraxial_ray_tracing=False)
     return optical_system

@@ -22,7 +22,8 @@ cavity_single_lens = optical_system_to_cavity_completion(optical_system=optical_
                                                          NA=cavity_two_lenses.arms[0].mode_parameters.NA[0],
                                                          end_mirror_distance_to_last_element=cavity_two_lenses.surfaces[3].center[0] - cavity_two_lenses.surfaces[2].center[0])
 
-optical_system_mirror_right = OpticalSystem(surfaces=[cavity_single_lens.surfaces[-1]], lambda_0_laser=LAMBDA_0_LASER, use_paraxial_ray_tracing=False, p_is_trivial=True, t_is_trivial=True)
+optical_system_mirror_right = OpticalSystem(elements=[cavity_single_lens.surfaces[-1]], lambda_0_laser=LAMBDA_0_LASER,
+                                            t_is_trivial=True, p_is_trivial=True, use_paraxial_ray_tracing=False)
 cavity_fabry_perot = optical_system_to_cavity_completion(optical_system=optical_system_mirror_right,
                                                          NA=cavity_two_lenses.arms[2].mode_parameters.NA[0],
                                                          end_mirror_distance_to_last_element=cavity_two_lenses.surfaces[3].center[0] - cavity_two_lenses.surfaces[2].center[0])

@@ -11,12 +11,8 @@ R_0 = 1
 R_1 = 1
 
 cavity_disordered = fabry_perot_generator((R_0, R_1), unconcentricity=u, lambda_0_laser=LAMBDA_0_LASER, use_paraxial_ray_tracing=False)
-cavity = Cavity(surfaces=[cavity_disordered.surfaces[1], cavity_disordered.surfaces[0]],
-                p_is_trivial=True,
-                t_is_trivial=True,
-                use_paraxial_ray_tracing=False,
-                set_mode_parameters=True,
-                lambda_0_laser=LAMBDA_0_LASER)
+cavity = Cavity(elements=[cavity_disordered.surfaces[1], cavity_disordered.surfaces[0]], lambda_0_laser=LAMBDA_0_LASER,
+                set_mode_parameters=True, t_is_trivial=True, p_is_trivial=True, use_paraxial_ray_tracing=False)
 hessian_ray_tracing_value = hessian_ray_tracing(cavity=cavity, n_rays=1, phi_max=0.1)[0, 0]
 hessian_ABCD_matrices_value = hessian_ABCD_matrices(cavity=cavity, n_rays=1, phi_max=0.1)[0, 0]
 hessian_analytical = -R_1 / ((R_0 + R_1) * R_0)
