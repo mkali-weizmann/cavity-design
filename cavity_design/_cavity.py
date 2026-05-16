@@ -1010,22 +1010,16 @@ class OpticalSystem:
             for i, ray in enumerate(additional_rays):
                 ray.plot(ax=ax, dim=dim, plane=plane, linestyle="--", alpha=0.8, color="blue")
 
+        laser_color = laser_color if self.resonating_mode_successfully_traced is True else "grey"
         if diameters is not None:
             if isinstance(diameters, float):
                 diameters = np.ones(len(self.surfaces)) * diameters
         else:
-            diameters = [
-                (
-                    element.diameter
-                    if not np.isnan(element.diameter)
-                    else element.radius if isinstance(element, CurvedSurface) else 7.75e-3
-                )
-                for element in self.physical_surfaces
-            ]
-        laser_color = laser_color if self.resonating_mode_successfully_traced is True else "grey"
+            diameters = [None] * len(self.surfaces)
 
         for i, surface in enumerate(self.surfaces):
-            surface.plot(ax=ax, dim=dim, plane=plane, diameter=diameters[i], fine_resolution=fine_resolution, **kwargs)
+            if diameters is not None:
+                surface.plot(ax=ax, dim=dim, plane=plane, diameter=diameters[i], fine_resolution=fine_resolution, **kwargs)
             # If there is not information on the spot size of the element, plot it with default length:
             if (
                 self.resonating_mode_successfully_traced
@@ -1535,7 +1529,7 @@ class Cavity(OpticalSystem):
             self._sync_arms_to_nested()
         else:
             self.central_line_successfully_traced = False
-            return central_line_initial_parameters, self.central_line_successfully_traced
+        return central_line_initial_parameters, self.central_line_successfully_traced
 
     def set_mode_parameters(
         self,
@@ -1549,7 +1543,6 @@ class Cavity(OpticalSystem):
             self.set_central_line()
         if self.central_line_successfully_traced is False:
             self.resonating_mode_successfully_traced = False
-            return None
 
         local_mode_parameters_current = local_mode_parameters_of_round_trip_ABCD(
             round_trip_ABCD=self.ABCD_round_trip, lambda_0_laser=self.lambda_0_laser, n=self.arms[0].n
@@ -2488,7 +2481,10 @@ def evaluate_gaussian(A: np.ndarray, b: np.ndarray, c: complex, axis_span: float
 
 
 def _apply_rigid_body_perturbation(sub_params, parameter_name, perturbation_value, mechanical_center):
-    """Apply a perturbation to all params in a nested (rigid-body) group."""
+    """Apply a perturbation to all params in a nested (rigid-body) group.
+       Currently, does not support perturbations of the radius of curvature or the refractive index, which was possible
+       before implementing the nested optical systems. I did not bother implementing it because I never used those
+       perturbations..."""
     if parameter_name in ('x', 'y', 'z'):
         for sp in sub_params:
             setattr(sp, parameter_name, getattr(sp, parameter_name) + perturbation_value)
@@ -2530,7 +2526,7 @@ def perturb_cavity(
         target = new_params[perturbation_pointer_temp.element_index]
         if isinstance(target, list):
             # Nested rigid-body group: get mechanical_center from original cavity element
-            original_element = cavity._input_elements[perturbation_pointer_temp.element_index]
+            original_element = cavity.elements[perturbation_pointer_temp.element_index]
             mechanical_center = original_element.mechanical_center
             _apply_rigid_body_perturbation(
                 target,
@@ -3434,6 +3430,7 @@ def mirror_lens_mirror_cavity_generator(
         curvature_sign=1,
         name="lens_left",
         material_properties=lens_material_properties,
+        diameter=7.75e-3
     )
     if set_R_right_to_equalize_angles:
         surface_right = find_equal_angles_surface(
@@ -3468,6 +3465,7 @@ def mirror_lens_mirror_cavity_generator(
             curvature_sign=-1,
             name="lens_right",
             material_properties=lens_material_properties,
+            diameter=7.75e-3
         )
 
     mode_parameters_just_before_surface_left = mode_left.local_mode_parameters(

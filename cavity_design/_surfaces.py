@@ -1225,8 +1225,6 @@ class CurvedSurface(Surface):
         fine_resolution: bool = False,
         **kwargs,
     ):
-        if diameter is None:
-            diameter = 0.6 * self.radius
         super().plot(ax, name, dim, diameter=diameter, plane=plane, fine_resolution=fine_resolution, **kwargs)
 
 
