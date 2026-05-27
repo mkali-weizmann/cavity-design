@@ -3755,7 +3755,7 @@ def optical_system_to_cavity_completion(
             standing_wave=True,
         )
     else:
-        cavity = Cavity(elements=[*optical_system.surfaces, end_mirror], standing_wave=True,
+        cavity = Cavity(elements=[*optical_system.elements, end_mirror], standing_wave=True,
                         lambda_0_laser=optical_system.lambda_0_laser, t_is_trivial=True, p_is_trivial=True,
                         use_paraxial_ray_tracing=optical_system.use_paraxial_ray_tracing)
     return cavity

@@ -474,7 +474,7 @@ def pretty_str_number(number: Optional[float], represents_angle: bool = False):
 
 
 def nvl(var, val: Any = np.nan):
-    if var is None:
+    if var is None or np.isnan(var):
         return val
     return var
 

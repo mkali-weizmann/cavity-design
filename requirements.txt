@@ -16,3 +16,4 @@ tqdm==4.67.1
 #   (numpy, scipy, matplotlib, pandas, pillow, ipywidgets, openpyxl, python-dotenv)
 #   and development tools requested by you (pytest, black).
 # - Internal modules (e.g., `cavity`, `utils`) are not included.
+# Python version: 3.11

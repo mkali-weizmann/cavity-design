@@ -1,7 +1,9 @@
 from scipy.optimize import newton
 from functools import reduce
 
-from cavity_design import *
+from ._cavity import *
+from ._utils import *
+from ._surfaces import *
 from matplotlib.lines import Line2D
 
 H_BAR = 1.0545718e-34
@@ -195,10 +197,10 @@ def generate_two_positive_lenses_optical_system(
     aspheric_flat.n_2 = n_aspheric_actual
     aspheric_curved.n_1 = n_aspheric_actual
 
-    optical_system = OpticalSystem(elements=[aspheric_flat, aspheric_curved], t_is_trivial=True, p_is_trivial=True,
-                                   given_initial_central_line=True, use_paraxial_ray_tracing=False)
+    optical_system_aspheric = OpticalSystem(elements=[aspheric_flat, aspheric_curved], t_is_trivial=True, p_is_trivial=True,
+                                            given_initial_central_line=True, use_paraxial_ray_tracing=False)
 
-    aspheric_output_ROC = optical_system.output_radius_of_curvature(initial_distance=aspheric_flat.center[0])
+    aspheric_output_ROC = optical_system_aspheric.output_radius_of_curvature(initial_distance=aspheric_flat.center[0])
 
     if spherical_setting_mode == "Set position and desired focus":
         # If the focal length is not given, but the distance and the desired focus are, we need to choose geometry
@@ -296,8 +298,9 @@ def generate_two_positive_lenses_optical_system(
             name="spherical_1",
             diameter=diameter,
         )
+    optical_system_spherical = OpticalSystem(elements=[spherical_0, spherical_1])
 
-    optical_system_combined = OpticalSystem(elements=[aspheric_flat, aspheric_curved, spherical_0, spherical_1],
+    optical_system_combined = OpticalSystem(elements=[optical_system_aspheric, optical_system_spherical],
                                             t_is_trivial=True, p_is_trivial=True, given_initial_central_line=True,
                                             use_paraxial_ray_tracing=False)
 
@@ -343,7 +346,7 @@ def generate_two_positive_lenses_cavity(
         spherical_focal_length=spherical_focal_length,
         spherical_setting_mode=spherical_setting_mode,
     )
-    optical_system_with_small_mirror = OpticalSystem(elements=[LASER_OPTIK_MIRROR, *optical_system.surfaces],
+    optical_system_with_small_mirror = OpticalSystem(elements=[LASER_OPTIK_MIRROR, *optical_system.elements],
                                                      lambda_0_laser=LAMBDA_0_LASER, t_is_trivial=True,
                                                      p_is_trivial=True, use_paraxial_ray_tracing=False)
     cavity = optical_system_to_cavity_completion(
@@ -351,6 +354,7 @@ def generate_two_positive_lenses_cavity(
         NA=NA_small_arm,
         unconcentricity=unconcentricity,
         end_mirror_ROC=2e-1,
+        diameter=25.4e-3,
     )
     return cavity
 
@@ -1086,7 +1090,7 @@ def plot_results(
             handles, labels = ax[0].get_legend_handles_labels()
             handles.append(legend_line)
             ax2.set_ylabel("Relative intensity (a.u.)")
-            ax2.set_ylim(-0.01, 1.01)
+            ax2.set_ylim(-0.03, 1.03)
 
         zero_derivative_point_plot = np.nan if zero_derivative_points is None else zero_derivative_points
         ax[0].axvline(
