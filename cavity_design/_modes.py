@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Optional, Union
 
 import numpy as np
+from matplotlib import pyplot as plt
 
 from ._utils import (
     normalize_vector,
@@ -71,7 +72,7 @@ class LocalModeParameters:
     def lambda_laser(self):
         return self.lambda_0_laser / self.n
 
-    def to_mode_parameters(self, location_of_local_mode_parameter: np.ndarray, k_vector: np.ndarray):
+    def to_mode_parameters(self, location_of_local_mode_parameter: np.ndarray, k_vector: np.ndarray) -> ModeParameters:
         center = location_of_local_mode_parameter - self.z_minus_z_0[:, np.newaxis] * k_vector
         z_hat = np.array([0, 0, 1])
         if np.linalg.norm(k_vector - z_hat) < 1e-10:  # if the k_vector is almost parallel to z_hat, better take another
@@ -87,6 +88,7 @@ class LocalModeParameters:
             w_0=self.w_0,
             principle_axes=principle_axes,
             lambda_0_laser=self.lambda_0_laser,
+            n=self.n,
         )
 
     @property
@@ -206,6 +208,18 @@ class ModeParameters:
         )
         return inverted_direction_mode
 
+    def plot(self, first_point: np.ndarray, last_point: np.ndarray,  plane='xy', dim=2, ax=None, **kwargs):
+        spot_size_lines = generate_spot_size_lines(mode_parameters=self, first_point=first_point,
+                                                   last_point=last_point, dim=2, plane=plane, principle_axes=self.principle_axes)
+        if ax is None:
+            fig, ax = plt.subplots()
+        for line in spot_size_lines:
+            ax.plot(line[0, :], line[1, :], **kwargs)
+        return ax
+
+
+
+
 
 def propagate_local_mode_parameter_through_ABCD(
     local_mode_parameters: LocalModeParameters, ABCD: np.ndarray, n_2: float = 1
@@ -231,3 +245,56 @@ def local_mode_parameters_of_round_trip_ABCD(
         q=q_z, lambda_0_laser=lambda_0_laser, n=n
     )  # First dimension is theta or phi,second dimension is z_minus_z_0 or
     # z_R.
+
+
+def generate_spot_size_lines(
+    mode_parameters: ModeParameters,
+    first_point: np.ndarray,
+    last_point: np.ndarray,
+    dim: int = 2,
+    plane: str = "xy",
+    principle_axes: Optional[np.ndarray] = None,
+):
+    if mode_parameters.principle_axes is not None and principle_axes is None:
+        principle_axes = mode_parameters.principle_axes
+    elif plane == "xy" and principle_axes is None:
+        principle_axes = np.array([[0, 0, 1], [0, -1, 0]])
+    central_line = Ray(
+        origin=first_point, k_vector=mode_parameters.k_vector, length=float(np.linalg.norm(last_point - first_point))
+    )
+    t = np.linspace(0, central_line.length, 1000)  # 100 is always enough
+    ray_points = central_line.parameterization(t=t)
+    z_minus_z_0 = np.linalg.norm(ray_points[:, np.newaxis, :] - mode_parameters.center, axis=2)  # Before
+    # the norm the size is 100 | 2 | 3 and after it is 100 | 2 (100 points for in_plane and out_of_plane
+    # dimensions)
+    sign = np.array([1, -1])
+    spot_size_value = spot_size(z_minus_z_0, mode_parameters.z_R, mode_parameters.lambda_0_laser, mode_parameters.n)
+    spot_size_lines = (
+        ray_points[:, np.newaxis, np.newaxis, :]
+        + spot_size_value[:, :, np.newaxis, np.newaxis]
+        * principle_axes[np.newaxis, :, np.newaxis, :]
+        * sign[np.newaxis, np.newaxis, :, np.newaxis]
+    )  # The size is 100 (n_points) | 2 (axis, []) | 2 (sign, [1, -1]) | 3 (coordinate, [x,y,z])
+    if dim == 2:
+        if plane in ["xy", "yx"]:
+            relevant_axis_index = 1
+            relevant_diminsions = [0, 1]
+        elif plane in ["xz", "zx"]:
+            relevant_axis_index = 0
+            relevant_diminsions = [0, 2]
+        else:
+            relevant_axis_index = 0
+            relevant_diminsions = [1, 2]
+        spot_size_lines = spot_size_lines[:, relevant_axis_index, :, relevant_diminsions]  # Drop the z axis,
+        # and drop the lines of the transverse axis the size is:
+        # 2 (selected spatial axes) | 100 (n_points) | 2 (sign, [1, -1]
+        spot_size_lines_separated = [spot_size_lines[:, :, 0], spot_size_lines[:, :, 1]]
+    else:
+        spot_size_lines_separated = [
+            spot_size_lines[:, 0, 0, :],
+            spot_size_lines[:, 0, 1, :],
+            spot_size_lines[:, 1, 0, :],
+            spot_size_lines[:, 1, 1, :],
+        ]  # Each element is a  100 | 3 array.
+
+    return spot_size_lines_separated
