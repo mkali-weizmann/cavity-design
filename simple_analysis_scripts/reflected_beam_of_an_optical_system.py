@@ -1,6 +1,7 @@
 import numpy as np
 
 from cavity_design import *
+from simple_analysis_scripts.lens_material_comparison_for_proposal import z_minus_z_0
 
 params = [
           OpticalSurfaceParams(name='Laser Optik Mirror'     ,surface_type='curved_mirror'                  , x=-5e-03                  , y=0                       , z=0                       , theta=0                       , phi=1e+00 * np.pi           , radius=5e-03                   , curvature_sign=CurvatureSigns.concave, T_c=np.nan                  , n_inside_or_after=1e+00                   , n_outside_or_before=1e+00                   , diameter=7.75e-03                , material_properties=MaterialProperties(refractive_index=1.45e+00                , alpha_expansion=5.2e-07                 , beta_surface_absorption=1e-06                   , kappa_conductivity=1.38e+00                , dn_dT=1.2e-05                 , nu_poisson_ratio=1.6e-01                 , alpha_volume_absorption=1e-03                   , intensity_reflectivity=1e-04                   , intensity_transmittance=9.99899e-01             , temperature=np.nan                  ), polynomial_coefficients=None), [
@@ -16,7 +17,7 @@ left_going_mode = ModeParameters(center=np.array([mode_beginning, 0, 0]), k_vect
 
 optical_system_combined = OpticalSystem(elements=[*optical_system_reversed.elements, optical_system.elements[1]])
 
-propagated_local_mode_list: List[LocalModeParameters] = optical_system_combined.propagate_mode_parameters(mode_parameters=left_going_mode, propagate_with_first_surface_first=True)
+propagated_local_mode_list = optical_system_combined.propagate_mode_parameters(mode_parameters=left_going_mode, propagate_with_first_surface_first=True)
 directions = [LEFT] * len(optical_system.surfaces) + [RIGHT] * len(optical_system.surfaces)
 propagated_mode_list: List[ModeParameters] = []
 narrowed_local_parameters = [*propagated_local_mode_list[::2],propagated_local_mode_list[-1]]

@@ -50,6 +50,7 @@ from ._modes import (
     ModeParameters,
     propagate_local_mode_parameter_through_ABCD,
     local_mode_parameters_of_round_trip_ABCD,
+    generate_spot_size_lines
 )
 from ._rays import Ray, RaySequence
 from ._surfaces import (
@@ -798,7 +799,7 @@ class OpticalSystem:
         mode_parameters: Optional[ModeParameters] = None,
         n_arms: Optional[int] = None,
         propagate_with_first_surface_first: bool = False,
-    ):
+    ) -> List[LocalModeParameters]:
         n_arms = nvl(n_arms, len(self.arms))
         local_mode_parameters_history = []
 
