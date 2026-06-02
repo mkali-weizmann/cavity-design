@@ -6,13 +6,14 @@ from typing import Optional, Union
 import numpy as np
 from matplotlib import pyplot as plt
 
+from ._surfaces import CurvedMirror, FlatMirror
 from ._utils import (
     normalize_vector,
     spot_size,
     w_0_of_z_R,
     z_R_of_w_0,
     R_of_q,
-    NA_of_z_R, decompose_ABCD_matrix
+    NA_of_z_R, decompose_ABCD_matrix, z_R_of_NA
 )
 from ._rays import Ray
 
@@ -167,16 +168,13 @@ class ModeParameters:
             z_minus_z_0 = p
         return self.local_mode_parameters(z_minus_z_0=z_minus_z_0)
 
-    def R_of_z(self, p: Union[float, np.ndarray]) -> float:
+    def R_of_z(self, p: Union[float, np.ndarray]) -> np.ndarray:
         if isinstance(p, np.ndarray):
             z_minus_z_0 = (p - self.center) @ self.k_vector
         else:
-            z_minus_z_0 = p
+            z_minus_z_0 = np.asarray(p)
 
-        if z_minus_z_0 == 0:
-            R_z = np.inf
-        else:
-            R_z = (z_minus_z_0**2 + self.z_R**2) / z_minus_z_0
+        R_z = np.where(z_minus_z_0 == 0, np.inf, (z_minus_z_0**2 + self.z_R**2) / z_minus_z_0)
         return R_z
 
     def z_of_R(self, R: float, output_type: type) -> Union[float, np.ndarray]:
@@ -298,3 +296,79 @@ def generate_spot_size_lines(
         ]  # Each element is a  100 | 3 array.
 
     return spot_size_lines_separated
+
+def match_a_mirror_to_mode(
+    mode: ModeParameters,
+    z: Optional[float] = None,
+    R: Optional[float] = None,
+    **mirror_kwargs,
+) -> Union[FlatMirror, CurvedMirror]:
+    # Derivation is in section "Matching a mode to a mirror:" in my research file.
+    if z is None and R is None or (z is not None and R is not None):
+        raise ValueError("You must provide either z or R, but not both, and not neither.")
+    elif z is not None:
+        if z == 0:
+            mirror = FlatMirror(
+                center=mode.center[0, :],
+                outwards_normal=mode.k_vector,
+                **mirror_kwargs,
+            )
+        else:
+            R_z_inverse = np.abs(z / (z**2 + mode.z_R[0] ** 2))
+            center = mode.center[0, :] + mode.k_vector * z
+            outwards_normal = mode.k_vector * np.sign(z)
+            mirror = CurvedMirror(
+                radius=R_z_inverse**-1,
+                outwards_normal=outwards_normal,
+                center=center,
+                **mirror_kwargs,
+            )
+    elif R is not None:
+        center = mode.z_of_R(R, output_type=np.ndarray)
+        outwards_normal = mode.k_vector * np.sign(R)
+        if np.isclose(R, 0):
+            mirror = FlatMirror(
+                center=center,
+                outwards_normal=outwards_normal,
+                **mirror_kwargs,
+            )
+        else:
+            mirror = CurvedMirror(
+                radius=np.abs(R),
+                outwards_normal=outwards_normal,
+                center=center,
+                **mirror_kwargs,
+            )
+    else:
+        raise ValueError("Debug me")
+    return mirror
+
+
+def match_a_local_mode_to_mirror(
+    mirror: CurvedMirror, lambda_0_laser: float, NA: Optional[float] = None, z_R: Optional[float] = None, n=1,
+        mode_going_away_from_mirror: bool = True
+) -> LocalModeParameters:
+    # The function might assume the mirror is concave, but it is fine, since they are always concave.
+    if z_R is None and NA is not None and lambda_0_laser is not None:
+        z_R = z_R_of_NA(NA, lambda_laser=lambda_0_laser / n)
+    elif z_R is None and (NA is None or lambda_0_laser is None):
+        raise ValueError("You must provide either z_R or NA and lambda_0_laser, but not neither.")
+
+    if mode_going_away_from_mirror:
+        position_sign = -1
+    else:
+        position_sign = 1
+    z_minus_z_0 = position_sign * (mirror.radius + np.sqrt(mirror.radius**2 - 4 * z_R**2)) / 2
+    q = z_minus_z_0 + 1j * z_R
+    local_mode_parameters = LocalModeParameters(q=np.array([q, q]), lambda_0_laser=lambda_0_laser, n=n)
+
+    return local_mode_parameters
+
+def match_a_mode_to_mirror(mirror: CurvedMirror, lambda_0_laser: float, NA: Optional[float] = None, z_R: Optional[float] = None, n=1, mode_going_away_from_mirror: bool = True) -> ModeParameters:
+    local_mode_parameters = match_a_local_mode_to_mirror(mirror=mirror, lambda_0_laser=lambda_0_laser, NA=NA, z_R=z_R, n=n, mode_going_away_from_mirror=mode_going_away_from_mirror)
+    if mode_going_away_from_mirror:
+        k_vector = mirror.inwards_normal
+    else:
+        k_vector = mirror.outwards_normal
+    mode_parameters = local_mode_parameters.to_mode_parameters(location_of_local_mode_parameter=mirror.center, k_vector=k_vector)  # ASSUMEs CONCAVE MIRRORS, WHICH IS ALWAYS THE CASE
+    return mode_parameters

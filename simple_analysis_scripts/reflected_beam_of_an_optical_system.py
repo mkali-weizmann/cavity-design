@@ -17,7 +17,7 @@ left_going_mode = ModeParameters(center=np.array([mode_beginning, 0, 0]), k_vect
 
 optical_system_combined = OpticalSystem(elements=[*optical_system_reversed.elements, optical_system.elements[1]])
 
-propagated_local_mode_list = optical_system_combined.propagate_mode_parameters(mode_parameters=left_going_mode, propagate_with_first_surface_first=True)
+propagated_local_mode_list = optical_system_combined.propagate_mode_parameters(mode_parameters_before_first_surface=left_going_mode)
 directions = [LEFT] * len(optical_system.surfaces) + [RIGHT] * len(optical_system.surfaces)
 propagated_mode_list: List[ModeParameters] = []
 narrowed_local_parameters = [*propagated_local_mode_list[::2],propagated_local_mode_list[-1]]

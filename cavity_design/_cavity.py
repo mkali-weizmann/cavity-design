@@ -43,14 +43,15 @@ from ._utils import (
     CurvatureSigns,
     z_R_of_NA, interval_parameterization, safe_exponent, gaussians_overlap_integral,
     convert_material_to_mirror_or_lens, PHYSICAL_SIZES_DICT, INDICES_DICT_INVERSE, functions_first_crossing,
-    MaterialProperties, w_0_of_NA, focal_length_of_lens, spot_size, dT_c_of_a_lens
+    MaterialProperties, w_0_of_NA, focal_length_of_lens, spot_size, dT_c_of_a_lens, LEFT, ORIGIN, RIGHT
 )
 from ._modes import (
     LocalModeParameters,
     ModeParameters,
     propagate_local_mode_parameter_through_ABCD,
     local_mode_parameters_of_round_trip_ABCD,
-    generate_spot_size_lines
+    generate_spot_size_lines,
+    match_a_mirror_to_mode, match_a_local_mode_to_mirror
 )
 from ._rays import Ray, RaySequence
 from ._surfaces import (
@@ -496,8 +497,7 @@ class OpticalSystem:
                 self.set_given_central_line(initial_ray=self.default_initial_ray)
         if given_initial_local_mode_parameters is not None:
             self.set_given_mode_parameters(
-                local_mode_parameters_on_first_surface=given_initial_local_mode_parameters,
-            )
+                local_mode_parameters_after_first_surface=given_initial_local_mode_parameters)
 
     @staticmethod
     def _flatten_elements(elements: List) -> List[Surface]:
@@ -560,6 +560,10 @@ class OpticalSystem:
         if len(self.arms) == 0:
             return self._surfaces
         return [arm.surface_0 for arm in self.arms] + [self.arms[-1].surface_1]
+
+    @property
+    def surfaces_ordered(self):
+        return self.surfaces  # For Cavity to override
 
     @property
     def physical_surfaces(self):
@@ -633,7 +637,7 @@ class OpticalSystem:
         return hashed_str
 
     @property
-    def central_line(self) -> Optional[List[Ray]]:
+    def central_line(self) -> RaySequence:
         if self.arms[0].central_line is None:
             return None
         else:
@@ -795,35 +799,42 @@ class OpticalSystem:
 
     def propagate_mode_parameters(
         self,
-        local_mode_parameters_on_first_surface: Optional[LocalModeParameters] = None,
-        mode_parameters: Optional[ModeParameters] = None,
+        local_mode_parameters_before_first_surface: Optional[LocalModeParameters] = None,
+        local_mode_parameters_after_first_surface: Optional[LocalModeParameters] = None,
+        mode_parameters_before_first_surface: Optional[ModeParameters] = None,
+        mode_parameters_after_first_surface: Optional[ModeParameters] = None,
         n_arms: Optional[int] = None,
-        propagate_with_first_surface_first: bool = False,
     ) -> List[LocalModeParameters]:
+
+        assert ((local_mode_parameters_before_first_surface is not None) +
+                (local_mode_parameters_after_first_surface is not None) +
+                (mode_parameters_before_first_surface is not None) +
+                (mode_parameters_after_first_surface is not None)) == 1, "Exactly one of the four mode options should be not None"
+
+
         n_arms = nvl(n_arms, len(self.arms))
         local_mode_parameters_history = []
+        if mode_parameters_after_first_surface is not None:
+            local_mode_parameters_after_first_surface = mode_parameters_after_first_surface.local_mode_parameters_at_a_point(
+                    p=self.surfaces[0].center
+                )
+        elif mode_parameters_before_first_surface is not None:
+            local_mode_parameters_before_first_surface = mode_parameters_before_first_surface.local_mode_parameters_at_a_point(
+                    p=self.surfaces[0].center
+                )
 
-        if local_mode_parameters_on_first_surface is not None:
-            local_mode_parameters_current = local_mode_parameters_on_first_surface
+        if local_mode_parameters_after_first_surface is not None:
+            local_mode_parameters_current = local_mode_parameters_after_first_surface
             local_mode_parameters_history.append(local_mode_parameters_current)
-        else:
-            if propagate_with_first_surface_first:
-                local_mode_parameters_before_first_surface = mode_parameters.local_mode_parameters_at_a_point(
-                    p=self.surfaces[0].center
-                )
-                local_mode_parameters_current = propagate_local_mode_parameter_through_ABCD(
-                    local_mode_parameters=local_mode_parameters_before_first_surface,
-                    ABCD=self.surfaces[0].ABCD_matrix(cos_theta_incoming=1),
-                    n_2=self.arms[0].n,
-                )
-                local_mode_parameters_history.extend(
-                    [local_mode_parameters_before_first_surface, local_mode_parameters_current]
-                )
-            else:
-                local_mode_parameters_current = mode_parameters.local_mode_parameters_at_a_point(
-                    p=self.surfaces[0].center
-                )
-                local_mode_parameters_history.append(local_mode_parameters_current)
+        elif local_mode_parameters_before_first_surface is not None:
+            local_mode_parameters_current = propagate_local_mode_parameter_through_ABCD(
+                local_mode_parameters=local_mode_parameters_before_first_surface,
+                ABCD=self.surfaces[0].ABCD_matrix(cos_theta_incoming=1),
+                n_2=self.arms[0].n,
+            )
+            local_mode_parameters_history.extend(
+                [local_mode_parameters_before_first_surface, local_mode_parameters_current]
+            )
 
         for i in range(n_arms):
             arm = self.arms[i % len(self.arms)]
@@ -832,6 +843,59 @@ class OpticalSystem:
             )
             local_mode_parameters_history.extend([mode_parameters_on_next_surface, local_mode_parameters_current])
         return local_mode_parameters_history
+
+    def propagate_mode_parameters_return_global(self,
+                                                local_mode_parameters_before_first_surface: Optional[LocalModeParameters] = None,
+                                                local_mode_parameters_after_first_surface: Optional[LocalModeParameters] = None,
+                                                mode_parameters_before_first_surface: Optional[ModeParameters] = None,
+                                                mode_parameters_after_first_surface: Optional[ModeParameters] = None,
+                                                n_arms: Optional[int] = None,):
+        local_mode_parameters_history = self.propagate_mode_parameters(local_mode_parameters_before_first_surface,
+                                                                       local_mode_parameters_after_first_surface,
+                                                                       mode_parameters_before_first_surface,
+                                                                       mode_parameters_after_first_surface,
+                                                                       n_arms=n_arms)
+        # ATTENTION - THIS FUNCTION WAS DEBUGGED ONLY FOR (mode_parameters_before_first_surface is not None):
+        output_ray = self.surfaces[-1].propagate_ray(self.central_line[-1])
+        # All should be surfaces_ordered, and not surfaces for it to work with cavities, consider bringing it back
+        if local_mode_parameters_before_first_surface is not None or mode_parameters_before_first_surface is not None:
+            local_mode_parameters_narrowed = local_mode_parameters_history[::2] + [local_mode_parameters_history[-1]]
+            surfaces_reorganized = [*self.surfaces_ordered, self.surfaces_ordered[-1]]
+            input_direction = self.central_line[0].k_vector if local_mode_parameters_before_first_surface is not None else mode_parameters_before_first_surface.k_vector
+            directions_reorganized = [input_direction, *self.central_line.k_vector, output_ray.k_vector]
+        else:
+
+            local_mode_parameters_narrowed = local_mode_parameters_history[1::2]
+            surfaces_reorganized = [*self.surfaces_ordered[1:], self.surfaces_ordered[-1]]
+            directions_reorganized = [*self.central_line.k_vector, output_ray.k_vector]
+        mode_parameters = [l.to_mode_parameters(location_of_local_mode_parameter=surfaces_reorganized[i].center,k_vector=directions_reorganized[i]) for i, l in enumerate(local_mode_parameters_narrowed)]
+        return mode_parameters
+
+
+    #         @property
+    #     def mode_parameters(self):
+    #         if np.isnan(self.mode_parameters_on_surface_0.z_R[0]):
+    #             return ModeParameters(
+    #                 center=np.array([[np.nan, np.nan, np.nan], [np.nan, np.nan, np.nan]]),
+    #                 k_vector=np.array([np.nan, np.nan, np.nan]),
+    #                 w_0=np.array([np.nan, np.nan]),
+    #                 principle_axes=np.array([[np.nan, np.nan, np.nan], [np.nan, np.nan, np.nan]]),
+    #                 lambda_0_laser=self.lambda_0_laser,
+    #                 n=self.n,
+    #             )
+    #         center = (
+    #             self.central_line.origin
+    #             - self.mode_parameters_on_surface_0.z_minus_z_0[..., np.newaxis] * self.central_line.k_vector
+    #         )
+    #         mode_parameters = ModeParameters(
+    #             center=center,
+    #             k_vector=self.central_line.k_vector,
+    #             w_0=self.mode_parameters_on_surface_0.w_0,
+    #             principle_axes=self.mode_principle_axes,
+    #             lambda_0_laser=self.lambda_0_laser,
+    #             n=self.n,
+    #         )
+    #         return mode_parameters
 
     def set_given_central_line(self, initial_ray: Ray):
         # This line is to save the central line in the ray history, so that it can be plotted later.
@@ -842,16 +906,15 @@ class OpticalSystem:
 
     def set_given_mode_parameters(
         self,
-        local_mode_parameters_on_first_surface: Optional[LocalModeParameters] = None,
-        mode_parameters: Optional[ModeParameters] = None,
+        local_mode_parameters_after_first_surface: Optional[LocalModeParameters] = None,
+        mode_parameters_after_first_surface: Optional[ModeParameters] = None,
         propagate_with_first_surface_first: bool = False,
     ):
         # If there is a valid mode to start propagating, then propagate it through the cavity:
         mode_parameters_history = self.propagate_mode_parameters(
-            local_mode_parameters_on_first_surface=local_mode_parameters_on_first_surface,
-            mode_parameters=mode_parameters,
+            local_mode_parameters_after_first_surface=local_mode_parameters_after_first_surface,
+            mode_parameters_after_first_surface=mode_parameters_after_first_surface,
             n_arms=None,
-            propagate_with_first_surface_first=propagate_with_first_surface_first,
         )
         if propagate_with_first_surface_first:
             mode_parameters_history = mode_parameters_history[
@@ -2755,68 +2818,6 @@ def functions_first_crossing_both_directions(
         return -negative_step
 
 
-def match_a_mirror_to_mode(
-    mode: ModeParameters,
-    z: Optional[float] = None,
-    R: Optional[float] = None,
-    **mirror_kwargs,
-) -> Union[FlatMirror, CurvedMirror]:
-    # Derivation is in section "Matching a mode to a mirror:" in my research file.
-    if z is None and R is None or (z is not None and R is not None):
-        raise ValueError("You must provide either z or R, but not both, and not neither.")
-    elif z is not None:
-        if z == 0:
-            mirror = FlatMirror(
-                center=mode.center[0, :],
-                outwards_normal=mode.k_vector,
-                **mirror_kwargs,
-            )
-        else:
-            R_z_inverse = np.abs(z / (z**2 + mode.z_R[0] ** 2))
-            center = mode.center[0, :] + mode.k_vector * z
-            outwards_normal = mode.k_vector * np.sign(z)
-            mirror = CurvedMirror(
-                radius=R_z_inverse**-1,
-                outwards_normal=outwards_normal,
-                center=center,
-                **mirror_kwargs,
-            )
-    elif R is not None:
-        center = mode.z_of_R(R, output_type=np.ndarray)
-        outwards_normal = mode.k_vector * np.sign(R)
-        if np.isclose(R, 0):
-            mirror = FlatMirror(
-                center=center,
-                outwards_normal=outwards_normal,
-                **mirror_kwargs,
-            )
-        else:
-            mirror = CurvedMirror(
-                radius=np.abs(R),
-                outwards_normal=outwards_normal,
-                center=center,
-                **mirror_kwargs,
-            )
-    else:
-        raise ValueError("Debug me")
-    return mirror
-
-
-def match_a_local_mode_to_mirror(
-    mirror: CurvedMirror, lambda_0_laser: float, NA: Optional[float] = None, z_R: Optional[float] = None, n=1
-) -> LocalModeParameters:
-    if z_R is None and NA is not None and lambda_0_laser is not None:
-        z_R = z_R_of_NA(NA, lambda_laser=lambda_0_laser / n)
-    elif z_R is None and (NA is None or lambda_0_laser is None):
-        raise ValueError("You must provide either z_R or NA and lambda_0_laser, but not neither.")
-
-    z_minus_z_0 = -(mirror.radius + np.sqrt(mirror.radius**2 - 4 * z_R**2)) / 2
-    q = z_minus_z_0 + 1j * z_R
-    local_mode_parameters = LocalModeParameters(q=np.array([q, q]), lambda_0_laser=lambda_0_laser, n=n)
-
-    return local_mode_parameters
-
-
 def local_mode_2_of_lens_parameters(
     lens_parameters: np.ndarray, local_mode_1: LocalModeParameters
 ):  # les_parameters = [r, n, w]
@@ -3610,7 +3611,7 @@ def optical_system_to_cavity_completion(
             location_of_local_mode_parameter=first_mirror.center, k_vector=optical_axis
         )
         output_mode_local = optical_system.propagate_mode_parameters(
-            mode_parameters=mode_parameters_first_arm, propagate_with_first_surface_first=False
+            mode_parameters_after_first_surface=mode_parameters_first_arm
         )[-1]
         output_mode = output_mode_local.to_mode_parameters(
             location_of_local_mode_parameter=optical_system.surfaces[-1].center, k_vector=optical_axis
@@ -4134,3 +4135,53 @@ def generate_aspheric_lens_from_params(
     optical_system = OpticalSystem(elements=[surface_1, surface_2], t_is_trivial=t_is_trivial,
                                    p_is_trivial=p_is_trivial, use_paraxial_ray_tracing=False)
     return optical_system
+
+
+LASER_OPTIK_MIRROR_REFRACTIVE = OpticalSystem(elements=[
+    CurvedRefractiveSurface(
+        radius=5e-3,
+        diameter=7.75e-3,
+        outwards_normal=LEFT,
+        origin=ORIGIN,
+        name="Laser Optik Mirror - Concave",
+        n_1=1,
+        curvature_sign=CurvatureSigns.concave,
+        n_2=PHYSICAL_SIZES_DICT["material_properties_fused_silica"].refractive_index,
+        material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"],
+    ),
+    CurvedRefractiveSurface(
+            curvature_sign=CurvatureSigns.concave,
+            radius=5e-3,
+            diameter=7.75e-3,
+            outwards_normal=LEFT,
+            origin=ORIGIN + 3.45e-3 * LEFT,
+            name="Laser Optik Mirror - Convex",
+            n_1=PHYSICAL_SIZES_DICT["material_properties_fused_silica"].refractive_index,
+            n_2=1,
+            material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"],
+        )
+])
+
+THORLABS_35MM_COLLIMATING_LENS = OpticalSystem(elements=[
+    CurvedRefractiveSurface(
+        name="Thorlabs 35mm biconvex - right",
+        radius=34.9e-3,
+        outwards_normal=RIGHT,
+        center= LASER_OPTIK_MIRROR_REFRACTIVE.surfaces[1].center + 0.022*LEFT,
+        diameter=25.4e-3,
+        curvature_sign=CurvatureSigns.convex,
+        n_1=1,
+        n_2=PHYSICAL_SIZES_DICT["material_properties_bk7"].refractive_index,
+    ),
+
+CurvedRefractiveSurface(
+        name="Thorlabs 35mm biconvex - left",
+        radius=34.9e-3,
+        outwards_normal=LEFT,
+        center= LASER_OPTIK_MIRROR_REFRACTIVE.surfaces[1].center + 0.02214*LEFT + 6.8e-3*LEFT,
+        diameter=25.4e-3,
+        curvature_sign=CurvatureSigns.concave,
+        n_1=PHYSICAL_SIZES_DICT["material_properties_bk7"].refractive_index,
+        n_2=1,
+    )
+])
