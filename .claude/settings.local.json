@@ -9,7 +9,22 @@
       "Bash(python -m pytest tests/test_cavity.py -v)",
       "Bash(Get-Content \"C:\\\\Users\\\\michaeka\\\\Weizmann Institute Dropbox\\\\Michael Kali\\\\Labs Dropbox\\\\Laser Phase Plate\\\\cavity-design\\\\cavity_design\\\\_cavity.py\")",
       "Bash(Measure-Object -Line)",
-      "PowerShell(\\(Get-Content \"C:\\\\Users\\\\michaeka\\\\Weizmann Institute Dropbox\\\\Michael Kali\\\\Labs Dropbox\\\\Laser Phase Plate\\\\cavity-design\\\\cavity_design\\\\_cavity.py\" | Measure-Object -Line\\).Lines)"
+      "PowerShell(\\(Get-Content \"C:\\\\Users\\\\michaeka\\\\Weizmann Institute Dropbox\\\\Michael Kali\\\\Labs Dropbox\\\\Laser Phase Plate\\\\cavity-design\\\\cavity_design\\\\_cavity.py\" | Measure-Object -Line\\).Lines)",
+      "Bash(python -c \"import matplotlib; print\\(matplotlib.__version__\\); from matplotlib.backends.qt_compat import QtWidgets\")",
+      "Bash(python -m pip list)",
+      "Bash(findstr -i \"pyqt\\\\|pyside\\\\|qt\\\\|matplotlib\")",
+      "Bash(python -m pip install PyQt5)",
+      "Bash(python -c \"from matplotlib.backends.qt_compat import QtWidgets; print\\('OK'\\)\")",
+      "Bash(where jupyter *)",
+      "Bash(python -c \"import sys; print\\(sys.executable\\)\")",
+      "Bash(C:\\\\Python311\\\\python.exe -c \"from matplotlib.backends.qt_compat import QtWidgets; print\\('OK'\\)\")",
+      "Bash(C:\\\\Python311\\\\python.exe -m pip list)",
+      "PowerShell(& \"C:\\\\Python311\\\\python.exe\" -m pip install --force-reinstall matplotlib 2>&1 | Select-Object -Last 10)",
+      "PowerShell(& \"C:\\\\Python311\\\\python.exe\" -m pip install --force-reinstall --user matplotlib 2>&1 | Select-Object -Last 10)",
+      "PowerShell(& \"C:\\\\Python311\\\\python.exe\" -m pip install --force-reinstall --no-deps --user matplotlib==3.9.4 2>&1 | Select-Object -Last 10)",
+      "PowerShell(& \"C:\\\\Python311\\\\python.exe\" -m pip install --ignore-installed --user matplotlib==3.9.4 2>&1 | Select-Object -Last 15)",
+      "PowerShell(& \"C:\\\\Python311\\\\python.exe\" -c \"from matplotlib.backends.qt_compat import QtWidgets; print\\('OK'\\)\" 2>&1)",
+      "Bash(python -m pip show pywin32)"
     ]
   }
 }
