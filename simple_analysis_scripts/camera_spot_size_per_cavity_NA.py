@@ -1,4 +1,5 @@
 # %%
+import matplotlib.pyplot as plt
 from matplotlib import use
 use('TkAgg')  # Or 'TkAgg' if Qt5Agg doesn't work
 from cavity_design import *
@@ -35,6 +36,7 @@ plt.xlabel('NA at the mirror')
 plt.ylabel('Spot size at camera (mm)')
 plt.title('Spot size at camera as a function of NA at the mirror')
 plt.grid()
+plt.savefig('outputs/figures/camera_spot_size_per_cavity_NA.svg')
 plt.show()
 
 
