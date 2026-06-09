@@ -54,6 +54,10 @@ class Surface:
     def center(self):
         raise NotImplementedError
 
+    @center.setter
+    def center(self, value: np.ndarray):
+        raise NotImplementedError
+
     @property
     def inwards_normal(self):
         return -self.outwards_normal
@@ -676,6 +680,10 @@ class AsphericSurface(Surface):
     def center(self):
         return self._center
 
+    @center.setter
+    def center(self, value: np.ndarray):
+        self._center = value
+
     def find_intersection_with_ray_paraxial(self, ray: Ray) -> np.ndarray:
         paraxial_surface = CurvedSurface(
             radius=self.radius,
@@ -914,6 +922,11 @@ class FlatSurface(Surface):
         # The reason for this property is that in other PhysicalSurface classes it is a property.
         return self.center_of_mirror_private
 
+    @center.setter
+    def center(self, value: np.ndarray):
+        self.center_of_mirror_private = value
+        self.distance_from_origin = value @ self.outwards_normal
+
     def parameterization(self, t: Union[np.ndarray, float], p: Union[np.ndarray, float]):
         pseudo_z, pseudo_y = self.spanning_vectors()
         if isinstance(t, (float, int)):
@@ -972,10 +985,6 @@ class FlatMirror(FlatSurface, ReflectiveSurface):
 
     def parameterization(self, t: Union[np.ndarray, float], p: Union[np.ndarray, float]) -> np.ndarray:
         return super().parameterization(t, p)
-
-    @property
-    def center(self):
-        return super().center
 
     def ABCD_matrix(self, cos_theta_incoming: Union[float, np.ndarray] = None) -> np.ndarray:
         # Assumes the ray is in the x-y plane, and the mirror is in the z-x plane
@@ -1069,10 +1078,6 @@ class IdealLens(FlatSurface, PhysicalSurface):
 
     def parameterization(self, t: Union[np.ndarray, float], p: Union[np.ndarray, float]) -> np.ndarray:
         return super().parameterization(t, p)
-
-    @property
-    def center(self):
-        return super().center
 
     def scatter_direction_exact(
         self,
@@ -1201,6 +1206,10 @@ class CurvedSurface(Surface):
     @property
     def center(self):
         return self.origin + self.radius * self.outwards_normal
+
+    @center.setter
+    def center(self, value: np.ndarray):
+        self.origin = value + self.radius * self.inwards_normal
 
     def get_spanning_vectors(self):
         # For the case of the sphere with normal on the x-axis, those will be the y and z axis.

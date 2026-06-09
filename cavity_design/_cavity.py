@@ -4185,3 +4185,27 @@ CurvedRefractiveSurface(
         n_2=1,
     )
 ])
+
+EDMUND_4p03MM_ASPHERIC_SPHERICAL_VERSION = OpticalSystem(elements=[
+    CurvedRefractiveSurface(
+        name="edmund 4.03mm spherical version - low curvature side",
+        radius=34.9e-3,
+        outwards_normal=RIGHT,
+        center= LASER_OPTIK_MIRROR_REFRACTIVE.surfaces[1].center + 0.022*LEFT,
+        diameter=25.4e-3,
+        curvature_sign=CurvatureSigns.convex,
+        n_1=1,
+        n_2=PHYSICAL_SIZES_DICT["material_properties_bk7"].refractive_index,
+    ),
+
+CurvedRefractiveSurface(
+        name="edmund 4.03mm spherical version - high curvature side",
+        radius=34.9e-3,
+        outwards_normal=LEFT,
+        center= LASER_OPTIK_MIRROR_REFRACTIVE.surfaces[1].center + 0.02214*LEFT + 6.8e-3*LEFT,
+        diameter=25.4e-3,
+        curvature_sign=CurvatureSigns.concave,
+        n_1=PHYSICAL_SIZES_DICT["material_properties_bk7"].refractive_index,
+        n_2=1,
+    )
+])
