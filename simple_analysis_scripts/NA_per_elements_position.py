@@ -3,37 +3,61 @@ from tqdm import tqdm
 
 params = [
           OpticalSurfaceParams(name='Laser Optik Mirror'     ,surface_type='curved_mirror'                  , x=-4.336592383947283e-03  , y=0                       , z=0                       , theta=0                       , phi=1e+00 * np.pi           , radius=5e-03                   , curvature_sign=CurvatureSigns.concave, T_c=np.nan                  , n_inside_or_after=1e+00                   , n_outside_or_before=1e+00                   , diameter=7.75e-03                , material_properties=MaterialProperties(refractive_index=1.45e+00                , alpha_expansion=5.2e-07                 , beta_surface_absorption=1e-06                   , kappa_conductivity=1.38e+00                , dn_dT=1.2e-05                 , nu_poisson_ratio=1.6e-01                 , alpha_volume_absorption=1e-03                   , intensity_reflectivity=1e-04                   , intensity_transmittance=9.99899e-01             , temperature=np.nan                  ), polynomial_coefficients=None), [
-          OpticalSurfaceParams(name='aspheric_lens_automatic - flat side',surface_type='flat_refractive_surface'        , x=4.147283409582568e-03   , y=0                       , z=0                       , theta=0                       , phi=-1e+00 * np.pi          , radius=0                       , curvature_sign=CurvatureSigns.concave, T_c=np.nan                  , n_inside_or_after=1.574e+00               , n_outside_or_before=1e+00                   , diameter=6.3e-03                 , material_properties=MaterialProperties(refractive_index=None                    , alpha_expansion=None                    , beta_surface_absorption=None                    , kappa_conductivity=None                    , dn_dT=None                    , nu_poisson_ratio=None                    , alpha_volume_absorption=None                    , intensity_reflectivity=None                    , intensity_transmittance=None                    , temperature=np.nan                  ), polynomial_coefficients=None),
-          OpticalSurfaceParams(name='aspheric_lens_automatic - curved side',surface_type='aspheric_surface'               , x=7.247283409582568e-03   , y=0                       , z=0                       , theta=0                       , phi=0                       , radius=2.704137204127337e-03   , curvature_sign=CurvatureSigns.concave, T_c=np.nan                  , n_inside_or_after=1e+00                   , n_outside_or_before=1.574e+00               , diameter=6.3e-03                 , material_properties=MaterialProperties(refractive_index=None                    , alpha_expansion=None                    , beta_surface_absorption=None                    , kappa_conductivity=None                    , dn_dT=None                    , nu_poisson_ratio=None                    , alpha_volume_absorption=None                    , intensity_reflectivity=None                    , intensity_transmittance=None                    , temperature=np.nan                  ), polynomial_coefficients=np.array([ 3.78495078e-11,  1.84901860e+02,  3.05345512e+06,  7.70343165e+10, 2.08157839e+15, -2.20570527e+20,  1.08097479e+26, -3.70747171e+31, 7.97890251e+36, -1.09308973e+42,  9.11551800e+46, -4.22614376e+51, 8.35809886e+55]))
+          OpticalSurfaceParams(name='aspheric_lens_automatic - flat side',surface_type='flat_refractive_surface'        , x=3.516465850780541e-03   , y=0                       , z=0                       , theta=0                       , phi=-1e+00 * np.pi          , radius=0                       , curvature_sign=CurvatureSigns.concave, T_c=np.nan                  , n_inside_or_after=1.574e+00               , n_outside_or_before=1e+00                   , diameter=6.3e-03                 , material_properties=MaterialProperties(refractive_index=None                    , alpha_expansion=None                    , beta_surface_absorption=None                    , kappa_conductivity=None                    , dn_dT=None                    , nu_poisson_ratio=None                    , alpha_volume_absorption=None                    , intensity_reflectivity=None                    , intensity_transmittance=None                    , temperature=np.nan                  ), polynomial_coefficients=None),
+          OpticalSurfaceParams(name='aspheric_lens_automatic - curved side',surface_type='aspheric_surface'               , x=6.616465850780541e-03   , y=0                       , z=0                       , theta=0                       , phi=0                       , radius=2.704137204127337e-03   , curvature_sign=CurvatureSigns.concave, T_c=np.nan                  , n_inside_or_after=1e+00                   , n_outside_or_before=1.574e+00               , diameter=6.3e-03                 , material_properties=MaterialProperties(refractive_index=None                    , alpha_expansion=None                    , beta_surface_absorption=None                    , kappa_conductivity=None                    , dn_dT=None                    , nu_poisson_ratio=None                    , alpha_volume_absorption=None                    , intensity_reflectivity=None                    , intensity_transmittance=None                    , temperature=np.nan                  ), polynomial_coefficients=np.array([ 3.78495078e-11,  1.84901860e+02,  3.05345512e+06,  7.70343165e+10, 2.08157839e+15, -2.20570527e+20,  1.08097479e+26, -3.70747171e+31, 7.97890251e+36, -1.09308973e+42,  9.11551800e+46, -4.22614376e+51, 8.35809886e+55]))
          ],
-          OpticalSurfaceParams(name='End mirror'             ,surface_type='curved_mirror'                  , x=2.243795166403165e-01   , y=0                       , z=0                       , theta=0                       , phi=0                       , radius=2e-01                   , curvature_sign=CurvatureSigns.concave, T_c=np.nan                  , n_inside_or_after=1e+00                   , n_outside_or_before=1e+00                   , diameter=2.54e-02                , material_properties=MaterialProperties(refractive_index=None                    , alpha_expansion=None                    , beta_surface_absorption=None                    , kappa_conductivity=None                    , dn_dT=None                    , nu_poisson_ratio=None                    , alpha_volume_absorption=None                    , intensity_reflectivity=None                    , intensity_transmittance=None                    , temperature=np.nan                  ), polynomial_coefficients=None)]
+          OpticalSurfaceParams(name='End mirror'             ,surface_type='curved_mirror'                  , x=3.920542237118948e-01   , y=0                       , z=0                       , theta=0                       , phi=0                       , radius=2e-01                   , curvature_sign=CurvatureSigns.concave, T_c=np.nan                  , n_inside_or_after=1e+00                   , n_outside_or_before=1e+00                   , diameter=np.nan                  , material_properties=MaterialProperties(refractive_index=None                    , alpha_expansion=None                    , beta_surface_absorption=None                    , kappa_conductivity=None                    , dn_dT=None                    , nu_poisson_ratio=None                    , alpha_volume_absorption=None                    , intensity_reflectivity=None                    , intensity_transmittance=None                    , temperature=np.nan                  ), polynomial_coefficients=None)]
+
+lens_perturbations = 0
+params[1][0].x += lens_perturbations
+params[1][1].x += lens_perturbations
+
 cavity = Cavity.from_params(params=params, standing_wave=True,
-                                lambda_0_laser=LAMBDA_0_LASER, power=28e3, p_is_trivial=True, t_is_trivial=True, use_paraxial_ray_tracing=True, set_central_line=True, set_mode_parameters=True)
+                                    lambda_0_laser=LAMBDA_0_LASER, power=28e3, p_is_trivial=True, t_is_trivial=True, use_paraxial_ray_tracing=True, set_central_line=True, set_mode_parameters=True)
 cavity.plot()
-plt.title(f"NA_short = {cavity.mode_parameters[0].NA[0]:.2e}, NA_long = {cavity.mode_parameters[4].NA[0]:.2e}")
+plt.title(f"NA_short = {cavity.mode_parameters[0].NA[0]:.2e}, NA_long = {cavity.mode_parameters[2].NA[0]:.2e}\nlength short = {cavity.central_line[0].length*1000:.2f}mm, length long = {cavity.central_line[2].length*1000:.2f}mm")
 plt.show()
 
-# %%
-perturbations_aspheric_lens = np.linspace(-2e-3, 1e-3, 30)
-NAs = np.zeros_like(perturbations_aspheric_lens)
-short_arm_lengths = np.zeros_like(perturbations_aspheric_lens)
-for i, perturbation_value in enumerate(perturbations_aspheric_lens):
-    perturbation_pointer = PerturbationPointer(element_index=1, parameter_name=ParamsNames.x, perturbation_value=perturbation_value)
-    perturbed_cavity = perturb_cavity(cavity=cavity, perturbation_pointer=perturbation_pointer)
-    short_arm_lengths[i] = perturbed_cavity.central_line[0].length
-    NAs[i] = perturbed_cavity.arms[0].mode_parameters.NA[0]
-
+# %% 2d map:
 fig, ax = plt.subplots(figsize=(10, 6))
-ax.plot(short_arm_lengths * 1e3, NAs, marker='o')
-ax.set_xlabel('Short Arm Length (mm)')
-ax.set_ylabel('Short Arm Numerical Aperture')
-ax.set_title('Short Arm Numerical Aperture as a Function of Aspheric lens position Perturbation')
+for long_arm_length in [22e-2, 25e-2, 30e-2, 35e-2, 40e-2]:  #
+    params[2].x = params[1][1].x + long_arm_length
+    cavity = Cavity.from_params(params=params, standing_wave=True,
+                                    lambda_0_laser=LAMBDA_0_LASER, power=28e3, p_is_trivial=True, t_is_trivial=True, use_paraxial_ray_tracing=True, set_central_line=True, set_mode_parameters=True)
+    # cavity.plot()
+    # plt.title(f"NA_short = {cavity.mode_parameters[0].NA[0]:.2e}, NA_long = {cavity.mode_parameters[2].NA[0]:.2e}\nlength short = {cavity.central_line[0].length*1000:.2f}mm, length long = {cavity.central_line[2].length*1000:.2f}mm")
+    # plt.show()
+
+    perturbations_aspheric_lens = np.linspace(-1e-3, 10.5e-4, 400)
+    NAs = np.zeros_like(perturbations_aspheric_lens)
+    short_arm_lengths = np.zeros_like(perturbations_aspheric_lens)
+    flag=False
+    for i, perturbation_value in enumerate(perturbations_aspheric_lens):
+        perturbation_pointer = PerturbationPointer(element_index=1, parameter_name=ParamsNames.x, perturbation_value=perturbation_value)
+        perturbed_cavity = perturb_cavity(cavity=cavity, perturbation_pointer=perturbation_pointer)
+        short_arm_lengths[i] = perturbed_cavity.central_line[0].length
+        NAs[i] = perturbed_cavity.arms[0].mode_parameters.NA[0]
+        if perturbed_cavity.arms[0].mode_parameters.NA[0] > 0.07 and flag is False:
+            focus_to_lens = perturbed_cavity.surfaces[3].center[0] - perturbed_cavity.surfaces[2].center[0] - perturbed_cavity.surfaces[3].radius
+            flag=True
+
+    ax.plot(short_arm_lengths * 1e3, NAs, label=f"Long arm length = {long_arm_length*100:.2f}cm, focus-to-lens = {focus_to_lens * 100:.2f}cm")
+    ax.set_xlabel('Short Arm Length (mm)')
+    ax.set_ylabel('Short Arm Numerical Aperture')
+# ax.set_yscale('log')
+# ax.set_title(f'Total length = {(params[2].x - params[0].x)*1e2:.2f}cm')
+# Add vertical line at 7.74:
+ax.axvline(7.74, color='k', linestyle='--', linewidth=1, label='7.74 mm')
+
+
+ax.legend()
 ax.grid()
 plt.tight_layout()
+plt.savefig("outputs/figures/NA as a function of mirrors.svg")
 # plt.savefig(r'figures\NA_as_a_function_of_big_mirror')
 plt.show()
-# %%
-perturbations_large_mirror = np.linspace(-10e-2, 4e-2, 100)
+# %% Long arm perturbation
+perturbations_large_mirror = np.linspace(-4e-2, 4e-2, 100)
 
 NAs = np.zeros_like(perturbations_large_mirror)
 long_arm_lengths = np.zeros_like(perturbations_large_mirror)
@@ -41,13 +65,34 @@ for i, perturbation_value in enumerate(perturbations_large_mirror):
     perturbation_pointer = PerturbationPointer(element_index=2, parameter_name=ParamsNames.x, perturbation_value=perturbation_value)
     perturbed_cavity = perturb_cavity(cavity=cavity, perturbation_pointer=perturbation_pointer)
     NAs[i] = perturbed_cavity.arms[0].mode_parameters.NA[0]
-    long_arm_lengths[i] = perturbed_cavity.arms[3].central_line.length
+    long_arm_lengths[i] = perturbed_cavity.arms[2].central_line.length
 
 fig, ax = plt.subplots(figsize=(10, 6))
 ax.plot(long_arm_lengths * 1e2, NAs, marker='o', markersize=2)
 ax.set_xlabel('Long arm length (cm)')
 ax.set_ylabel('Short Arm Numerical Aperture')
-ax.set_title('Short Arm Numerical Aperture as a Function of Large Mirror Position Perturbation')
+ax.set_title('Short Arm Numerical Aperture as a Function of Long Arm Length')
+ax.grid()
+plt.tight_layout()
+# plt.savefig(r'figures\NA_as_a_function_of_small_mirror')
+plt.show()
+
+# %% Short arm perturbation
+perturbations_aspheric_lens = np.linspace(-5e-5, 2e-4, 100)
+
+NAs = np.zeros_like(perturbations_aspheric_lens)
+short_arm_lengths = np.zeros_like(perturbations_aspheric_lens)
+for i, perturbation_value in enumerate(perturbations_aspheric_lens):
+    perturbation_pointer = PerturbationPointer(element_index=0, parameter_name=ParamsNames.x, perturbation_value=perturbation_value)
+    perturbed_cavity = perturb_cavity(cavity=cavity, perturbation_pointer=perturbation_pointer)
+    NAs[i] = perturbed_cavity.arms[0].mode_parameters.NA[0]
+    short_arm_lengths[i] = perturbed_cavity.arms[0].central_line.length
+
+fig, ax = plt.subplots(figsize=(10, 6))
+ax.plot(short_arm_lengths * 1e2, NAs, marker='o', markersize=2)
+ax.set_xlabel('Short arm length (cm)')
+ax.set_ylabel('Short Arm Numerical Aperture')
+ax.set_title('Short Arm Numerical Aperture as a Function of Small arm length')
 ax.grid()
 plt.tight_layout()
 # plt.savefig(r'figures\NA_as_a_function_of_small_mirror')
@@ -111,4 +156,46 @@ for ax, (start, end) in zip(axes, index_ranges):
 axes[0].set_ylabel('Long arm length (cm)')
 fig.suptitle('Long arm length vs short arm length colored by NA')
 fig.colorbar(sc, ax=axes, label='NA')
+plt.show()
+
+# %% Playground
+params_lens_perturbed = copy.deepcopy(params_lens_unperturbed)
+lens_thickness = params_lens_perturbed[1].x - params_lens_perturbed[0].x
+for short_arm_length in [7.85e-3, 8.5e-3, 9.5e-3]:
+    params_laser_optik = params[0]
+    params_lens_perturbed[0].x = short_arm_length + params_laser_optik.x
+    params_lens_perturbed[1].x = short_arm_length + params_laser_optik.x + lens_thickness
+    optical_system_temp = OpticalSystem.from_params(params=[params[0], params_lens_perturbed], t_is_trivial=True, p_is_trivial=True, use_paraxial_ray_tracing=True, lambda_0_laser=LAMBDA_0_LASER)
+    for NA in [0.02, 0.05, 0.1]:
+        cavity_completed = optical_system_to_cavity_completion(optical_system=optical_system_temp, NA=NA, end_mirror_ROC=2e-1)
+        short_arm_length = cavity_completed.arms[0].central_line.length
+        long_arm_length = cavity_completed.arms[2].central_line.length
+        plot_mirror_lens_mirror_cavity_analysis(cavity=cavity_completed)
+        plt.show()
+
+        perturbable_params_names = ['x', 'y', 'phi']
+        tolerance_df = cavity_completed.generate_tolerance_dataframe(perturbable_params_names=perturbable_params_names)
+        tolerance_matrix = tolerance_df.to_numpy()
+        ## %%
+        overlaps_series = cavity_completed.generate_overlap_series(shifts=2 * np.abs(tolerance_matrix),
+                                                                  shift_numel=50,
+                                                                  perturbable_params_names=perturbable_params_names, )
+        ## %%
+        cavity_completed.generate_overlaps_graphs(arm_index_for_NA=0, tolerance_dataframe=tolerance_df,
+                                                 overlaps_series=overlaps_series,
+                                                 perturbable_params_names=perturbable_params_names)
+        plt.suptitle(f"NA_short = {cavity_completed.mode_parameters[0].NA[0]:.2e}, length short = {cavity_completed.central_line[0].length*1000:.2f}mm, NA_long = {cavity_completed.mode_parameters[2].NA[0]:.2e}, length long = {cavity_completed.central_line[2].length*1000:.2f}mm")
+        plt.show()
+# %%
+params_lens_perturbed = copy.deepcopy(params_lens_unperturbed)
+lens_thickness = params_lens_perturbed[1].x - params_lens_perturbed[0].x
+short_arm_length = 8.1e-3
+params_laser_optik = params[0]
+params_lens_perturbed[0].x = short_arm_length + params_laser_optik.x
+params_lens_perturbed[1].x = short_arm_length + params_laser_optik.x + lens_thickness
+optical_system_temp = OpticalSystem.from_params(params=[params[0], params_lens_perturbed], t_is_trivial=True, p_is_trivial=True, use_paraxial_ray_tracing=True, lambda_0_laser=LAMBDA_0_LASER)
+NA = 0.04
+cavity_completed = optical_system_to_cavity_completion(optical_system=optical_system_temp, NA=NA, end_mirror_ROC=2e-1)
+print(cavity_completed)
+plot_mirror_lens_mirror_cavity_analysis(cavity=cavity_completed)
 plt.show()
