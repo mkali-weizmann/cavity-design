@@ -1297,3 +1297,24 @@ def copy_parameters_func(local_parameters):
             l.append(f"{key} = {value}")
     final_expression = '\n'.join(l)
     pyperclip.copy(final_expression)
+
+
+def copy_figure_as_svg_to_clipboard(fig=None):
+    import io
+    import matplotlib.pyplot as plt
+    import win32clipboard
+
+    if fig is None:
+        fig = plt.gcf()
+
+    buf = io.BytesIO()
+    fig.savefig(buf, format="svg", bbox_inches="tight")
+    svg_bytes = buf.getvalue()
+
+    svg_format = win32clipboard.RegisterClipboardFormat("image/svg+xml")
+    win32clipboard.OpenClipboard()
+    try:
+        win32clipboard.EmptyClipboard()
+        win32clipboard.SetClipboardData(svg_format, svg_bytes)
+    finally:
+        win32clipboard.CloseClipboard()

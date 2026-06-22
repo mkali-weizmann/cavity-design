@@ -24,7 +24,8 @@
       "PowerShell(& \"C:\\\\Python311\\\\python.exe\" -m pip install --force-reinstall --no-deps --user matplotlib==3.9.4 2>&1 | Select-Object -Last 10)",
       "PowerShell(& \"C:\\\\Python311\\\\python.exe\" -m pip install --ignore-installed --user matplotlib==3.9.4 2>&1 | Select-Object -Last 15)",
       "PowerShell(& \"C:\\\\Python311\\\\python.exe\" -c \"from matplotlib.backends.qt_compat import QtWidgets; print\\('OK'\\)\" 2>&1)",
-      "Bash(python -m pip show pywin32)"
+      "Bash(python -m pip show pywin32)",
+      "Bash(python *)"
     ]
   }
 }
