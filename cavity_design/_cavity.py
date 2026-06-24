@@ -751,9 +751,9 @@ class OpticalSystem:
             return self.roundtrip_optical_length / C_LIGHT_SPEED
 
     @property
-    def free_spectral_range(self):
+    def free_spectral_range(self) -> float:
         if self.central_line_successfully_traced is False:
-            return None
+            return np.nan
         else:
             return 1 / self.roundtrip_time
 
@@ -2148,7 +2148,7 @@ class Cavity(OpticalSystem):
         return whole_df
 
     @property
-    def delta_f_frequency_transversal_modes(self):
+    def delta_f_frequency_transversal(self) -> float:
         if (
             np.isnan(self.arms[0].mode_parameters.z_R[0])
             or self.arms[0].mode_parameters_on_surface_0.z_R[0] == 0
@@ -2168,6 +2168,19 @@ class Cavity(OpticalSystem):
             raise NotImplementedError(
                 "The calculation of the frequency difference between the transversal modes is not implemented for astigmatic cavities."
             )
+    @property
+    def delta_f_frequency_transversal_apparent(self):
+        fsr = self.free_spectral_range
+        df = self.delta_f_frequency_transversal
+        df_right = np.mod(df, fsr)
+        df_left = np.abs(df_right - fsr)
+        df_appearent = min(df_right, df_left)
+        return df_appearent
+
+    @property
+    def delta_f_trasversal_over_fsr(self):
+        return self.delta_f_frequency_transversal_apparent / self.free_spectral_range
+
 
     def plot_spectrum(
         self,
@@ -2181,7 +2194,7 @@ class Cavity(OpticalSystem):
         fsr = self.free_spectral_range
         lorentzian_width = fsr * width_over_fsr
         main_mode_picks_position = np.arange(n_base_mode) * fsr
-        transversal_modes_picks_positions = np.arange(n_transversal_modes) * self.delta_f_frequency_transversal_modes
+        transversal_modes_picks_positions = np.arange(n_transversal_modes) * self.delta_f_frequency_transversal
         picks_positions = main_mode_picks_position[:, None] + transversal_modes_picks_positions[None, :]
         picks_amplitudes = np.ones_like(picks_positions)
         picks_amplitudes = picks_amplitudes * np.exp(-modes_decay_rate * np.arange(1, n_transversal_modes + 1))[None, :]
@@ -2736,7 +2749,7 @@ def plot_2_cavity_perturbation_overlap(
             title=f"Cavity perturbation overlap = {np.abs(overlap):.4f}",
             real_or_abs=real_or_abs,
         )
-    return overlap
+        return overlap
 
 
 def evaluate_gaussian_3d(points: np.ndarray, mode_parameters: ModeParameters):

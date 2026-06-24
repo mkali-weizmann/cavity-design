@@ -7,10 +7,6 @@ params = [
           OpticalSurfaceParams(name='high curvature side - Edmund 4.03mm spherical version',surface_type='curved_refractive_surface'      , x=6.367892315445054e-03   , y=0                       , z=0                       , theta=0                       , phi=0                       , radius=2.619751468026235e-03   , curvature_sign=CurvatureSigns.concave, T_c=np.nan                  , n_inside_or_after=1e+00                   , n_outside_or_before=1.574e+00               , diameter=5.1e-03                 , material_properties=MaterialProperties(refractive_index=None                    , alpha_expansion=None                    , beta_surface_absorption=None                    , kappa_conductivity=None                    , dn_dT=None                    , nu_poisson_ratio=None                    , alpha_volume_absorption=None                    , intensity_reflectivity=None                    , intensity_transmittance=None                    , temperature=np.nan                  ), polynomial_coefficients=None)],
           OpticalSurfaceParams(name='End mirror'             ,surface_type='curved_mirror'                  , x=2.534520686422554e-01   , y=0                       , z=0                       , theta=0                       , phi=0                       , radius=2e-01                   , curvature_sign=CurvatureSigns.concave, T_c=np.nan                  , n_inside_or_after=1e+00                   , n_outside_or_before=1e+00                   , diameter=np.nan                  , material_properties=MaterialProperties(refractive_index=None                    , alpha_expansion=None                    , beta_surface_absorption=None                    , kappa_conductivity=None                    , dn_dT=None                    , nu_poisson_ratio=None                    , alpha_volume_absorption=None                    , intensity_reflectivity=None                    , intensity_transmittance=None                    , temperature=np.nan                  ), polynomial_coefficients=None)]
 
-lens_perturbations = 0
-params[1][0].x += lens_perturbations
-params[1][1].x += lens_perturbations
-
 cavity = Cavity.from_params(params=params, standing_wave=True,
                                     lambda_0_laser=LAMBDA_0_LASER, power=28e3, p_is_trivial=True, t_is_trivial=True, use_paraxial_ray_tracing=True, set_central_line=True, set_mode_parameters=True)
 cavity.plot()
@@ -20,9 +16,9 @@ plt.show()
 # %% 2d map:
 fig, ax = plt.subplots(figsize=(10, 6))
 for long_arm_length in [22e-2, 25e-2, 30e-2, 35e-2, 40e-2]:  #
-    params[2].x = params[1][1].x + long_arm_length
+    params[-1].x = params[1][1].x + long_arm_length
     cavity = Cavity.from_params(params=params, standing_wave=True,
-                                    lambda_0_laser=LAMBDA_0_LASER, power=28e3, p_is_trivial=True, t_is_trivial=True, use_paraxial_ray_tracing=True, set_central_line=True, set_mode_parameters=True)
+                                    lambda_0_laser=LAMBDA_0_LASER, p_is_trivial=True, t_is_trivial=True, use_paraxial_ray_tracing=True, set_central_line=True, set_mode_parameters=True)
     # cavity.plot()
     # plt.title(f"NA_short = {cavity.mode_parameters[0].NA[0]:.2e}, NA_long = {cavity.mode_parameters[2].NA[0]:.2e}\nlength short = {cavity.central_line[0].length*1000:.2f}mm, length long = {cavity.central_line[2].length*1000:.2f}mm")
     # plt.show()
