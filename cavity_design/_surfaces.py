@@ -33,6 +33,31 @@ from ._utils import (
 )
 from ._rays import Ray
 
+# Positions (centers/origins) are normally real, but an imaginary component is allowed to encode a *relative* position
+# (a shift from the previous element, resolved later). Anything with a significant imaginary part (or a nan) is
+# considered "not well defined". POSITION_TINY is the threshold below which an imaginary/real component is treated as
+# numerical noise (no physical size in the system is below 1e-12).
+POSITION_TINY = 1e-16
+
+
+def _to_position_array(value: np.ndarray) -> np.ndarray:
+    # Keep a genuinely-complex (relative) position as complex; otherwise return a clean real float array.
+    arr = np.asarray(value)
+    if np.iscomplexobj(arr):
+        if np.all(np.abs(arr.imag) <= POSITION_TINY):
+            return np.real(arr).astype(float)
+        return arr.astype(complex)
+    return arr.astype(float)
+
+
+def _position_is_well_defined(vec: np.ndarray) -> bool:
+    arr = np.asarray(vec)
+    if np.any(np.isnan(arr)):
+        return False
+    if np.iscomplexobj(arr) and np.any(np.abs(arr.imag) > POSITION_TINY):
+        return False
+    return True
+
 
 class Surface:
     def __init__(
@@ -85,8 +110,9 @@ class Surface:
 
     @property
     def positions_defined(self) -> bool:
-        # True only when both the orientation and the location of the surface are fully specified (no nans).
-        return (not np.any(np.isnan(self.outwards_normal))) and (not np.any(np.isnan(self.center)))
+        # True only when both the orientation and the location of the surface are fully specified: no nans and no
+        # unresolved (significantly imaginary) relative positions.
+        return _position_is_well_defined(self.outwards_normal) and _position_is_well_defined(self.center)
 
     def normal_at_a_point(self, point: np.ndarray) -> np.ndarray:
         # Pointing outwards towards the convex side
@@ -588,7 +614,7 @@ class AsphericSurface(Surface):
         **kwargs,
     ):
         super().__init__(outwards_normal=outwards_normal, name=name, radius=np.nan, **kwargs)
-        self._center = np.full(3, np.nan) if center is None else np.asarray(center, dtype=float)
+        self._center = np.full(3, np.nan) if center is None else _to_position_array(center)
         self.curvature_sign = curvature_sign
         self.name = name
         self.diameter = diameter
@@ -707,7 +733,7 @@ class AsphericSurface(Surface):
 
     @center.setter
     def center(self, value: np.ndarray):
-        self._center = value
+        self._center = _to_position_array(value)
 
     def find_intersection_with_ray_paraxial(self, ray: Ray) -> np.ndarray:
         paraxial_surface = CurvedSurface(
@@ -887,7 +913,7 @@ class FlatSurface(Surface):
         if distance_from_origin is not None:
             self.center_of_mirror_private = self.outwards_normal * distance_from_origin
         elif center is not None:
-            self.center_of_mirror_private = np.asarray(center, dtype=float)
+            self.center_of_mirror_private = _to_position_array(center)
         else:
             self.center_of_mirror_private = np.full(3, np.nan)
 
@@ -955,7 +981,7 @@ class FlatSurface(Surface):
     @center.setter
     def center(self, value: np.ndarray):
         # distance_from_origin is derived from this, so nothing else to update.
-        self.center_of_mirror_private = np.asarray(value, dtype=float)
+        self.center_of_mirror_private = _to_position_array(value)
 
     def parameterization(self, t: Union[np.ndarray, float], p: Union[np.ndarray, float]):
         pseudo_z, pseudo_y = self.spanning_vectors()
@@ -988,13 +1014,14 @@ class FlatMirror(FlatSurface, ReflectiveSurface):
         thermal_properties: Optional[MaterialProperties] = None,
         diameter: Optional[float] = None,
     ):
+        # Note: radius is not forwarded here — FlatSurface.__init__ already fixes it to np.inf. Passing it again
+        # would collide ("multiple values for keyword argument 'radius'").
         super().__init__(
             outwards_normal=outwards_normal,
             name=name,
             material_properties=thermal_properties,
             distance_from_origin=distance_from_origin,
             center=center,
-            radius=np.inf,
             diameter=diameter,
         )
     def __str__(self):
@@ -1178,9 +1205,9 @@ class CurvedSurface(Surface):
         if origin is not None and center is not None:
             raise ValueError("Only one of origin and center must be provided.")
         elif center is not None:
-            self.origin = np.asarray(center, dtype=float) + radius * self.inwards_normal
+            self.origin = _to_position_array(center) + radius * self.inwards_normal
         elif origin is not None:
-            self.origin = np.asarray(origin, dtype=float)
+            self.origin = _to_position_array(origin)
         else:
             self.origin = np.full(3, np.nan)
 
@@ -1240,7 +1267,7 @@ class CurvedSurface(Surface):
 
     @center.setter
     def center(self, value: np.ndarray):
-        self.origin = np.asarray(value, dtype=float) + self.radius * self.inwards_normal
+        self.origin = _to_position_array(value) + self.radius * self.inwards_normal
 
     @property
     def radius(self):

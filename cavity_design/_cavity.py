@@ -43,7 +43,7 @@ from ._utils import (
     CurvatureSigns,
     z_R_of_NA, interval_parameterization, safe_exponent, gaussians_overlap_integral,
     convert_material_to_mirror_or_lens, PHYSICAL_SIZES_DICT, INDICES_DICT_INVERSE, functions_first_crossing,
-    MaterialProperties, w_0_of_NA, focal_length_of_lens, spot_size, dT_c_of_a_lens, LEFT, ORIGIN, RIGHT
+    MaterialProperties, w_0_of_NA, focal_length_of_lens, spot_size, dT_c_of_a_lens, LEFT, ORIGIN, RIGHT, INCH
 )
 from ._modes import (
     LocalModeParameters,
@@ -65,7 +65,7 @@ from ._surfaces import (
     FlatMirror,
     IdealLens,
     AsphericSurface,
-    FlatRefractiveSurface, AsphericRefractiveSurface,
+    FlatRefractiveSurface, AsphericRefractiveSurface, generate_aspheric_lens_params,
 )
 
 
@@ -451,6 +451,52 @@ def simple_mode_propagator(
     return arms
 
 
+def _resolve_surface_relative_positions(surfaces: List, tiny: float = 1e-16):
+    """Resolve imaginary (relative) positions on live surfaces, in place, in the given (flattened) order.
+
+    Each axis (x/y/z) is handled independently. A pure-real coordinate is absolute and resets the running reference
+    for that axis; a pure-imaginary coordinate is a step added to the previous resolved value (the first surface's
+    step is measured from the ORIGIN, i.e. 0). A coordinate with both a non-tiny real and imaginary part is ambiguous
+    and raises. If the running reference for an axis is undefined (an upstream surface had a nan/unresolved position),
+    relative coordinates downstream are left as-is (still complex) so the system simply stays 'not defined' until the
+    upstream anchor is provided."""
+    running = np.zeros(3, dtype=float)
+    running_defined = np.array([True, True, True])  # ORIGIN is a defined reference (0) for the first surface.
+    for surface in surfaces:
+        center = np.asarray(surface.center)
+        resolved = np.array(center, dtype=complex)
+        changed = False
+        for axis in range(3):
+            value = center[axis]
+            real_part = np.real(value)
+            imag_part = np.imag(value)
+            if np.isnan(real_part) or np.isnan(imag_part):
+                running_defined[axis] = False
+                continue
+            if abs(real_part) > tiny and abs(imag_part) > tiny:
+                raise ValueError(
+                    f"Mixed real and imaginary components in the position of surface "
+                    f"'{getattr(surface, 'name', None)}' (axis {axis}, got {value}). Use either an absolute (real) "
+                    f"value or a relative (pure imaginary) step, not both."
+                )
+            if abs(imag_part) > tiny:
+                if running_defined[axis]:
+                    running[axis] = running[axis] + imag_part
+                    resolved[axis] = running[axis]
+                    changed = True
+                else:
+                    running_defined[axis] = False  # leave this coordinate complex/unresolved
+            else:
+                running[axis] = real_part
+                running_defined[axis] = True
+                resolved[axis] = real_part
+        if changed:
+            if np.all(np.abs(np.imag(resolved)) <= tiny):
+                surface.center = np.real(resolved).astype(float)
+            else:
+                surface.center = resolved
+
+
 ##############
 class OpticalSystem:
     def __init__(
@@ -490,9 +536,13 @@ class OpticalSystem:
 
         self._sync_config_to_nested()
 
+        # Resolve any imaginary (relative) surface positions into absolute ones before checking whether the geometry
+        # is defined. If the first surface is undefined, the relative positions downstream stay unresolved.
+        self.resolve_relative_positions()
+
         # Auto-tracing is only attempted when all element positions are defined. A system may be constructed with
-        # undefined (nan) positions; in that case tracing is skipped silently and can be triggered later, once the
-        # positions are set, by calling the relevant methods explicitly.
+        # undefined (nan / unresolved relative) positions; in that case tracing is skipped silently and can be
+        # triggered later, once the positions are set, by calling the relevant methods explicitly.
         if self.positions_defined:
             if given_initial_central_line is not None:
                 if isinstance(given_initial_central_line, Ray):
@@ -556,9 +606,18 @@ class OpticalSystem:
 
     @property
     def positions_defined(self) -> bool:
-        # True only when every (flattened) surface has a fully defined pose (no nan center/normal). Calculations that
-        # rely on the geometry (central line, modes, ray tracing) are only meaningful when this is True.
+        # True only when every (flattened) surface has a fully defined pose (no nan / no unresolved imaginary
+        # position). Calculations that rely on the geometry (central line, modes, ray tracing) are only meaningful
+        # when this is True.
         return all(s.positions_defined for s in self._surfaces)
+
+    def resolve_relative_positions(self, tiny: float = 1e-16):
+        """Resolve imaginary (relative) surface positions into absolute ones, in place, in flattened order.
+
+        Called automatically at construction; can also be called explicitly after the first (anchor) surface's
+        position is set, to resolve the rest of the chain. If the first surface is undefined the relative positions
+        downstream simply remain unresolved (the system stays 'not defined') until an anchor is provided."""
+        _resolve_surface_relative_positions(self._surfaces, tiny)
 
     def _assert_positions_defined(self, action: str = "perform this calculation"):
         if not self.positions_defined:
@@ -1305,13 +1364,15 @@ class Cavity(OpticalSystem):
         use_paraxial_ray_tracing: bool = False,
     ):
         self._input_elements = list(elements)
+        # standing_wave is set before super().__init__ because resolve_relative_positions (called during the base
+        # constructor) is overridden in Cavity and needs it.
+        self.standing_wave = standing_wave
         ordered_elements = self._order_surfaces_for_initialization(elements, standing_wave=standing_wave)
 
         super().__init__(elements=ordered_elements, lambda_0_laser=lambda_0_laser, params=params, power=power,
                          t_is_trivial=t_is_trivial, p_is_trivial=p_is_trivial,
                          use_paraxial_ray_tracing=use_paraxial_ray_tracing)
 
-        self.standing_wave = standing_wave
         self.central_line_successfully_traced: Optional[bool] = None
         self.resonating_mode_successfully_traced: Optional[bool] = None
         self.use_brute_force_for_central_line = use_brute_force_for_central_line
@@ -1344,6 +1405,20 @@ class Cavity(OpticalSystem):
         elements = OpticalSystem._build_elements(resolved)
         cavity = Cavity(elements, params=resolved, **kwargs)
         return cavity
+
+    def resolve_relative_positions(self, tiny: float = 1e-16):
+        # For a cavity the flattened surface list is the full round trip. We resolve only the unique forward surfaces
+        # (so each relative step chains off the real forward geometry), then copy each resolved position onto its
+        # mirror-image surface in the standing-wave continuation (which shares the same location, only inverted).
+        if not self.standing_wave:
+            _resolve_surface_relative_positions(self._surfaces, tiny)
+            return
+        ordered = self._surfaces
+        n = len(ordered)
+        n_forward = (n + 1) // 2
+        _resolve_surface_relative_positions(ordered[:n_forward], tiny)
+        for k in range(n_forward, n):
+            ordered[k].center = ordered[n - 1 - k].center
 
     @staticmethod
     def _order_surfaces_for_initialization(surfaces: List[Surface], standing_wave) -> List[Surface]:
@@ -2713,10 +2788,15 @@ def apply_rigid_body_perturbation(element, parameter_name, perturbation_value, m
     if mechanical_center is None:
         mechanical_center = default_center
 
+    # An explicitly-set mechanical center is a body-fixed point, so it must follow the rigid motion too.
+    has_explicit_center = isinstance(element, OpticalSystem) and element._mechanical_center is not None
+
     if parameter_name in ('x', 'y', 'z'):
         delta = perturbation_value * _RIGID_BODY_TRANSLATION_AXES[parameter_name]
         for surface in surfaces:
             surface.center = surface.center + delta
+        if has_explicit_center:
+            element._mechanical_center = np.array(element._mechanical_center, dtype=float) + delta
     elif parameter_name in ('theta', 'phi'):
         theta, phi = angles_of_unit_vector(surfaces[0].outwards_normal)
         R = _rigid_body_rotation_matrix(theta, phi, parameter_name, perturbation_value)
@@ -2728,6 +2808,9 @@ def apply_rigid_body_perturbation(element, parameter_name, perturbation_value, m
         for surface, old_center, old_normal in zip(surfaces, old_centers, old_normals):
             surface.outwards_normal = R @ old_normal
             surface.center = mechanical_center + R @ (old_center - mechanical_center)
+        if has_explicit_center:
+            element._mechanical_center = mechanical_center + R @ (
+                np.array(element._mechanical_center, dtype=float) - mechanical_center)
     else:
         raise ValueError(
             f"Perturbation of '{parameter_name}' is not supported for rigid-body perturbations. "
@@ -2754,6 +2837,65 @@ def _apply_scalar_perturbation_to_surface(surface, parameter_name, perturbation_
             f"('x', 'y', 'z', 'theta', 'phi') and the scalar parameters "
             f"('{ParamsNames.radius}', '{ParamsNames.n_inside_or_after}', '{ParamsNames.n_outside_or_before}')."
         )
+
+
+def _rigid_body_reference_point(element, reference: str) -> np.ndarray:
+    if isinstance(element, OpticalSystem):
+        surfaces = element.surfaces
+        if reference == "first_surface":
+            return np.array(surfaces[0].center, dtype=float)
+        elif reference == "last_surface":
+            return np.array(surfaces[-1].center, dtype=float)
+        elif reference == "mechanical_center":
+            return np.array(element.mechanical_center, dtype=float)
+        else:
+            raise ValueError(
+                f"Unknown reference '{reference}'. Use 'first_surface', 'last_surface' or 'mechanical_center'."
+            )
+    else:
+        # A single surface has a single reference point: its own center.
+        return np.array(element.center, dtype=float)
+
+
+def set_element_position(element, target_position, reference: str = "first_surface"):
+    """Place a Surface or OpticalSystem at an absolute position, in place.
+
+    If the element's positions are already defined, the whole element is translated (no rotation) so that its
+    reference point lands on ``target_position`` — all other surfaces move by the same delta, so the rigid geometry
+    is preserved. For an ``OpticalSystem`` the reference can be ``'first_surface'`` (default), ``'last_surface'`` or
+    ``'mechanical_center'``; for a single ``Surface`` it is always the surface center.
+
+    If the element is an ``OpticalSystem`` whose positions are not yet defined (its first surface is undefined and
+    the rest are encoded as relative/imaginary positions), this anchors the first surface at ``target_position`` and
+    resolves the relative chain off it (only ``reference='first_surface'`` is meaningful in that case).
+
+    Returns ``element`` to allow chaining."""
+    target_position = np.asarray(target_position, dtype=float)
+
+    if isinstance(element, OpticalSystem) and not element.positions_defined:
+        if reference != "first_surface":
+            raise ValueError(
+                "For an OpticalSystem with undefined/relative positions, only reference='first_surface' is "
+                "supported (it anchors the first surface and resolves the relative chain off it)."
+            )
+        element.surfaces[0].center = target_position
+        element.resolve_relative_positions()
+        return element
+
+    if not element.positions_defined:
+        raise ValueError(
+            "Cannot set position: the element has undefined (nan) poses. Define its center/outwards_normal first."
+        )
+
+    if not isinstance(element, OpticalSystem):
+        # A single surface is fully described by its center.
+        element.center = target_position
+        return element
+
+    delta = target_position - _rigid_body_reference_point(element, reference)
+    for axis, axis_delta in zip(("x", "y", "z"), delta):
+        apply_rigid_body_perturbation(element, axis, axis_delta)
+    return element
 
 
 def perturb_cavity(
@@ -4343,7 +4485,6 @@ THORLABS_35MM_COLLIMATING_LENS = OpticalSystem(elements=[
         name="Thorlabs 35mm biconvex - right",
         radius=34.9e-3,
         outwards_normal=RIGHT,
-        center= LASER_OPTIK_MIRROR_REFRACTIVE.surfaces[1].center + 0.022*LEFT,
         diameter=25.4e-3,
         curvature_sign=CurvatureSigns.convex,
         n_1=1,
@@ -4367,7 +4508,6 @@ EDMUND_4p03MM_ASPHERIC_SPHERICAL_VERSION = OpticalSystem(elements=[
         name="low curvature side - Edmund 4.03mm spherical version",
         radius=(1/7.889402975752558833E-02)*1e-3,
         outwards_normal=LEFT,
-        center= LASER_OPTIK_MIRROR_REFRACTIVE.surfaces[0].center + 7.85e-3*RIGHT,
         diameter=5.1e-3,
         curvature_sign=CurvatureSigns.convex,
         n_1=1,
@@ -4378,10 +4518,14 @@ CurvedRefractiveSurface(
         name="high curvature side - Edmund 4.03mm spherical version",
         radius=(1/3.817155986760137343E-01)*1e-3,
         outwards_normal=RIGHT,
-        center= LASER_OPTIK_MIRROR_REFRACTIVE.surfaces[0].center + 7.85e-3*RIGHT + 3.1e-3*RIGHT,
+        center=1j*3.1e-3*RIGHT,
         diameter=5.1e-3,
         curvature_sign=CurvatureSigns.concave,
         n_1=1.574,
         n_2=1,
     )
 ])
+
+eksma_lens_params = generate_aspheric_lens_params(back_focal_length=17.001e-3, T_c=4.35e-3, forward_normal=LEFT, flat_faces_center=ORIGIN+15e-3*LEFT, n=PHYSICAL_SIZES_DICT['material_properties_fused_silica'].refractive_index, diameter=INCH / 2, polynomial_degree=10, n_outside=1, name="Eksma 20mm")
+EKSMA_LENS_20mm_ASPHERIC = OpticalSystem.from_params(params=eksma_lens_params)
+del eksma_lens_params

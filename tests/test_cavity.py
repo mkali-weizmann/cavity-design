@@ -929,3 +929,92 @@ def test_perturb_cavity_radius_preserves_vertex():
 
     assert np.isclose(new_cavity.surfaces[0].radius, R + dR)
     assert np.allclose(new_cavity.surfaces[0].center, vertex_before, atol=1e-12)
+
+
+def test_set_element_position_rigid():
+    from cavity_design import set_element_position
+    lens = _make_lens_group(center_x=0.0)  # two surfaces, 3mm apart, centered at the origin
+    offset = lens.surfaces[1].center - lens.surfaces[0].center  # rigid separation to be preserved
+
+    target = np.array([1.0, 0.2, -0.1])
+    returned = set_element_position(lens, target, reference="first_surface")
+
+    assert returned is lens
+    assert np.allclose(lens.surfaces[0].center, target, atol=1e-12)
+    # The second surface moved by the same delta, so the rigid separation is unchanged.
+    assert np.allclose(lens.surfaces[1].center - lens.surfaces[0].center, offset, atol=1e-12)
+
+    # mechanical_center reference places the group's mechanical center on the target.
+    lens2 = _make_lens_group(center_x=0.0)
+    set_element_position(lens2, target, reference="mechanical_center")
+    assert np.allclose(lens2.mechanical_center, target, atol=1e-12)
+
+    # Works on a single surface too (reference is its own center).
+    m = CurvedMirror(radius=5e-3, outwards_normal=np.array([-1.0, 0, 0]), center=np.array([-5e-3, 0, 0]),
+                     curvature_sign=CurvatureSigns.concave)
+    set_element_position(m, np.array([2.0, 0.0, 0.0]))
+    assert np.allclose(m.center, [2.0, 0.0, 0.0], atol=1e-12)
+
+
+def test_surface_level_relative_position_resolved_at_construction():
+    from cavity_design import OpticalSystem
+    # First surface real (anchor), second encoded as a +10mm relative step in x (pure imaginary).
+    m0 = CurvedMirror(radius=5e-3, outwards_normal=np.array([-1.0, 0, 0]), center=np.array([-5e-3, 0, 0]),
+                      curvature_sign=CurvatureSigns.concave, diameter=0.01)
+    m1 = CurvedMirror(radius=5e-3, outwards_normal=np.array([1.0, 0, 0]),
+                      center=np.array([1j * 10e-3, 0, 0]), curvature_sign=CurvatureSigns.concave, diameter=0.01)
+
+    sys = OpticalSystem([m0, m1], given_initial_central_line=None)
+    assert sys.positions_defined
+    assert np.isclose(sys.surfaces[1].center[0], -5e-3 + 10e-3)
+    assert not np.iscomplexobj(np.asarray(sys.surfaces[1].center))
+
+
+def test_surface_level_relative_position_deferred():
+    from cavity_design import OpticalSystem, set_element_position
+    # First surface undefined, second is a relative step. The system is not defined and the relative stays complex.
+    m0 = CurvedMirror(radius=5e-3, outwards_normal=np.array([-1.0, 0, 0]), center=None,
+                      curvature_sign=CurvatureSigns.concave, diameter=0.01)
+    m1 = CurvedMirror(radius=5e-3, outwards_normal=np.array([1.0, 0, 0]),
+                      center=np.array([1j * 10e-3, 0, 0]), curvature_sign=CurvatureSigns.concave, diameter=0.01)
+
+    sys = OpticalSystem([m0, m1], given_initial_central_line=None)
+    assert not sys.positions_defined
+    # The unresolved relative position is still complex.
+    assert np.any(np.abs(np.imag(np.asarray(sys.surfaces[1].center))) > 1e-12)
+
+    # Anchoring the first surface resolves the chain.
+    set_element_position(sys, np.array([-5e-3, 0.0, 0.0]))
+    assert sys.positions_defined
+    assert np.isclose(sys.surfaces[0].center[0], -5e-3)
+    assert np.isclose(sys.surfaces[1].center[0], -5e-3 + 10e-3)
+
+
+def test_cavity_relative_positions_standing_wave():
+    # A standing-wave Fabry-Perot defined with the second mirror as a relative step; resolution must also place the
+    # mirror-image (inverse) surface correctly.
+    u = 1e-5
+    sep = 10e-3 - u
+    m0 = CurvedMirror(radius=5e-3, outwards_normal=np.array([-1.0, 0, 0]), center=np.array([-5e-3, 0, 0]),
+                      curvature_sign=CurvatureSigns.concave, diameter=0.01)
+    m1 = CurvedMirror(radius=5e-3, outwards_normal=np.array([1.0, 0, 0]),
+                      center=np.array([1j * sep, 0, 0]), curvature_sign=CurvatureSigns.concave, diameter=0.01)
+
+    cavity = Cavity([m0, m1], standing_wave=True, lambda_0_laser=LAMBDA_0_LASER, set_mode_parameters=False)
+    assert cavity.positions_defined
+    assert np.isclose(cavity.surfaces[1].center[0], -5e-3 + sep)
+    # The inverse (back-trip) copy of the first surface shares the forward first surface's location.
+    ordered = cavity._surfaces
+    assert np.allclose(ordered[-1].center, cavity.surfaces[0].center, atol=1e-12)
+
+
+def test_unresolved_relative_blocks_calculations():
+    from cavity_design import OpticalSystem
+    m0 = CurvedMirror(radius=5e-3, outwards_normal=np.array([-1.0, 0, 0]), center=None,
+                      curvature_sign=CurvatureSigns.concave, diameter=0.01)
+    m1 = CurvedMirror(radius=5e-3, outwards_normal=np.array([1.0, 0, 0]),
+                      center=np.array([1j * 10e-3, 0, 0]), curvature_sign=CurvatureSigns.concave, diameter=0.01)
+    sys = OpticalSystem([m0, m1], given_initial_central_line=None)
+    ray = Ray(origin=np.array([0.0, 0, 0]), k_vector=np.array([1.0, 0, 0]))
+    with pytest.raises(ValueError):
+        sys.propagate_ray(ray)

@@ -1,12 +1,11 @@
 # %%
-import matplotlib.pyplot as plt
 from matplotlib import use
 use('TkAgg')  # Or 'TkAgg' if Qt5Agg doesn't work
 from cavity_design import *
 
 # Output beam optical system: mirror substrate (transmissive) followed by 35mm collimating lens
 optical_system = OpticalSystem(
-    elements=[LASER_OPTIK_MIRROR_REFRACTIVE, THORLABS_35MM_COLLIMATING_LENS],
+    elements=[LASER_OPTIK_MIRROR_REFRACTIVE, EKSMA_LENS_20mm_ASPHERIC],
     use_paraxial_ray_tracing=True,
     p_is_trivial=True,
     t_is_trivial=True,

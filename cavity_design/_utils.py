@@ -19,7 +19,7 @@ LAMBDA_0_LASER = 1064e-9
 LAMBDA_1_LASER = 532e-9
 EPSILON_0_PERMITTIVITY = 8.854187e-12  # [F/m]
 MU_0_PERMEABILITY = 1.256637e-6
-LEFT, RIGHT, UP, DOWN, INWARD, OUTWARD, ORIGIN = (
+LEFT, RIGHT, UP, DOWN, INWARD, OUTWARD, ORIGIN, INCH = (
     np.array([-1, 0, 0]),
     np.array([1, 0, 0]),
     np.array([0, 1, 0]),
@@ -27,6 +27,7 @@ LEFT, RIGHT, UP, DOWN, INWARD, OUTWARD, ORIGIN = (
     np.array([0, 0, -1]),
     np.array([0, 0, 1]),
     np.array([0, 0, 0]),
+    25.4e-3
 )
 
 
