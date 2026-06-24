@@ -490,14 +490,18 @@ class OpticalSystem:
 
         self._sync_config_to_nested()
 
-        if given_initial_central_line is not None:
-            if isinstance(given_initial_central_line, Ray):
-                self.set_given_central_line(initial_ray=given_initial_central_line)
-            elif given_initial_central_line is True and len(self.arms) > 0:
-                self.set_given_central_line(initial_ray=self.default_initial_ray)
-        if given_initial_local_mode_parameters is not None:
-            self.set_given_mode_parameters(
-                local_mode_parameters_after_first_surface=given_initial_local_mode_parameters)
+        # Auto-tracing is only attempted when all element positions are defined. A system may be constructed with
+        # undefined (nan) positions; in that case tracing is skipped silently and can be triggered later, once the
+        # positions are set, by calling the relevant methods explicitly.
+        if self.positions_defined:
+            if given_initial_central_line is not None:
+                if isinstance(given_initial_central_line, Ray):
+                    self.set_given_central_line(initial_ray=given_initial_central_line)
+                elif given_initial_central_line is True and len(self.arms) > 0:
+                    self.set_given_central_line(initial_ray=self.default_initial_ray)
+            if given_initial_local_mode_parameters is not None:
+                self.set_given_mode_parameters(
+                    local_mode_parameters_after_first_surface=given_initial_local_mode_parameters)
 
     @staticmethod
     def _flatten_elements(elements: List) -> List[Surface]:
@@ -551,6 +555,24 @@ class OpticalSystem:
         return np.mean(np.stack(centers, axis=0), axis=0)
 
     @property
+    def positions_defined(self) -> bool:
+        # True only when every (flattened) surface has a fully defined pose (no nan center/normal). Calculations that
+        # rely on the geometry (central line, modes, ray tracing) are only meaningful when this is True.
+        return all(s.positions_defined for s in self._surfaces)
+
+    def _assert_positions_defined(self, action: str = "perform this calculation"):
+        if not self.positions_defined:
+            undefined = [
+                (s.name if getattr(s, "name", None) is not None else f"surface_{i}")
+                for i, s in enumerate(self._surfaces)
+                if not s.positions_defined
+            ]
+            raise ValueError(
+                f"Cannot {action}: the following optical elements have undefined (nan) positions: {undefined}. "
+                f"Define their center/outwards_normal (e.g. via the setters or absolute/relative params) first."
+            )
+
+    @property
     def inverse(self) -> 'OpticalSystem':
         inverse_elements = [el.inverse for el in reversed(self._elements)]
         return OpticalSystem(inverse_elements, mechanical_center=self._mechanical_center)
@@ -571,19 +593,52 @@ class OpticalSystem:
         return physical_surfaces
 
     @staticmethod
-    def params_to_elements(
-        params: Union[np.ndarray, List],
-    ):
-        if isinstance(params, np.ndarray):
-            raise ValueError(
-                "Cavity.from_params no longer supports np.ndarray input. Please provide a list of OpticalSurfaceParams."
-            )
-            # params = [OpticalSurfaceParams.from_array(params[i, :]) for i in range(len(params))]
+    def _resolve_relative_positions(params: List, tiny: float = 1e-16) -> List:
+        # Resolves imaginary "relative" coordinates into absolute (real) ones, returning a deep copy (the input is
+        # never mutated). x/y/z are resolved independently, in flattened order, each relative to the immediately
+        # preceding surface (the first surface's relative step is measured from the ORIGIN, i.e. 0).
+        #   - a pure-real value is absolute and resets the running reference for that axis;
+        #   - a pure-imaginary value v is a step: resolved = previous_resolved + Im(v);
+        #   - a value with both a non-tiny real and a non-tiny imaginary part is ambiguous and raises;
+        #   - tiny components (|.| <= tiny, e.g. numerical noise) are ignored. No physical size is below 1e-12.
+        resolved = copy.deepcopy(params)
+        running = {"x": 0.0, "y": 0.0, "z": 0.0}
+
+        def resolve_leaf(p):
+            for axis in ("x", "y", "z"):
+                value = getattr(p, axis)
+                real_part = float(np.real(value))
+                imag_part = float(np.imag(value))
+                if abs(real_part) > tiny and abs(imag_part) > tiny:
+                    raise ValueError(
+                        f"Mixed real and imaginary components in coordinate '{axis}' of element "
+                        f"'{getattr(p, 'name', None)}' (got {value}). Provide either an absolute (real) value or a "
+                        f"relative (pure imaginary) step, not both."
+                    )
+                if abs(imag_part) > tiny:
+                    new_value = running[axis] + imag_part
+                else:
+                    new_value = real_part
+                setattr(p, axis, new_value)
+                running[axis] = new_value
+
+        def walk(items):
+            for item in items:
+                if isinstance(item, list):
+                    walk(item)
+                else:
+                    resolve_leaf(item)
+
+        walk(resolved)
+        return resolved
+
+    @staticmethod
+    def _build_elements(params: List):
         elements = []
         for i, p in enumerate(params):
             if isinstance(p, list):
                 # Nested group: recursively create inner OpticalSystem (rigid body)
-                inner_elements = OpticalSystem.params_to_elements(p)
+                inner_elements = OpticalSystem._build_elements(p)
                 inner_system = OpticalSystem(inner_elements, given_initial_central_line=None, name=f"element_{i}")
                 elements.append(inner_system)
             else:
@@ -597,9 +652,26 @@ class OpticalSystem:
         return elements
 
     @staticmethod
+    def params_to_elements(
+        params: Union[np.ndarray, List],
+    ):
+        if isinstance(params, np.ndarray):
+            raise ValueError(
+                "Cavity.from_params no longer supports np.ndarray input. Please provide a list of OpticalSurfaceParams."
+            )
+            # params = [OpticalSurfaceParams.from_array(params[i, :]) for i in range(len(params))]
+        resolved = OpticalSystem._resolve_relative_positions(params)
+        return OpticalSystem._build_elements(resolved)
+
+    @staticmethod
     def from_params(params: Union[np.ndarray, list], **kwargs):
-        elements = OpticalSystem.params_to_elements(params)
-        optical_system = OpticalSystem(elements, params=params, **kwargs)
+        if isinstance(params, np.ndarray):
+            raise ValueError(
+                "Cavity.from_params no longer supports np.ndarray input. Please provide a list of OpticalSurfaceParams."
+            )
+        resolved = OpticalSystem._resolve_relative_positions(params)
+        elements = OpticalSystem._build_elements(resolved)
+        optical_system = OpticalSystem(elements, params=resolved, **kwargs)
         return optical_system
 
     @property
@@ -778,6 +850,7 @@ class OpticalSystem:
     def propagate_ray(
         self, ray: Ray, n_arms: Optional[int] = None, propagate_with_first_surface_first: bool = False
     ) -> RaySequence:
+        self._assert_positions_defined("propagate a ray through the optical system")
         ray_history = [ray]
         n_arms = nvl(n_arms, len(self.arms))
 
@@ -811,6 +884,7 @@ class OpticalSystem:
                 (mode_parameters_before_first_surface is not None) +
                 (mode_parameters_after_first_surface is not None)) == 1, "Exactly one of the four mode options should be not None"
 
+        self._assert_positions_defined("propagate mode parameters through the optical system")
 
         n_arms = nvl(n_arms, len(self.arms))
         local_mode_parameters_history = []
@@ -1244,22 +1318,31 @@ class Cavity(OpticalSystem):
         self.debug_printing_level = debug_printing_level
         self.use_paraxial_ray_tracing = use_paraxial_ray_tracing
 
-        if set_central_line:
-            self.set_central_line()
-        if set_mode_parameters:
-            if self.lambda_0_laser is None:
-                raise ValueError("Can not set mode parameters without defining the wavelength. set self.lambda_0_laser")
-            self.set_mode_parameters(
-                mode_parameters_first_arm=initial_mode_parameters,
-                local_mode_parameters_first_surface=initial_local_mode_parameters,
-            )
-        if set_initial_surface:
-            self.set_initial_surface()
+        # When positions are undefined the cavity is still constructed, but all geometry-dependent setup is skipped
+        # silently (it can be run later once the positions are defined).
+        if self.positions_defined:
+            if set_central_line:
+                self.set_central_line()
+            if set_mode_parameters:
+                if self.lambda_0_laser is None:
+                    raise ValueError(
+                        "Can not set mode parameters without defining the wavelength. set self.lambda_0_laser")
+                self.set_mode_parameters(
+                    mode_parameters_first_arm=initial_mode_parameters,
+                    local_mode_parameters_first_surface=initial_local_mode_parameters,
+                )
+            if set_initial_surface:
+                self.set_initial_surface()
 
     @staticmethod
     def from_params(params: Union[np.ndarray, list], **kwargs):
-        elements = OpticalSystem.params_to_elements(params)
-        cavity = Cavity(elements, params=params, **kwargs)
+        if isinstance(params, np.ndarray):
+            raise ValueError(
+                "Cavity.from_params no longer supports np.ndarray input. Please provide a list of OpticalSurfaceParams."
+            )
+        resolved = OpticalSystem._resolve_relative_positions(params)
+        elements = OpticalSystem._build_elements(resolved)
+        cavity = Cavity(elements, params=resolved, **kwargs)
         return cavity
 
     @staticmethod
@@ -1554,6 +1637,7 @@ class Cavity(OpticalSystem):
         return central_line_initial_parameters, central_line_successfully_traced
 
     def set_central_line(self, **kwargs) -> Tuple[np.ndarray, bool]:
+        self._assert_positions_defined("trace the central line")
         if self.standing_wave:
             central_line_initial_parameters, central_line_successfully_traced = self.find_central_line_standing_wave()
         elif self.use_brute_force_for_central_line:
@@ -1603,6 +1687,7 @@ class Cavity(OpticalSystem):
         # Sets the mode parameters sequentially in all arms of the cavity. tries to find a mode solution for the cavity,
         # if it fails, it will set the resonating_mode_successfully_traced to False, and will use the input
         # local_mode_parameters_first_surface instead.
+        self._assert_positions_defined("set the mode parameters")
         if self.central_line_successfully_traced is None:
             self.set_central_line()
         if self.central_line_successfully_traced is False:
@@ -2557,39 +2642,117 @@ def evaluate_gaussian(A: np.ndarray, b: np.ndarray, c: complex, axis_span: float
     return functions_values
 
 
-def _apply_rigid_body_perturbation(sub_params, parameter_name, perturbation_value, mechanical_center):
-    """Apply a perturbation to all params in a nested (rigid-body) group.
-       Currently, does not support perturbations of the radius of curvature or the refractive index, which was possible
-       before implementing the nested optical systems. I did not bother implementing it because I never used those
-       perturbations..."""
+_RIGID_BODY_TRANSLATION_AXES = {'x': np.array([1.0, 0.0, 0.0]),
+                                'y': np.array([0.0, 1.0, 0.0]),
+                                'z': np.array([0.0, 0.0, 1.0])}
+
+
+def _rigid_body_rotation_matrix(theta: float, phi: float, parameter_name: str, perturbation_value: float):
+    # Returns the rotation matrix that rotates the reference normal (given by theta, phi) by perturbing one of its
+    # angles, or None when the rotation is negligible. Shared by the params-based and object-based perturbations.
+    n_old = unit_vector_of_angles(theta, phi)
+    if parameter_name == 'theta':
+        n_new = unit_vector_of_angles(theta + perturbation_value, phi)
+    elif parameter_name == 'phi':
+        n_new = unit_vector_of_angles(theta, phi + perturbation_value)
+    else:
+        raise ValueError(f"'{parameter_name}' is not a rotation parameter (expected 'theta' or 'phi').")
+    cross = np.cross(n_old, n_new)
+    cross_norm = np.linalg.norm(cross)
+    if cross_norm < 1e-15:
+        return None  # no rotation needed
+    rot_axis = cross / cross_norm
+    rot_angle = np.arccos(np.clip(np.dot(n_old, n_new), -1.0, 1.0))
+    return rotation_matrix_around_n(rot_axis, rot_angle)
+
+
+def apply_rigid_body_perturbation_to_params(params, parameter_name, perturbation_value, mechanical_center=None):
+    """Apply a rigid-body perturbation to OpticalSurfaceParams in place.
+
+    ``params`` may be a single ``OpticalSurfaceParams`` or a list of them (a rigid-body group). Only the pose
+    parameters 'x', 'y', 'z' (translation) and 'theta', 'phi' (rotation about ``mechanical_center``) are supported;
+    radius/refractive-index perturbations are intentionally out of scope here. When ``mechanical_center`` is None it
+    defaults to the centroid of the group's centers (the surface's own center for a single params object)."""
+    sub_params = [params] if isinstance(params, OpticalSurfaceParams) else list(params)
+    if mechanical_center is None:
+        mechanical_center = np.mean(np.array([[sp.x, sp.y, sp.z] for sp in sub_params], dtype=float), axis=0)
+
     if parameter_name in ('x', 'y', 'z'):
         for sp in sub_params:
             setattr(sp, parameter_name, getattr(sp, parameter_name) + perturbation_value)
     elif parameter_name in ('theta', 'phi'):
-        # Determine rotation axis and angle from the first surface's orientation.
-        n_old = unit_vector_of_angles(sub_params[0].theta, sub_params[0].phi)
-        if parameter_name == 'theta':
-            n_new = unit_vector_of_angles(sub_params[0].theta + perturbation_value, sub_params[0].phi)
-        else:
-            n_new = unit_vector_of_angles(sub_params[0].theta, sub_params[0].phi + perturbation_value)
-        cross = np.cross(n_old, n_new)
-        cross_norm = np.linalg.norm(cross)
-        if cross_norm < 1e-15:
-            return  # no rotation needed
-        rot_axis = cross / cross_norm
-        rot_angle = np.arccos(np.clip(np.dot(n_old, n_new), -1.0, 1.0))
-        R = rotation_matrix_around_n(rot_axis, rot_angle)
+        R = _rigid_body_rotation_matrix(sub_params[0].theta, sub_params[0].phi, parameter_name, perturbation_value)
+        if R is None:
+            return
         for sp in sub_params:
             center = np.array([sp.x, sp.y, sp.z])
             new_center = mechanical_center + R @ (center - mechanical_center)
             sp.x, sp.y, sp.z = new_center
-            old_normal = unit_vector_of_angles(sp.theta, sp.phi)
-            new_normal = R @ old_normal
+            new_normal = R @ unit_vector_of_angles(sp.theta, sp.phi)
             sp.theta, sp.phi = angles_of_unit_vector(new_normal)
     else:
         raise ValueError(
-            f"Perturbation of '{parameter_name}' is not supported for nested rigid-body OpticalSystem elements. "
+            f"Perturbation of '{parameter_name}' is not supported for rigid-body perturbations. "
             f"Only 'x', 'y', 'z', 'theta', 'phi' are supported."
+        )
+
+
+def apply_rigid_body_perturbation(element, parameter_name, perturbation_value, mechanical_center=None):
+    """Apply a rigid-body perturbation directly to live objects, in place.
+
+    ``element`` may be a single ``Surface`` or an ``OpticalSystem`` (treated as one rigid body via its flattened
+    surfaces). Only pose parameters are supported: 'x', 'y', 'z' (translation) and 'theta', 'phi' (rotation about
+    ``mechanical_center``). When ``mechanical_center`` is None it defaults to the system's ``mechanical_center`` (or
+    the surface's own center for a single surface)."""
+    if isinstance(element, OpticalSystem):
+        surfaces = element._surfaces
+        default_center = element.mechanical_center
+    else:
+        surfaces = [element]
+        default_center = element.center
+    if mechanical_center is None:
+        mechanical_center = default_center
+
+    if parameter_name in ('x', 'y', 'z'):
+        delta = perturbation_value * _RIGID_BODY_TRANSLATION_AXES[parameter_name]
+        for surface in surfaces:
+            surface.center = surface.center + delta
+    elif parameter_name in ('theta', 'phi'):
+        theta, phi = angles_of_unit_vector(surfaces[0].outwards_normal)
+        R = _rigid_body_rotation_matrix(theta, phi, parameter_name, perturbation_value)
+        if R is None:
+            return
+        # Capture the old poses before mutating, because for curved surfaces the center depends on the normal.
+        old_centers = [np.array(surface.center, dtype=float) for surface in surfaces]
+        old_normals = [np.array(surface.outwards_normal, dtype=float) for surface in surfaces]
+        for surface, old_center, old_normal in zip(surfaces, old_centers, old_normals):
+            surface.outwards_normal = R @ old_normal
+            surface.center = mechanical_center + R @ (old_center - mechanical_center)
+    else:
+        raise ValueError(
+            f"Perturbation of '{parameter_name}' is not supported for rigid-body perturbations. "
+            f"Only 'x', 'y', 'z', 'theta', 'phi' are supported."
+        )
+
+
+def _apply_scalar_perturbation_to_surface(surface, parameter_name, perturbation_value):
+    # Non-pose single-surface perturbations (radius, refractive indices). These mirror the effect of editing the
+    # corresponding OpticalSurfaceParams field and rebuilding: radius keeps the surface vertex fixed; an index that
+    # the surface type does not actually use is a silent no-op (as it would be on a from_params round-trip).
+    if parameter_name == ParamsNames.radius:
+        if isinstance(surface, CurvedSurface):
+            surface.radius = surface.radius + perturbation_value
+    elif parameter_name == ParamsNames.n_inside_or_after:
+        if hasattr(surface, 'n_2'):
+            surface.n_2 = surface.n_2 + perturbation_value
+    elif parameter_name == ParamsNames.n_outside_or_before:
+        if hasattr(surface, 'n_1'):
+            surface.n_1 = surface.n_1 + perturbation_value
+    else:
+        raise ValueError(
+            f"Perturbation of '{parameter_name}' is not supported. Supported parameters are the pose parameters "
+            f"('x', 'y', 'z', 'theta', 'phi') and the scalar parameters "
+            f"('{ParamsNames.radius}', '{ParamsNames.n_inside_or_after}', '{ParamsNames.n_outside_or_before}')."
         )
 
 
@@ -2598,23 +2761,23 @@ def perturb_cavity(
     perturbation_pointer: Union[PerturbationPointer, List[PerturbationPointer], Tuple[PerturbationPointer]],
     **kwargs,  # For the initialization of the new cavity
 ):
-    new_params = copy.deepcopy(cavity.to_params)
+    # Work directly on (deep-copied) live elements rather than round-tripping through OpticalSurfaceParams. The
+    # copied elements are the unique input elements (single surfaces and/or nested OpticalSystem rigid bodies); the
+    # new cavity is then rebuilt from them.
+    perturbed_elements = copy.deepcopy(cavity.elements)
     for perturbation_pointer_temp in perturbation_pointer:
-        target = new_params[perturbation_pointer_temp.element_index]
-        if isinstance(target, list):
-            # Nested rigid-body group: get mechanical_center from original cavity element
-            original_element = cavity.elements[perturbation_pointer_temp.element_index]
-            mechanical_center = original_element.mechanical_center
-            _apply_rigid_body_perturbation(
-                target,
-                perturbation_pointer_temp.parameter_name,
-                perturbation_pointer_temp.perturbation_value,
-                mechanical_center,
+        element = perturbed_elements[perturbation_pointer_temp.element_index]
+        parameter_name = perturbation_pointer_temp.parameter_name
+        perturbation_value = perturbation_pointer_temp.perturbation_value
+        if parameter_name in ('x', 'y', 'z', 'theta', 'phi'):
+            apply_rigid_body_perturbation(element, parameter_name, perturbation_value)
+        elif isinstance(element, OpticalSystem):
+            raise ValueError(
+                f"Perturbation of '{parameter_name}' is not supported for nested rigid-body OpticalSystem elements. "
+                f"Only 'x', 'y', 'z', 'theta', 'phi' are supported."
             )
         else:
-            current_value = getattr(target, perturbation_pointer_temp.parameter_name)
-            new_value = current_value + perturbation_pointer_temp.perturbation_value
-            setattr(target, perturbation_pointer_temp.parameter_name, new_value)
+            _apply_scalar_perturbation_to_surface(element, parameter_name, perturbation_value)
 
     parameters_names = [p.parameter_name for p in perturbation_pointer]
 
@@ -2628,8 +2791,8 @@ def perturb_cavity(
     t_is_trivial = cavity.t_is_trivial and not perturbance_in_z
     p_is_trivial = cavity.p_is_trivial and not perturbance_in_y
 
-    new_cavity = Cavity.from_params(
-        params=new_params,
+    new_cavity = Cavity(
+        elements=perturbed_elements,
         standing_wave=cavity.standing_wave,
         lambda_0_laser=cavity.lambda_0_laser,
         t_is_trivial=t_is_trivial,

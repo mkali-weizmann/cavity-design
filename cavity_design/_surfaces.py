@@ -37,18 +37,35 @@ from ._rays import Ray
 class Surface:
     def __init__(
         self,
-        outwards_normal: np.ndarray,
-        radius: float,
+        outwards_normal: Optional[np.ndarray] = None,
+        radius: float = np.nan,
         name: Optional[str] = None,
         diameter: Optional[float] = None,
         material_properties: MaterialProperties = None,
         **kwargs,
     ):
-        self.outwards_normal = normalize_vector(outwards_normal)
+        self.outwards_normal = outwards_normal  # Goes through the (nan-safe, normalizing) setter below.
         self.name = name
         self.radius = radius
         self.diameter = diameter
         self.material_properties = material_properties
+
+    @property
+    def outwards_normal(self) -> np.ndarray:
+        return self._outwards_normal
+
+    @outwards_normal.setter
+    def outwards_normal(self, value: Optional[np.ndarray]):
+        # An undefined normal is stored as a size-3 nan array (to preserve structure). A well defined normal
+        # is normalized. nan components are passed through untouched (no normalization).
+        if value is None:
+            self._outwards_normal = np.full(3, np.nan)
+        else:
+            value = np.asarray(value, dtype=float)
+            if np.any(np.isnan(value)):
+                self._outwards_normal = value
+            else:
+                self._outwards_normal = normalize_vector(value)
 
     @property
     def center(self):
@@ -61,6 +78,15 @@ class Surface:
     @property
     def inwards_normal(self):
         return -self.outwards_normal
+
+    @inwards_normal.setter
+    def inwards_normal(self, value: Optional[np.ndarray]):
+        self.outwards_normal = None if value is None else -np.asarray(value, dtype=float)
+
+    @property
+    def positions_defined(self) -> bool:
+        # True only when both the orientation and the location of the surface are fully specified (no nans).
+        return (not np.any(np.isnan(self.outwards_normal))) and (not np.any(np.isnan(self.center)))
 
     def normal_at_a_point(self, point: np.ndarray) -> np.ndarray:
         # Pointing outwards towards the convex side
@@ -562,8 +588,7 @@ class AsphericSurface(Surface):
         **kwargs,
     ):
         super().__init__(outwards_normal=outwards_normal, name=name, radius=np.nan, **kwargs)
-        self._center = center
-        self.outwards_normal = normalize_vector(outwards_normal)
+        self._center = np.full(3, np.nan) if center is None else np.asarray(center, dtype=float)
         self.curvature_sign = curvature_sign
         self.name = name
         self.diameter = diameter
@@ -849,23 +874,28 @@ class AsphericRefractiveSurface(AsphericSurface, RefractiveSurface):
 class FlatSurface(Surface):
     def __init__(
         self,
-        outwards_normal: np.ndarray,
+        outwards_normal: Optional[np.ndarray] = None,
         distance_from_origin: Optional[float] = None,
         center: Optional[np.ndarray] = None,
         name: Optional[str] = None,
         **kwargs,
     ):
         super().__init__(outwards_normal=outwards_normal, name=name, radius=np.inf, **kwargs)
-        if distance_from_origin is None and center is None:
-            raise ValueError("Either distance_from_origin or center must be specified")
         if distance_from_origin is not None and center is not None:
             raise ValueError("Only one of distance_from_origin or center must be specified")
+        # An undefined position is stored as a size-3 nan center. distance_from_origin is a derived property.
         if distance_from_origin is not None:
-            self.distance_from_origin = distance_from_origin
             self.center_of_mirror_private = self.outwards_normal * distance_from_origin
-        if center is not None:
-            self.center_of_mirror_private = center
-            self.distance_from_origin = center @ self.outwards_normal
+        elif center is not None:
+            self.center_of_mirror_private = np.asarray(center, dtype=float)
+        else:
+            self.center_of_mirror_private = np.full(3, np.nan)
+
+    @property
+    def distance_from_origin(self):
+        # Signed distance of the plane from the global origin along the outwards normal. Derived from the center so
+        # it always stays consistent when either the center or the normal is updated through their setters.
+        return self.center_of_mirror_private @ self.outwards_normal
 
     def find_intersection_with_ray_exact(self, ray: Ray) -> np.ndarray:
         surface_reference_point = self.outwards_normal * self.distance_from_origin
@@ -924,8 +954,8 @@ class FlatSurface(Surface):
 
     @center.setter
     def center(self, value: np.ndarray):
-        self.center_of_mirror_private = value
-        self.distance_from_origin = value @ self.outwards_normal
+        # distance_from_origin is derived from this, so nothing else to update.
+        self.center_of_mirror_private = np.asarray(value, dtype=float)
 
     def parameterization(self, t: Union[np.ndarray, float], p: Union[np.ndarray, float]):
         pseudo_z, pseudo_y = self.spanning_vectors()
@@ -951,7 +981,7 @@ class FlatMirror(FlatSurface, ReflectiveSurface):
 
     def __init__(
         self,
-        outwards_normal: np.ndarray,
+        outwards_normal: Optional[np.ndarray] = None,
         distance_from_origin: Optional[float] = None,
         center: Optional[np.ndarray] = None,
         name: Optional[str] = None,
@@ -990,9 +1020,8 @@ class FlatMirror(FlatSurface, ReflectiveSurface):
         # Assumes the ray is in the x-y plane, and the mirror is in the z-x plane
         return np.array([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, -1, 0], [0, 0, 0, -1]])
 
-    @property
-    def radius(self):
-        return np.inf
+    # radius is a plain attribute set to np.inf by FlatSurface.__init__ (no read-only property, so the base
+    # `self.radius = radius` assignment does not fail).
 
     def thermal_transformation(self, P_laser_power: float, w_spot_size: float, **kwargs):
         raise NotImplementedError
@@ -1002,7 +1031,7 @@ class FlatRefractiveSurface(FlatSurface, RefractiveSurface):
 
     def __init__(
         self,
-        outwards_normal: np.ndarray,
+        outwards_normal: Optional[np.ndarray] = None,
         distance_from_origin: Optional[float] = None,
         center: Optional[np.ndarray] = None,
         n_1: float = 1,
@@ -1042,7 +1071,7 @@ class FlatRefractiveSurface(FlatSurface, RefractiveSurface):
 class IdealLens(FlatSurface, PhysicalSurface):
     def __init__(
         self,
-        outwards_normal: np.ndarray,
+        outwards_normal: Optional[np.ndarray] = None,
         distance_from_origin: Optional[float] = None,
         center: Optional[np.ndarray] = None,
         focal_length: Optional[float] = None,
@@ -1130,8 +1159,8 @@ class IdealLens(FlatSurface, PhysicalSurface):
 class CurvedSurface(Surface):
     def __init__(
         self,
-        radius: float,
-        outwards_normal: np.ndarray,  # Pointing from the origin of the sphere to the mirror's center.
+        radius: float = np.nan,
+        outwards_normal: Optional[np.ndarray] = None,  # Pointing from the origin of the sphere to the mirror's center.
         center: Optional[np.ndarray] = None,  # Not the center of the sphere but the center of
         # the plate.
         origin: Optional[np.ndarray] = None,  # The center of the sphere.
@@ -1144,14 +1173,16 @@ class CurvedSurface(Surface):
     ):
         super().__init__(outwards_normal=outwards_normal, name=name, radius=radius, **kwargs)
         self.curvature_sign = curvature_sign
-        if origin is None and center is None:
-            raise ValueError("Either origin or center must be provided.")
-        elif origin is not None and center is not None:
+        # An undefined position is stored as a size-3 nan origin. The origin is the center of the sphere; it is derived
+        # from the surface center (the vertex) via the inwards normal when a center is given instead.
+        if origin is not None and center is not None:
             raise ValueError("Only one of origin and center must be provided.")
-        elif origin is None:
-            self.origin = center + radius * self.inwards_normal
+        elif center is not None:
+            self.origin = np.asarray(center, dtype=float) + radius * self.inwards_normal
+        elif origin is not None:
+            self.origin = np.asarray(origin, dtype=float)
         else:
-            self.origin = origin
+            self.origin = np.full(3, np.nan)
 
     def find_intersection_with_ray_exact(self, ray: Ray) -> np.ndarray:
         # The following expression is the result of calculation "Intersection of a parameterized line and a sphere"
@@ -1209,7 +1240,22 @@ class CurvedSurface(Surface):
 
     @center.setter
     def center(self, value: np.ndarray):
-        self.origin = value + self.radius * self.inwards_normal
+        self.origin = np.asarray(value, dtype=float) + self.radius * self.inwards_normal
+
+    @property
+    def radius(self):
+        return self._radius
+
+    @radius.setter
+    def radius(self, value: float):
+        # Changing the radius keeps the surface center (the vertex) fixed and moves the sphere origin accordingly,
+        # matching the convention used when rebuilding a surface from its params (where x/y/z is the vertex).
+        if hasattr(self, "origin") and not np.any(np.isnan(self.center)):
+            center = self.center
+            self._radius = value
+            self.origin = center + value * self.inwards_normal
+        else:
+            self._radius = value
 
     def get_spanning_vectors(self):
         # For the case of the sphere with normal on the x-axis, those will be the y and z axis.

@@ -1,4 +1,7 @@
+import copy
+
 import numpy as np
+import pytest
 from numpy.polynomial import Polynomial
 
 
@@ -811,3 +814,118 @@ def test_rigid_body_rotation_perturbation():
                            np.cos(sp.theta)])
         assert abs(normal[0]) < 1.0 - 1e-6, \
             f"Normal should no longer be purely along x after rotation, got normal={normal}"
+
+
+# ---------------------------------------------------------------------------
+# Flexible positioning: undefined poses, setters, relative coordinates,
+# object-based rigid-body perturbation
+# ---------------------------------------------------------------------------
+
+def _simple_mirror_params(name, x, phi):
+    return OpticalSurfaceParams(
+        name=name, surface_type="curved_mirror", x=x, y=0, z=0, theta=0, phi=phi,
+        radius=5e-3, curvature_sign=CurvatureSigns.concave, T_c=np.nan,
+        n_inside_or_after=1, n_outside_or_before=1, diameter=0.01,
+        material_properties=MaterialProperties(),
+    )
+
+
+def test_surface_undefined_pose_and_setters():
+    # A curved surface can be created with undefined (nan) pose, and the setters bring it to a defined state.
+    R = 5e-3
+    m = CurvedMirror(radius=R, outwards_normal=None, center=None, curvature_sign=CurvatureSigns.concave)
+    assert not m.positions_defined
+    assert np.all(np.isnan(m.center)) and np.all(np.isnan(m.outwards_normal))
+
+    m.outwards_normal = np.array([-1.0, 0.0, 0.0])
+    m.center = np.array([-R, 0.0, 0.0])
+    assert m.positions_defined
+    assert np.allclose(m.center, [-R, 0.0, 0.0], atol=1e-15)
+    # origin is the sphere center = vertex + R * inwards_normal = [-R,0,0] + R*[1,0,0] = [0,0,0]
+    assert np.allclose(m.origin, [0.0, 0.0, 0.0], atol=1e-15)
+
+    # The curved center setter round-trips with the getter for an arbitrary normal/center.
+    m.outwards_normal = np.array([1.0, 2.0, 0.0])
+    target_center = np.array([3e-3, -1e-3, 0.5e-3])
+    m.center = target_center
+    assert np.allclose(m.center, target_center, atol=1e-15)
+
+    # radius setter keeps the vertex fixed and moves the sphere origin.
+    m.outwards_normal = np.array([-1.0, 0.0, 0.0])
+    m.center = np.array([-R, 0.0, 0.0])
+    m.radius = R + 1e-3
+    assert np.isclose(m.radius, R + 1e-3)
+    assert np.allclose(m.center, [-R, 0.0, 0.0], atol=1e-15)
+
+
+def test_undefined_optical_system_construction_skips_and_raises():
+    # A cavity with an undefined-pose element constructs without error and skips tracing; explicit calls raise.
+    R = 5e-3
+    m1 = CurvedMirror(radius=R, outwards_normal=np.array([-1.0, 0, 0]), center=np.array([-R, 0, 0]),
+                      curvature_sign=CurvatureSigns.concave, diameter=0.01)
+    m2 = CurvedMirror(radius=R, outwards_normal=None, center=None,
+                      curvature_sign=CurvatureSigns.concave, diameter=0.01)  # undefined
+    cavity = Cavity([m1, m2], standing_wave=True, lambda_0_laser=LAMBDA_0_LASER)
+    assert not cavity.positions_defined
+    assert cavity.central_line is None
+    with pytest.raises(ValueError):
+        cavity.set_central_line()
+
+
+def test_relative_coordinate_resolution():
+    from cavity_design import OpticalSystem
+    p0 = _simple_mirror_params("a", x=-5e-3, phi=np.pi)
+    p1_abs = _simple_mirror_params("b", x=5e-3, phi=0)
+    # Relative: previous resolved x is -5e-3, a +10e-3 step lands on +5e-3.
+    p1_rel = _simple_mirror_params("b", x=10e-3 * 1j, phi=0)
+
+    sys_abs = OpticalSystem.from_params([p0, p1_abs], given_initial_central_line=None)
+    sys_rel = OpticalSystem.from_params([p0, p1_rel], given_initial_central_line=None)
+    assert np.allclose(sys_rel.surfaces[1].center, sys_abs.surfaces[1].center, atol=1e-15)
+    assert np.isclose(sys_rel.surfaces[1].center[0], 5e-3)
+
+    # A tiny imaginary part (numerical noise) is treated as absolute, not relative.
+    p1_tiny = _simple_mirror_params("b", x=5e-3 + 1e-18j, phi=0)
+    sys_tiny = OpticalSystem.from_params([p0, p1_tiny], given_initial_central_line=None)
+    assert np.isclose(sys_tiny.surfaces[1].center[0], 5e-3)
+
+    # A genuinely mixed real+imaginary coordinate is ambiguous and must raise.
+    p1_mixed = _simple_mirror_params("b", x=1e-3 + 3e-3j, phi=0)
+    with pytest.raises(ValueError):
+        OpticalSystem.from_params([p0, p1_mixed], given_initial_central_line=None)
+
+
+def test_object_vs_params_rigid_body_parity():
+    from cavity_design import apply_rigid_body_perturbation, apply_rigid_body_perturbation_to_params, unit_vector_of_angles
+    lens = _make_lens_group(center_x=0.0)  # OpticalSystem with explicit mechanical_center
+    base_params = lens.to_params  # list of 2 OpticalSurfaceParams
+
+    for parameter_name, value in [("y", 1e-4), ("theta", 0.02), ("phi", -0.013)]:
+        lens_obj = copy.deepcopy(lens)
+        params = copy.deepcopy(base_params)
+        apply_rigid_body_perturbation(lens_obj, parameter_name, value)
+        apply_rigid_body_perturbation_to_params(params, parameter_name, value,
+                                                mechanical_center=lens.mechanical_center)
+        for surf, p in zip(lens_obj._surfaces, params):
+            assert np.allclose(surf.center, [p.x, p.y, p.z], atol=1e-12), \
+                f"{parameter_name}: center mismatch {surf.center} vs {[p.x, p.y, p.z]}"
+            assert np.allclose(surf.outwards_normal, unit_vector_of_angles(p.theta, p.phi), atol=1e-12), \
+                f"{parameter_name}: normal mismatch"
+
+
+def test_perturb_cavity_radius_preserves_vertex():
+    # The object-based scalar perturbation of a mirror radius keeps the vertex fixed and changes the radius.
+    R = 5e-3
+    m1 = CurvedMirror(radius=R, outwards_normal=np.array([-1.0, 0, 0]), center=np.array([-R, 0, 0]),
+                      curvature_sign=CurvatureSigns.concave, diameter=0.01)
+    m2 = CurvedMirror(radius=R, outwards_normal=np.array([1.0, 0, 0]), center=np.array([R - 1e-5, 0, 0]),
+                      curvature_sign=CurvatureSigns.concave, diameter=0.01)
+    cavity = Cavity([m1, m2], standing_wave=True, lambda_0_laser=LAMBDA_0_LASER, set_mode_parameters=False)
+    vertex_before = cavity.surfaces[0].center.copy()
+
+    dR = 1e-4
+    pp = PerturbationPointer(element_index=0, parameter_name="radius", perturbation_value=dR)
+    new_cavity = perturb_cavity(cavity, [pp], set_mode_parameters=False)
+
+    assert np.isclose(new_cavity.surfaces[0].radius, R + dR)
+    assert np.allclose(new_cavity.surfaces[0].center, vertex_before, atol=1e-12)

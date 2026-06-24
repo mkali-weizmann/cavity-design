@@ -25,7 +25,9 @@
       "PowerShell(& \"C:\\\\Python311\\\\python.exe\" -m pip install --ignore-installed --user matplotlib==3.9.4 2>&1 | Select-Object -Last 15)",
       "PowerShell(& \"C:\\\\Python311\\\\python.exe\" -c \"from matplotlib.backends.qt_compat import QtWidgets; print\\('OK'\\)\" 2>&1)",
       "Bash(python -m pip show pywin32)",
-      "Bash(python *)"
+      "Bash(python *)",
+      "PowerShell(& \"C:\\\\venvs\\\\cavity-design\\\\Scripts\\\\python.exe\" -m pytest tests/test_cavity.py -q 2>&1 | Select-Object -Last 60)",
+      "PowerShell(& \"C:\\\\venvs\\\\cavity-design\\\\Scripts\\\\python.exe\" -c \"import cavity_design as cd; print\\('apply_rigid_body_perturbation' in dir\\(cd\\)\\); print\\('apply_rigid_body_perturbation_to_params' in dir\\(cd\\)\\); from cavity_design import apply_rigid_body_perturbation, apply_rigid_body_perturbation_to_params; print\\('import OK'\\)\")"
     ]
   }
 }
