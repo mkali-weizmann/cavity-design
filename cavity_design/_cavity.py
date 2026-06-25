@@ -580,7 +580,7 @@ class OpticalSystem:
     def __iter__(self):
         return iter(self.elements)
 
-    def place_elements(self, elements, position, reference_center=None):
+    def place_elements(self, elements, position, reference_center=None, recalculate_optic=True):
         """Move one or more of this system's own elements to a target position, in place.
 
         ``elements`` is a single element (a ``Surface`` or a nested ``OpticalSystem``) belonging to this system, or a
@@ -653,14 +653,14 @@ class OpticalSystem:
                 phi_symmetry_broken=abs(displacement[1]) > POSITION_TINY,
             )
             self._sync_config_to_nested()
-
-        if had_central_line:
-            if isinstance(self, Cavity):
-                self.set_central_line()
-            else:
-                self.set_given_central_line(self.default_initial_ray)
-        if had_mode_parameters and isinstance(self, Cavity):
-            self.set_mode_parameters()
+        if recalculate_optic:
+            if had_central_line:
+                if isinstance(self, Cavity):
+                    self.set_central_line()
+                else:
+                    self.set_given_central_line(self.default_initial_ray)
+            if had_mode_parameters and isinstance(self, Cavity):
+                self.set_mode_parameters()
         return self
 
     def with_elements_placed(self, elements, position, reference_center=None):
