@@ -528,7 +528,9 @@ class OpticalSystem:
         self.central_line_successfully_traced: Optional[bool] = None
         self.resonating_mode_successfully_traced: Optional[bool] = None
         self.lambda_0_laser: Optional[float] = lambda_0_laser
-        self.params = params
+        # params are intentionally NOT stored: to_params is always regenerated from the live elements, so in-place
+        # edits (e.g. place_elements) are always reflected. The params kwarg is still accepted for backward
+        # compatibility (callers may pass it), but it is otherwise unused.
         self.power = power
         self.p_is_trivial = p_is_trivial
         self.t_is_trivial = t_is_trivial
@@ -608,8 +610,10 @@ class OpticalSystem:
             offset = np.asarray(reference_center, dtype=float)
         target = position + offset
 
-        # Whether geometry-dependent results existed before tells us what to refresh afterwards.
-        had_central_line = self.central_line_successfully_traced is not None
+        # Whether geometry-dependent results existed before tells us what to refresh afterwards. central_line covers a
+        # plain OpticalSystem (set via set_given_central_line, which never sets central_line_successfully_traced),
+        # while central_line_successfully_traced also catches a Cavity whose trace was attempted but failed.
+        had_central_line = self.central_line is not None or self.central_line_successfully_traced is not None
         had_mode_parameters = self.resonating_mode_successfully_traced is not None
 
         first = elements[0]
@@ -855,15 +859,9 @@ class OpticalSystem:
 
     @property
     def to_params(self):
-        if self.params is not None:
-            return self.params
-        result = []
-        for el in self.elements:
-            if isinstance(el, OpticalSystem):
-                result.append(el.to_params)
-            else:
-                result.append(el.to_params)
-        return result
+        # Always regenerated from the live elements (a nested OpticalSystem yields a nested list via its own
+        # to_params), so any in-place geometry edit is reflected. Never cached.
+        return [el.to_params for el in self.elements]
 
     @property
     def formatted_textual_params(self) -> str:
@@ -1587,15 +1585,9 @@ class Cavity(OpticalSystem):
 
     @property
     def to_params(self):
-        if self.params is not None:
-            return self.params
-        result = []
-        for el in self._input_elements:
-            if isinstance(el, OpticalSystem):
-                result.append(el.to_params)
-            else:
-                result.append(el.to_params)
-        return result
+        # Always regenerated from the live (unique, forward) input elements, never cached, so in-place geometry edits
+        # are reflected.
+        return [el.to_params for el in self._input_elements]
 
     @property
     def perturbable_params_names(self):
@@ -4140,19 +4132,16 @@ def optical_system_to_cavity_completion(
             **end_mirror_kwargs,
         )
 
-    if optical_system.params is not None:
-        cavity = Cavity.from_params(
-            params=[*optical_system.to_params, end_mirror.to_params],
-            lambda_0_laser=optical_system.lambda_0_laser,
-            t_is_trivial=True,
-            p_is_trivial=True,
-            use_paraxial_ray_tracing=optical_system.use_paraxial_ray_tracing,
-            standing_wave=True,
-        )
-    else:
-        cavity = Cavity(elements=[*optical_system.elements, end_mirror], standing_wave=True,
-                        lambda_0_laser=optical_system.lambda_0_laser, t_is_trivial=True, p_is_trivial=True,
-                        use_paraxial_ray_tracing=optical_system.use_paraxial_ray_tracing)
+    # to_params is regenerated from the live elements, so it reflects any in-place edits (e.g. place_elements) to the
+    # optical system's geometry before completion.
+    cavity = Cavity.from_params(
+        params=[*optical_system.to_params, end_mirror.to_params],
+        lambda_0_laser=optical_system.lambda_0_laser,
+        t_is_trivial=True,
+        p_is_trivial=True,
+        use_paraxial_ray_tracing=optical_system.use_paraxial_ray_tracing,
+        standing_wave=True,
+    )
     return cavity
     # if not (
     #     end_mirror_ROC is not None and end_mirror_distance_to_last_element is not None

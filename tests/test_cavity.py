@@ -1057,6 +1057,39 @@ def test_with_elements_placed_is_nondestructive():
     assert np.allclose(moved2[1].center, cavity[0].center + np.array([0.0, 0.0, 4e-3]), atol=1e-12)
 
 
+def test_to_params_reflects_in_place_edits():
+    from cavity_design import OpticalSystem, set_element_position
+    # to_params must regenerate from the live elements, not return a copy cached at construction (otherwise an
+    # in-place move is invisible to anything that rebuilds from params, e.g. optical_system_to_cavity_completion).
+    m0 = CurvedMirror(radius=5e-3, outwards_normal=np.array([-1.0, 0, 0]), center=np.array([-5e-3, 0, 0]),
+                      curvature_sign=CurvatureSigns.concave, diameter=0.01)
+    m1 = CurvedMirror(radius=5e-3, outwards_normal=np.array([1.0, 0, 0]), center=np.array([5e-3, 0, 0]),
+                      curvature_sign=CurvatureSigns.concave, diameter=0.01)
+    sys = OpticalSystem.from_params([m0.to_params, m1.to_params], given_initial_central_line=None,
+                                    lambda_0_laser=LAMBDA_0_LASER)
+    assert np.isclose(sys.to_params[1].x, 5e-3)
+    set_element_position(sys.elements[1], np.array([8e-3, 0.0, 0.0]))
+    assert np.isclose(sys.to_params[1].x, 8e-3)  # regenerated, not the stale cached value
+
+
+def test_place_elements_refreshes_plain_optical_system_central_line():
+    from cavity_design import OpticalSystem
+    # A plain OpticalSystem traces its central line via set_given_central_line, which never sets
+    # central_line_successfully_traced; place_elements must still detect the existing line and refresh it.
+    m0 = CurvedMirror(radius=5e-3, outwards_normal=np.array([-1.0, 0, 0]), center=np.array([-5e-3, 0, 0]),
+                      curvature_sign=CurvatureSigns.concave, diameter=0.01)
+    m1 = CurvedMirror(radius=5e-3, outwards_normal=np.array([1.0, 0, 0]), center=np.array([5e-3, 0, 0]),
+                      curvature_sign=CurvatureSigns.concave, diameter=0.01)
+    sys = OpticalSystem([m0, m1], lambda_0_laser=LAMBDA_0_LASER)
+    assert sys.central_line is not None
+    assert sys.central_line_successfully_traced is None  # plain OpticalSystem never sets this flag
+    assert np.isclose(sys.arms[0].central_line.length, 10e-3)
+
+    sys.place_elements(sys.elements[1], np.array([8e-3, 0.0, 0.0]))
+    # The central line must reflect the moved geometry (mirror at -5mm to the surface now at +8mm).
+    assert np.isclose(sys.arms[0].central_line.length, 13e-3)
+
+
 def test_surface_level_relative_position_resolved_at_construction():
     from cavity_design import OpticalSystem
     # First surface real (anchor), second encoded as a +10mm relative step in x (pure imaginary).

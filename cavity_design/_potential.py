@@ -440,7 +440,7 @@ def generate_negative_lens_cavity(
     )
     negative_lens_params = [s.to_params for s in negative_lens_surfaces]
     optical_system_without_last_mirror = OpticalSystem.from_params(
-        params=[mirror_left.to_params, *optical_system_lens.params, negative_lens_params],
+        params=[mirror_left.to_params, *optical_system_lens.to_params, negative_lens_params],
         lambda_0_laser=LAMBDA_0_LASER,
         p_is_trivial=True,
         t_is_trivial=True,
@@ -454,7 +454,7 @@ def generate_negative_lens_cavity(
 
     if right_mirror_distance_to_negative_lens_front is not None and unconcentricity is not None:
         optical_system_lenses_only = OpticalSystem.from_params(
-            params=[*optical_system_lens.params, negative_lens_params],
+            params=[*optical_system_lens.to_params, negative_lens_params],
             lambda_0_laser=LAMBDA_0_LASER,
             p_is_trivial=True,
             t_is_trivial=True,
@@ -478,7 +478,7 @@ def generate_negative_lens_cavity(
             material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"],
         )
         cavity = Cavity.from_params(
-            params=[mirror_left.to_params, *optical_system_lens.params, negative_lens_params, mirror_right.to_params],
+            params=[mirror_left.to_params, *optical_system_lens.to_params, negative_lens_params, mirror_right.to_params],
             lambda_0_laser=LAMBDA_0_LASER,
             p_is_trivial=True,
             t_is_trivial=True,
