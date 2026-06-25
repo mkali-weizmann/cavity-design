@@ -1,5 +1,6 @@
 from cavity_design import *
 from tqdm import tqdm
+from matplotlib.ticker import LogLocator, ScalarFormatter
 
 params = [
           OpticalSurfaceParams(name='Laser Optik Mirror'     ,surface_type='curved_mirror'                  , x=-5e-03                  , y=0                       , z=0                       , theta=0                       , phi=1e+00 * np.pi           , radius=5e-03                   , curvature_sign=CurvatureSigns.concave, T_c=np.nan                  , n_inside_or_after=1e+00                   , n_outside_or_before=1e+00                   , diameter=7.75e-03                , material_properties=MaterialProperties(refractive_index=1.45e+00                , alpha_expansion=5.2e-07                 , beta_surface_absorption=1e-06                   , kappa_conductivity=1.38e+00                , dn_dT=1.2e-05                 , nu_poisson_ratio=1.6e-01                 , alpha_volume_absorption=1e-03                   , intensity_reflectivity=1e-04                   , intensity_transmittance=9.99899e-01             , temperature=np.nan                  ), polynomial_coefficients=None), [
@@ -59,9 +60,11 @@ plt.show()
 # %% 2d map:
 cavity = Cavity.from_params(params=params, standing_wave=True,
                                     lambda_0_laser=LAMBDA_0_LASER, power=28e3, p_is_trivial=True, t_is_trivial=True, use_paraxial_ray_tracing=True, set_central_line=True, set_mode_parameters=True)
-long_arm_lengths = np.array([20e-2, 25e-2, 30e-2, 35e-2, 40e-2])
-short_arm_lengths = np.linspace(7.322e-3, 8e-3, 100)
+long_arm_lengths = np.array([25e-2, 29.5e-2, 35e-2, 40e-2])
+short_arm_lengths = np.concatenate([np.linspace(7.322e-3, 7.5e-3, 50),
+                                    np.linspace(7.5e-3, 8e-3, 50)])
 NAs = np.zeros(shape=(len(long_arm_lengths), len(short_arm_lengths)))
+mode_spacings = np.full(shape=(len(long_arm_lengths), len(short_arm_lengths)), fill_value=np.nan)
 focii_to_lens = np.zeros(shape=(len(long_arm_lengths)))
 for i, long_arm_length in enumerate(long_arm_lengths):  #
     cavity.place_elements(elements=cavity[-1], position=long_arm_length * RIGHT, reference_center=cavity.surfaces[2], recalculate_optic=False)
@@ -69,6 +72,7 @@ for i, long_arm_length in enumerate(long_arm_lengths):  #
     for j, short_arm_length in enumerate(short_arm_lengths):
         cavity.place_elements(elements=cavity[1], position = short_arm_length * RIGHT, reference_center=cavity[0])
         NAs[i, j] = cavity.arms[0].mode_parameters.NA[0]
+        mode_spacings[i, j] = cavity.delta_f_frequency_transversal_apparent
         if j == 0:
             focii_to_lens[i] = cavity.surfaces[-1].center[0] - cavity.surfaces[2].center[0] - cavity.surfaces[-1].radius
         if cavity.arms[0].mode_parameters.NA[0] > 0.07 and flag is False:
@@ -76,19 +80,34 @@ for i, long_arm_length in enumerate(long_arm_lengths):  #
             flag=True
 # %%
 fig, ax = plt.subplots(figsize=(10, 6))
+ax2 = ax.twinx()
 for i in range(len(long_arm_lengths)):
     ax.plot(short_arm_lengths * 1e3, NAs[i, :], label=f"Long arm length = {long_arm_lengths[i]*100:.2f}cm, focus-to-lens = {focii_to_lens[i] * 100:.2f}cm")
+    ax2.plot(short_arm_lengths * 1e3, mode_spacings[i, :] / 1e6, linestyle='--', label=f"Long arm length = {long_arm_lengths[i]*100:.2f}cm, focus-to-lens = {focii_to_lens[i] * 100:.2f}cm - Mode spacing [MHz]")
+
 ax.set_xlabel('Short Arm Length (mm)')
 ax.set_ylabel('Short Arm Numerical Aperture')
 ax.axvline(7.32, color='k', linestyle='--', linewidth=1, label='Collimation point')
 ax.legend()
+ax.set_ylim(0, 0.15)
 ax.grid()
 plt.tight_layout()
 plt.savefig("outputs/figures/NA as a function of mirrors.svg")
 # plt.savefig(r'figures\NA_as_a_function_of_big_mirror')
 plt.show()
 
-
+fig, ax = plt.subplots(figsize=(10, 6))
+for i in range(len(long_arm_lengths)):
+    ax.plot(NAs[i, :], mode_spacings[i, :] / 1e6, label=f"Long arm={long_arm_lengths[i]*1e2:.2f}cm")
+ax.set_xlabel("NA")
+ax.set_ylabel("Mode spacing [MHz]")
+ax.legend()
+ax.set_yscale('log')
+ax.yaxis.set_major_locator(LogLocator(base=10, subs=[1, 2, 3, 4, 5, 6, 7, 8, 9], numticks=15))
+ax.yaxis.set_major_formatter(ScalarFormatter())
+ax.grid()
+plt.tight_layout()
+plt.show()
 
 # %% Long arm perturbation
 perturbations_large_mirror = np.linspace(-4e-2, 4e-2, 100)

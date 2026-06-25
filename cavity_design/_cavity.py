@@ -2427,7 +2427,7 @@ class Cavity(OpticalSystem):
             or self.arms[0].mode_parameters_on_surface_0.z_R[0] == 0
             or np.isnan(self.arms[0].mode_parameters_on_surface_0.z_R[0])
         ):
-            return None
+            return np.nan
         if (
             np.abs(self.arms[0].mode_parameters_on_surface_0.z_R[0] - self.arms[0].mode_parameters_on_surface_0.z_R[1])
             < 1e-14
@@ -2441,6 +2441,7 @@ class Cavity(OpticalSystem):
             raise NotImplementedError(
                 "The calculation of the frequency difference between the transversal modes is not implemented for astigmatic cavities."
             )
+
     @property
     def delta_f_frequency_transversal_apparent(self):
         fsr = self.free_spectral_range
