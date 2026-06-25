@@ -34,7 +34,9 @@
       "PowerShell(& \"C:\\\\venvs\\\\cavity-design\\\\Scripts\\\\python.exe\" -m pytest tests/test_cavity.py -q -p no:cacheprovider -W \"ignore\" 2>&1 | Select-Object -Last 30)",
       "Bash(C:/venvs/cavity-design/Scripts/python.exe -c ' *)",
       "Bash(C:/venvs/cavity-design/Scripts/python.exe -m pytest tests/test_cavity.py -q -p no:cacheprovider -W ignore)",
-      "Bash(C:/venvs/cavity-design/Scripts/python.exe -m pytest tests/test_cavity.py -q -p no:cacheprovider -W ignore -k \"place_elements or undefined_surface or set_element_position\")"
+      "Bash(C:/venvs/cavity-design/Scripts/python.exe -m pytest tests/test_cavity.py -q -p no:cacheprovider -W ignore -k \"place_elements or undefined_surface or set_element_position\")",
+      "Bash(C:/venvs/cavity-design/Scripts/python.exe \"C:/Users/michaeka/AppData/Local/Temp/claude/C--Users-michaeka-Weizmann-Institute-Dropbox-Michael-Kali-Labs-Dropbox-Laser-Phase-Plate-cavity-design/ebb5aa9c-1892-4de1-ab67-866e08e91162/scratchpad/smoke_overlap_thermal.py\")",
+      "Bash(PYTHONPATH=\"C:/Users/michaeka/Weizmann Institute Dropbox/Michael Kali/Labs Dropbox/Laser Phase Plate/cavity-design\" C:/venvs/cavity-design/Scripts/python.exe \"C:/Users/michaeka/AppData/Local/Temp/claude/C--Users-michaeka-Weizmann-Institute-Dropbox-Michael-Kali-Labs-Dropbox-Laser-Phase-Plate-cavity-design/ebb5aa9c-1892-4de1-ab67-866e08e91162/scratchpad/smoke_overlap_thermal.py\")"
     ]
   }
 }

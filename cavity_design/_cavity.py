@@ -183,8 +183,9 @@ class Arm:
         mode_parameters_on_surface_1 = propagate_local_mode_parameter_through_ABCD(
             local_mode_parameters_on_surface_0, self.ABCD_matrix_free_space(), n_2=self.n
         )
+        n_after_surface_1 = self.surface_1.n_2 if isinstance(self.surface_1, RefractiveSurface) else 1
         mode_parameters_after_surface_1 = propagate_local_mode_parameter_through_ABCD(
-            mode_parameters_on_surface_1, self.ABCD_matrix_surface_1(), n_2=self.surface_1.to_params.n_inside_or_after
+            mode_parameters_on_surface_1, self.ABCD_matrix_surface_1(), n_2=n_after_surface_1
         )
         return mode_parameters_on_surface_1, mode_parameters_after_surface_1
 
@@ -2103,7 +2104,7 @@ class Cavity(OpticalSystem):
             for param_name in (pbar := tqdm(tolerance_df.columns, disable=self.debug_printing_level < 1)):
                 pbar.set_description(f"    Tolerance Matrix - {element_name} -  {param_name}")
                 if (
-                    isinstance(self.to_params[element_index], list)
+                    isinstance(self.elements[element_index], OpticalSystem)
                     and param_name in ["theta", "phi"]
                     and self.use_paraxial_ray_tracing
                 ):  # Lens group is invariant to small rotations under paraxial approx.
@@ -2130,9 +2131,9 @@ class Cavity(OpticalSystem):
     ) -> np.ndarray:
         if perturbable_params_names is None:
             perturbable_params_names = self.perturbable_params_names
-        overlaps = np.zeros((len(self.to_params), len(perturbable_params_names), shift_numel))
+        overlaps = np.zeros((len(self.elements), len(perturbable_params_names), shift_numel))
         for element_index in tqdm(
-            range(len(self.to_params)), desc="Overlap Series - element_index", disable=self.debug_printing_level < 1
+            range(len(self.elements)), desc="Overlap Series - element_index", disable=self.debug_printing_level < 1
         ):
             for j, parameter_name in tqdm(
                 enumerate(perturbable_params_names),
@@ -2183,9 +2184,9 @@ class Cavity(OpticalSystem):
 
         if ax is None:
             fig, ax = plt.subplots(
-                len(self.to_params),
+                len(self.elements),
                 len(perturbable_params_names),
-                figsize=(len(perturbable_params_names) * 5, len(self.to_params) * 2.1),
+                figsize=(len(perturbable_params_names) * 5, len(self.elements) * 2.1),
             )
         else:
             fig = ax.flatten()[0].get_figure()
@@ -2201,7 +2202,7 @@ class Cavity(OpticalSystem):
             )
         plt.suptitle(f"NA={self.arms[arm_index_for_NA].mode_parameters.NA[0]:.3e}")
 
-        for i in range(len(self.to_params)):
+        for i in range(len(self.elements)):
             for j, parameter_name in enumerate(perturbable_params_names):
                 # The condition inside is for the case it is a mirror and the parameter is n, and then we don't want
                 # to draw it.
@@ -2217,7 +2218,7 @@ class Cavity(OpticalSystem):
 
                 title = f"{names[i]}, {parameter_name}, tolerance: {tolerance_abs:.2e}"
                 ax[i, j].set_title(title)
-                if i == len(self.to_params) - 1:
+                if i == len(self.elements) - 1:
                     ax[i, j].set_xlabel("Shift")
                 if j == 0:
                     ax[i, j].set_ylabel("Overlap")
@@ -2262,8 +2263,8 @@ class Cavity(OpticalSystem):
             names = None
         else:
             names = copy.copy(self.names)
-            for i, p in enumerate(self.to_params):
-                if isinstance(p, list):
+            for i, el in enumerate(self.elements):
+                if isinstance(el, OpticalSystem):
                     names.insert(i + 1, names[i] + "_2")
                     names[i] = names[i] + "_1"
 
@@ -4132,10 +4133,11 @@ def optical_system_to_cavity_completion(
             **end_mirror_kwargs,
         )
 
-    # to_params is regenerated from the live elements, so it reflects any in-place edits (e.g. place_elements) to the
-    # optical system's geometry before completion.
-    cavity = Cavity.from_params(
-        params=[*optical_system.to_params, end_mirror.to_params],
+    # Build the completed cavity directly from the live elements (plus the new end mirror), so any in-place edits
+    # (e.g. place_elements) to the optical system's geometry are honored. The elements are deep-copied so the returned
+    # cavity is independent of the input optical system.
+    cavity = Cavity(
+        elements=[*copy.deepcopy(optical_system.elements), end_mirror],
         lambda_0_laser=optical_system.lambda_0_laser,
         t_is_trivial=True,
         p_is_trivial=True,
