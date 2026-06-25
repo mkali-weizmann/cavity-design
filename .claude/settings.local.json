@@ -31,7 +31,10 @@
       "PowerShell(& \"C:\\\\venvs\\\\cavity-design\\\\Scripts\\\\python.exe\" -m pytest tests/test_cavity.py -q 2>&1 | Select-Object -Last 30)",
       "PowerShell(& \"C:\\\\venvs\\\\cavity-design\\\\Scripts\\\\python.exe\" -m pytest tests/test_cavity.py -W \"error::numpy.exceptions.ComplexWarning\" -q 2>&1 | Select-Object -Last 30)",
       "PowerShell(& \"C:\\\\venvs\\\\cavity-design\\\\Scripts\\\\python.exe\" -c \"import warnings; warnings.simplefilter\\('ignore'\\); import numpy as np; from cavity_design import FlatMirror, set_element_position; m = FlatMirror\\(outwards_normal=np.array\\([-1.0,0,0]\\), center=np.array\\([0.0,0,0]\\)\\); print\\('radius:', m.radius, '| positions_defined:', m.positions_defined\\); set_element_position\\(m, np.array\\([0.5,0,0]\\)\\); print\\('after set center:', m.center, '| distance_from_origin:', m.distance_from_origin\\); m2 = FlatMirror\\(\\); print\\('no-arg positions_defined:', m2.positions_defined\\); print\\('ABCD ok:', m.ABCD_matrix\\(\\).shape\\)\")",
-      "PowerShell(& \"C:\\\\venvs\\\\cavity-design\\\\Scripts\\\\python.exe\" -m pytest tests/test_cavity.py -q -p no:cacheprovider -W \"ignore\" 2>&1 | Select-Object -Last 30)"
+      "PowerShell(& \"C:\\\\venvs\\\\cavity-design\\\\Scripts\\\\python.exe\" -m pytest tests/test_cavity.py -q -p no:cacheprovider -W \"ignore\" 2>&1 | Select-Object -Last 30)",
+      "Bash(C:/venvs/cavity-design/Scripts/python.exe -c ' *)",
+      "Bash(C:/venvs/cavity-design/Scripts/python.exe -m pytest tests/test_cavity.py -q -p no:cacheprovider -W ignore)",
+      "Bash(C:/venvs/cavity-design/Scripts/python.exe -m pytest tests/test_cavity.py -q -p no:cacheprovider -W ignore -k \"place_elements or undefined_surface or set_element_position\")"
     ]
   }
 }

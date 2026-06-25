@@ -66,6 +66,7 @@ from ._surfaces import (
     IdealLens,
     AsphericSurface,
     FlatRefractiveSurface, AsphericRefractiveSurface, generate_aspheric_lens_params,
+    POSITION_TINY,
 )
 
 
@@ -566,6 +567,125 @@ class OpticalSystem:
     @property
     def elements(self) -> List[Union[Surface, 'OpticalSystem']]:
         return self._elements
+
+    def __getitem__(self, keys):
+        return self.elements[keys]
+
+    def __len__(self):
+        return len(self.elements)
+
+    def __iter__(self):
+        return iter(self.elements)
+
+    def place_elements(self, elements, position, reference_center=None):
+        """Move one or more of this system's own elements to a target position, in place.
+
+        ``elements`` is a single element (a ``Surface`` or a nested ``OpticalSystem``) belonging to this system, or a
+        list of such elements. ``position`` is a length-3 array. The first listed element's reference point (its
+        ``center``, or its first surface's center for a nested ``OpticalSystem``) is moved to ``position``; any
+        further listed elements are translated by the same displacement, so the whole selection moves as one rigid
+        body.
+
+        ``reference_center`` is optional and may be a length-3 array or a ``Surface`` (its ``center`` is used). When
+        given, ``position`` is interpreted relative to it, i.e. the absolute target is ``reference_center + position``.
+
+        If the central line / mode parameters had already been traced, they are recomputed after the move (and, for a
+        standing-wave ``Cavity``, the mirrored back-trip surfaces are re-synced first). Returns ``self`` for chaining.
+        """
+        if isinstance(elements, (Surface, OpticalSystem)):
+            elements = [elements]
+        else:
+            elements = list(elements)
+        if len(elements) == 0:
+            raise ValueError("place_elements requires at least one element to move.")
+
+        position = np.asarray(position, dtype=float)
+        if reference_center is None:
+            offset = np.zeros(3)
+        elif isinstance(reference_center, Surface):
+            offset = np.asarray(reference_center.center, dtype=float)
+        else:
+            offset = np.asarray(reference_center, dtype=float)
+        target = position + offset
+
+        # Whether geometry-dependent results existed before tells us what to refresh afterwards.
+        had_central_line = self.central_line_successfully_traced is not None
+        had_mode_parameters = self.resonating_mode_successfully_traced is not None
+
+        first = elements[0]
+        # Remember the first element's reference point (when defined) so we can tell, after the move, along which
+        # transverse axes the geometry was displaced — a move can break a previously-trivial theta/phi symmetry.
+        reference_before = _rigid_body_reference_point(first, "first_surface") if first.positions_defined else None
+        if len(elements) == 1:
+            # Delegate the single-element move to set_element_position, which handles both well-defined elements
+            # (rigid translation) and undefined ones (anchor a surface / resolve a relative chain off the target).
+            set_element_position(first, target, reference="first_surface")
+        else:
+            # Several elements move together as one rigid body, anchored by the first.
+            if not first.positions_defined:
+                raise ValueError(
+                    "Cannot move several elements as a rigid body when the first one has undefined positions; "
+                    "place it on its own first (it is anchored and its relative chain is resolved off the target)."
+                )
+            delta = target - _rigid_body_reference_point(first, "first_surface")
+            for element in elements:
+                for axis, axis_delta in zip(("x", "y", "z"), delta):
+                    apply_rigid_body_perturbation(element, axis, axis_delta)
+
+        # For a standing-wave cavity this re-copies the moved positions onto the mirrored back-trip surfaces; for a
+        # plain system with absolute positions it is a no-op.
+        self.resolve_relative_positions()
+
+        # If the system was symmetric in the theta (z) or phi (y) axis and the move displaces the geometry along that
+        # axis, the symmetry is broken, so the corresponding triviality flag must be cleared before re-tracing. The
+        # shared rule with perturb_cavity lives in _updated_triviality_flags; here "disturbed" is read off the
+        # displacement vector (z component -> theta symmetry, y component -> phi symmetry).
+        if reference_before is not None:
+            displacement = target - reference_before
+            self.t_is_trivial, self.p_is_trivial = _updated_triviality_flags(
+                self.t_is_trivial, self.p_is_trivial,
+                theta_symmetry_broken=abs(displacement[2]) > POSITION_TINY,
+                phi_symmetry_broken=abs(displacement[1]) > POSITION_TINY,
+            )
+            self._sync_config_to_nested()
+
+        if had_central_line:
+            if isinstance(self, Cavity):
+                self.set_central_line()
+            else:
+                self.set_given_central_line(self.default_initial_ray)
+        if had_mode_parameters and isinstance(self, Cavity):
+            self.set_mode_parameters()
+        return self
+
+    def with_elements_placed(self, elements, position, reference_center=None):
+        """Non-destructive ``place_elements``: return a deep copy of this system with the elements moved.
+
+        ``elements`` may be element(s) of this system, or integer index/indices into ``self.elements`` (handy because
+        after the copy the original element objects no longer belong to the returned system). ``position`` and
+        ``reference_center`` behave exactly as in :meth:`place_elements`. ``self`` is left unchanged.
+        """
+        if isinstance(elements, (Surface, OpticalSystem, int, np.integer)):
+            elements = [elements]
+        # Resolve the requested elements to indices into self.elements, so the same elements can be found on the copy.
+        indices = []
+        for element in elements:
+            if isinstance(element, (int, np.integer)):
+                indices.append(int(element))
+            else:
+                matches = [i for i, candidate in enumerate(self.elements) if candidate is element]
+                if not matches:
+                    raise ValueError("with_elements_placed: an element to move is not one of this system's elements.")
+                indices.append(matches[0])
+        # Snapshot a Surface reference_center to a plain coordinate so it need not be re-mapped onto the copy.
+        if isinstance(reference_center, Surface):
+            reference_center = np.asarray(reference_center.center, dtype=float)
+
+        new_system = copy.deepcopy(self)
+        new_system.place_elements(
+            [new_system.elements[i] for i in indices], position, reference_center=reference_center
+        )
+        return new_system
 
     def _sync_config_to_nested(self):
         for el in self._elements:
@@ -2839,6 +2959,17 @@ def _apply_scalar_perturbation_to_surface(surface, parameter_name, perturbation_
         )
 
 
+def _updated_triviality_flags(t_is_trivial, p_is_trivial, theta_symmetry_broken, phi_symmetry_broken):
+    """Update the (theta, phi) triviality flags after a geometry change.
+
+    In the convention used throughout, the theta axis is the z axis (``t_is_trivial``) and the phi axis is the y axis
+    (``p_is_trivial``). A symmetry that was trivial survives the change only if it was trivial before *and* the change
+    leaves its axis undisturbed. The callers decide what "disturbed" means in their domain (e.g. ``perturb_cavity``
+    from the perturbed parameter names — x/y/z/theta/phi — and ``place_elements`` from the displacement vector).
+    Returns the updated ``(t_is_trivial, p_is_trivial)`` pair."""
+    return t_is_trivial and not theta_symmetry_broken, p_is_trivial and not phi_symmetry_broken
+
+
 def _rigid_body_reference_point(element, reference: str) -> np.ndarray:
     if isinstance(element, OpticalSystem):
         surfaces = element.surfaces
@@ -2872,7 +3003,14 @@ def set_element_position(element, target_position, reference: str = "first_surfa
     Returns ``element`` to allow chaining."""
     target_position = np.asarray(target_position, dtype=float)
 
-    if isinstance(element, OpticalSystem) and not element.positions_defined:
+    if not isinstance(element, OpticalSystem):
+        # A single surface's position is fully described by its center, so setting it is always well defined — even
+        # if the surface was previously undefined (its normal, if still nan, is a separate concern).
+        element.center = target_position
+        return element
+
+    if not element.positions_defined:
+        # Undefined OpticalSystem: anchor the first surface and resolve any relative (imaginary) positions off it.
         if reference != "first_surface":
             raise ValueError(
                 "For an OpticalSystem with undefined/relative positions, only reference='first_surface' is "
@@ -2880,16 +3018,6 @@ def set_element_position(element, target_position, reference: str = "first_surfa
             )
         element.surfaces[0].center = target_position
         element.resolve_relative_positions()
-        return element
-
-    if not element.positions_defined:
-        raise ValueError(
-            "Cannot set position: the element has undefined (nan) poses. Define its center/outwards_normal first."
-        )
-
-    if not isinstance(element, OpticalSystem):
-        # A single surface is fully described by its center.
-        element.center = target_position
         return element
 
     delta = target_position - _rigid_body_reference_point(element, reference)
@@ -2923,15 +3051,15 @@ def perturb_cavity(
 
     parameters_names = [p.parameter_name for p in perturbation_pointer]
 
-    # If the original cavity was symmetrical in the theta axis or the phi axis, and the perturbation does not disturb this
-    # symmetry, then the new cavity is also symmetrical in the theta axis or the phi axis:
-    perturbance_in_z = [1 for i in parameters_names if i in [ParamsNames.z, ParamsNames.theta]]
-    perturbance_in_y = [1 for i in parameters_names if i in [ParamsNames.y, ParamsNames.phi]]
-    perturbance_in_z = bool(len(perturbance_in_z))
-    perturbance_in_y = bool(len(perturbance_in_y))
-
-    t_is_trivial = cavity.t_is_trivial and not perturbance_in_z
-    p_is_trivial = cavity.p_is_trivial and not perturbance_in_y
+    # If the original cavity was symmetrical in the theta axis or the phi axis, and the perturbation does not disturb
+    # this symmetry, then the new cavity is also symmetrical in that axis. The shared rule lives in
+    # _updated_triviality_flags; here "disturbed" is read off the perturbed parameter names (z/theta -> theta
+    # symmetry, y/phi -> phi symmetry).
+    t_is_trivial, p_is_trivial = _updated_triviality_flags(
+        cavity.t_is_trivial, cavity.p_is_trivial,
+        theta_symmetry_broken=any(name in (ParamsNames.z, ParamsNames.theta) for name in parameters_names),
+        phi_symmetry_broken=any(name in (ParamsNames.y, ParamsNames.phi) for name in parameters_names),
+    )
 
     new_cavity = Cavity(
         elements=perturbed_elements,
@@ -4014,7 +4142,7 @@ def optical_system_to_cavity_completion(
 
     if optical_system.params is not None:
         cavity = Cavity.from_params(
-            params=[*optical_system.params, end_mirror.to_params],
+            params=[*optical_system.to_params, end_mirror.to_params],
             lambda_0_laser=optical_system.lambda_0_laser,
             t_is_trivial=True,
             p_is_trivial=True,
