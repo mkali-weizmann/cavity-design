@@ -36,7 +36,22 @@
       "Bash(C:/venvs/cavity-design/Scripts/python.exe -m pytest tests/test_cavity.py -q -p no:cacheprovider -W ignore)",
       "Bash(C:/venvs/cavity-design/Scripts/python.exe -m pytest tests/test_cavity.py -q -p no:cacheprovider -W ignore -k \"place_elements or undefined_surface or set_element_position\")",
       "Bash(C:/venvs/cavity-design/Scripts/python.exe \"C:/Users/michaeka/AppData/Local/Temp/claude/C--Users-michaeka-Weizmann-Institute-Dropbox-Michael-Kali-Labs-Dropbox-Laser-Phase-Plate-cavity-design/ebb5aa9c-1892-4de1-ab67-866e08e91162/scratchpad/smoke_overlap_thermal.py\")",
-      "Bash(PYTHONPATH=\"C:/Users/michaeka/Weizmann Institute Dropbox/Michael Kali/Labs Dropbox/Laser Phase Plate/cavity-design\" C:/venvs/cavity-design/Scripts/python.exe \"C:/Users/michaeka/AppData/Local/Temp/claude/C--Users-michaeka-Weizmann-Institute-Dropbox-Michael-Kali-Labs-Dropbox-Laser-Phase-Plate-cavity-design/ebb5aa9c-1892-4de1-ab67-866e08e91162/scratchpad/smoke_overlap_thermal.py\")"
+      "Bash(PYTHONPATH=\"C:/Users/michaeka/Weizmann Institute Dropbox/Michael Kali/Labs Dropbox/Laser Phase Plate/cavity-design\" C:/venvs/cavity-design/Scripts/python.exe \"C:/Users/michaeka/AppData/Local/Temp/claude/C--Users-michaeka-Weizmann-Institute-Dropbox-Michael-Kali-Labs-Dropbox-Laser-Phase-Plate-cavity-design/ebb5aa9c-1892-4de1-ab67-866e08e91162/scratchpad/smoke_overlap_thermal.py\")",
+      "PowerShell(& \"C:\\\\venvs\\\\cavity-design\\\\Scripts\\\\python.exe\" -m pytest tests/test_cavity.py -q -p no:cacheprovider -W ignore)",
+      "Bash(git -C \"C:/Users/michaeka/git-projects/cavity-design-old-commits\" log --oneline -1)",
+      "Bash(git -C \"C:/Users/michaeka/git-projects/cavity-design-old-commits\" status --short)",
+      "Bash(git -C C:/Users/michaeka/git-projects/cavity-design-old-commits stash push -m 'claude: preserve before benchmark')",
+      "Bash(git -C C:/Users/michaeka/git-projects/cavity-design-old-commits checkout ccb488a)",
+      "Bash(MPLBACKEND=Agg BENCH_REPEATS=1 PYTHONPATH=C:/Users/michaeka/AppData/Local/Temp/claude/C--Users-michaeka-Weizmann-Institute-Dropbox-Michael-Kali-Labs-Dropbox-Laser-Phase-Plate-cavity-design/ebb5aa9c-1892-4de1-ab67-866e08e91162/scratchpad/bench_new C:/venvs/cavity-design/Scripts/python.exe C:/Users/michaeka/AppData/Local/Temp/claude/C--Users-michaeka-Weizmann-Institute-Dropbox-Michael-Kali-Labs-Dropbox-Laser-Phase-Plate-cavity-design/ebb5aa9c-1892-4de1-ab67-866e08e91162/scratchpad/runner.py C:/Users/michaeka/AppData/Local/Temp/claude/C--Users-michaeka-Weizmann-Institute-Dropbox-Michael-Kali-Labs-Dropbox-Laser-Phase-Plate-cavity-design/ebb5aa9c-1892-4de1-ab67-866e08e91162/scratchpad/bench.py NEW)",
+      "Bash(MPLBACKEND=Agg BENCH_REPEATS=3 PYTHONPATH=C:/Users/michaeka/AppData/Local/Temp/claude/C--Users-michaeka-Weizmann-Institute-Dropbox-Michael-Kali-Labs-Dropbox-Laser-Phase-Plate-cavity-design/ebb5aa9c-1892-4de1-ab67-866e08e91162/scratchpad/bench_new C:/venvs/cavity-design/Scripts/python.exe C:/Users/michaeka/AppData/Local/Temp/claude/C--Users-michaeka-Weizmann-Institute-Dropbox-Michael-Kali-Labs-Dropbox-Laser-Phase-Plate-cavity-design/ebb5aa9c-1892-4de1-ab67-866e08e91162/scratchpad/runner.py C:/Users/michaeka/AppData/Local/Temp/claude/C--Users-michaeka-Weizmann-Institute-Dropbox-Michael-Kali-Labs-Dropbox-Laser-Phase-Plate-cavity-design/ebb5aa9c-1892-4de1-ab67-866e08e91162/scratchpad/bench.py NEW)",
+      "Bash(MPLBACKEND=Agg BENCH_REPEATS=6 PYTHONPATH=C:/Users/michaeka/AppData/Local/Temp/claude/C--Users-michaeka-Weizmann-Institute-Dropbox-Michael-Kali-Labs-Dropbox-Laser-Phase-Plate-cavity-design/ebb5aa9c-1892-4de1-ab67-866e08e91162/scratchpad/bench_new C:/venvs/cavity-design/Scripts/python.exe C:/Users/michaeka/AppData/Local/Temp/claude/C--Users-michaeka-Weizmann-Institute-Dropbox-Michael-Kali-Labs-Dropbox-Laser-Phase-Plate-cavity-design/ebb5aa9c-1892-4de1-ab67-866e08e91162/scratchpad/runner.py C:/Users/michaeka/AppData/Local/Temp/claude/C--Users-michaeka-Weizmann-Institute-Dropbox-Michael-Kali-Labs-Dropbox-Laser-Phase-Plate-cavity-design/ebb5aa9c-1892-4de1-ab67-866e08e91162/scratchpad/bench.py NEW)",
+      "Bash(git branch *)",
+      "Bash(git stash *)",
+      "Bash(git reset *)",
+      "Bash(git add *)",
+      "Bash(git restore *)",
+      "Bash(git commit *)",
+      "Bash(git checkout *)"
     ]
   }
 }
