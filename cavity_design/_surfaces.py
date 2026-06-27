@@ -1213,15 +1213,41 @@ class CurvedSurface(Surface):
             self.origin = np.full(3, np.nan)
 
     def find_intersection_with_ray_exact(self, ray: Ray) -> np.ndarray:
-        # The following expression is the result of calculation "Intersection of a parameterized line and a sphere"
-        # in the research lyx file
+        # Intersect the ray with the full sphere (the two quadratic roots) and pick the physically correct one: the
+        # nearest forward intersection that lands on the physical cap (within the surface diameter). This replaces the
+        # old beam-relative curvature_sign root selection, which mis-picks a ray that clips the cap twice near its rim.
+        # The quadratic derivation is "Intersection of a parameterized line and a sphere" in the research lyx file.
         Delta = ray.origin - self.origin  # m_rays | 3
         Delta_squared = np.sum(Delta**2, axis=-1)  # m_rays
         Delta_projection_on_k = np.sum(Delta * ray.k_vector, axis=-1)  # m_rays
         with np.errstate(invalid="ignore"):
-            length = -Delta_projection_on_k - self.curvature_sign * np.sqrt(
-                Delta_projection_on_k**2 - Delta_squared + self.radius**2
-            )
+            sqrt_discriminant = np.sqrt(Delta_projection_on_k**2 - Delta_squared + self.radius**2)  # nan if no hit
+        length_near = -Delta_projection_on_k - sqrt_discriminant
+        length_far = -Delta_projection_on_k + sqrt_discriminant
+
+        # Legacy beam-relative choice. Used as a fallback where no aperture is known (diameter is None/nan) or where a
+        # ray misses the cap entirely, so that out-of-aperture rays keep their previous behaviour instead of becoming
+        # nan. For valid in-aperture rays the cap selection below returns the same root, so results are unchanged.
+        fallback_length = -Delta_projection_on_k - self.curvature_sign * sqrt_discriminant
+
+        if self.diameter is not None and np.isfinite(self.diameter):
+            # A point P on the sphere lies on the cap when the angle between (P - origin) and the outwards normal is
+            # within the cap half-angle, i.e. (P - origin) . outwards_normal >= radius * cos(theta_max), with
+            # sin(theta_max) = (diameter / 2) / radius. Project each candidate without forming P explicitly.
+            sin_theta_max = np.clip(self.diameter / (2 * self.radius), 0.0, 1.0)
+            cap_projection_threshold = self.radius * np.sqrt(1 - sin_theta_max**2) - np.abs(self.radius) * 1e-6
+            Delta_projection_on_n = np.sum(Delta * self.outwards_normal, axis=-1)
+            k_projection_on_n = np.sum(ray.k_vector * self.outwards_normal, axis=-1)
+            on_cap_near = (Delta_projection_on_n + length_near * k_projection_on_n) >= cap_projection_threshold
+            on_cap_far = (Delta_projection_on_n + length_far * k_projection_on_n) >= cap_projection_threshold
+            # Prefer forward (positive) on-cap roots and take the nearest; fall back where neither qualifies.
+            near_candidate = np.where(on_cap_near & (length_near > 0), length_near, np.inf)
+            far_candidate = np.where(on_cap_far & (length_far > 0), length_far, np.inf)
+            nearest_on_cap = np.minimum(near_candidate, far_candidate)
+            length = np.where(np.isfinite(nearest_on_cap), nearest_on_cap, fallback_length)
+        else:
+            length = fallback_length
+
         intersection_point = ray.parameterization(length)
         return intersection_point
 

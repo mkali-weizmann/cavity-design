@@ -1152,3 +1152,69 @@ def test_unresolved_relative_blocks_calculations():
     ray = Ray(origin=np.array([0.0, 0, 0]), k_vector=np.array([1.0, 0, 0]))
     with pytest.raises(ValueError):
         sys.propagate_ray(ray)
+
+def _legacy_curved_intersection_point(surface, ray):
+    # The old beam-relative (curvature_sign) root selection, computed independently for comparison.
+    Delta = ray.origin - surface.origin
+    Delta_proj = Delta @ ray.k_vector
+    legacy_length = -Delta_proj - surface.curvature_sign * np.sqrt(Delta_proj**2 - (Delta @ Delta) + surface.radius**2)
+    return ray.origin + legacy_length * ray.k_vector
+
+
+def test_curved_intersection_agrees_with_legacy_for_in_aperture_rays():
+    # For physically-correct, near-axis rays the cap-based root selection must return exactly the same point as the
+    # legacy beam-relative formula, so existing traces are unaffected.
+    R = 0.2
+    # Convex: vertex bulges toward the beam, the beam hits the sphere from outside.
+    convex = CurvedMirror(radius=R, outwards_normal=np.array([-1.0, 0, 0]), center=np.array([0.0, 0, 0]),
+                          curvature_sign=CurvatureSigns.convex, diameter=0.02)
+    convex_ray = Ray(origin=np.array([-0.1, 1e-3, 0.0]), k_vector=np.array([1.0, 0, 0]))
+    # Concave: the center of curvature is on the beam side, so the beam hits the sphere from inside.
+    concave = CurvedMirror(radius=R, outwards_normal=np.array([-1.0, 0, 0]), origin=np.array([0.0, 0, 0]),
+                           curvature_sign=CurvatureSigns.concave, diameter=0.02)
+    concave_ray = Ray(origin=np.array([-0.1, 1e-3, 0.0]), k_vector=np.array([-1.0, 0, 0]))
+    for surface, ray in [(convex, convex_ray), (concave, concave_ray)]:
+        point = surface.find_intersection_with_ray_exact(ray)
+        assert np.allclose(point, _legacy_curved_intersection_point(surface, ray), atol=1e-12)
+        # And the chosen point genuinely lies on the sphere.
+        assert np.isclose(np.linalg.norm(point - surface.origin), R, atol=1e-9)
+
+
+def test_curved_intersection_picks_nearest_on_cap_root_for_rim_double_hit():
+    # A ray that clips the same cap twice (enters near one rim edge, exits near the other) must resolve to the FIRST
+    # (nearest forward) on-cap intersection. The legacy convex sign would wrongly pick the far one.
+    R = 1.0
+    # Sphere origin at the global origin, vertex at (+1,0,0), cap half-angle 30deg (sin = (D/2)/R = 0.5).
+    mirror = CurvedMirror(radius=R, outwards_normal=np.array([1.0, 0, 0]), origin=np.array([0.0, 0, 0]),
+                          curvature_sign=CurvatureSigns.convex, diameter=1.0)
+    # Vertical ray at x = 0.9 (inside the cap, since x >= R*cos(30deg) ~ 0.866) travelling +y.
+    ray = Ray(origin=np.array([0.9, -2.0, 0.0]), k_vector=np.array([0.0, 1.0, 0.0]))
+    point = mirror.find_intersection_with_ray_exact(ray)
+    expected_first = np.array([0.9, -np.sqrt(1 - 0.81), 0.0])  # the nearer of the two cap intersections
+    assert np.allclose(point, expected_first, atol=1e-9)
+    # The legacy convex pick would have returned the far intersection at +y; confirm we did NOT return that.
+    assert point[1] < 0
+
+
+def test_curved_intersection_skips_back_of_sphere_for_ray_from_behind():
+    # A ray coming from far behind crosses the sphere's back wall (first positive root, but NOT on the cap) before
+    # reaching the optical cap. The cap filter must reject the back wall and select the (farther) on-cap vertex.
+    R = 0.2
+    # Cap faces -x (vertex at x=0), sphere origin at x=+0.2, so the sphere spans x in [0, 0.4].
+    mirror = CurvedMirror(radius=R, outwards_normal=np.array([-1.0, 0, 0]), origin=np.array([0.2, 0, 0]),
+                          curvature_sign=CurvatureSigns.convex, diameter=0.02)
+    # Ray starts behind the element (x = 1) and travels -x: it meets x ~ 0.4 (back wall) before x ~ 0.0 (the cap).
+    ray = Ray(origin=np.array([1.0, 1e-4, 0.0]), k_vector=np.array([-1.0, 0, 0]))
+    point = mirror.find_intersection_with_ray_exact(ray)
+    assert point[0] < 0.2  # on the cap (vertex) side, not the back wall at x ~ 0.4
+    assert np.isclose(np.linalg.norm(point - mirror.origin), R, atol=1e-9)
+
+
+def test_curved_intersection_returns_nan_when_ray_misses_sphere():
+    R = 0.2
+    mirror = CurvedMirror(radius=R, outwards_normal=np.array([-1.0, 0, 0]), center=np.array([0.0, 0, 0]),
+                          curvature_sign=CurvatureSigns.concave, diameter=0.02)
+    # Ray passing far outside the sphere.
+    ray = Ray(origin=np.array([-1.0, 10.0, 0.0]), k_vector=np.array([1.0, 0, 0]))
+    point = mirror.find_intersection_with_ray_exact(ray)
+    assert np.all(np.isnan(point))
