@@ -84,7 +84,8 @@ ax2 = ax.twinx()
 for i in range(len(long_arm_lengths)):
     ax.plot(short_arm_lengths * 1e3, NAs[i, :], label=f"Long arm length = {long_arm_lengths[i]*100:.2f}cm, focus-to-lens = {focii_to_lens[i] * 100:.2f}cm")
     ax2.plot(short_arm_lengths * 1e3, mode_spacings[i, :] / 1e6, linestyle='--', label=f"Long arm length = {long_arm_lengths[i]*100:.2f}cm, focus-to-lens = {focii_to_lens[i] * 100:.2f}cm - Mode spacing [MHz]")
-
+ax2.set_ylim(0, 300)
+ax2.set_ylabel("Mode Spacing [MHz]")
 ax.set_xlabel('Short Arm Length (mm)')
 ax.set_ylabel('Short Arm Numerical Aperture')
 ax.axvline(7.32, color='k', linestyle='--', linewidth=1, label='Collimation point')

@@ -7,6 +7,7 @@ import numpy as np
 
 from ._utils import plane_name_to_xy_indices, normalize_vector
 
+
 class Ray:
     def __init__(
         self,

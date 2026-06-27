@@ -41,9 +41,23 @@ from ._utils import (
     LAMBDA_0_LASER,
     INDICES_DICT,
     CurvatureSigns,
-    z_R_of_NA, interval_parameterization, safe_exponent, gaussians_overlap_integral,
-    convert_material_to_mirror_or_lens, PHYSICAL_SIZES_DICT, INDICES_DICT_INVERSE, functions_first_crossing,
-    MaterialProperties, w_0_of_NA, focal_length_of_lens, spot_size, dT_c_of_a_lens, LEFT, ORIGIN, RIGHT, INCH
+    z_R_of_NA,
+    interval_parameterization,
+    safe_exponent,
+    gaussians_overlap_integral,
+    convert_material_to_mirror_or_lens,
+    PHYSICAL_SIZES_DICT,
+    INDICES_DICT_INVERSE,
+    functions_first_crossing,
+    MaterialProperties,
+    w_0_of_NA,
+    focal_length_of_lens,
+    spot_size,
+    dT_c_of_a_lens,
+    LEFT,
+    ORIGIN,
+    RIGHT,
+    INCH,
 )
 from ._modes import (
     LocalModeParameters,
@@ -51,7 +65,8 @@ from ._modes import (
     propagate_local_mode_parameter_through_ABCD,
     local_mode_parameters_of_round_trip_ABCD,
     generate_spot_size_lines,
-    match_a_mirror_to_mode, match_a_local_mode_to_mirror
+    match_a_mirror_to_mode,
+    match_a_local_mode_to_mirror,
 )
 from ._rays import Ray, RaySequence
 from ._surfaces import (
@@ -65,7 +80,9 @@ from ._surfaces import (
     FlatMirror,
     IdealLens,
     AsphericSurface,
-    FlatRefractiveSurface, AsphericRefractiveSurface, generate_aspheric_lens_params,
+    FlatRefractiveSurface,
+    AsphericRefractiveSurface,
+    generate_aspheric_lens_params,
     POSITION_TINY,
 )
 
@@ -503,7 +520,7 @@ def _resolve_surface_relative_positions(surfaces: List, tiny: float = 1e-16):
 class OpticalSystem:
     def __init__(
         self,
-        elements: List[Union[Surface, 'OpticalSystem']],
+        elements: List[Union[Surface, "OpticalSystem"]],
         lambda_0_laser: Optional[float] = None,
         params: Optional[list] = None,
         power: Optional[float] = None,
@@ -515,7 +532,7 @@ class OpticalSystem:
         mechanical_center: Optional[np.ndarray] = None,
         name: Optional[str] = None,
     ):
-        self._elements: List[Union[Surface, 'OpticalSystem']] = list(elements)
+        self._elements: List[Union[Surface, "OpticalSystem"]] = list(elements)
         flat_surfaces = OpticalSystem._flatten_elements(self._elements)
         self.arms: List[Arm] = [
             Arm(
@@ -555,7 +572,8 @@ class OpticalSystem:
                     self.set_given_central_line(initial_ray=self.default_initial_ray)
             if given_initial_local_mode_parameters is not None:
                 self.set_given_mode_parameters(
-                    local_mode_parameters_after_first_surface=given_initial_local_mode_parameters)
+                    local_mode_parameters_after_first_surface=given_initial_local_mode_parameters
+                )
 
     @staticmethod
     def _flatten_elements(elements: List) -> List[Surface]:
@@ -568,7 +586,7 @@ class OpticalSystem:
         return flat
 
     @property
-    def elements(self) -> List[Union[Surface, 'OpticalSystem']]:
+    def elements(self) -> List[Union[Surface, "OpticalSystem"]]:
         return self._elements
 
     def __getitem__(self, keys):
@@ -648,7 +666,8 @@ class OpticalSystem:
         if reference_before is not None:
             displacement = target - reference_before
             self.t_is_trivial, self.p_is_trivial = _updated_triviality_flags(
-                self.t_is_trivial, self.p_is_trivial,
+                self.t_is_trivial,
+                self.p_is_trivial,
                 theta_symmetry_broken=abs(displacement[2]) > POSITION_TINY,
                 phi_symmetry_broken=abs(displacement[1]) > POSITION_TINY,
             )
@@ -724,7 +743,7 @@ class OpticalSystem:
     def mechanical_center(self) -> np.ndarray:
         if self._mechanical_center is not None:
             return self._mechanical_center
-        centers = [s.center for s in self._surfaces if hasattr(s, 'center')]
+        centers = [s.center for s in self._surfaces if hasattr(s, "center")]
         if len(centers) == 0:
             return np.zeros(3)
         return np.mean(np.stack(centers, axis=0), axis=0)
@@ -757,7 +776,7 @@ class OpticalSystem:
             )
 
     @property
-    def inverse(self) -> 'OpticalSystem':
+    def inverse(self) -> "OpticalSystem":
         inverse_elements = [el.inverse for el in reversed(self._elements)]
         return OpticalSystem(inverse_elements, mechanical_center=self._mechanical_center)
 
@@ -947,7 +966,14 @@ class OpticalSystem:
 
     @property
     def names(self):
-        names = [p.name if p.name is not None else f"{i}: {p.surface_type if isinstance(p, OpticalSurfaceParams) else 'OpticalSystem'}" for i, p in enumerate(self.elements)]
+        names = [
+            (
+                p.name
+                if p.name is not None
+                else f"{i}: {p.surface_type if isinstance(p, OpticalSurfaceParams) else 'OpticalSystem'}"
+            )
+            for i, p in enumerate(self.elements)
+        ]
         return names
 
     @property
@@ -1057,23 +1083,25 @@ class OpticalSystem:
         n_arms: Optional[int] = None,
     ) -> List[LocalModeParameters]:
 
-        assert ((local_mode_parameters_before_first_surface is not None) +
-                (local_mode_parameters_after_first_surface is not None) +
-                (mode_parameters_before_first_surface is not None) +
-                (mode_parameters_after_first_surface is not None)) == 1, "Exactly one of the four mode options should be not None"
+        assert (
+            (local_mode_parameters_before_first_surface is not None)
+            + (local_mode_parameters_after_first_surface is not None)
+            + (mode_parameters_before_first_surface is not None)
+            + (mode_parameters_after_first_surface is not None)
+        ) == 1, "Exactly one of the four mode options should be not None"
 
         self._assert_positions_defined("propagate mode parameters through the optical system")
 
         n_arms = nvl(n_arms, len(self.arms))
         local_mode_parameters_history = []
         if mode_parameters_after_first_surface is not None:
-            local_mode_parameters_after_first_surface = mode_parameters_after_first_surface.local_mode_parameters_at_a_point(
-                    p=self.surfaces[0].center
-                )
+            local_mode_parameters_after_first_surface = (
+                mode_parameters_after_first_surface.local_mode_parameters_at_a_point(p=self.surfaces[0].center)
+            )
         elif mode_parameters_before_first_surface is not None:
-            local_mode_parameters_before_first_surface = mode_parameters_before_first_surface.local_mode_parameters_at_a_point(
-                    p=self.surfaces[0].center
-                )
+            local_mode_parameters_before_first_surface = (
+                mode_parameters_before_first_surface.local_mode_parameters_at_a_point(p=self.surfaces[0].center)
+            )
 
         if local_mode_parameters_after_first_surface is not None:
             local_mode_parameters_current = local_mode_parameters_after_first_surface
@@ -1096,33 +1124,45 @@ class OpticalSystem:
             local_mode_parameters_history.extend([mode_parameters_on_next_surface, local_mode_parameters_current])
         return local_mode_parameters_history
 
-    def propagate_mode_parameters_return_global(self,
-                                                local_mode_parameters_before_first_surface: Optional[LocalModeParameters] = None,
-                                                local_mode_parameters_after_first_surface: Optional[LocalModeParameters] = None,
-                                                mode_parameters_before_first_surface: Optional[ModeParameters] = None,
-                                                mode_parameters_after_first_surface: Optional[ModeParameters] = None,
-                                                n_arms: Optional[int] = None,):
-        local_mode_parameters_history = self.propagate_mode_parameters(local_mode_parameters_before_first_surface,
-                                                                       local_mode_parameters_after_first_surface,
-                                                                       mode_parameters_before_first_surface,
-                                                                       mode_parameters_after_first_surface,
-                                                                       n_arms=n_arms)
+    def propagate_mode_parameters_return_global(
+        self,
+        local_mode_parameters_before_first_surface: Optional[LocalModeParameters] = None,
+        local_mode_parameters_after_first_surface: Optional[LocalModeParameters] = None,
+        mode_parameters_before_first_surface: Optional[ModeParameters] = None,
+        mode_parameters_after_first_surface: Optional[ModeParameters] = None,
+        n_arms: Optional[int] = None,
+    ):
+        local_mode_parameters_history = self.propagate_mode_parameters(
+            local_mode_parameters_before_first_surface,
+            local_mode_parameters_after_first_surface,
+            mode_parameters_before_first_surface,
+            mode_parameters_after_first_surface,
+            n_arms=n_arms,
+        )
         # ATTENTION - THIS FUNCTION WAS DEBUGGED ONLY FOR (mode_parameters_before_first_surface is not None):
         output_ray = self.surfaces[-1].propagate_ray(self.central_line[-1])
         # All should be surfaces_ordered, and not surfaces for it to work with cavities, consider bringing it back
         if local_mode_parameters_before_first_surface is not None or mode_parameters_before_first_surface is not None:
             local_mode_parameters_narrowed = local_mode_parameters_history[::2] + [local_mode_parameters_history[-1]]
             surfaces_reorganized = [*self.surfaces_ordered, self.surfaces_ordered[-1]]
-            input_direction = self.central_line[0].k_vector if local_mode_parameters_before_first_surface is not None else mode_parameters_before_first_surface.k_vector
+            input_direction = (
+                self.central_line[0].k_vector
+                if local_mode_parameters_before_first_surface is not None
+                else mode_parameters_before_first_surface.k_vector
+            )
             directions_reorganized = [input_direction, *self.central_line.k_vector, output_ray.k_vector]
         else:
 
             local_mode_parameters_narrowed = local_mode_parameters_history[1::2]
             surfaces_reorganized = [*self.surfaces_ordered[1:], self.surfaces_ordered[-1]]
             directions_reorganized = [*self.central_line.k_vector, output_ray.k_vector]
-        mode_parameters = [l.to_mode_parameters(location_of_local_mode_parameter=surfaces_reorganized[i].center,k_vector=directions_reorganized[i]) for i, l in enumerate(local_mode_parameters_narrowed)]
+        mode_parameters = [
+            l.to_mode_parameters(
+                location_of_local_mode_parameter=surfaces_reorganized[i].center, k_vector=directions_reorganized[i]
+            )
+            for i, l in enumerate(local_mode_parameters_narrowed)
+        ]
         return mode_parameters
-
 
     #         @property
     #     def mode_parameters(self):
@@ -1335,7 +1375,9 @@ class OpticalSystem:
 
         for i, surface in enumerate(self.surfaces):
             if diameters is not None:
-                surface.plot(ax=ax, dim=dim, plane=plane, diameter=diameters[i], fine_resolution=fine_resolution, **kwargs)
+                surface.plot(
+                    ax=ax, dim=dim, plane=plane, diameter=diameters[i], fine_resolution=fine_resolution, **kwargs
+                )
             # If there is not information on the spot size of the element, plot it with default length:
             if (
                 self.resonating_mode_successfully_traced
@@ -1408,11 +1450,14 @@ class OpticalSystem:
         # Currently assume 1d problem for simplicity (only the :2, :2 elements for the first dimension are used), if required it can be expanded
         # For system with mirror as first surface, we usually don't want to propagate using the first surface.
         if not propagate_with_first_surface:
-            optical_system_reduced = OpticalSystem(elements=self.surfaces[1:], lambda_0_laser=self.lambda_0_laser,
-                                                   t_is_trivial=self.t_is_trivial, p_is_trivial=self.p_is_trivial,
-                                                   given_initial_central_line=self.central_line[
-                                                       1] if self.central_line is not None else True,
-                                                   use_paraxial_ray_tracing=self.use_paraxial_ray_tracing)
+            optical_system_reduced = OpticalSystem(
+                elements=self.surfaces[1:],
+                lambda_0_laser=self.lambda_0_laser,
+                t_is_trivial=self.t_is_trivial,
+                p_is_trivial=self.p_is_trivial,
+                given_initial_central_line=self.central_line[1] if self.central_line is not None else True,
+                use_paraxial_ray_tracing=self.use_paraxial_ray_tracing,
+            )
 
             R_out = optical_system_reduced.output_radius_of_curvature(
                 initial_distance=initial_distance, source_position=source_position, propagate_with_first_surface=True
@@ -1454,9 +1499,12 @@ class OpticalSystem:
         else:
             initial_ray_inverted = None
 
-        inverted_system = OpticalSystem(elements=inverted_surfaces, lambda_0_laser=self.lambda_0_laser,
-                                        given_initial_central_line=initial_ray_inverted,
-                                        use_paraxial_ray_tracing=self.use_paraxial_ray_tracing)
+        inverted_system = OpticalSystem(
+            elements=inverted_surfaces,
+            lambda_0_laser=self.lambda_0_laser,
+            given_initial_central_line=initial_ray_inverted,
+            use_paraxial_ray_tracing=self.use_paraxial_ray_tracing,
+        )
         return inverted_system
 
 
@@ -1466,7 +1514,7 @@ class OpticalSystem:
 class Cavity(OpticalSystem):
     def __init__(
         self,
-        elements: List[Union[Surface, 'OpticalSystem']],
+        elements: List[Union[Surface, "OpticalSystem"]],
         standing_wave: bool = True,
         lambda_0_laser: Optional[float] = None,
         params: Optional[list] = None,
@@ -1488,9 +1536,15 @@ class Cavity(OpticalSystem):
         self.standing_wave = standing_wave
         ordered_elements = self._order_surfaces_for_initialization(elements, standing_wave=standing_wave)
 
-        super().__init__(elements=ordered_elements, lambda_0_laser=lambda_0_laser, params=params, power=power,
-                         t_is_trivial=t_is_trivial, p_is_trivial=p_is_trivial,
-                         use_paraxial_ray_tracing=use_paraxial_ray_tracing)
+        super().__init__(
+            elements=ordered_elements,
+            lambda_0_laser=lambda_0_laser,
+            params=params,
+            power=power,
+            t_is_trivial=t_is_trivial,
+            p_is_trivial=p_is_trivial,
+            use_paraxial_ray_tracing=use_paraxial_ray_tracing,
+        )
 
         self.central_line_successfully_traced: Optional[bool] = None
         self.resonating_mode_successfully_traced: Optional[bool] = None
@@ -1506,7 +1560,8 @@ class Cavity(OpticalSystem):
             if set_mode_parameters:
                 if self.lambda_0_laser is None:
                     raise ValueError(
-                        "Can not set mode parameters without defining the wavelength. set self.lambda_0_laser")
+                        "Can not set mode parameters without defining the wavelength. set self.lambda_0_laser"
+                    )
                 self.set_mode_parameters(
                     mode_parameters_first_arm=initial_mode_parameters,
                     local_mode_parameters_first_surface=initial_local_mode_parameters,
@@ -1574,12 +1629,12 @@ class Cavity(OpticalSystem):
             return [arm.surface_0 for arm in self.arms]
 
     @property
-    def elements(self) -> List[Union[Surface, 'OpticalSystem']]:
+    def elements(self) -> List[Union[Surface, "OpticalSystem"]]:
         # Overrides OpticalSystem.elements — returns unique input elements A -> B -> C -> D
         return self._input_elements
 
     @property
-    def elements_ordered(self) -> List[Union[Surface, 'OpticalSystem']]:
+    def elements_ordered(self) -> List[Union[Surface, "OpticalSystem"]]:
         # Full round-trip sequence: A -> B -> C -> D -> C^-1 -> B^-1 -> A^-1 (standing wave)
         # or A -> B -> C -> D -> A (ring)
         return self._elements
@@ -2155,7 +2210,8 @@ class Cavity(OpticalSystem):
                 # to draw it.
                 if (
                     # SurfacesTypes.has_refractive_index(self.to_params[element_index].surface_type) or
-                    parameter_name != ParamsNames.n_inside_or_after
+                    parameter_name
+                    != ParamsNames.n_inside_or_after
                 ):
                     overlaps[element_index, j, :] = self.calculated_shifted_cavity_overlap_integral(
                         perturbation_pointer=PerturbationPointer(
@@ -2268,11 +2324,18 @@ class Cavity(OpticalSystem):
                     names.insert(i + 1, names[i] + "_2")
                     names[i] = names[i] + "_1"
 
-        unheated_cavity = Cavity(elements=unheated_surfaces, standing_wave=self.standing_wave,
-                                 lambda_0_laser=self.lambda_0_laser, set_central_line=True, set_mode_parameters=True,
-                                 set_initial_surface=False, t_is_trivial=self.t_is_trivial,
-                                 p_is_trivial=self.p_is_trivial, power=0,
-                                 use_paraxial_ray_tracing=self.use_paraxial_ray_tracing)
+        unheated_cavity = Cavity(
+            elements=unheated_surfaces,
+            standing_wave=self.standing_wave,
+            lambda_0_laser=self.lambda_0_laser,
+            set_central_line=True,
+            set_mode_parameters=True,
+            set_initial_surface=False,
+            t_is_trivial=self.t_is_trivial,
+            p_is_trivial=self.p_is_trivial,
+            power=0,
+            use_paraxial_ray_tracing=self.use_paraxial_ray_tracing,
+        )
 
         return unheated_cavity
 
@@ -2455,7 +2518,6 @@ class Cavity(OpticalSystem):
     def delta_f_trasversal_over_fsr(self):
         return self.delta_f_frequency_transversal_apparent / self.free_spectral_range
 
-
     def plot_spectrum(
         self,
         modes_decay_rate: float = 2,
@@ -2525,7 +2587,6 @@ class Cavity(OpticalSystem):
         ax2.set_title("Lorentzian Function - Reverse Frequency")
 
         plt.tight_layout()
-
 
 
 def generate_tolerance_of_NA(
@@ -2831,18 +2892,20 @@ def evaluate_gaussian(A: np.ndarray, b: np.ndarray, c: complex, axis_span: float
     return functions_values
 
 
-_RIGID_BODY_TRANSLATION_AXES = {'x': np.array([1.0, 0.0, 0.0]),
-                                'y': np.array([0.0, 1.0, 0.0]),
-                                'z': np.array([0.0, 0.0, 1.0])}
+_RIGID_BODY_TRANSLATION_AXES = {
+    "x": np.array([1.0, 0.0, 0.0]),
+    "y": np.array([0.0, 1.0, 0.0]),
+    "z": np.array([0.0, 0.0, 1.0]),
+}
 
 
 def _rigid_body_rotation_matrix(theta: float, phi: float, parameter_name: str, perturbation_value: float):
     # Returns the rotation matrix that rotates the reference normal (given by theta, phi) by perturbing one of its
     # angles, or None when the rotation is negligible. Shared by the params-based and object-based perturbations.
     n_old = unit_vector_of_angles(theta, phi)
-    if parameter_name == 'theta':
+    if parameter_name == "theta":
         n_new = unit_vector_of_angles(theta + perturbation_value, phi)
-    elif parameter_name == 'phi':
+    elif parameter_name == "phi":
         n_new = unit_vector_of_angles(theta, phi + perturbation_value)
     else:
         raise ValueError(f"'{parameter_name}' is not a rotation parameter (expected 'theta' or 'phi').")
@@ -2866,10 +2929,10 @@ def apply_rigid_body_perturbation_to_params(params, parameter_name, perturbation
     if mechanical_center is None:
         mechanical_center = np.mean(np.array([[sp.x, sp.y, sp.z] for sp in sub_params], dtype=float), axis=0)
 
-    if parameter_name in ('x', 'y', 'z'):
+    if parameter_name in ("x", "y", "z"):
         for sp in sub_params:
             setattr(sp, parameter_name, getattr(sp, parameter_name) + perturbation_value)
-    elif parameter_name in ('theta', 'phi'):
+    elif parameter_name in ("theta", "phi"):
         R = _rigid_body_rotation_matrix(sub_params[0].theta, sub_params[0].phi, parameter_name, perturbation_value)
         if R is None:
             return
@@ -2905,13 +2968,13 @@ def apply_rigid_body_perturbation(element, parameter_name, perturbation_value, m
     # An explicitly-set mechanical center is a body-fixed point, so it must follow the rigid motion too.
     has_explicit_center = isinstance(element, OpticalSystem) and element._mechanical_center is not None
 
-    if parameter_name in ('x', 'y', 'z'):
+    if parameter_name in ("x", "y", "z"):
         delta = perturbation_value * _RIGID_BODY_TRANSLATION_AXES[parameter_name]
         for surface in surfaces:
             surface.center = surface.center + delta
         if has_explicit_center:
             element._mechanical_center = np.array(element._mechanical_center, dtype=float) + delta
-    elif parameter_name in ('theta', 'phi'):
+    elif parameter_name in ("theta", "phi"):
         theta, phi = angles_of_unit_vector(surfaces[0].outwards_normal)
         R = _rigid_body_rotation_matrix(theta, phi, parameter_name, perturbation_value)
         if R is None:
@@ -2924,7 +2987,8 @@ def apply_rigid_body_perturbation(element, parameter_name, perturbation_value, m
             surface.center = mechanical_center + R @ (old_center - mechanical_center)
         if has_explicit_center:
             element._mechanical_center = mechanical_center + R @ (
-                np.array(element._mechanical_center, dtype=float) - mechanical_center)
+                np.array(element._mechanical_center, dtype=float) - mechanical_center
+            )
     else:
         raise ValueError(
             f"Perturbation of '{parameter_name}' is not supported for rigid-body perturbations. "
@@ -2940,10 +3004,10 @@ def _apply_scalar_perturbation_to_surface(surface, parameter_name, perturbation_
         if isinstance(surface, CurvedSurface):
             surface.radius = surface.radius + perturbation_value
     elif parameter_name == ParamsNames.n_inside_or_after:
-        if hasattr(surface, 'n_2'):
+        if hasattr(surface, "n_2"):
             surface.n_2 = surface.n_2 + perturbation_value
     elif parameter_name == ParamsNames.n_outside_or_before:
-        if hasattr(surface, 'n_1'):
+        if hasattr(surface, "n_1"):
             surface.n_1 = surface.n_1 + perturbation_value
     else:
         raise ValueError(
@@ -3033,7 +3097,7 @@ def perturb_cavity(
         element = perturbed_elements[perturbation_pointer_temp.element_index]
         parameter_name = perturbation_pointer_temp.parameter_name
         perturbation_value = perturbation_pointer_temp.perturbation_value
-        if parameter_name in ('x', 'y', 'z', 'theta', 'phi'):
+        if parameter_name in ("x", "y", "z", "theta", "phi"):
             apply_rigid_body_perturbation(element, parameter_name, perturbation_value)
         elif isinstance(element, OpticalSystem):
             raise ValueError(
@@ -3050,7 +3114,8 @@ def perturb_cavity(
     # _updated_triviality_flags; here "disturbed" is read off the perturbed parameter names (z/theta -> theta
     # symmetry, y/phi -> phi symmetry).
     t_is_trivial, p_is_trivial = _updated_triviality_flags(
-        cavity.t_is_trivial, cavity.p_is_trivial,
+        cavity.t_is_trivial,
+        cavity.p_is_trivial,
         theta_symmetry_broken=any(name in (ParamsNames.z, ParamsNames.theta) for name in parameters_names),
         phi_symmetry_broken=any(name in (ParamsNames.y, ParamsNames.phi) for name in parameters_names),
     )
@@ -3591,9 +3656,7 @@ def mirror_lens_mirror_generator_with_unconcentricity(unconcentricity: float, ba
     n = left_p.n_inside_or_after
     R_1 = left_p.radius
     R_2 = right_p.radius
-    T_c = np.linalg.norm(
-        np.array([right_p.x - left_p.x, right_p.y - left_p.y, right_p.z - left_p.z])
-    )
+    T_c = np.linalg.norm(np.array([right_p.x - left_p.x, right_p.y - left_p.y, right_p.z - left_p.z]))
     lens_left_center = np.array([left_p.x, left_p.y, left_p.z])
     lens_right_center = np.array([right_p.x, right_p.y, right_p.z])
     f = focal_length_of_lens(R_1, -R_2, n, T_c)
@@ -3819,7 +3882,7 @@ def mirror_lens_mirror_cavity_generator(
         curvature_sign=1,
         name="lens_left",
         material_properties=lens_material_properties,
-        diameter=7.75e-3
+        diameter=7.75e-3,
     )
     if set_R_right_to_equalize_angles:
         surface_right = find_equal_angles_surface(
@@ -3854,7 +3917,7 @@ def mirror_lens_mirror_cavity_generator(
             curvature_sign=-1,
             name="lens_right",
             material_properties=lens_material_properties,
-            diameter=7.75e-3
+            diameter=7.75e-3,
         )
 
     mode_parameters_just_before_surface_left = mode_left.local_mode_parameters(
@@ -3997,8 +4060,14 @@ def fabry_perot_generator(
         )
     else:
         raise ValueError("Either NA or unconcentricity must be provided.")
-    return Cavity(elements=[mirror_1, mirror_2], standing_wave=True, lambda_0_laser=lambda_0_laser, t_is_trivial=True,
-                  p_is_trivial=True, **kwargs)
+    return Cavity(
+        elements=[mirror_1, mirror_2],
+        standing_wave=True,
+        lambda_0_laser=lambda_0_laser,
+        t_is_trivial=True,
+        p_is_trivial=True,
+        **kwargs,
+    )
 
 
 def optical_system_to_cavity_completion(
@@ -4424,9 +4493,8 @@ def plot_mirror_lens_mirror_cavity_analysis(
     plt.subplots_adjust(hspace=0.35)
     plt.gcf().tight_layout()
 
-def params_to_perturbable_params_names(
-    params_list: list, remove_one_of_the_angles: bool = False
-) -> List[str]:
+
+def params_to_perturbable_params_names(params_list: list, remove_one_of_the_angles: bool = False) -> List[str]:
     # This function takes parameters of a cavity and returns the names of the parameters which are interesting to
     # calculate perturbations tolerances for. for example, if a system is cylindrically symmetric, only one transverse
     # displacement direction and one angle are interesting, and the other can be removed from the list of perturbable
@@ -4440,11 +4508,7 @@ def params_to_perturbable_params_names(
         ParamsNames.n_inside_or_after,
     ]
 
-    surface_types = [
-        p.surface_type
-        for p in params_list
-        if not isinstance(p, list)
-    ]
+    surface_types = [p.surface_type for p in params_list if not isinstance(p, list)]
     has_refractive = SurfacesTypes.curved_refractive_surface in surface_types or any(
         isinstance(p, list) for p in params_list
     )
@@ -4453,6 +4517,7 @@ def params_to_perturbable_params_names(
     if remove_one_of_the_angles:
         perturbable_params.remove(ParamsNames.theta)
     return perturbable_params
+
 
 def generate_lens_from_params(
     center: np.ndarray,
@@ -4522,10 +4587,16 @@ def generate_lens_from_params(
             diameter=diameter,
         )
     # if forward_direction is np.array([+-1, 0, 0]) set p_is_trivial to True and p_is_trivial to True, elif forward_direction[3] == 0 set t_is_trivial to True and p_is_trivial to False, else set both to False:
-    p_is_trivial = np.allclose(forward_direction, np.array([1, 0, 0])) or np.allclose(forward_direction, np.array([-1, 0, 0]))
+    p_is_trivial = np.allclose(forward_direction, np.array([1, 0, 0])) or np.allclose(
+        forward_direction, np.array([-1, 0, 0])
+    )
     t_is_trivial = forward_direction[0] == 0
-    optical_system = OpticalSystem(elements=[surface_1, surface_2], t_is_trivial=t_is_trivial,
-                                   p_is_trivial=p_is_trivial, use_paraxial_ray_tracing=False)
+    optical_system = OpticalSystem(
+        elements=[surface_1, surface_2],
+        t_is_trivial=t_is_trivial,
+        p_is_trivial=p_is_trivial,
+        use_paraxial_ray_tracing=False,
+    )
     return optical_system
 
 
@@ -4568,26 +4639,33 @@ def generate_aspheric_lens_from_params(
         diameter=diameter,
     )
     # if forward_direction is np.array([+-1, 0, 0]) set p_is_trivial to True and p_is_trivial to True, elif forward_direction[3] == 0 set t_is_trivial to True and p_is_trivial to False, else set both to False:
-    p_is_trivial = np.allclose(forward_direction, np.array([1, 0, 0])) or np.allclose(forward_direction, np.array([-1, 0, 0]))
+    p_is_trivial = np.allclose(forward_direction, np.array([1, 0, 0])) or np.allclose(
+        forward_direction, np.array([-1, 0, 0])
+    )
     t_is_trivial = forward_direction[0] == 0
-    optical_system = OpticalSystem(elements=[surface_1, surface_2], t_is_trivial=t_is_trivial,
-                                   p_is_trivial=p_is_trivial, use_paraxial_ray_tracing=False)
+    optical_system = OpticalSystem(
+        elements=[surface_1, surface_2],
+        t_is_trivial=t_is_trivial,
+        p_is_trivial=p_is_trivial,
+        use_paraxial_ray_tracing=False,
+    )
     return optical_system
 
 
-LASER_OPTIK_MIRROR_REFRACTIVE = OpticalSystem(elements=[
-    CurvedRefractiveSurface(
-        radius=5e-3,
-        diameter=7.75e-3,
-        outwards_normal=LEFT,
-        origin=ORIGIN,
-        name="Laser Optik Mirror - Concave",
-        n_1=1,
-        curvature_sign=CurvatureSigns.concave,
-        n_2=PHYSICAL_SIZES_DICT["material_properties_fused_silica"].refractive_index,
-        material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"],
-    ),
-    CurvedRefractiveSurface(
+LASER_OPTIK_MIRROR_REFRACTIVE = OpticalSystem(
+    elements=[
+        CurvedRefractiveSurface(
+            radius=5e-3,
+            diameter=7.75e-3,
+            outwards_normal=LEFT,
+            origin=ORIGIN,
+            name="Laser Optik Mirror - Concave",
+            n_1=1,
+            curvature_sign=CurvatureSigns.concave,
+            n_2=PHYSICAL_SIZES_DICT["material_properties_fused_silica"].refractive_index,
+            material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"],
+        ),
+        CurvedRefractiveSurface(
             curvature_sign=CurvatureSigns.concave,
             radius=5e-3,
             diameter=7.75e-3,
@@ -4597,55 +4675,68 @@ LASER_OPTIK_MIRROR_REFRACTIVE = OpticalSystem(elements=[
             n_1=PHYSICAL_SIZES_DICT["material_properties_fused_silica"].refractive_index,
             n_2=1,
             material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"],
-        )
-])
+        ),
+    ]
+)
 
-THORLABS_35MM_COLLIMATING_LENS = OpticalSystem(elements=[
-    CurvedRefractiveSurface(
-        name="Thorlabs 35mm biconvex - right",
-        radius=34.9e-3,
-        outwards_normal=RIGHT,
-        diameter=25.4e-3,
-        curvature_sign=CurvatureSigns.convex,
-        n_1=1,
-        n_2=PHYSICAL_SIZES_DICT["material_properties_bk7"].refractive_index,
-    ),
+THORLABS_35MM_COLLIMATING_LENS = OpticalSystem(
+    elements=[
+        CurvedRefractiveSurface(
+            name="Thorlabs 35mm biconvex - right",
+            radius=34.9e-3,
+            outwards_normal=RIGHT,
+            diameter=25.4e-3,
+            curvature_sign=CurvatureSigns.convex,
+            n_1=1,
+            n_2=PHYSICAL_SIZES_DICT["material_properties_bk7"].refractive_index,
+        ),
+        CurvedRefractiveSurface(
+            name="Thorlabs 35mm biconvex - left",
+            radius=34.9e-3,
+            outwards_normal=LEFT,
+            center=LASER_OPTIK_MIRROR_REFRACTIVE.surfaces[1].center + 0.02214 * LEFT + 6.8e-3 * LEFT,
+            diameter=25.4e-3,
+            curvature_sign=CurvatureSigns.concave,
+            n_1=PHYSICAL_SIZES_DICT["material_properties_bk7"].refractive_index,
+            n_2=1,
+        ),
+    ]
+)
 
-CurvedRefractiveSurface(
-        name="Thorlabs 35mm biconvex - left",
-        radius=34.9e-3,
-        outwards_normal=LEFT,
-        center= LASER_OPTIK_MIRROR_REFRACTIVE.surfaces[1].center + 0.02214*LEFT + 6.8e-3*LEFT,
-        diameter=25.4e-3,
-        curvature_sign=CurvatureSigns.concave,
-        n_1=PHYSICAL_SIZES_DICT["material_properties_bk7"].refractive_index,
-        n_2=1,
-    )
-])
+EDMUND_4p03MM_ASPHERIC_SPHERICAL_VERSION = OpticalSystem(
+    elements=[
+        CurvedRefractiveSurface(
+            name="low curvature side - Edmund 4.03mm spherical version",
+            radius=(1 / 7.889402975752558833e-02) * 1e-3,
+            outwards_normal=LEFT,
+            diameter=5.1e-3,
+            curvature_sign=CurvatureSigns.convex,
+            n_1=1,
+            n_2=1.574,
+        ),
+        CurvedRefractiveSurface(
+            name="high curvature side - Edmund 4.03mm spherical version",
+            radius=(1 / 3.817155986760137343e-01) * 1e-3,
+            outwards_normal=RIGHT,
+            center=1j * 3.1e-3 * RIGHT,
+            diameter=5.1e-3,
+            curvature_sign=CurvatureSigns.concave,
+            n_1=1.574,
+            n_2=1,
+        ),
+    ]
+)
 
-EDMUND_4p03MM_ASPHERIC_SPHERICAL_VERSION = OpticalSystem(elements=[
-    CurvedRefractiveSurface(
-        name="low curvature side - Edmund 4.03mm spherical version",
-        radius=(1/7.889402975752558833E-02)*1e-3,
-        outwards_normal=LEFT,
-        diameter=5.1e-3,
-        curvature_sign=CurvatureSigns.convex,
-        n_1=1,
-        n_2=1.574,
-    ),
-
-CurvedRefractiveSurface(
-        name="high curvature side - Edmund 4.03mm spherical version",
-        radius=(1/3.817155986760137343E-01)*1e-3,
-        outwards_normal=RIGHT,
-        center=1j*3.1e-3*RIGHT,
-        diameter=5.1e-3,
-        curvature_sign=CurvatureSigns.concave,
-        n_1=1.574,
-        n_2=1,
-    )
-])
-
-eksma_lens_params = generate_aspheric_lens_params(back_focal_length=17.001e-3, T_c=4.35e-3, forward_normal=LEFT, flat_faces_center=ORIGIN+15e-3*LEFT, n=PHYSICAL_SIZES_DICT['material_properties_fused_silica'].refractive_index, diameter=INCH / 2, polynomial_degree=10, n_outside=1, name="Eksma 20mm")
+eksma_lens_params = generate_aspheric_lens_params(
+    back_focal_length=17.001e-3,
+    T_c=4.35e-3,
+    forward_normal=LEFT,
+    flat_faces_center=ORIGIN + 15e-3 * LEFT,
+    n=PHYSICAL_SIZES_DICT["material_properties_fused_silica"].refractive_index,
+    diameter=INCH / 2,
+    polynomial_degree=10,
+    n_outside=1,
+    name="Eksma 20mm",
+)
 EKSMA_LENS_20mm_ASPHERIC = OpticalSystem.from_params(params=eksma_lens_params)
 del eksma_lens_params

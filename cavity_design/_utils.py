@@ -27,7 +27,7 @@ LEFT, RIGHT, UP, DOWN, INWARD, OUTWARD, ORIGIN, INCH = (
     np.array([0, 0, -1]),
     np.array([0, 0, 1]),
     np.array([0, 0, 0]),
-    25.4e-3
+    25.4e-3,
 )
 
 
@@ -126,6 +126,7 @@ class CurvatureSigns:
     convex = 1
     concave = -1
     flat = 0
+
 
 @dataclass
 class MaterialProperties:
@@ -267,12 +268,8 @@ class OpticalSurfaceParams:
     radius: float  # radius of curvature. np.inf for flat surfaces, np.nan if not applicable.
     curvature_sign: Union[int, float]  # 1 if the surface is concave, -1 if it is convex
     T_c: float  # center thickness of the element (used for CurvedRefractiveSurface thermal calculations)
-    n_inside_or_after: (
-        float  # refractive index after the surface (for a refractive surface)
-    )
-    n_outside_or_before: (
-        float  # refractive index before the surface (for a refractive surface)
-    )
+    n_inside_or_after: float  # refractive index after the surface (for a refractive surface)
+    n_outside_or_before: float  # refractive index before the surface (for a refractive surface)
     material_properties: MaterialProperties
     diameter: float = np.nan  # diameter of the optical element, None if not specified.
     polynomial_coefficients: Optional[np.ndarray] = None  # For aspheric surfaces only.
@@ -282,7 +279,9 @@ class OpticalSurfaceParams:
         surface_type_string = surface_type_string.ljust(33)
         name_string = f"'{self.name}'"
         name_string = name_string.ljust(25)
-        curvature_sign_string = "CurvatureSigns.convex" if self.curvature_sign == CurvatureSigns.convex else "CurvatureSigns.concave"
+        curvature_sign_string = (
+            "CurvatureSigns.convex" if self.curvature_sign == CurvatureSigns.convex else "CurvatureSigns.concave"
+        )
         return (
             f"OpticalSurfaceParams("
             f"name={name_string},"
@@ -301,7 +300,6 @@ class OpticalSurfaceParams:
             f"material_properties={self.material_properties}, "
             f"polynomial_coefficients={pretty_str_array(self.polynomial_coefficients)})"
         )
-
 
     @property
     def to_array(self) -> np.ndarray:
@@ -443,14 +441,21 @@ class PerturbationPointer:
 def pretty_str_array(array: Optional[np.ndarray]) -> Optional[str]:
     if array is None:
         return None
-    s = f"np.{array=}".replace("array=", "").replace("nan", "np.nan").replace("\n", "").replace("],", "],\n").replace(",        ", ", ").replace(",      ", ", ").replace("       [", "          [")
+    s = (
+        f"np.{array=}".replace("array=", "")
+        .replace("nan", "np.nan")
+        .replace("\n", "")
+        .replace("],", "],\n")
+        .replace(",        ", ", ")
+        .replace(",      ", ", ")
+        .replace("       [", "          [")
+    )
     return s
+
 
 def pretty_print_array(array: np.ndarray):
     # Prints an array in a way that can be copy-pasted into the code.
-    print(
-        pretty_str_array(array)
-    )
+    print(pretty_str_array(array))
 
 
 def pretty_str_number(number: Optional[float], represents_angle: bool = False):
@@ -516,6 +521,7 @@ def ABCD_free_space(length: Union[np.ndarray, float]) -> np.ndarray:
 
     return ABCD
 
+
 def decompose_ABCD_matrix(
     ABCD: np.ndarray,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
@@ -532,6 +538,7 @@ def decompose_ABCD_matrix(
     else:
         A, B, C, D = ABCD[..., 0, 0], ABCD[..., 0, 1], ABCD[..., 1, 0], ABCD[..., 1, 1]
     return A, B, C, D
+
 
 def normalize_vector(vector: Union[np.ndarray, list], ignore_null_vectors: bool = False) -> np.ndarray:
     if isinstance(vector, list):
@@ -701,9 +708,11 @@ def z_R_of_NA(NA: Union[np.ndarray, float], lambda_laser: float):
     z_R = z_R_of_w_0(w_0, lambda_laser)
     return z_R
 
+
 def NA_of_z_R(z_R: Union[np.ndarray, float], lambda_0_laser: float):
     NA = np.sqrt(lambda_0_laser / (np.pi * z_R))
     return NA
+
 
 def w_0_of_NA(NA: Union[np.ndarray, float], lambda_laser: float):
     return lambda_laser / (np.pi * NA)
@@ -1287,7 +1296,7 @@ def copy_parameters_func(local_parameters):
     l = []
     for key, value in local_parameters.items():
         # if key.startswith("t_") or key.startswith("p_") or key in ["t", "p"]:
-            # print(f"{key} = 1j*{value/np.pi:.10e}")
+        # print(f"{key} = 1j*{value/np.pi:.10e}")
         if key in ["copy_input_parameters", "copy_cavity_parameters", "copy_image"]:
             continue
         if isinstance(value, float):
@@ -1296,7 +1305,7 @@ def copy_parameters_func(local_parameters):
             l.append(f"{key} = '{value}'")
         else:
             l.append(f"{key} = {value}")
-    final_expression = '\n'.join(l)
+    final_expression = "\n".join(l)
     pyperclip.copy(final_expression)
 
 

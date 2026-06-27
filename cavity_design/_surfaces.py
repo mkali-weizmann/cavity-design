@@ -29,7 +29,7 @@ from ._utils import (
     solve_aspheric_profile,
     RIGHT,
     ORIGIN,
-    LEFT
+    LEFT,
 )
 from ._rays import Ray
 
@@ -1024,6 +1024,7 @@ class FlatMirror(FlatSurface, ReflectiveSurface):
             center=center,
             diameter=diameter,
         )
+
     def __str__(self):
         return f"FlatMirror(name={self.name}, center={self.center}, outwards_normal={self.outwards_normal})"
 
@@ -1307,7 +1308,7 @@ class CurvedSurface(Surface):
         fine_resolution: bool = False,
         **kwargs,
     ):
-        diameter = nvl(nvl(diameter, self.diameter), 0.6*self.radius)
+        diameter = nvl(nvl(diameter, self.diameter), 0.6 * self.radius)
         super().plot(ax, name, dim, diameter=diameter, plane=plane, fine_resolution=fine_resolution, **kwargs)
 
 
@@ -1563,6 +1564,7 @@ class CurvedRefractiveSurface(CurvedSurface, RefractiveSurface):
             diameter=self.diameter,
         )
 
+
 def generate_aspheric_lens_params(
     back_focal_length: float,
     T_c: float,
@@ -1640,7 +1642,6 @@ def convert_curved_refractive_surface_to_ideal_lens(surface: CurvedRefractiveSur
     )
 
     return ideal_lens, flat_refractive_surface
-
 
 
 LASER_OPTIK_MIRROR = CurvedMirror(
