@@ -28,7 +28,7 @@ for i, short_arm_length in enumerate(short_arm_lengths):
         try:
             cavity=optical_system_to_cavity_completion(optical_system=optical_system, NA=NA, end_mirror_ROC=2e-1)
             long_arm_lengths[i, j] = cavity.surfaces[-1].center[0] - cavity.surfaces[2].center[0]
-            mode_spacings[i, j] = cavity.delta_f_frequency_transversal_apparent
+            mode_spacings[i, j] = cavity.mode_spacing_transversal_apparent
         except ValueError:
             continue
 
@@ -72,7 +72,7 @@ for i, long_arm_length in enumerate(long_arm_lengths):  #
     for j, short_arm_length in enumerate(short_arm_lengths):
         cavity.place_elements(elements=cavity[1], position = short_arm_length * RIGHT, reference_center=cavity[0])
         NAs[i, j] = cavity.arms[0].mode_parameters.NA[0]
-        mode_spacings[i, j] = cavity.delta_f_frequency_transversal_apparent
+        mode_spacings[i, j] = cavity.mode_spacing_transversal_apparent
         if j == 0:
             focii_to_lens[i] = cavity.surfaces[-1].center[0] - cavity.surfaces[2].center[0] - cavity.surfaces[-1].radius
         if cavity.arms[0].mode_parameters.NA[0] > 0.07 and flag is False:
