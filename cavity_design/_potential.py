@@ -103,6 +103,12 @@ def choose_source_position_for_desired_focus_analytic(
     return defocus
 
 
+def generate_one_lens_optical_system_temp(NA: float = 0.1, short_arm_length=7.5e-3):
+    optical_system = OpticalSystem(elements=[LASER_OPTIK_MIRROR, EDMUND_4p03MM_ASPHERIC_SPHERICAL_VERSION], lambda_0_laser=LAMBDA_0_LASER)
+    optical_system.place_elements(elements=optical_system[1], position=short_arm_length*RIGHT, reference_center=optical_system[0])
+    cavity=optical_system_to_cavity_completion(optical_system=optical_system, NA=NA, end_mirror_ROC=20e-2)
+    return cavity
+
 def generate_one_lens_optical_system(
     R_1: Optional[float] = None,  # For a spherical lens
     R_2: Optional[float] = None,  # For a spherical lens

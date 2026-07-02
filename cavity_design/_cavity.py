@@ -1432,6 +1432,14 @@ class OpticalSystem:
         ax.grid()
         if additional_rays is not None:
             ax.legend()
+
+        if self.resonating_mode_successfully_traced:
+            title=ax.set_title(
+                f"NA first = {self.mode_parameters[0].NA[0]:.2e}, NA last = {self.mode_parameters[len(self.arms) // 2 - 1].NA[0]:.2e}\n"
+                f"length first = {self.central_line[0].length:.2e}, length last = {self.central_line[len(self.arms) // 2 - 1].length:.2e}")
+        else:
+            totle=ax.set_title(
+                f"length first = {self.central_line[0].length:.2e}, length last = {self.central_line[len(self.arms) // 2 - 1].length:.2e}")
         return ax
 
     @property
@@ -1638,6 +1646,9 @@ class Cavity(OpticalSystem):
         # Full round-trip sequence: A -> B -> C -> D -> C^-1 -> B^-1 -> A^-1 (standing wave)
         # or A -> B -> C -> D -> A (ring)
         return self._elements
+    @property
+    def last_arm_index(self):
+        return len(self.arms) // 2 - 1
 
     @property
     def to_params(self):
@@ -4724,6 +4735,10 @@ EDMUND_4p03MM_ASPHERIC_SPHERICAL_VERSION = OpticalSystem(
         ),
     ]
 )
+
+# EDMUND_4p03MM_ASPHERIC = OpticalSystem(
+#
+# )
 
 eksma_lens_params = generate_aspheric_lens_params(
     back_focal_length=17.001e-3,
