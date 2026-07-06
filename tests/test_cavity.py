@@ -541,8 +541,8 @@ def test_potential_single_lens():
     results_dict = analyze_potential(optical_system=optical_system, rays_0=rays_0, unconcentricity=unconcentricity,
                                      print_tests=print_tests, potential_horizontal_axis_in_NAs=False)
     assert np.isclose(
-        np.abs(results_dict["zero_derivative_points"] * 1e3), 0.15342637331775477
-    ), f"Potential single lens test failed: expected zero derivative point at approximately 0.15342637331775477 mm but got {results_dict['zero_derivative_points']*1e3} mm"
+        np.abs(results_dict["zero_derivative_point"] * 1e3), 0.15342637331775477
+    ), f"Potential single lens test failed: expected zero derivative point at approximately 0.15342637331775477 mm but got {results_dict['zero_derivative_point']*1e3} mm"
 
 def test_free_potential_vs_cavity_potential_comparison():
     dn = 0
@@ -571,9 +571,9 @@ def test_free_potential_vs_cavity_potential_comparison():
     print(cavity.ABCD_round_trip)
     results_dict_cavity = analyze_potential_given_cavity(cavity=cavity, n_rays=30, phi_max=0.14, print_tests=True, potential_horizontal_axis_in_NAs=False)
     assert np.all(np.isclose(np.array(
-        [results_dict['zero_derivative_points'], results_dict['polynomial_residuals_mirror'].coef[2],
+        [results_dict['zero_derivative_point'], results_dict['polynomial_residuals_mirror'].coef[2],
          results_dict['polynomial_residuals_opposite'].coef[1]]),
-                             np.array([results_dict_cavity['zero_derivative_points'],
+                             np.array([results_dict_cavity['zero_derivative_point'],
                                        results_dict_cavity['polynomial_residuals_mirror'].coef[2],
                                        results_dict_cavity['polynomial_residuals_opposite'].coef[
                                            1]]))), "Results from analyze_potential_given_cavity do not match results from analyze_potential for the same cavity."
