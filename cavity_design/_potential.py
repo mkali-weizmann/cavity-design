@@ -330,8 +330,9 @@ def generate_two_positive_lenses_cavity(
     n_aspheric_actual: float,
     n_spherical: float,
     T_c_spherical: float,
-    unconcentricity: float,
     NA_small_arm: float,
+    long_arm_length: float,
+    unconcentricity: float,
     mirror_setting_mode: str = "Set NA",
     diameter: float = 12.7e-3,
     spherical_aspherical_distance: float = 5e-3,
@@ -343,8 +344,16 @@ def generate_two_positive_lenses_cavity(
 
     if mirror_setting_mode == "Set NA":
         unconcentricity = None
-    else:
+        long_arm_length = None
+    elif mirror_setting_mode == "Set long arm length":
+        unconcentricity = None
         NA_small_arm = None
+    elif mirror_setting_mode == "Set unconcentricity":
+        NA_small_arm = None
+        long_arm_length = None
+    else:
+        raise ValueError(f"mirror setting mode {mirror_setting_mode} is not supported. Must be either 'Set NA', 'Set long arm length' or 'Set unconcentricity'.")
+
 
     optical_system = generate_two_positive_lenses_optical_system(
         defocus=defocus,
@@ -372,6 +381,7 @@ def generate_two_positive_lenses_cavity(
         optical_system=optical_system_with_small_mirror,
         NA=NA_small_arm,
         unconcentricity=unconcentricity,
+        end_mirror_distance_to_last_element=long_arm_length,
         end_mirror_ROC=2e-1,
         diameter=25.4e-3,
     )
@@ -782,16 +792,16 @@ def analyze_output_wavefront(
         outwards_normal=optical_axis,
         center=end_mirror_origin + end_mirror_ROC * optical_axis,
         curvature_sign=CurvatureSigns.concave,
-        name="big mirror",
+        name="end mirror",
     )
 
     # find point of 0 derivative (other than 0) in residual_distances_mirror:
     deriv_mirror = np.gradient(residual_distances_mirror, wavefront_points_opposite[:, 1])
     first_zero_crossings = np.where(np.diff(np.sign(deriv_mirror)))[0]
     if len(first_zero_crossings) > 0:
-        zero_derivative_points = wavefront_points_opposite[first_zero_crossings[0], 1]
+        zero_derivative_point = wavefront_points_opposite[first_zero_crossings[0], 1]
     else:
-        zero_derivative_points = None
+        zero_derivative_point = np.nan
 
     results_dict = {
         "ray_sequence": ray_sequence,
@@ -806,7 +816,7 @@ def analyze_output_wavefront(
         "residual_distances_mirror": residual_distances_mirror,
         "polynomial_residuals_opposite": polynomial_residuals_opposite,
         "polynomial_residuals_mirror": polynomial_residuals_mirror,
-        "zero_derivative_points": zero_derivative_points,
+        "zero_derivative_point": zero_derivative_point,
         "end_mirror_object": end_mirror_object,
         "potential_horizontal_axis_in_NAs": potential_horizontal_axis_in_NAs,
     }
@@ -926,14 +936,14 @@ def plot_results(
         center_of_curvature,
         NA_paraxial,
         spot_size_paraxial,
-        zero_derivative_points,
+        zero_derivative_point,
         potential_horizontal_axis_in_NAs,
     ) = (
         results_dict["ray_sequence"],
         results_dict["center_of_curvature"],
         results_dict["NA_paraxial"],
         results_dict["spot_size_paraxial"],
-        results_dict["zero_derivative_points"],
+        results_dict["zero_derivative_point"],
         results_dict["potential_horizontal_axis_in_NAs"],
     )
     if far_away_plane:
@@ -1120,7 +1130,7 @@ def plot_results(
             ax2.set_ylabel("Relative intensity (a.u.)")
             ax2.set_ylim(-0.03, 1.03)
 
-        zero_derivative_point_plot = np.nan if zero_derivative_points is None else zero_derivative_points
+        zero_derivative_point_plot = np.nan if zero_derivative_point is None else zero_derivative_point
         ax[0].axvline(
             zero_derivative_point_plot * 1e3, label="2nd vs 4th order max", color="purple", linestyle="dotted"
         )
