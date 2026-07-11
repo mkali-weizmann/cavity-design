@@ -940,6 +940,11 @@ class OpticalSystem:
             return np.linalg.multi_dot(self.ABCD_matrices()[::-1])
 
     @property
+    def T_c(self):
+        assert len(self.surfaces) == 2, "T_c is define only for optical system with exactly two surfaces"
+        return np.linalg.norm(self[1].center - self[0].center)
+
+    @property
     def mode_parameters(self):
         if self.arms[0].central_line is None:
             return None
@@ -4694,16 +4699,28 @@ def generate_aspheric_lens_from_polynomial(
     )
     return optical_system
 
-def back_focal_length_of_lens_object(lens_object: OpticalSystem) -> float:
-    R_1 = lens_object[0].radius
-    R_2 = -lens_object[1].radius
-    T_c = np.linalg.norm(lens_object[1].center - lens_object[0].center)
-    n = lens_object[0].n_2
+def back_focal_length_of_lens_object(lens_object: Union[OpticalSystem, List[OpticalSurfaceParams]]) -> float:
+    if isinstance(lens_object, OpticalSystem):
+        R_1 = lens_object[0].radius
+        R_2 = -lens_object[1].radius
+        T_c = np.linalg.norm(lens_object[1].center - lens_object[0].center)
+        n = lens_object[0].n_2
+    else:
+        R_1 = lens_object[0].radius
+        R_2 = -lens_object[1].radius
+        T_c = np.linalg.norm(np.array([lens_object[1].x, lens_object[1].y, lens_object[1].z]) - np.array([lens_object[0].x, lens_object[0].y, lens_object[0].z]))
+        n = lens_object[0].n_inside_or_after
     return back_focal_length_of_lens_formula(R_1=R_1, R_2=R_2, n=n, T_c=T_c)
 
-def focal_length_of_lens_object(lens_object: OpticalSystem) -> float:
-    R_1 = lens_object[0].radius
-    R_2 = -lens_object[1].radius
-    T_c = np.linalg.norm(lens_object[1].center - lens_object[0].center)
-    n = lens_object[0].n_2
+def focal_length_of_lens_object(lens_object: Union[OpticalSystem, List[OpticalSurfaceParams]]) -> float:
+    if isinstance(lens_object, OpticalSystem):
+        R_1 = lens_object[0].radius
+        R_2 = -lens_object[1].radius
+        T_c = lens_object.T_c
+        n = lens_object[0].n_2
+    else:
+        R_1 = lens_object[0].radius
+        R_2 = -lens_object[1].radius
+        T_c = np.linalg.norm(np.array([lens_object[1].x, lens_object[1].y, lens_object[1].z]) - np.array([lens_object[0].x, lens_object[0].y, lens_object[0].z]))
+        n = lens_object[0].n_inside_or_after
     return focal_length_of_lens_formula(R_1=R_1, R_2=R_2, n=n, T_c=T_c)
