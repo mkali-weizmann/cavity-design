@@ -521,14 +521,14 @@ class OpticalSystem:
     def __init__(
         self,
         elements: List[Union[Surface, "OpticalSystem"]],
-        lambda_0_laser: Optional[float] = None,
-        params: Optional[list] = None,
+        use_paraxial_ray_tracing: bool,
+        lambda_0_laser: Optional[float] = LAMBDA_0_LASER,
         power: Optional[float] = None,
         t_is_trivial: bool = True,
         p_is_trivial: bool = True,
         given_initial_central_line: Optional[Union[Ray, bool]] = True,
         given_initial_local_mode_parameters: Optional[LocalModeParameters] = None,
-        use_paraxial_ray_tracing: bool = False,
+
         mechanical_center: Optional[np.ndarray] = None,
         name: Optional[str] = None,
     ):
@@ -778,7 +778,8 @@ class OpticalSystem:
     @property
     def inverse(self) -> "OpticalSystem":
         inverse_elements = [el.inverse for el in reversed(self._elements)]
-        return OpticalSystem(inverse_elements, mechanical_center=self._mechanical_center)
+        return OpticalSystem(inverse_elements, use_paraxial_ray_tracing=self.use_paraxial_ray_tracing,
+                             p_is_trivial=self.p_is_trivial, t_is_trivial=self.t_is_trivial, mechanical_center=self._mechanical_center)
 
     @property
     def surfaces(self):
@@ -842,7 +843,7 @@ class OpticalSystem:
             if isinstance(p, list):
                 # Nested group: recursively create inner OpticalSystem (rigid body)
                 inner_elements = OpticalSystem._build_elements(p)
-                inner_system = OpticalSystem(inner_elements, given_initial_central_line=None, name=f"element_{i}")
+                inner_system = OpticalSystem(inner_elements, use_paraxial_ray_tracing=True, given_initial_central_line=None, name=f"element_{i}")
                 elements.append(inner_system)
             else:
                 if p.name is None:
@@ -867,14 +868,19 @@ class OpticalSystem:
         return OpticalSystem._build_elements(resolved)
 
     @staticmethod
-    def from_params(params: Union[np.ndarray, list], **kwargs):
+    def from_params(params: Union[np.ndarray, list],
+                    lambda_0_laser: Optional[float] = LAMBDA_0_LASER,
+                    t_is_trivial: bool = True,
+                    p_is_trivial: bool = True,
+                    use_paraxial_ray_tracing: bool = False,
+                    **kwargs):
         if isinstance(params, np.ndarray):
             raise ValueError(
                 "Cavity.from_params no longer supports np.ndarray input. Please provide a list of OpticalSurfaceParams."
             )
         resolved = OpticalSystem._resolve_relative_positions(params)
         elements = OpticalSystem._build_elements(resolved)
-        optical_system = OpticalSystem(elements, params=resolved, **kwargs)
+        optical_system = OpticalSystem(elements, lambda_0_laser=lambda_0_laser, t_is_trivial=t_is_trivial, p_is_trivial=p_is_trivial, use_paraxial_ray_tracing=use_paraxial_ray_tracing, **kwargs)
         return optical_system
 
     @property
@@ -1525,7 +1531,6 @@ class Cavity(OpticalSystem):
         elements: List[Union[Surface, "OpticalSystem"]],
         standing_wave: bool = True,
         lambda_0_laser: Optional[float] = None,
-        params: Optional[list] = None,
         set_central_line: bool = True,
         set_mode_parameters: bool = True,
         set_initial_surface: bool = False,
@@ -1547,7 +1552,6 @@ class Cavity(OpticalSystem):
         super().__init__(
             elements=ordered_elements,
             lambda_0_laser=lambda_0_laser,
-            params=params,
             power=power,
             t_is_trivial=t_is_trivial,
             p_is_trivial=p_is_trivial,
@@ -1585,7 +1589,7 @@ class Cavity(OpticalSystem):
             )
         resolved = OpticalSystem._resolve_relative_positions(params)
         elements = OpticalSystem._build_elements(resolved)
-        cavity = Cavity(elements, params=resolved, **kwargs)
+        cavity = Cavity(elements, **kwargs)
         return cavity
 
     def resolve_relative_positions(self, tiny: float = 1e-16):
@@ -4609,7 +4613,7 @@ def generate_lens_from_params(
     return optical_system
 
 
-def generate_aspheric_lens_from_params(
+def generate_aspheric_lens_from_polynomial(
     center: np.ndarray,
     forward_direction: np.ndarray,
     polynomial_coefficients: np.ndarray,
@@ -4685,7 +4689,8 @@ LASER_OPTIK_MIRROR_REFRACTIVE = OpticalSystem(
             n_2=1,
             material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"],
         ),
-    ]
+    ],
+    use_paraxial_ray_tracing=True,
 )
 
 THORLABS_35MM_COLLIMATING_LENS = OpticalSystem(
@@ -4709,7 +4714,8 @@ THORLABS_35MM_COLLIMATING_LENS = OpticalSystem(
             n_1=PHYSICAL_SIZES_DICT["material_properties_bk7"].refractive_index,
             n_2=1,
         ),
-    ]
+    ],
+    use_paraxial_ray_tracing=True,
 )
 
 EDMUND_4p03MM_ASPHERIC_SPHERICAL_VERSION = OpticalSystem(
@@ -4733,7 +4739,8 @@ EDMUND_4p03MM_ASPHERIC_SPHERICAL_VERSION = OpticalSystem(
             n_1=1.574,
             n_2=1,
         ),
-    ]
+    ],
+    use_paraxial_ray_tracing=True,
 )
 
 # EDMUND_4p03MM_ASPHERIC = OpticalSystem(

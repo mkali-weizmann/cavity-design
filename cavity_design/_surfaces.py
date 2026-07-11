@@ -1570,7 +1570,7 @@ def generate_aspheric_lens_params(
     T_c: float,
     n: float,
     forward_normal: np.ndarray,
-    flat_faces_center: np.ndarray,
+    flat_faces_center: Optional[np.ndarray],
     diameter: float,
     polynomial_degree: int = 6,
     n_outside: float = 1.0,
@@ -1582,7 +1582,11 @@ def generate_aspheric_lens_params(
     p = LensParams(n=n, f=back_focal_length, T_c=T_c)
     coeffs = solve_aspheric_profile(p, y_max=diameter / 2, degree=polynomial_degree)
     theta, phi = angles_of_unit_vector(forward_normal)
-    curved_center = flat_faces_center + T_c * forward_normal
+    if flat_faces_center is None or np.any(np.isnan(flat_faces_center)):
+        flat_faces_center = np.array([np.nan, np.nan, np.nan])
+        curved_center = T_c * forward_normal * 1j
+    else:
+        curved_center = flat_faces_center + T_c * forward_normal
     flat_params = OpticalSurfaceParams(
         name=name + " - flat side",
         surface_type=SurfacesTypes.flat_refractive_surface,

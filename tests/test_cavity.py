@@ -702,7 +702,7 @@ def _make_lens_group(center_x, forward=np.array([1.0, 0.0, 0.0])):
         name="lens_back",
     )
     lens_center = np.array([center_x, 0.0, 0.0])
-    return OpticalSystem([s1, s2], given_initial_central_line=None, mechanical_center=lens_center)
+    return OpticalSystem([s1, s2], use_paraxial_ray_tracing=False, given_initial_central_line=None, mechanical_center=lens_center)
 
 
 def test_nested_optical_system_flat_arms():
@@ -716,7 +716,7 @@ def test_nested_optical_system_flat_arms():
     m2 = CurvedMirror(radius=R, outwards_normal=np.array([1.0, 0, 0]),
                       center=np.array([L/2, 0, 0]), curvature_sign=-1)
 
-    sys = OpticalSystem([m1, lens, m2], given_initial_central_line=None)
+    sys = OpticalSystem([m1, lens, m2], given_initial_central_line=None, use_paraxial_ray_tracing=False)
     # Flat arms: Arm(m1, lens_front), Arm(lens_front, lens_back), Arm(lens_back, m2)
     assert len(sys.arms) == 3, f"Expected 3 arms, got {len(sys.arms)}"
     assert sys.arms[0].surface_0 is m1
@@ -738,7 +738,7 @@ def test_nested_to_params_from_params_roundtrip():
     m2 = CurvedMirror(radius=R, outwards_normal=np.array([1.0, 0, 0]),
                       center=np.array([L/2, 0, 0]), curvature_sign=-1, name="m2")
 
-    sys = OpticalSystem([m1, lens, m2], given_initial_central_line=None)
+    sys = OpticalSystem([m1, lens, m2], given_initial_central_line=None, use_paraxial_ray_tracing=False)
     params = sys.to_params
 
     # params[0] is a single OpticalSurfaceParams, params[1] is a list, params[2] is single
@@ -1008,7 +1008,7 @@ def test_place_elements_reference_center_and_multi():
     # Several elements move together as one rigid body (anchored by the first), internal geometry preserved.
     lens_a = _make_lens_group(center_x=0.0)
     lens_b = _make_lens_group(center_x=10e-3)
-    system = OpticalSystem([lens_a, lens_b], given_initial_central_line=None)
+    system = OpticalSystem([lens_a, lens_b], given_initial_central_line=None, use_paraxial_ray_tracing=False)
     sep_a = lens_a.surfaces[1].center - lens_a.surfaces[0].center
     gap_ab = lens_b.surfaces[0].center - lens_a.surfaces[0].center
 
@@ -1080,7 +1080,7 @@ def test_place_elements_refreshes_plain_optical_system_central_line():
                       curvature_sign=CurvatureSigns.concave, diameter=0.01)
     m1 = CurvedMirror(radius=5e-3, outwards_normal=np.array([1.0, 0, 0]), center=np.array([5e-3, 0, 0]),
                       curvature_sign=CurvatureSigns.concave, diameter=0.01)
-    sys = OpticalSystem([m0, m1], lambda_0_laser=LAMBDA_0_LASER)
+    sys = OpticalSystem([m0, m1], use_paraxial_ray_tracing=False)
     assert sys.central_line is not None
     assert sys.central_line_successfully_traced is None  # plain OpticalSystem never sets this flag
     assert np.isclose(sys.arms[0].central_line.length, 10e-3)
@@ -1098,7 +1098,7 @@ def test_surface_level_relative_position_resolved_at_construction():
     m1 = CurvedMirror(radius=5e-3, outwards_normal=np.array([1.0, 0, 0]),
                       center=np.array([1j * 10e-3, 0, 0]), curvature_sign=CurvatureSigns.concave, diameter=0.01)
 
-    sys = OpticalSystem([m0, m1], given_initial_central_line=None)
+    sys = OpticalSystem([m0, m1], given_initial_central_line=None, use_paraxial_ray_tracing=False)
     assert sys.positions_defined
     assert np.isclose(sys.surfaces[1].center[0], -5e-3 + 10e-3)
     assert not np.iscomplexobj(np.asarray(sys.surfaces[1].center))
@@ -1112,7 +1112,7 @@ def test_surface_level_relative_position_deferred():
     m1 = CurvedMirror(radius=5e-3, outwards_normal=np.array([1.0, 0, 0]),
                       center=np.array([1j * 10e-3, 0, 0]), curvature_sign=CurvatureSigns.concave, diameter=0.01)
 
-    sys = OpticalSystem([m0, m1], given_initial_central_line=None)
+    sys = OpticalSystem([m0, m1], given_initial_central_line=None, use_paraxial_ray_tracing=False)
     assert not sys.positions_defined
     # The unresolved relative position is still complex.
     assert np.any(np.abs(np.imag(np.asarray(sys.surfaces[1].center))) > 1e-12)
@@ -1148,7 +1148,7 @@ def test_unresolved_relative_blocks_calculations():
                       curvature_sign=CurvatureSigns.concave, diameter=0.01)
     m1 = CurvedMirror(radius=5e-3, outwards_normal=np.array([1.0, 0, 0]),
                       center=np.array([1j * 10e-3, 0, 0]), curvature_sign=CurvatureSigns.concave, diameter=0.01)
-    sys = OpticalSystem([m0, m1], given_initial_central_line=None)
+    sys = OpticalSystem([m0, m1], given_initial_central_line=None, use_paraxial_ray_tracing=False)
     ray = Ray(origin=np.array([0.0, 0, 0]), k_vector=np.array([1.0, 0, 0]))
     with pytest.raises(ValueError):
         sys.propagate_ray(ray)

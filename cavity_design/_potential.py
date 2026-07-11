@@ -167,7 +167,7 @@ def generate_one_lens_optical_system(
 
 def generate_two_positive_lenses_optical_system(
     defocus: float,
-    back_focal_length_aspheric: float,
+    back_focal_length_aspheric_design: float,
     T_c_aspheric: float,
     n_aspheric_design: float,
     n_aspheric_actual: float,
@@ -187,13 +187,12 @@ def generate_two_positive_lenses_optical_system(
         "Set position and focal length",
     ], "spherical_setting_mode must be either 'Set position and desired focus', 'Set focal length and desired focus' or 'Set position and focal length'"
     OPTICAL_AXIS = RIGHT
-    back_center = (back_focal_length_aspheric + defocus) * OPTICAL_AXIS
     aspheric_params_list = generate_aspheric_lens_params(
-        back_focal_length=back_focal_length_aspheric,
+        back_focal_length=back_focal_length_aspheric_design,
         T_c=T_c_aspheric,
         n=n_aspheric_design,
         forward_normal=OPTICAL_AXIS,
-        flat_faces_center=back_center,
+        flat_faces_center=ORIGIN,
         diameter=diameter,
         polynomial_degree=24,
         name="aspheric_lens_automatic",
@@ -202,6 +201,12 @@ def generate_two_positive_lenses_optical_system(
     aspheric_curved = Surface.from_params(aspheric_params_list[1])
     aspheric_flat.n_2 = n_aspheric_actual
     aspheric_curved.n_1 = n_aspheric_actual
+    back_focal_length_aspheric_actual = back_focal_length_of_lens(
+        R_1=aspheric_flat.radius,
+        R_2=-aspheric_curved.radius,
+        n=n_aspheric_actual,
+        T_c=T_c_aspheric
+    )
 
     optical_system_aspheric = OpticalSystem(
         elements=[aspheric_flat, aspheric_curved],
@@ -210,6 +215,7 @@ def generate_two_positive_lenses_optical_system(
         given_initial_central_line=True,
         use_paraxial_ray_tracing=False,
     )
+    optical_system_aspheric.place_elements(elements=[optical_system_aspheric[0], optical_system_aspheric[1]], position=(back_focal_length_aspheric_actual + defocus) * OPTICAL_AXIS)
 
     aspheric_output_ROC = optical_system_aspheric.output_radius_of_curvature(initial_distance=aspheric_flat.center[0])
 
@@ -355,21 +361,18 @@ def generate_two_positive_lenses_cavity(
         raise ValueError(f"mirror setting mode {mirror_setting_mode} is not supported. Must be either 'Set NA', 'Set long arm length' or 'Set unconcentricity'.")
 
 
-    optical_system = generate_two_positive_lenses_optical_system(
-        defocus=defocus,
-        back_focal_length_aspheric=back_focal_length_aspheric,
-        T_c_aspheric=T_c_aspheric,
-        n_aspheric_design=n_aspheric_design,
-        n_aspheric_actual=n_aspheric_actual,
-        n_spherical=n_spherical,
-        T_c_spherical=T_c_spherical,
-        diameter=diameter,
-        spherical_aspherical_distance=spherical_aspherical_distance,
-        desired_focus=desired_focus,
-        spherical_type=spherical_type,
-        spherical_focal_length=spherical_focal_length,
-        spherical_setting_mode=spherical_setting_mode,
-    )
+    optical_system = generate_two_positive_lenses_optical_system(defocus=defocus,
+                                                                 back_focal_length_aspheric_design=back_focal_length_aspheric,
+                                                                 T_c_aspheric=T_c_aspheric,
+                                                                 n_aspheric_design=n_aspheric_design,
+                                                                 n_aspheric_actual=n_aspheric_actual,
+                                                                 n_spherical=n_spherical, T_c_spherical=T_c_spherical,
+                                                                 diameter=diameter,
+                                                                 spherical_aspherical_distance=spherical_aspherical_distance,
+                                                                 desired_focus=desired_focus,
+                                                                 spherical_type=spherical_type,
+                                                                 spherical_focal_length=spherical_focal_length,
+                                                                 spherical_setting_mode=spherical_setting_mode)
     optical_system_with_small_mirror = OpticalSystem(
         elements=[LASER_OPTIK_MIRROR, *optical_system.elements],
         lambda_0_laser=LAMBDA_0_LASER,
