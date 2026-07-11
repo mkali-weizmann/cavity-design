@@ -8,9 +8,10 @@ params = [
          ]]
 
 
-
 # %%
-short_arm_length = 7.735e-3
+# This formula comes from find_short_arm_length_for_collimation.nb
+short_arm_length = params[1][1].radius / (params[1][0].n_inside_or_after - 1) + params[0].radius - (params[1][1].x - params[1][0].x) / params[1][0].n_inside_or_after #7.735e-3
+# %%
 T_c = params[1][1].x - params[1][0].x
 params[1][0].x = params[0].x + short_arm_length
 params[1][1].x = params[0].x + short_arm_length + T_c
@@ -20,7 +21,7 @@ optical_system_reversed = optical_system.inverse
 mode_beginning = params[1][1].x+1e-2
 left_going_mode = ModeParameters(center=np.array([mode_beginning, 0, 0]), k_vector=LEFT, lambda_0_laser=LAMBDA_0_LASER, w_0=np.array([1e-3, 1e-3]))
 
-optical_system_combined = OpticalSystem(elements=[*optical_system_reversed.elements, optical_system.elements[1]])
+optical_system_combined = OpticalSystem(elements=[*optical_system_reversed.elements, optical_system.elements[1]], use_paraxial_ray_tracing=True)
 
 propagated_local_mode_list = optical_system_combined.propagate_mode_parameters(mode_parameters_before_first_surface=left_going_mode)
 directions = [LEFT] * len(optical_system.surfaces) + [RIGHT] * len(optical_system.surfaces)
