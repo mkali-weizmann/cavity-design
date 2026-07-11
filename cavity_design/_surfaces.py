@@ -1646,4 +1646,3 @@ def convert_curved_refractive_surface_to_ideal_lens(surface: CurvedRefractiveSur
     )
 
     return ideal_lens, flat_refractive_surface
-

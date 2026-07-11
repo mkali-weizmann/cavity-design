@@ -57,7 +57,8 @@ from ._utils import (
     LEFT,
     ORIGIN,
     RIGHT,
-    INCH, back_focal_length_of_lens_formula,
+    INCH,
+    back_focal_length_of_lens_formula,
 )
 from ._modes import (
     LocalModeParameters,
@@ -528,7 +529,6 @@ class OpticalSystem:
         p_is_trivial: bool = True,
         given_initial_central_line: Optional[Union[Ray, bool]] = True,
         given_initial_local_mode_parameters: Optional[LocalModeParameters] = None,
-
         mechanical_center: Optional[np.ndarray] = None,
         name: Optional[str] = None,
     ):
@@ -778,8 +778,13 @@ class OpticalSystem:
     @property
     def inverse(self) -> "OpticalSystem":
         inverse_elements = [el.inverse for el in reversed(self._elements)]
-        return OpticalSystem(inverse_elements, use_paraxial_ray_tracing=self.use_paraxial_ray_tracing,
-                             p_is_trivial=self.p_is_trivial, t_is_trivial=self.t_is_trivial, mechanical_center=self._mechanical_center)
+        return OpticalSystem(
+            inverse_elements,
+            use_paraxial_ray_tracing=self.use_paraxial_ray_tracing,
+            p_is_trivial=self.p_is_trivial,
+            t_is_trivial=self.t_is_trivial,
+            mechanical_center=self._mechanical_center,
+        )
 
     @property
     def surfaces(self):
@@ -843,7 +848,9 @@ class OpticalSystem:
             if isinstance(p, list):
                 # Nested group: recursively create inner OpticalSystem (rigid body)
                 inner_elements = OpticalSystem._build_elements(p)
-                inner_system = OpticalSystem(inner_elements, use_paraxial_ray_tracing=True, given_initial_central_line=None, name=f"element_{i}")
+                inner_system = OpticalSystem(
+                    inner_elements, use_paraxial_ray_tracing=True, given_initial_central_line=None, name=f"element_{i}"
+                )
                 elements.append(inner_system)
             else:
                 if p.name is None:
@@ -868,19 +875,28 @@ class OpticalSystem:
         return OpticalSystem._build_elements(resolved)
 
     @staticmethod
-    def from_params(params: Union[np.ndarray, list],
-                    lambda_0_laser: Optional[float] = LAMBDA_0_LASER,
-                    t_is_trivial: bool = True,
-                    p_is_trivial: bool = True,
-                    use_paraxial_ray_tracing: bool = False,
-                    **kwargs):
+    def from_params(
+        params: Union[np.ndarray, list],
+        lambda_0_laser: Optional[float] = LAMBDA_0_LASER,
+        t_is_trivial: bool = True,
+        p_is_trivial: bool = True,
+        use_paraxial_ray_tracing: bool = False,
+        **kwargs,
+    ):
         if isinstance(params, np.ndarray):
             raise ValueError(
                 "Cavity.from_params no longer supports np.ndarray input. Please provide a list of OpticalSurfaceParams."
             )
         resolved = OpticalSystem._resolve_relative_positions(params)
         elements = OpticalSystem._build_elements(resolved)
-        optical_system = OpticalSystem(elements, lambda_0_laser=lambda_0_laser, t_is_trivial=t_is_trivial, p_is_trivial=p_is_trivial, use_paraxial_ray_tracing=use_paraxial_ray_tracing, **kwargs)
+        optical_system = OpticalSystem(
+            elements,
+            lambda_0_laser=lambda_0_laser,
+            t_is_trivial=t_is_trivial,
+            p_is_trivial=p_is_trivial,
+            use_paraxial_ray_tracing=use_paraxial_ray_tracing,
+            **kwargs,
+        )
         return optical_system
 
     @property
@@ -1257,13 +1273,14 @@ class OpticalSystem:
         return input_ray  # input_ray.origin and input_ray.k_vector are of shape [..., 3] where the ... is the same as
         # the first axis of initial_parameters.
 
-    def complete_to_cavity(self,
-            NA: Optional[float] = None,  # Desired NA in the first arm
-            unconcentricity: Optional[float] = None,  # Desire unconcentricity in last arm
-            end_mirror_distance_to_last_element: Optional[float] = None,
-            end_mirror_object: Optional[CurvedMirror] = None,
-            end_mirror_ROC: Optional[float] = None,
-            **end_mirror_kwargs,
+    def complete_to_cavity(
+        self,
+        NA: Optional[float] = None,  # Desired NA in the first arm
+        unconcentricity: Optional[float] = None,  # Desire unconcentricity in last arm
+        end_mirror_distance_to_last_element: Optional[float] = None,
+        end_mirror_object: Optional[CurvedMirror] = None,
+        end_mirror_ROC: Optional[float] = None,
+        **end_mirror_kwargs,
     ):
         # Chooses end mirror's geometry to satisfy mode's NA or unconcentricity.
 
@@ -1274,31 +1291,37 @@ class OpticalSystem:
             self.surfaces[0], CurvedMirror
         ), "The first surface of the optical system must be a mirror for it to become a cavity"
         assert (
+            (end_mirror_ROC is not None or end_mirror_object is not None)
+            and end_mirror_distance_to_last_element is not None
+            and unconcentricity is None
+            and NA is None
+            or not (
                 (end_mirror_ROC is not None or end_mirror_object is not None)
                 and end_mirror_distance_to_last_element is not None
-                and unconcentricity is None
-                and NA is None
-                or not ((
-                                    end_mirror_ROC is not None or end_mirror_object is not None) and end_mirror_distance_to_last_element is not None)
-                and (unconcentricity is None and NA is not None or unconcentricity is not None and NA is None)
+            )
+            and (unconcentricity is None and NA is not None or unconcentricity is not None and NA is None)
         ), (
             "You must choose one of the next two options:\n"
             "1) Specify both end_mirror_ROC/end_mirror_object and end_mirror_distance_to_last_element and none of unconcentricity, NA."
             "2) Specify up to one of end_mirror_ROC/end_mirror_object, end_mirror_distance_to_last_element (but not both) and exactly one of unconcentricity, NA"
         )
-        assert end_mirror_ROC is None or end_mirror_object is None, "You can not specify both end_mirror_ROC and end_mirror_object"
+        assert (
+            end_mirror_ROC is None or end_mirror_object is None
+        ), "You can not specify both end_mirror_ROC and end_mirror_object"
 
         if end_mirror_object is not None and end_mirror_ROC is None:
             end_mirror_ROC = end_mirror_object.radius
-            end_mirror_kwargs = {'name': end_mirror_object.name,
-                                 'material_properties': end_mirror_object.material_properties,
-                                 'diameter': end_mirror_object.diameter, }
+            end_mirror_kwargs = {
+                "name": end_mirror_object.name,
+                "material_properties": end_mirror_object.material_properties,
+                "diameter": end_mirror_object.diameter,
+            }
             # If a name was provided in the kwargs, extract it into end_mirror_name
             # and remove it from the kwargs dict; otherwise use default name.
-            if 'name' in end_mirror_kwargs:
-                end_mirror_name = end_mirror_kwargs.pop('name')
+            if "name" in end_mirror_kwargs:
+                end_mirror_name = end_mirror_kwargs.pop("name")
             else:
-                end_mirror_name = 'end_mirror'
+                end_mirror_name = "end_mirror"
 
         # Define optical axis and output_ray ------------------
         last_surface = self.surfaces[-1]
@@ -1344,20 +1367,21 @@ class OpticalSystem:
                 )
             else:  # end_mirror_ROC is None and end_mirror_distance_to_last_element is not None:  # Fixed NA and last arm length
                 z_minus_z_0 = (
-                                      last_surface.center - output_mode.center[0, :]
-                              ) @ optical_axis + end_mirror_distance_to_last_element
-                end_mirror = match_a_mirror_to_mode(mode=output_mode, z=z_minus_z_0, name="End mirror",
-                                                    **end_mirror_kwargs)
+                    last_surface.center - output_mode.center[0, :]
+                ) @ optical_axis + end_mirror_distance_to_last_element
+                end_mirror = match_a_mirror_to_mode(
+                    mode=output_mode, z=z_minus_z_0, name="End mirror", **end_mirror_kwargs
+                )
 
         elif (
-                unconcentricity is not None
+            unconcentricity is not None
         ):  # Find the image of the center of the first mirror after the system and place the center of the end mirror there, then adjust the ROC to achieve the desired unconcentricity.
             R_analytical = self.output_radius_of_curvature(
                 source_position=self.surfaces[0].origin, propagate_with_first_surface=False
             )
             center_of_curvature_image = (
-                    self.surfaces[-1].center
-                    - R_analytical * optical_axis  # R_analytical is negative for
+                self.surfaces[-1].center
+                - R_analytical * optical_axis  # R_analytical is negative for
                 # converging wave, so COC is wave position - R_analytical
             )
             if end_mirror_ROC is None and end_mirror_distance_to_last_element is None:
@@ -1385,9 +1409,7 @@ class OpticalSystem:
                     **end_mirror_kwargs,
                 )
             else:  # end_mirror_ROC is None and end_mirror_distance_to_last_element is not None:
-                end_mirror_ROC = float(
-                    np.linalg.norm(end_mirror_distance_to_last_element - self.surfaces[-1].center)
-                )
+                end_mirror_ROC = float(np.linalg.norm(end_mirror_distance_to_last_element - self.surfaces[-1].center))
                 center_of_curvature_mirror = center_of_curvature_image - unconcentricity * optical_axis
                 end_mirror = CurvedMirror(  # Assumes concave mirror, can be generalized if needed
                     radius=end_mirror_ROC,
@@ -1440,8 +1462,6 @@ class OpticalSystem:
                 )
                 list_of_spot_size_lines.extend(spot_size_lines_separated)
         return list_of_spot_size_lines
-
-
 
     def plot(
         self,
@@ -1616,12 +1636,14 @@ class OpticalSystem:
             ax.legend()
 
         if self.resonating_mode_successfully_traced:
-            title=ax.set_title(
+            title = ax.set_title(
                 f"NA first = {self.mode_parameters[0].NA[0]:.2e}, NA last = {self.mode_parameters[len(self.arms) // 2 - 1].NA[0]:.2e}\n"
-                f"length first = {self.central_line[0].length:.2e}, length last = {self.central_line[len(self.arms) // 2 - 1].length:.2e}")
+                f"length first = {self.central_line[0].length:.2e}, length last = {self.central_line[len(self.arms) // 2 - 1].length:.2e}"
+            )
         else:
-            totle=ax.set_title(
-                f"length first = {self.central_line[0].length:.2e}, length last = {self.central_line[len(self.arms) // 2 - 1].length:.2e}")
+            totle = ax.set_title(
+                f"length first = {self.central_line[0].length:.2e}, length last = {self.central_line[len(self.arms) // 2 - 1].length:.2e}"
+            )
         return ax
 
     @property
@@ -1826,6 +1848,7 @@ class Cavity(OpticalSystem):
         # Full round-trip sequence: A -> B -> C -> D -> C^-1 -> B^-1 -> A^-1 (standing wave)
         # or A -> B -> C -> D -> A (ring)
         return self._elements
+
     @property
     def last_arm_index(self):
         return len(self.arms) // 2 - 1
@@ -2700,27 +2723,33 @@ class Cavity(OpticalSystem):
     def mode_spacing_transversal_apparent(self) -> float:
         fsr = self.free_spectral_range
         df = self.mode_spacing_transversal
-        df_apparent = np.abs(np.mod(df + fsr / 2, fsr) - fsr/2)
+        df_apparent = np.abs(np.mod(df + fsr / 2, fsr) - fsr / 2)
         return df_apparent
 
     @property
     def mode_spacing_transversal_over_fsr(self) -> float:
         return self.mode_spacing_transversal_apparent / self.free_spectral_range
 
-    def set_NA_by_moving_last_mirror(self, NA: Optional[float] = None,  # Desired NA in the first arm
-    unconcentricity: Optional[float] = None,  # Desire unconcentricity in last arm
-    end_mirror_distance_to_last_element: Optional[float] = None,):
+    def set_NA_by_moving_last_mirror(
+        self,
+        NA: Optional[float] = None,  # Desired NA in the first arm
+        unconcentricity: Optional[float] = None,  # Desire unconcentricity in last arm
+        end_mirror_distance_to_last_element: Optional[float] = None,
+    ):
         assert self.standing_wave is True, "This function works only for standing wave cavities"
-        optical_system_reduced = OpticalSystem(elements=self.elements[:-1],
-                                               use_paraxial_ray_tracing=self.use_paraxial_ray_tracing,
-                                               t_is_trivial=self.t_is_trivial,
-                                               p_is_trivial=self.p_is_trivial)
-        cavity_with_right_NA = optical_system_reduced.complete_to_cavity(NA=NA,
-                                            unconcentricity=unconcentricity,
-                                            end_mirror_distance_to_last_element=end_mirror_distance_to_last_element,
-                                            end_mirror_object=self.elements[-1])
+        optical_system_reduced = OpticalSystem(
+            elements=self.elements[:-1],
+            use_paraxial_ray_tracing=self.use_paraxial_ray_tracing,
+            t_is_trivial=self.t_is_trivial,
+            p_is_trivial=self.p_is_trivial,
+        )
+        cavity_with_right_NA = optical_system_reduced.complete_to_cavity(
+            NA=NA,
+            unconcentricity=unconcentricity,
+            end_mirror_distance_to_last_element=end_mirror_distance_to_last_element,
+            end_mirror_object=self.elements[-1],
+        )
         return cavity_with_right_NA
-
 
     def plot_spectrum(
         self,
@@ -4273,6 +4302,7 @@ def fabry_perot_generator(
         **kwargs,
     )
 
+
 def reverse_elements_order_of_mirror_lens_mirror(params: Union[np.ndarray, list]) -> list:
     if isinstance(params, np.ndarray):
         new_params = params.copy()
@@ -4699,6 +4729,7 @@ def generate_aspheric_lens_from_polynomial(
     )
     return optical_system
 
+
 def back_focal_length_of_lens_object(lens_object: Union[OpticalSystem, List[OpticalSurfaceParams]]) -> float:
     if isinstance(lens_object, OpticalSystem):
         R_1 = lens_object[0].radius
@@ -4708,9 +4739,13 @@ def back_focal_length_of_lens_object(lens_object: Union[OpticalSystem, List[Opti
     else:
         R_1 = lens_object[0].radius
         R_2 = -lens_object[1].radius
-        T_c = np.linalg.norm(np.array([lens_object[1].x, lens_object[1].y, lens_object[1].z]) - np.array([lens_object[0].x, lens_object[0].y, lens_object[0].z]))
+        T_c = np.linalg.norm(
+            np.array([lens_object[1].x, lens_object[1].y, lens_object[1].z])
+            - np.array([lens_object[0].x, lens_object[0].y, lens_object[0].z])
+        )
         n = lens_object[0].n_inside_or_after
     return back_focal_length_of_lens_formula(R_1=R_1, R_2=R_2, n=n, T_c=T_c)
+
 
 def focal_length_of_lens_object(lens_object: Union[OpticalSystem, List[OpticalSurfaceParams]]) -> float:
     if isinstance(lens_object, OpticalSystem):
@@ -4721,6 +4756,9 @@ def focal_length_of_lens_object(lens_object: Union[OpticalSystem, List[OpticalSu
     else:
         R_1 = lens_object[0].radius
         R_2 = -lens_object[1].radius
-        T_c = np.linalg.norm(np.array([lens_object[1].x, lens_object[1].y, lens_object[1].z]) - np.array([lens_object[0].x, lens_object[0].y, lens_object[0].z]))
+        T_c = np.linalg.norm(
+            np.array([lens_object[1].x, lens_object[1].y, lens_object[1].z])
+            - np.array([lens_object[0].x, lens_object[0].y, lens_object[0].z])
+        )
         n = lens_object[0].n_inside_or_after
     return focal_length_of_lens_formula(R_1=R_1, R_2=R_2, n=n, T_c=T_c)
