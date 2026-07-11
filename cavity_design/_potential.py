@@ -4,6 +4,7 @@ from functools import reduce
 from ._cavity import *
 from ._utils import *
 from ._surfaces import *
+from ._existing_elements import LASER_OPTIK_MIRROR, EDMUND_4p03MM_ASPHERIC_SPHERICAL_VERSION, COASTLINE_20CM_MIRROR
 from matplotlib.lines import Line2D
 
 H_BAR = 1.0545718e-34
@@ -106,7 +107,7 @@ def choose_source_position_for_desired_focus_analytic(
 def generate_one_lens_optical_system_temp(NA: float = 0.1, short_arm_length=7.5e-3):
     optical_system = OpticalSystem(elements=[LASER_OPTIK_MIRROR, EDMUND_4p03MM_ASPHERIC_SPHERICAL_VERSION], lambda_0_laser=LAMBDA_0_LASER)
     optical_system.place_elements(elements=optical_system[1], position=short_arm_length*RIGHT, reference_center=optical_system[0])
-    cavity=optical_system_to_cavity_completion(optical_system=optical_system, NA=NA, end_mirror_ROC=20e-2)
+    cavity=optical_system.complete_to_cavity(NA=NA, end_mirror_object=COASTLINE_20CM_MIRROR)
     return cavity
 
 def generate_one_lens_optical_system(
@@ -380,8 +381,7 @@ def generate_two_positive_lenses_cavity(
         p_is_trivial=True,
         use_paraxial_ray_tracing=False,
     )
-    cavity = optical_system_to_cavity_completion(
-        optical_system=optical_system_with_small_mirror,
+    cavity = optical_system_with_small_mirror.complete_to_cavity(
         NA=NA_small_arm,
         unconcentricity=unconcentricity,
         end_mirror_distance_to_last_element=long_arm_length,
@@ -522,8 +522,7 @@ def generate_negative_lens_cavity(
             use_paraxial_ray_tracing=False,
         )
     else:
-        cavity = optical_system_to_cavity_completion(
-            optical_system=optical_system_without_last_mirror,
+        cavity = optical_system_without_last_mirror.complete_to_cavity(
             NA=first_arm_NA,
             end_mirror_distance_to_last_element=right_mirror_distance_to_negative_lens_front,
             end_mirror_ROC=right_mirror_ROC,

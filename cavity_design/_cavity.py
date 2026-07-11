@@ -1252,6 +1252,169 @@ class OpticalSystem:
         return input_ray  # input_ray.origin and input_ray.k_vector are of shape [..., 3] where the ... is the same as
         # the first axis of initial_parameters.
 
+    def complete_to_cavity(self,
+            NA: Optional[float] = None,  # Desired NA in the first arm
+            unconcentricity: Optional[float] = None,  # Desire unconcentricity in last arm
+            end_mirror_distance_to_last_element: Optional[float] = None,
+            end_mirror_object: Optional[CurvedMirror] = None,
+            end_mirror_ROC: Optional[float] = None,
+            **end_mirror_kwargs,
+    ):
+        # Chooses end mirror's geometry to satisfy mode's NA or unconcentricity.
+
+        # Currently assumes the optical system's optical axis is constant across the system, but can be generalized to a
+        # general direction by propagating a ray through the optical system, defining the optical axis after it.
+        # Validations ------------------------------------------
+        assert isinstance(
+            self.surfaces[0], CurvedMirror
+        ), "The first surface of the optical system must be a mirror for it to become a cavity"
+        assert (
+                (end_mirror_ROC is not None or end_mirror_object is not None)
+                and end_mirror_distance_to_last_element is not None
+                and unconcentricity is None
+                and NA is None
+                or not ((
+                                    end_mirror_ROC is not None or end_mirror_object is not None) and end_mirror_distance_to_last_element is not None)
+                and (unconcentricity is None and NA is not None or unconcentricity is not None and NA is None)
+        ), (
+            "You must choose one of the next two options:\n"
+            "1) Specify both end_mirror_ROC/end_mirror_object and end_mirror_distance_to_last_element and none of unconcentricity, NA."
+            "2) Specify up to one of end_mirror_ROC/end_mirror_object, end_mirror_distance_to_last_element (but not both) and exactly one of unconcentricity, NA"
+        )
+        assert end_mirror_ROC is None or end_mirror_object is None, "You can not specify both end_mirror_ROC and end_mirror_object"
+
+        if end_mirror_object is not None and end_mirror_ROC is None:
+            end_mirror_ROC = end_mirror_object.radius
+            end_mirror_kwargs = {'name': end_mirror_object.name,
+                                 'material_properties': end_mirror_object.material_properties,
+                                 'diameter': end_mirror_object.diameter, }
+
+        # Define optical axis and output_ray ------------------
+        last_surface = self.surfaces[-1]
+        if len(self.surfaces) < 2:
+            optical_axis = self.surfaces[0].inwards_normal
+        else:
+            if self.central_line is None:
+                self.set_given_central_line(initial_ray=self.default_initial_ray)
+            output_ray = self.surfaces[-1].propagate_ray(self.central_line[-1])
+            optical_axis = output_ray.k_vector
+
+        # Generate the end mirror for each of the cases -------
+        if NA is not None:
+            z_R_first_arm = z_R_of_NA(NA=NA, lambda_laser=LAMBDA_0_LASER)
+            first_mirror: CurvedMirror = self.surfaces[0]
+            local_mode_parameters_first_mirror = match_a_local_mode_to_mirror(
+                mirror=first_mirror, z_R=z_R_first_arm, lambda_0_laser=LAMBDA_0_LASER
+            )
+            mode_parameters_first_arm = local_mode_parameters_first_mirror.to_mode_parameters(
+                location_of_local_mode_parameter=first_mirror.center, k_vector=optical_axis
+            )
+            output_mode_local = self.propagate_mode_parameters(
+                mode_parameters_after_first_surface=mode_parameters_first_arm
+            )[-1]
+            output_mode = output_mode_local.to_mode_parameters(
+                location_of_local_mode_parameter=self.surfaces[-1].center, k_vector=optical_axis
+            )
+            if end_mirror_ROC is None and end_mirror_distance_to_last_element is None:
+                if output_mode_local.z_minus_z_0[0] > 0:
+                    raise ValueError(
+                        "Can not have a symmetric last arm if the output mode is already diverging at the end of the system, try setting symmetric_last_arm to False or adjusting the system to make the output mode converging at the end."
+                    )
+                else:
+                    z_minus_z_0 = (output_mode.center[0, :] - last_surface.center) @ optical_axis
+                    end_mirror = match_a_mirror_to_mode(
+                        mode=output_mode,
+                        z=z_minus_z_0,
+                        **end_mirror_kwargs,
+                    )
+            elif end_mirror_ROC is not None and end_mirror_distance_to_last_element is None:
+                end_mirror = match_a_mirror_to_mode(
+                    mode=output_mode, R=end_mirror_ROC, name="End mirror", **end_mirror_kwargs
+                )
+            else:  # end_mirror_ROC is None and end_mirror_distance_to_last_element is not None:  # Fixed NA and last arm length
+                z_minus_z_0 = (
+                                      last_surface.center - output_mode.center[0, :]
+                              ) @ optical_axis + end_mirror_distance_to_last_element
+                end_mirror = match_a_mirror_to_mode(mode=output_mode, z=z_minus_z_0, name="End mirror",
+                                                    **end_mirror_kwargs)
+
+        elif (
+                unconcentricity is not None
+        ):  # Find the image of the center of the first mirror after the system and place the center of the end mirror there, then adjust the ROC to achieve the desired unconcentricity.
+            R_analytical = self.output_radius_of_curvature(
+                source_position=self.surfaces[0].origin, propagate_with_first_surface=False
+            )
+            center_of_curvature_image = (
+                    self.surfaces[-1].center
+                    - R_analytical * optical_axis  # R_analytical is negative for
+                # converging wave, so COC is wave position - R_analytical
+            )
+            if end_mirror_ROC is None and end_mirror_distance_to_last_element is None:
+                if R_analytical > 0:
+                    raise ValueError(
+                        "Can not have a symmetric last arm if the image of the center of curvature is already past the last surface, try setting symmetric_last_arm to False or adjusting the system to make the image of the center of curvature before the last surface."
+                    )
+                else:
+                    end_mirror_ROC = -R_analytical
+                    center_of_curvature_mirror = center_of_curvature_image - unconcentricity * optical_axis
+                    end_mirror = CurvedMirror(  # Assumes concave mirror, can be generalized if needed
+                        radius=end_mirror_ROC,
+                        outwards_normal=optical_axis,
+                        origin=center_of_curvature_mirror,
+                        curvature_sign=CurvatureSigns.concave,
+                        **end_mirror_kwargs,
+                    )
+            elif end_mirror_ROC is not None and end_mirror_distance_to_last_element is None:
+                center_of_curvature_mirror = center_of_curvature_image - unconcentricity * optical_axis
+                end_mirror = CurvedMirror(  # Assumes concave mirror, can be generalized if needed
+                    radius=end_mirror_ROC,
+                    outwards_normal=optical_axis,
+                    origin=center_of_curvature_mirror,
+                    curvature_sign=CurvatureSigns.concave,
+                    **end_mirror_kwargs,
+                )
+            else:  # end_mirror_ROC is None and end_mirror_distance_to_last_element is not None:
+                end_mirror_ROC = float(
+                    np.linalg.norm(end_mirror_distance_to_last_element - self.surfaces[-1].center)
+                )
+                center_of_curvature_mirror = center_of_curvature_image - unconcentricity * optical_axis
+                end_mirror = CurvedMirror(  # Assumes concave mirror, can be generalized if needed
+                    radius=end_mirror_ROC,
+                    outwards_normal=optical_axis,
+                    origin=center_of_curvature_mirror,
+                    curvature_sign=CurvatureSigns.concave,
+                    **end_mirror_kwargs,
+                )
+        else:
+            end_mirror = CurvedMirror(
+                radius=end_mirror_ROC,
+                outwards_normal=optical_axis,
+                center=last_surface.center + end_mirror_distance_to_last_element * optical_axis,
+                curvature_sign=CurvatureSigns.concave,
+                **end_mirror_kwargs,
+            )
+
+        # Build the completed cavity directly from the live elements (plus the new end mirror), so any in-place edits
+        # (e.g. place_elements) to the optical system's geometry are honored. The elements are deep-copied so the returned
+        # cavity is independent of the input optical system.
+        cavity = Cavity(
+            elements=[*copy.deepcopy(self.elements), end_mirror],
+            lambda_0_laser=self.lambda_0_laser,
+            t_is_trivial=True,
+            p_is_trivial=True,
+            use_paraxial_ray_tracing=self.use_paraxial_ray_tracing,
+            standing_wave=True,
+        )
+        return cavity
+        # if not (
+        #     end_mirror_ROC is not None and end_mirror_distance_to_last_element is not None
+        # ) and not np.isclose(  # If NA should not be overridden
+        #     cavity.arms[-1].mode_parameters.NA[0], NA, rtol=0, atol=1e-3
+        # ):  # and it is not the desired one:
+        #     warnings.warn(
+        #         f"Did not achieve the desired NA, got {cavity.arms[-1].mode_parameters.NA[0]:.3e} instead of {NA:.3e}"
+        #     )
+
     def generate_spot_size_lines(self, dim=2, plane="xy"):
         list_of_spot_size_lines = []
         if not np.isnan(self.arms[0].mode_parameters.z_R[0]):
@@ -1266,6 +1429,8 @@ class OpticalSystem:
                 )
                 list_of_spot_size_lines.extend(spot_size_lines_separated)
         return list_of_spot_size_lines
+
+
 
     def plot(
         self,
@@ -2530,6 +2695,21 @@ class Cavity(OpticalSystem):
     @property
     def mode_spacing_transversal_over_fsr(self) -> float:
         return self.mode_spacing_transversal_apparent / self.free_spectral_range
+
+    def move_last_mirror_to_set_NA(self, NA: Optional[float] = None,  # Desired NA in the first arm
+    unconcentricity: Optional[float] = None,  # Desire unconcentricity in last arm
+    end_mirror_distance_to_last_element: Optional[float] = None,):
+        assert self.standing_wave is True, "This function works only for standing wave cavities"
+        optical_system_reduced = OpticalSystem(elements=self.elements[:-1],
+                                               use_paraxial_ray_tracing=self.use_paraxial_ray_tracing,
+                                               t_is_trivial=self.t_is_trivial,
+                                               p_is_trivial=self.p_is_trivial)
+        cavity_with_right_NA = optical_system_reduced.optical_system_to_cavity_completion(NA=NA,
+                                            unconcentricity=unconcentricity,
+                                            end_mirror_distance_to_last_element=end_mirror_distance_to_last_element,
+                                            end_mirror_object=self.elements[-1])
+        return cavity_with_right_NA
+
 
     def plot_spectrum(
         self,
@@ -4082,162 +4262,6 @@ def fabry_perot_generator(
         **kwargs,
     )
 
-
-def optical_system_to_cavity_completion(
-    optical_system: OpticalSystem,  # Optical system without last mirror
-    NA: Optional[float] = None,  # Desired NA in the first arm
-    unconcentricity: Optional[float] = None,  # Desire unconcentricity in last arm
-    end_mirror_distance_to_last_element: Optional[float] = None,
-    end_mirror_ROC: Optional[float] = None,
-    **end_mirror_kwargs,
-):
-    # Chooses end mirror's geometry to satisfy mode's NA or unconcentricity.
-
-    # Currently assumes the optical system's optical axis is constant across the system, but can be generalized to a
-    # general direction by propagating a ray through the optical system, defining the optical axis after it.
-    # Validations ------------------------------------------
-    assert isinstance(
-        optical_system.surfaces[0], CurvedMirror
-    ), "The first surface of the optical system must be a mirror for it to become a cavity"
-    assert (
-        end_mirror_ROC is not None
-        and end_mirror_distance_to_last_element is not None
-        and unconcentricity is None
-        and NA is None
-        or not (end_mirror_ROC is not None and end_mirror_distance_to_last_element is not None)
-        and (unconcentricity is None and NA is not None or unconcentricity is not None and NA is None)
-    ), (
-        "You must choose one of the next two options:\n"
-        "1) Specify both end_mirror_ROC and end_mirror_distance_to_last_element and none of unconcentricity, NA."
-        "2) Specify up to one of end_mirror_ROC, end_mirror_distance_to_last_element (but not both) and exactly one of unconcentricity, NA"
-    )
-
-    # Define optical axis and output_ray ------------------
-    last_surface = optical_system.surfaces[-1]
-    if len(optical_system.surfaces) < 2:
-        optical_axis = optical_system.surfaces[0].inwards_normal
-    else:
-        if optical_system.central_line is None:
-            optical_system.set_given_central_line(initial_ray=optical_system.default_initial_ray)
-        output_ray = optical_system.surfaces[-1].propagate_ray(optical_system.central_line[-1])
-        optical_axis = output_ray.k_vector
-
-    # Generate the end mirror for each of the cases -------
-    if NA is not None:
-        z_R_first_arm = z_R_of_NA(NA=NA, lambda_laser=LAMBDA_0_LASER)
-        first_mirror: CurvedMirror = optical_system.surfaces[0]
-        local_mode_parameters_first_mirror = match_a_local_mode_to_mirror(
-            mirror=first_mirror, z_R=z_R_first_arm, lambda_0_laser=LAMBDA_0_LASER
-        )
-        mode_parameters_first_arm = local_mode_parameters_first_mirror.to_mode_parameters(
-            location_of_local_mode_parameter=first_mirror.center, k_vector=optical_axis
-        )
-        output_mode_local = optical_system.propagate_mode_parameters(
-            mode_parameters_after_first_surface=mode_parameters_first_arm
-        )[-1]
-        output_mode = output_mode_local.to_mode_parameters(
-            location_of_local_mode_parameter=optical_system.surfaces[-1].center, k_vector=optical_axis
-        )
-        if end_mirror_ROC is None and end_mirror_distance_to_last_element is None:
-            if output_mode_local.z_minus_z_0[0] > 0:
-                raise ValueError(
-                    "Can not have a symmetric last arm if the output mode is already diverging at the end of the system, try setting symmetric_last_arm to False or adjusting the system to make the output mode converging at the end."
-                )
-            else:
-                z_minus_z_0 = (output_mode.center[0, :] - last_surface.center) @ optical_axis
-                end_mirror = match_a_mirror_to_mode(
-                    mode=output_mode,
-                    z=z_minus_z_0,
-                    **end_mirror_kwargs,
-                )
-        elif end_mirror_ROC is not None and end_mirror_distance_to_last_element is None:
-            end_mirror = match_a_mirror_to_mode(
-                mode=output_mode, R=end_mirror_ROC, name="End mirror", **end_mirror_kwargs
-            )
-        else:  # end_mirror_ROC is None and end_mirror_distance_to_last_element is not None:  # Fixed NA and last arm length
-            z_minus_z_0 = (
-                last_surface.center - output_mode.center[0, :]
-            ) @ optical_axis + end_mirror_distance_to_last_element
-            end_mirror = match_a_mirror_to_mode(mode=output_mode, z=z_minus_z_0, name="End mirror", **end_mirror_kwargs)
-
-    elif (
-        unconcentricity is not None
-    ):  # Find the image of the center of the first mirror after the system and place the center of the end mirror there, then adjust the ROC to achieve the desired unconcentricity.
-        R_analytical = optical_system.output_radius_of_curvature(
-            source_position=optical_system.surfaces[0].origin, propagate_with_first_surface=False
-        )
-        center_of_curvature_image = (
-            optical_system.surfaces[-1].center
-            - R_analytical * optical_axis  # R_analytical is negative for
-            # converging wave, so COC is wave position - R_analytical
-        )
-        if end_mirror_ROC is None and end_mirror_distance_to_last_element is None:
-            if R_analytical > 0:
-                raise ValueError(
-                    "Can not have a symmetric last arm if the image of the center of curvature is already past the last surface, try setting symmetric_last_arm to False or adjusting the system to make the image of the center of curvature before the last surface."
-                )
-            else:
-                end_mirror_ROC = -R_analytical
-                center_of_curvature_mirror = center_of_curvature_image - unconcentricity * optical_axis
-                end_mirror = CurvedMirror(  # Assumes concave mirror, can be generalized if needed
-                    radius=end_mirror_ROC,
-                    outwards_normal=optical_axis,
-                    origin=center_of_curvature_mirror,
-                    curvature_sign=CurvatureSigns.concave,
-                    **end_mirror_kwargs,
-                )
-        elif end_mirror_ROC is not None and end_mirror_distance_to_last_element is None:
-            center_of_curvature_mirror = center_of_curvature_image - unconcentricity * optical_axis
-            end_mirror = CurvedMirror(  # Assumes concave mirror, can be generalized if needed
-                radius=end_mirror_ROC,
-                outwards_normal=optical_axis,
-                origin=center_of_curvature_mirror,
-                curvature_sign=CurvatureSigns.concave,
-                **end_mirror_kwargs,
-            )
-        else:  # end_mirror_ROC is None and end_mirror_distance_to_last_element is not None:
-            end_mirror_ROC = float(
-                np.linalg.norm(end_mirror_distance_to_last_element - optical_system.surfaces[-1].center)
-            )
-            center_of_curvature_mirror = center_of_curvature_image - unconcentricity * optical_axis
-            end_mirror = CurvedMirror(  # Assumes concave mirror, can be generalized if needed
-                radius=end_mirror_ROC,
-                outwards_normal=optical_axis,
-                origin=center_of_curvature_mirror,
-                curvature_sign=CurvatureSigns.concave,
-                **end_mirror_kwargs,
-            )
-    else:
-        end_mirror = CurvedMirror(
-            radius=end_mirror_ROC,
-            outwards_normal=optical_axis,
-            center=last_surface.center + end_mirror_distance_to_last_element * optical_axis,
-            curvature_sign=CurvatureSigns.concave,
-            **end_mirror_kwargs,
-        )
-
-    # Build the completed cavity directly from the live elements (plus the new end mirror), so any in-place edits
-    # (e.g. place_elements) to the optical system's geometry are honored. The elements are deep-copied so the returned
-    # cavity is independent of the input optical system.
-    cavity = Cavity(
-        elements=[*copy.deepcopy(optical_system.elements), end_mirror],
-        lambda_0_laser=optical_system.lambda_0_laser,
-        t_is_trivial=True,
-        p_is_trivial=True,
-        use_paraxial_ray_tracing=optical_system.use_paraxial_ray_tracing,
-        standing_wave=True,
-    )
-    return cavity
-    # if not (
-    #     end_mirror_ROC is not None and end_mirror_distance_to_last_element is not None
-    # ) and not np.isclose(  # If NA should not be overridden
-    #     cavity.arms[-1].mode_parameters.NA[0], NA, rtol=0, atol=1e-3
-    # ):  # and it is not the desired one:
-    #     warnings.warn(
-    #         f"Did not achieve the desired NA, got {cavity.arms[-1].mode_parameters.NA[0]:.3e} instead of {NA:.3e}"
-    #     )
-
-
 def reverse_elements_order_of_mirror_lens_mirror(params: Union[np.ndarray, list]) -> list:
     if isinstance(params, np.ndarray):
         new_params = params.copy()
@@ -4664,99 +4688,3 @@ def generate_aspheric_lens_from_polynomial(
     )
     return optical_system
 
-
-LASER_OPTIK_MIRROR_REFRACTIVE = OpticalSystem(
-    elements=[
-        CurvedRefractiveSurface(
-            radius=5e-3,
-            diameter=7.75e-3,
-            outwards_normal=LEFT,
-            origin=ORIGIN,
-            name="Laser Optik Mirror - Concave",
-            n_1=1,
-            curvature_sign=CurvatureSigns.concave,
-            n_2=PHYSICAL_SIZES_DICT["material_properties_fused_silica"].refractive_index,
-            material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"],
-        ),
-        CurvedRefractiveSurface(
-            curvature_sign=CurvatureSigns.concave,
-            radius=5e-3,
-            diameter=7.75e-3,
-            outwards_normal=LEFT,
-            origin=ORIGIN + 3.45e-3 * LEFT,
-            name="Laser Optik Mirror - Convex",
-            n_1=PHYSICAL_SIZES_DICT["material_properties_fused_silica"].refractive_index,
-            n_2=1,
-            material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"],
-        ),
-    ],
-    use_paraxial_ray_tracing=True,
-)
-
-THORLABS_35MM_COLLIMATING_LENS = OpticalSystem(
-    elements=[
-        CurvedRefractiveSurface(
-            name="Thorlabs 35mm biconvex - right",
-            radius=34.9e-3,
-            outwards_normal=RIGHT,
-            diameter=25.4e-3,
-            curvature_sign=CurvatureSigns.convex,
-            n_1=1,
-            n_2=PHYSICAL_SIZES_DICT["material_properties_bk7"].refractive_index,
-        ),
-        CurvedRefractiveSurface(
-            name="Thorlabs 35mm biconvex - left",
-            radius=34.9e-3,
-            outwards_normal=LEFT,
-            center=LASER_OPTIK_MIRROR_REFRACTIVE.surfaces[1].center + 0.02214 * LEFT + 6.8e-3 * LEFT,
-            diameter=25.4e-3,
-            curvature_sign=CurvatureSigns.concave,
-            n_1=PHYSICAL_SIZES_DICT["material_properties_bk7"].refractive_index,
-            n_2=1,
-        ),
-    ],
-    use_paraxial_ray_tracing=True,
-)
-
-EDMUND_4p03MM_ASPHERIC_SPHERICAL_VERSION = OpticalSystem(
-    elements=[
-        CurvedRefractiveSurface(
-            name="low curvature side - Edmund 4.03mm spherical version",
-            radius=(1 / 7.889402975752558833e-02) * 1e-3,
-            outwards_normal=LEFT,
-            diameter=5.1e-3,
-            curvature_sign=CurvatureSigns.convex,
-            n_1=1,
-            n_2=1.574,
-        ),
-        CurvedRefractiveSurface(
-            name="high curvature side - Edmund 4.03mm spherical version",
-            radius=(1 / 3.817155986760137343e-01) * 1e-3,
-            outwards_normal=RIGHT,
-            center=1j * 3.1e-3 * RIGHT,
-            diameter=5.1e-3,
-            curvature_sign=CurvatureSigns.concave,
-            n_1=1.574,
-            n_2=1,
-        ),
-    ],
-    use_paraxial_ray_tracing=True,
-)
-
-# EDMUND_4p03MM_ASPHERIC = OpticalSystem(
-#
-# )
-
-eksma_lens_params = generate_aspheric_lens_params(
-    back_focal_length=17.001e-3,
-    T_c=4.35e-3,
-    forward_normal=LEFT,
-    flat_faces_center=ORIGIN + 15e-3 * LEFT,
-    n=PHYSICAL_SIZES_DICT["material_properties_fused_silica"].refractive_index,
-    diameter=INCH / 2,
-    polynomial_degree=10,
-    n_outside=1,
-    name="Eksma 20mm",
-)
-EKSMA_LENS_20mm_ASPHERIC = OpticalSystem.from_params(params=eksma_lens_params)
-del eksma_lens_params

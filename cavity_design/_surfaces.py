@@ -1647,28 +1647,3 @@ def convert_curved_refractive_surface_to_ideal_lens(surface: CurvedRefractiveSur
 
     return ideal_lens, flat_refractive_surface
 
-
-LASER_OPTIK_MIRROR = CurvedMirror(
-    radius=5e-3,
-    diameter=7.75e-3,
-    outwards_normal=LEFT,
-    origin=ORIGIN,
-    name="Laser Optik Mirror",
-    material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"],
-)
-COASTLINE_20CM_MIRROR = CurvedMirror(
-    radius=20e-2,
-    diameter=25.4e-3,
-    outwards_normal=RIGHT,
-    origin=ORIGIN,
-    name="Coastline 20cm Mirror",
-    material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"],
-)
-COASTLINE_50CM_MIRROR = CurvedMirror(
-    radius=50e-2,
-    diameter=25.4e-3,
-    outwards_normal=RIGHT,
-    origin=ORIGIN,
-    name="Coastline 50cm Mirror",
-    material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"],
-)

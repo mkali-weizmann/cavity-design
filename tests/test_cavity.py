@@ -19,7 +19,6 @@ from cavity_design import (
     mirror_lens_mirror_cavity_generator,
     fabry_perot_generator,
     OpticalSystem,
-    optical_system_to_cavity_completion,
     OpticalSurfaceParams,
     generate_lens_from_params,
     MaterialProperties,
@@ -621,8 +620,7 @@ def test_spot_size_from_potential_and_ray_tracing():
     R = params[-1].radius
     u = 5e-6
     # Cavity with a known unconcentricity in the last arm:
-    cavity = optical_system_to_cavity_completion(optical_system=optical_system_small_elements, unconcentricity=u,
-                                                 end_mirror_ROC=R)
+    cavity = optical_system_small_elements.complete_to_cavity(unconcentricity=u, end_mirror_ROC=R)
 
     results_dict = analyze_potential_given_cavity(cavity=cavity, n_rays=10, phi_max=0.01, print_tests=False, potential_horizontal_axis_in_NAs=False)
     a_2_numerical = results_dict['polynomial_residuals_mirror'].coef[1]
@@ -1060,7 +1058,7 @@ def test_with_elements_placed_is_nondestructive():
 def test_to_params_reflects_in_place_edits():
     from cavity_design import OpticalSystem, set_element_position
     # to_params must regenerate from the live elements, not return a copy cached at construction (otherwise an
-    # in-place move is invisible to anything that rebuilds from params, e.g. optical_system_to_cavity_completion).
+    # in-place move is invisible to anything that rebuilds from params, e.g. OpticalSystem.complete_to_cavity).
     m0 = CurvedMirror(radius=5e-3, outwards_normal=np.array([-1.0, 0, 0]), center=np.array([-5e-3, 0, 0]),
                       curvature_sign=CurvatureSigns.concave, diameter=0.01)
     m1 = CurvedMirror(radius=5e-3, outwards_normal=np.array([1.0, 0, 0]), center=np.array([5e-3, 0, 0]),
