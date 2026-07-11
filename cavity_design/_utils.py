@@ -591,7 +591,7 @@ def dT_c_of_a_lens(R, h):
     return dT_c
 
 
-def focal_length_of_lens(R_1, R_2, n, T_c):
+def focal_length_of_lens_formula(R_1, R_2, n, T_c):
     # http://hyperphysics.phy-astr.gsu.edu/hbase/geoopt/priplan.html
     one_over_f = (n - 1) * ((1 / R_1) - (1 / R_2) + ((n - 1) * T_c) / (n * R_1 * R_2))
     return 1 / one_over_f
@@ -599,7 +599,7 @@ def focal_length_of_lens(R_1, R_2, n, T_c):
 
 def principal_planes_of_lens(R_1, R_2, n, T_c):
     # http://hyperphysics.phy-astr.gsu.edu/hbase/geoopt/priplan.html
-    f = focal_length_of_lens(R_1, R_2, n, T_c)
+    f = focal_length_of_lens_formula(R_1, R_2, n, T_c)
     h_2 = (
         -f * (n - 1) * T_c / (R_1 * n)
     )  # z_principal_plane_2 - z_face_2, negative for biconvex lens, as it is to the left of the second face.
@@ -612,7 +612,7 @@ def principal_planes_of_lens(R_1, R_2, n, T_c):
 def image_of_a_point_with_thick_lens(distance_to_face_1, R_1, R_2, n, T_c):
     # For biconvex, R_1 > 0, R_2 < 0
     # http://hyperphysics.phy-astr.gsu.edu/hbase/geoopt/priplan.html
-    f = focal_length_of_lens(R_1, R_2, n, T_c)
+    f = focal_length_of_lens_formula(R_1, R_2, n, T_c)
     h_1, h_2 = principal_planes_of_lens(R_1, R_2, n, T_c)
     one_over_v = 1 / f - 1 / (distance_to_face_1 + h_1)
     if one_over_v == 0:
@@ -622,8 +622,8 @@ def image_of_a_point_with_thick_lens(distance_to_face_1, R_1, R_2, n, T_c):
     return d_2
 
 
-def back_focal_length_of_lens(R_1, R_2, n, T_c):
-    f = focal_length_of_lens(R_1=R_1, R_2=R_2, n=n, T_c=T_c)
+def back_focal_length_of_lens_formula(R_1, R_2, n, T_c):
+    f = focal_length_of_lens_formula(R_1=R_1, R_2=R_2, n=n, T_c=T_c)
     h_1, _ = principal_planes_of_lens(R_1=R_1, R_2=R_2, n=n, T_c=T_c)
     back_focal_length = f - h_1
     return back_focal_length

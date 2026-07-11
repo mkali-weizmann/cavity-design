@@ -142,10 +142,11 @@ params_edmunds = [
 optical_system_edmunds = OpticalSystem.from_params(params=params_edmunds, t_is_trivial=True, p_is_trivial=True,
                                                    use_paraxial_ray_tracing=False)
 # %%  A Working version with the design wavelength and the glass window:
-back_focal_length = back_focal_length_of_lens(R_1=optical_system_edmunds[1].radius,
-                                              R_2=-optical_system_edmunds[0].radius, n=optical_system_edmunds[0].n_2,
-                                              T_c=optical_system_edmunds[1].center[0] -
-                                                  optical_system_edmunds[0].center[0])
+back_focal_length = back_focal_length_of_lens_formula(R_1=optical_system_edmunds[1].radius,
+                                                      R_2=-optical_system_edmunds[0].radius,
+                                                      n=optical_system_edmunds[0].n_2,
+                                                      T_c=optical_system_edmunds[1].center[0] -
+                                                          optical_system_edmunds[0].center[0])
 initial_ys = np.linspace(0, 0.0015, 10)
 initial_xs = np.ones_like(initial_ys) * (-0.01)
 initial_positions = np.stack([initial_xs, initial_ys, np.zeros_like(initial_ys)], axis=-1)

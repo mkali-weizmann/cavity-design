@@ -48,16 +48,15 @@ def known_lenses_generator(lens_type, dn):
         n_actual = 1.45
         n_design = n_actual + dn
         T_c = 4.35e-3
-        f_lens = focal_length_of_lens(
-            R_1=np.inf, R_2=-0.010350017052321312, n=1.45, T_c=4.35e-3
-        )  # Same as the aspheric ones.
+        f_lens = focal_length_of_lens_formula(R_1=np.inf, R_2=-0.010350017052321312, n=1.45,
+                                              T_c=4.35e-3)  # Same as the aspheric ones.
         R = (
             f_lens * (n_design - 1) * (1 + np.sqrt(1 - T_c / (f_lens * n_design)))
         )  # This is the R value that results in f=f_lens
         R_1 = R
         R_2 = R
         R_2_signed = -R_2
-        back_focal_length = back_focal_length_of_lens(R_1=R_1, R_2=-R_2, n=n_design, T_c=T_c)
+        back_focal_length = back_focal_length_of_lens_formula(R_1=R_1, R_2=-R_2, n=n_design, T_c=T_c)
         diameter = 12.7e-3
     elif lens_type == "avantier":
         # Avantier lenses:
@@ -68,7 +67,7 @@ def known_lenses_generator(lens_type, dn):
         R_2_signed = -R_2
         T_c = 0.002913797540986543
         diameter = 7.75e-3
-        back_focal_length = back_focal_length_of_lens(R_1=R_1, R_2=-R_2, n=n_design, T_c=T_c)
+        back_focal_length = back_focal_length_of_lens_formula(R_1=R_1, R_2=-R_2, n=n_design, T_c=T_c)
     elif lens_type == "aspheric - like avantier":
         n_actual = 1.76
         n_design = n_actual + dn
@@ -94,7 +93,7 @@ def choose_source_position_for_desired_focus_analytic(
         R_2 = -1 / (2 * coeffs[1])
         R_1 = np.inf
     elif R_1 is not None and R_2 is not None:
-        back_focal_length = back_focal_length_of_lens(R_1=R_1, R_2=R_2, n=n, T_c=T_c)
+        back_focal_length = back_focal_length_of_lens_formula(R_1=R_1, R_2=R_2, n=n, T_c=T_c)
     else:
         raise ValueError("Either both R_1 and R_2 must be provided, or neither.")
     distance_to_flat_face = image_of_a_point_with_thick_lens(
@@ -125,7 +124,7 @@ def generate_one_lens_optical_system(
     if n_actual is None:
         n_actual = n_design
     if R_1 is not None and R_2 is not None:
-        back_focal_length = back_focal_length_of_lens(R_1=R_1, R_2=R_2, n=n_design, T_c=T_c)
+        back_focal_length = back_focal_length_of_lens_formula(R_1=R_1, R_2=R_2, n=n_design, T_c=T_c)
         center = np.array([back_focal_length - defocus + T_c / 2, 0.0, 0.0])
         surfaces = generate_lens_from_params(
             center=center,
@@ -202,12 +201,9 @@ def generate_two_positive_lenses_optical_system(
     aspheric_curved = Surface.from_params(aspheric_params_list[1])
     aspheric_flat.n_2 = n_aspheric_actual
     aspheric_curved.n_1 = n_aspheric_actual
-    back_focal_length_aspheric_actual = back_focal_length_of_lens(
-        R_1=aspheric_flat.radius,
-        R_2=-aspheric_curved.radius,
-        n=n_aspheric_actual,
-        T_c=T_c_aspheric
-    )
+    back_focal_length_aspheric_actual = back_focal_length_of_lens_formula(R_1=aspheric_flat.radius,
+                                                                          R_2=-aspheric_curved.radius,
+                                                                          n=n_aspheric_actual, T_c=T_c_aspheric)
 
     optical_system_aspheric = OpticalSystem(
         elements=[aspheric_flat, aspheric_curved],

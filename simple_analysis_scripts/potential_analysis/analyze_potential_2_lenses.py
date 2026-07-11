@@ -32,8 +32,8 @@ results_dict = analyze_potential_given_cavity(cavity=cavity, n_rays=n_rays, phi_
 fig, ax = plot_results(results_dict=results_dict, far_away_plane=True, unconcentricity=unconcentricity,
                        potential_horizontal_axis_in_NAs=False)
 unconcentricity = np.nan if mirror_setting_mode == 'Set NA' else unconcentricity
-ax[1].set_title(f"f_spherical={focal_length_of_lens(R_1=results_dict['cavity'].surfaces[3].radius, R_2=-results_dict['cavity'].surfaces[3].radius, T_c=results_dict['cavity'].surfaces[4].center[0] - results_dict['cavity'].surfaces[3].center[0], n=results_dict['cavity'].surfaces[3].n_2)*1e3:.3f} mm, "
-                f"EFL aspheric = {focal_length_of_lens(R_1=np.inf, R_2=-results_dict['cavity'].surfaces[2].radius, T_c=results_dict['cavity'].surfaces[2].center[0] - results_dict['cavity'].surfaces[1].center[0], n=results_dict['cavity'].surfaces[1].n_2)*1e3:.3f}, "
+ax[1].set_title(f"f_spherical={focal_length_of_lens_formula(R_1=results_dict['cavity'].surfaces[3].radius, R_2=-results_dict['cavity'].surfaces[3].radius, n=results_dict['cavity'].surfaces[3].n_2, T_c=results_dict['cavity'].surfaces[4].center[0] - results_dict['cavity'].surfaces[3].center[0]) * 1e3:.3f} mm, "
+                f"EFL aspheric = {focal_length_of_lens_formula(R_1=np.inf, R_2=-results_dict['cavity'].surfaces[2].radius, n=results_dict['cavity'].surfaces[1].n_2, T_c=results_dict['cavity'].surfaces[2].center[0] - results_dict['cavity'].surfaces[1].center[0]) * 1e3:.3f}, "
                 f"BFL aspheric = {back_focal_length_aspheric * 1e3:.3f} unconcentricity={unconcentricity*1e3:.3f} mm\n"
                 f"waist to lens left={results_dict['cavity'].surfaces[1].center[0]:.2e}, waist to lens right={results_dict['cavity'].mode_parameters[4].center[0, 0] - results_dict['cavity'].surfaces[4].center[0]:.2e}")
 ax[1].set_ylim(-0.01, 0.01)

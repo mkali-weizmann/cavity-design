@@ -28,12 +28,9 @@ aspheric_curved = Surface.from_params(aspheric_params_list[1])
 aspheric_flat.n_2 = n_actual
 aspheric_curved.n_1 = n_actual
 
-back_focal_length_aspheric_actual = back_focal_length_of_lens(
-        R_1=aspheric_flat.radius,
-        R_2=-aspheric_curved.radius,
-        n=n_actual,
-        T_c=T_c_aspheric
-)
+back_focal_length_aspheric_actual = back_focal_length_of_lens_formula(R_1=aspheric_flat.radius,
+                                                                      R_2=-aspheric_curved.radius, n=n_actual,
+                                                                      T_c=T_c_aspheric)
 
 optical_system_aspheric = OpticalSystem(
         elements=[aspheric_flat, aspheric_curved],

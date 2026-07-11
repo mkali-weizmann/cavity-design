@@ -100,7 +100,7 @@ ax.axvline(collimation_point * 1e3, color='k', linestyle='--', linewidth=1, labe
 ax.legend()
 ax.set_ylim(0, 0.2)
 ax.grid()
-plt.title(f"spherical focal length = {focal_length_of_lens(R_1=cavity[2][0].radius, R_2=-cavity[2][1].radius, n=cavity[2][0].n_2, T_c=cavity[2][1].center[0] - cavity[2][0].center[0])*1000:.0f} mm")
+plt.title(f"spherical focal length = {focal_length_of_lens_formula(R_1=cavity[2][0].radius, R_2=-cavity[2][1].radius, n=cavity[2][0].n_2, T_c=cavity[2][1].center[0] - cavity[2][0].center[0]) * 1000:.0f} mm")
 plt.savefig("outputs/figures/NA as a function of mirrors.svg")
 # plt.savefig(r'figures\NA_as_a_function_of_big_mirror')
 plt.show()

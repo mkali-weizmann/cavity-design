@@ -51,13 +51,13 @@ from ._utils import (
     functions_first_crossing,
     MaterialProperties,
     w_0_of_NA,
-    focal_length_of_lens,
+    focal_length_of_lens_formula,
     spot_size,
     dT_c_of_a_lens,
     LEFT,
     ORIGIN,
     RIGHT,
-    INCH,
+    INCH, back_focal_length_of_lens_formula,
 )
 from ._modes import (
     LocalModeParameters,
@@ -1288,6 +1288,12 @@ class OpticalSystem:
             end_mirror_kwargs = {'name': end_mirror_object.name,
                                  'material_properties': end_mirror_object.material_properties,
                                  'diameter': end_mirror_object.diameter, }
+            # If a name was provided in the kwargs, extract it into end_mirror_name
+            # and remove it from the kwargs dict; otherwise use default name.
+            if 'name' in end_mirror_kwargs:
+                end_mirror_name = end_mirror_kwargs.pop('name')
+            else:
+                end_mirror_name = 'end_mirror'
 
         # Define optical axis and output_ray ------------------
         last_surface = self.surfaces[-1]
@@ -2696,7 +2702,7 @@ class Cavity(OpticalSystem):
     def mode_spacing_transversal_over_fsr(self) -> float:
         return self.mode_spacing_transversal_apparent / self.free_spectral_range
 
-    def move_last_mirror_to_set_NA(self, NA: Optional[float] = None,  # Desired NA in the first arm
+    def set_NA_by_moving_last_mirror(self, NA: Optional[float] = None,  # Desired NA in the first arm
     unconcentricity: Optional[float] = None,  # Desire unconcentricity in last arm
     end_mirror_distance_to_last_element: Optional[float] = None,):
         assert self.standing_wave is True, "This function works only for standing wave cavities"
@@ -2704,7 +2710,7 @@ class Cavity(OpticalSystem):
                                                use_paraxial_ray_tracing=self.use_paraxial_ray_tracing,
                                                t_is_trivial=self.t_is_trivial,
                                                p_is_trivial=self.p_is_trivial)
-        cavity_with_right_NA = optical_system_reduced.optical_system_to_cavity_completion(NA=NA,
+        cavity_with_right_NA = optical_system_reduced.complete_to_cavity(NA=NA,
                                             unconcentricity=unconcentricity,
                                             end_mirror_distance_to_last_element=end_mirror_distance_to_last_element,
                                             end_mirror_object=self.elements[-1])
@@ -3852,7 +3858,7 @@ def mirror_lens_mirror_generator_with_unconcentricity(unconcentricity: float, ba
     T_c = np.linalg.norm(np.array([right_p.x - left_p.x, right_p.y - left_p.y, right_p.z - left_p.z]))
     lens_left_center = np.array([left_p.x, left_p.y, left_p.z])
     lens_right_center = np.array([right_p.x, right_p.y, right_p.z])
-    f = focal_length_of_lens(R_1, -R_2, n, T_c)
+    f = focal_length_of_lens_formula(R_1, -R_2, n, T_c)
     h_2 = f * (n - 1) * T_c / (R_1 * n)
     h_1 = f * (n - 1) * T_c / (R_2 * n)
     d_1 = np.linalg.norm(lens_left_center)
@@ -4688,3 +4694,16 @@ def generate_aspheric_lens_from_polynomial(
     )
     return optical_system
 
+def back_focal_length_of_lens_object(lens_object: OpticalSystem) -> float:
+    R_1 = lens_object[0].radius
+    R_2 = -lens_object[1].radius
+    T_c = np.linalg.norm(lens_object[1].center - lens_object[0].center)
+    n = lens_object[0].n_2
+    return back_focal_length_of_lens_formula(R_1=R_1, R_2=R_2, n=n, T_c=T_c)
+
+def focal_length_of_lens_object(lens_object: OpticalSystem) -> float:
+    R_1 = lens_object[0].radius
+    R_2 = -lens_object[1].radius
+    T_c = np.linalg.norm(lens_object[1].center - lens_object[0].center)
+    n = lens_object[0].n_2
+    return focal_length_of_lens_formula(R_1=R_1, R_2=R_2, n=n, T_c=T_c)

@@ -7,8 +7,8 @@ R_1 = -5e-3
 R_2 = -5e-3
 T_c = (1+1/n) * np.abs(R_2) - np.abs(R_1)
 diameter = 7.75e-3
-f = focal_length_of_lens(R_1=R_1, R_2=R_2, n=n, T_c=T_c)
-back_focal_length = back_focal_length_of_lens(R_1=R_1, R_2=R_2, n=n, T_c=T_c)
+f = focal_length_of_lens_formula(R_1=R_1, R_2=R_2, n=n, T_c=T_c)
+back_focal_length = back_focal_length_of_lens_formula(R_1=R_1, R_2=R_2, n=n, T_c=T_c)
 first_surface_center = RIGHT * np.abs(R_1)
 
 surface_1 = CurvedRefractiveSurface(radius=np.abs(R_1), outwards_normal=RIGHT, center=first_surface_center, n_1=1.0,
