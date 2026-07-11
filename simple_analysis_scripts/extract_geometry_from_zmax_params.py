@@ -1,7 +1,8 @@
 from matplotlib import use
 use("TkAgg")
+from cavity_design import *
 import sympy as sp
-import numpy as np
+
 
 def get_taylor_numpy_array(max_power, numeric_params=None):
     """
@@ -89,20 +90,20 @@ surf2_params = {
 }
 
 # This should now execute cleanly without the float error
-num_array = get_taylor_numpy_array(20, numeric_params=surf1_params)
-print("Numeric NumPy Array:")
-print("-" * 55)
-print(repr(num_array))
+# num_array = get_taylor_numpy_array(20, numeric_params=surf1_params)
+# print("Numeric NumPy Array:")
+# print("-" * 55)
+# print(repr(num_array))
 
 ## ATTENTION: the output polynomial here should have it's sign inverse because ZMAX uses the sign convention, and
 # my polynomial representation is indifferent to the direction of the beam, so it always has positive curvature.
-num_array = get_taylor_numpy_array(20, numeric_params=surf2_params)
-print("Numeric NumPy Array:")
-print("-" * 55)
-print(repr(num_array))
+# num_array = get_taylor_numpy_array(20, numeric_params=surf2_params)
+# print("Numeric NumPy Array:")
+# print("-" * 55)
+# print(repr(num_array))
 
 # %%
-from cavity_design import *
+
 
 params_edmunds = [OpticalSurfaceParams(name='aspheric_lens_left', surface_type='aspheric_surface' , x=0   , y=0                       , z=0                       , theta=0                       , phi=-1e+00 * np.pi                  , radius=np.nan   , curvature_sign=CurvatureSigns.convex, T_c=3.1/2e-3                  , n_inside_or_after=1.583e+00           , n_outside_or_before=1e+00      , diameter=6.3e-03                 , material_properties=MaterialProperties(refractive_index=None                    , alpha_expansion=None                    , beta_surface_absorption=None                    , kappa_conductivity=None                    , dn_dT=None                    , nu_poisson_ratio=None                    , alpha_volume_absorption=None                    , intensity_reflectivity=None                    , intensity_transmittance=None                    , temperature=np.nan                  ), polynomial_coefficients=np.array([0.00000000e+00, 1.90857799e+02, 3.33213215e+06, 1.08218014e+11, 4.32910754e+15 , 6.27836273e+20, 2.70839583e+25, 1.72102573e+30, 1.13089247e+35, 7.62167883e+39, 5.23938302e+44])),
                   OpticalSurfaceParams(name='aspheric_lens_right',  surface_type='aspheric_surface' , x=3.1e-3   , y=0                , z=0                       , theta=0                       , phi=0                               , radius=np.nan    , curvature_sign=CurvatureSigns.concave, T_c=3.1/2e-3               , n_inside_or_after=1e+00               , n_outside_or_before=1.583e+00  , diameter=6.3e-03                 , material_properties=MaterialProperties(refractive_index=None                    , alpha_expansion=None                    , beta_surface_absorption=None                    , kappa_conductivity=None                    , dn_dT=None                    , nu_poisson_ratio=None                    , alpha_volume_absorption=None                    , intensity_reflectivity=None                    , intensity_transmittance=None                    , temperature=np.nan                  ), polynomial_coefficients=-np.array([ 0.00000000e+00, -3.94470149e+01,  4.40171309e+06, -9.01563757e+10, -1.60183137e+15, -3.23783960e+15, -1.51148859e+19, -7.39192926e+22, -3.73825954e+26, -1.93899408e+30, -1.02584959e+34])),
@@ -124,5 +125,7 @@ rays_edmund = optical_system_edmunds.propagate_ray(ray_0, propagate_with_first_s
 ax = optical_system_edmunds.plot()
 ax.scatter([optical_system_edmunds[1].center[0] + 2.68e-3], [0], color='red', label='Back Focal Point')
 rays_edmund.plot(ax=ax)
-ax.set_xlim(-0.02, 0.02)
+figure_dir = get_obsidian_save_path(filename="extract_geometry_from_zmax_params.svg")
+ax.set_xlim(-0.005, 0.01)
+plt.savefig(figure_dir)
 plt.show()

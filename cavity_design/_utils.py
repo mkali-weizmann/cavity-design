@@ -1328,3 +1328,22 @@ def copy_figure_as_svg_to_clipboard(fig=None):
         win32clipboard.SetClipboardData(svg_format, svg_bytes)
     finally:
         win32clipboard.CloseClipboard()
+
+
+def get_obsidian_save_path(filename: Optional[str] = None) -> str:
+    import os
+    from pathlib import Path
+    from dotenv import load_dotenv
+
+    load_dotenv()
+
+    attachments_path = os.environ.get("OBSIDIAN_ATTACHMENTS_PATH")
+    if not attachments_path:
+        attachments_path = Path(__file__).parent.parent / "outputs" / "figures"
+    else:
+        attachments_path = Path(attachments_path)
+
+    if filename:
+        attachments_path = attachments_path / filename
+
+    return str(attachments_path)
