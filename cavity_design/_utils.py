@@ -1330,7 +1330,7 @@ def copy_figure_as_svg_to_clipboard(fig=None):
         win32clipboard.CloseClipboard()
 
 
-def get_obsidian_save_path(filename: Optional[str] = None) -> str:
+def get_obsidian_save_path(filename: Optional[str] = None, overwrite: bool = False) -> str:
     import os
     from pathlib import Path
     from dotenv import load_dotenv
@@ -1343,7 +1343,9 @@ def get_obsidian_save_path(filename: Optional[str] = None) -> str:
     else:
         attachments_path = Path(attachments_path)
 
-    if filename:
+    if filename is not None:
         attachments_path = attachments_path / filename
+        if attachments_path.exists() and not overwrite:
+            raise FileExistsError(f"{attachments_path} already exists")
 
     return str(attachments_path)

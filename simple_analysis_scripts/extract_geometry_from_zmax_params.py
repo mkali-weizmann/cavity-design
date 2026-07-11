@@ -1,4 +1,5 @@
 from matplotlib import use
+
 use("TkAgg")
 from cavity_design import *
 import sympy as sp
@@ -105,27 +106,84 @@ surf2_params = {
 # %%
 
 
-params_edmunds = [OpticalSurfaceParams(name='aspheric_lens_left', surface_type='aspheric_surface' , x=0   , y=0                       , z=0                       , theta=0                       , phi=-1e+00 * np.pi                  , radius=np.nan   , curvature_sign=CurvatureSigns.convex, T_c=3.1/2e-3                  , n_inside_or_after=1.583e+00           , n_outside_or_before=1e+00      , diameter=6.3e-03                 , material_properties=MaterialProperties(refractive_index=None                    , alpha_expansion=None                    , beta_surface_absorption=None                    , kappa_conductivity=None                    , dn_dT=None                    , nu_poisson_ratio=None                    , alpha_volume_absorption=None                    , intensity_reflectivity=None                    , intensity_transmittance=None                    , temperature=np.nan                  ), polynomial_coefficients=np.array([0.00000000e+00, 1.90857799e+02, 3.33213215e+06, 1.08218014e+11, 4.32910754e+15 , 6.27836273e+20, 2.70839583e+25, 1.72102573e+30, 1.13089247e+35, 7.62167883e+39, 5.23938302e+44])),
-                  OpticalSurfaceParams(name='aspheric_lens_right',  surface_type='aspheric_surface' , x=3.1e-3   , y=0                , z=0                       , theta=0                       , phi=0                               , radius=np.nan    , curvature_sign=CurvatureSigns.concave, T_c=3.1/2e-3               , n_inside_or_after=1e+00               , n_outside_or_before=1.583e+00  , diameter=6.3e-03                 , material_properties=MaterialProperties(refractive_index=None                    , alpha_expansion=None                    , beta_surface_absorption=None                    , kappa_conductivity=None                    , dn_dT=None                    , nu_poisson_ratio=None                    , alpha_volume_absorption=None                    , intensity_reflectivity=None                    , intensity_transmittance=None                    , temperature=np.nan                  ), polynomial_coefficients=-np.array([ 0.00000000e+00, -3.94470149e+01,  4.40171309e+06, -9.01563757e+10, -1.60183137e+15, -3.23783960e+15, -1.51148859e+19, -7.39192926e+22, -3.73825954e+26, -1.93899408e+30, -1.02584959e+34])),
-                  OpticalSurfaceParams(name='BK7 window', surface_type=SurfacesTypes.flat_refractive_surface, x = 3.1e-3 + 1.483e-3, y=0, z=0, theta=0, phi=0, radius=np.inf, curvature_sign=CurvatureSigns.flat, T_c=np.nan, n_outside_or_before=1, n_inside_or_after=1.5135, material_properties=MaterialProperties(), diameter=6.3e-3, polynomial_coefficients=None)
-                 ]
+params_edmunds = [
+    OpticalSurfaceParams(name='aspheric_lens_left', surface_type='aspheric_surface', x=0, y=0, z=0, theta=0,
+                         phi=-1e+00 * np.pi, radius=np.nan, curvature_sign=CurvatureSigns.convex, T_c=3.1 / 2e-3,
+                         n_inside_or_after=1.583e+00, n_outside_or_before=1e+00, diameter=6.3e-03,
+                         material_properties=MaterialProperties(refractive_index=None, alpha_expansion=None,
+                                                                beta_surface_absorption=None, kappa_conductivity=None,
+                                                                dn_dT=None, nu_poisson_ratio=None,
+                                                                alpha_volume_absorption=None,
+                                                                intensity_reflectivity=None,
+                                                                intensity_transmittance=None, temperature=np.nan),
+                         polynomial_coefficients=np.array(
+                             [0.00000000e+00, 1.90857799e+02, 3.33213215e+06, 1.08218014e+11, 4.32910754e+15,
+                              6.27836273e+20, 2.70839583e+25, 1.72102573e+30, 1.13089247e+35, 7.62167883e+39,
+                              5.23938302e+44])),
+    OpticalSurfaceParams(name='aspheric_lens_right', surface_type='aspheric_surface', x=3.1e-3, y=0, z=0, theta=0,
+                         phi=0, radius=np.nan, curvature_sign=CurvatureSigns.concave, T_c=3.1 / 2e-3,
+                         n_inside_or_after=1e+00, n_outside_or_before=1.583e+00, diameter=6.3e-03,
+                         material_properties=MaterialProperties(refractive_index=None, alpha_expansion=None,
+                                                                beta_surface_absorption=None, kappa_conductivity=None,
+                                                                dn_dT=None, nu_poisson_ratio=None,
+                                                                alpha_volume_absorption=None,
+                                                                intensity_reflectivity=None,
+                                                                intensity_transmittance=None, temperature=np.nan),
+                         polynomial_coefficients=-np.array(
+                             [0.00000000e+00, -3.94470149e+01, 4.40171309e+06, -9.01563757e+10, -1.60183137e+15,
+                              -3.23783960e+15, -1.51148859e+19, -7.39192926e+22, -3.73825954e+26, -1.93899408e+30,
+                              -1.02584959e+34])),
+    OpticalSurfaceParams(name='BK7 window', surface_type=SurfacesTypes.flat_refractive_surface, x=3.1e-3 + 1.483e-3,
+                         y=0, z=0, theta=0, phi=0, radius=np.inf, curvature_sign=CurvatureSigns.flat, T_c=np.nan,
+                         n_outside_or_before=1, n_inside_or_after=1.5135, material_properties=MaterialProperties(),
+                         diameter=6.3e-3, polynomial_coefficients=None)
+    ]
 
-optical_system_edmunds = OpticalSystem.from_params(params=params_edmunds, t_is_trivial=True, p_is_trivial=True, use_paraxial_ray_tracing=False)
-# %%
-back_focal_length = back_focal_length_of_lens(R_1 = optical_system_edmunds[1].radius, R_2 = -optical_system_edmunds[0].radius, n=optical_system_edmunds[0].n_2, T_c = optical_system_edmunds[1].center[0] - optical_system_edmunds[0].center[0])
+optical_system_edmunds = OpticalSystem.from_params(params=params_edmunds, t_is_trivial=True, p_is_trivial=True,
+                                                   use_paraxial_ray_tracing=False)
+# %%  A Working version with the design wavelength and the glass window:
+back_focal_length = back_focal_length_of_lens(R_1=optical_system_edmunds[1].radius,
+                                              R_2=-optical_system_edmunds[0].radius, n=optical_system_edmunds[0].n_2,
+                                              T_c=optical_system_edmunds[1].center[0] -
+                                                  optical_system_edmunds[0].center[0])
 initial_ys = np.linspace(0, 0.0015, 10)
 initial_xs = np.ones_like(initial_ys) * (-0.01)
 initial_positions = np.stack([initial_xs, initial_ys, np.zeros_like(initial_ys)], axis=-1)
 ray_0 = Ray(origin=initial_positions, k_vector=RIGHT, n=1)
-
-# optical_system_edmunds_inverted = optical_system_edmunds.invert()
-
 rays_edmund = optical_system_edmunds.propagate_ray(ray_0, propagate_with_first_surface_first=True)
-
 ax = optical_system_edmunds.plot()
 ax.scatter([optical_system_edmunds[1].center[0] + 2.68e-3], [0], color='red', label='Back Focal Point')
 rays_edmund.plot(ax=ax)
-figure_dir = get_obsidian_save_path(filename="extract_geometry_from_zmax_params.svg")
 ax.set_xlim(-0.005, 0.01)
-plt.savefig(figure_dir)
+# figure_dir = get_obsidian_save_path(filename="extract_geometry_from_zmax_params.svg")
+# plt.savefig(figure_dir)
 plt.show()
+# %% With the actual wavelength and without the glass window:
+optical_system_actual = OpticalSystem.from_params(params=params_edmunds[:2], t_is_trivial=True, p_is_trivial=True,
+                                                  use_paraxial_ray_tracing=False)
+optical_system_actual[0].n_2 = 1.574
+optical_system_actual[1].n_1 = 1.574
+rays_actual = optical_system_actual.propagate_ray(ray_0, propagate_with_first_surface_first=True)
+ax = optical_system_actual.plot()
+rays_actual.plot(ax=ax)
+ax.set_xlim(-0.005, 0.01)
+# figure_dir = get_obsidian_save_path(filename="extract_geometry_from_zmax_params-actual.svg")
+# plt.savefig(figure_dir)
+plt.title("Actual wavelength (1064nm) and actual refractive index (1.574) without the glass window")
+plt.show()
+# %% With an equivalent spherical lens:
+optical_system_spherical = OpticalSystem(elements=[
+    CurvedRefractiveSurface(name="spherical - left",
+                            radius=optical_system_actual[0].radius, outwards_normal=LEFT,
+                            center=optical_system_actual[0].center, n_1=1, n_2=optical_system_actual[0].n_2, diameter=optical_system_actual[0].diameter, curvature_sign=CurvatureSigns.convex),
+    CurvedRefractiveSurface(name="spherical - right",
+                            radius=optical_system_actual[1].radius, outwards_normal=RIGHT,
+                            center=optical_system_actual[1].center, n_1=optical_system_actual[1].n_1, n_2=1, diameter=optical_system_actual[1].diameter, curvature_sign=CurvatureSigns.concave),
+], use_paraxial_ray_tracing=False, p_is_trivial=True, t_is_trivial=True)
+rays_spherical = optical_system_spherical.propagate_ray(ray_0, propagate_with_first_surface_first=True)
+ax = optical_system_spherical.plot()
+rays_spherical.plot(ax=ax)
+ax.set_xlim(-0.005, 0.01)
+plt.title("Equivalent spherical lens with the same radii of curvature and thickness as the aspheric lens")
+plt.show()
+
