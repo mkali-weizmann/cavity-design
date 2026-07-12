@@ -70,12 +70,15 @@ cavity = Cavity.from_params(params=params, standing_wave=True,
                                     lambda_0_laser=LAMBDA_0_LASER, power=28e3, p_is_trivial=True, t_is_trivial=True, use_paraxial_ray_tracing=False, set_central_line=True, set_mode_parameters=True)
 collimation_point = cavity[0].radius + back_focal_length_of_lens_object(lens_object=cavity[1])
 long_arm_lengths = np.array([29e-2, 30e-2, 31e-2, 32e-2, 33e-2, 34e-2, 37e-2])
-short_arm_lengths = np.linspace(collimation_point-2e-4, collimation_point+1e-4, 300)
+short_arm_lengths = np.linspace(collimation_point-2e-4, collimation_point+1e-4, 200)
 NAs = np.zeros(shape=(len(long_arm_lengths), len(short_arm_lengths)))
 mode_spacings = np.full(shape=(len(long_arm_lengths), len(short_arm_lengths)), fill_value=np.nan)
 zero_derivative_points = np.full(shape=(len(long_arm_lengths), len(short_arm_lengths)), fill_value=np.nan)
-quadratic_order_zero_derivative_point = np.full(shape=(len(long_arm_lengths), len(short_arm_lengths)), fill_value=np.nan)
-quadratic_quadratic_equality_point = np.full(shape=(len(long_arm_lengths), len(short_arm_lengths)), fill_value=np.nan)
+polynomial_derivatives_equality_stable_1 = np.full(shape=(len(long_arm_lengths), len(short_arm_lengths)), fill_value=np.nan)
+polynomial_derivatives_equality_stable_2 = np.full(shape=(len(long_arm_lengths), len(short_arm_lengths)), fill_value=np.nan)
+polynomial_derivatives_equality_metastable_1 = np.full(shape=(len(long_arm_lengths), len(short_arm_lengths)), fill_value=np.nan)
+polynomial_derivatives_equality_metastable_2 = np.full(shape=(len(long_arm_lengths), len(short_arm_lengths)), fill_value=np.nan)
+
 focii_to_lens = np.zeros(shape=(len(long_arm_lengths)))
 for i, long_arm_length in enumerate(long_arm_lengths):  #
     cavity.place_element(element=cavity[-1], position=long_arm_length * RIGHT, reference_center=cavity.surfaces[-2],
@@ -89,10 +92,18 @@ for i, long_arm_length in enumerate(long_arm_lengths):  #
         if not np.isnan(cavity.arms[0].mode_parameters.NA[0]):
             results_dict = analyze_potential_given_cavity(cavity=cavity, n_rays=50,
                                                           phi_max=np.arcsin(0.3), print_tests=False)
-            potential_polynomial = results_dict["polynomial_residuals_mirror"]
-            quadratic_quadratic_equality_point[i, j] = np.sqrt(np.abs(potential_polynomial.coef[1] / potential_polynomial.coef[2]))
+            potential_polynomial = results_dict["polynomial_residuals_mirror"].coef
+            a = 3 * potential_polynomial[3]
+            b = 2 * potential_polynomial[2]
+            c = 1 * potential_polynomial[1]
+            quadratic_solution_metastable_1 = np.sqrt((- b - np.sqrt(b**2 - 4 * a * c)) / (2 * a))
+            quadratic_solution_stable_1 = np.sqrt((- b - np.sqrt(b**2 + 4 * a * c)) / (2 * a))
+            quadratic_solution_stable_2 = np.sqrt((- b + np.sqrt(b ** 2 + 4 * a * c)) / (2 * a))
             # zero_derivative_points[i, j] = results_dict["zero_derivative_point"]
-            # quadratic_order_zero_derivative_point[i, j] = np.sqrt(np.abs(potential_polynomial.coef[1] / (2 * potential_polynomial.coef[2])))
+            polynomial_derivatives_equality_stable_1[i, j] = quadratic_solution_stable_1
+            polynomial_derivatives_equality_stable_2[i, j] = quadratic_solution_stable_2
+            polynomial_derivatives_equality_metastable_1[i, j] = quadratic_solution_metastable_1
+
         if j == 0:
             focii_to_lens[i] = cavity.surfaces[-1].center[0] - cavity.surfaces[2].center[0] - cavity.surfaces[-1].radius
         if cavity.arms[0].mode_parameters.NA[0] > 0.07 and flag is False:
@@ -110,13 +121,15 @@ else:
 
 for i in range(len(long_arm_lengths)):
     na_line, = ax.plot(short_arm_lengths * 1e3, NAs[i, :], label=f"Mirror-to-spherical = {long_arm_lengths[i]*100:.2f}cm")
-    ax.plot(short_arm_lengths * 1e3, zero_derivative_points[i, :], color=na_line.get_color(), linestyle='-.', label=f"maximally allowed NA")
-    # ax.plot(short_arm_lengths * 1e3, quadratic_order_zero_derivative_point[i, :], color=na_line.get_color(), linestyle=':')
+    # ax.plot(short_arm_lengths * 1e3, zero_derivative_points[i, :], color=na_line.get_color(), linestyle='-.', label=f"maximally allowed NA")
     if i == 0:
-        ax.plot(short_arm_lengths * 1e3, quadratic_quadratic_equality_point[i, :], color=na_line.get_color(), linestyle=':', alpha=0.3, label="Quadratic-quartic equality")
+        # ax.plot(short_arm_lengths * 1e3, polynomial_derivatives_equality_stable_1[i, :], color=na_line.get_color(), linestyle=':', alpha=0.3, label="Quadratic-quartic equality")
+        # ax.plot(short_arm_lengths * 1e3, polynomial_derivatives_equality_stable_2[i, :], color=na_line.get_color(), linestyle=':', alpha=0.3, label="Quadratic-quartic equality")
+        ax.plot(short_arm_lengths * 1e3, polynomial_derivatives_equality_metastable_1[i, :], color=na_line.get_color(), linestyle=':', alpha=0.3, label="Quadratic-quartic equality")
     else:
-        ax.plot(short_arm_lengths * 1e3, quadratic_quadratic_equality_point[i, :], color=na_line.get_color(),
-                linestyle=':', alpha=0.3)
+        # ax.plot(short_arm_lengths * 1e3, polynomial_derivatives_equality_stable_1[i, :], color=na_line.get_color(), linestyle=':', alpha=0.3)
+        # ax.plot(short_arm_lengths * 1e3, polynomial_derivatives_equality_stable_2[i, :], color=na_line.get_color(), linestyle=':', alpha=0.3)
+        ax.plot(short_arm_lengths * 1e3, polynomial_derivatives_equality_metastable_1[i, :], color=na_line.get_color(), linestyle=':', alpha=0.3)
     ax2.plot(short_arm_lengths * 1e3, mode_spacings[i, :] / 1e6, linestyle='--', label=f"Mirror-to-spherical = {long_arm_lengths[i]*100:.2f}cm")
 ax2.set_ylim(0, 300)
 ax2.set_ylabel("Mode Spacing [MHz]")
@@ -137,7 +150,7 @@ else:
     fig.subplots_adjust(right=0.68)
     ax.legend(loc='center left', bbox_to_anchor=(1.12, 0.5), borderaxespad=0.0)
     plt.title(f"spherical focal length = {focal_length_of_lens_object(cavity[2]) * 1000:.0f} mm")
-# obsidian_path=get_obsidian_save_path(filename='NA as a function of mirrors.svg')
+# obsidian_path=get_obsidian_save_path(filename='NA as a function of mirrors - double plot.svg')
 # plt.savefig(obsidian_path)
 plt.show()
 #

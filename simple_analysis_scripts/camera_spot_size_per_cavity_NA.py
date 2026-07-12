@@ -1,6 +1,6 @@
 # %%
-from matplotlib import use
-use('TkAgg')  # Or 'TkAgg' if Qt5Agg doesn't work
+# from matplotlib import use
+# use('Qt5Agg')  # Or 'TkAgg' if Qt5Agg doesn't work
 from cavity_design import *
 
 # Output beam optical system: mirror substrate (transmissive) followed by 35mm collimating lens

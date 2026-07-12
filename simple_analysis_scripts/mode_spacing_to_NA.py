@@ -58,7 +58,7 @@ def generate_lens_position_dependencies(short_arm_lengths: np.ndarray,
         plt.suptitle('Dependencies')
         fig.tight_layout()
         fig.legend()
-    plt.show()
+    plt.show(block=False)
 
     return NAs, mode_spacing
 
@@ -69,10 +69,10 @@ def generate_lens_position_dependencies_output(short_arm_lengths: Union[np.ndarr
                                                plot_cavity=True, plot_spectrum=True, plot_dependencies=True):
     if plot_cavity:
         cavity.plot()
-        plt.show()
+        plt.show(block=False)
     if plot_spectrum:
         cavity.plot_spectrum(width_over_fsr=0.01)
-        plt.show()
+        plt.show(block=False)
     if isinstance(short_arm_lengths, (int, float)):
         short_arm_lengths = np.linspace(collimation_point - short_arm_lengths, collimation_point + short_arm_lengths, N)
     NAs, mode_spacing = generate_lens_position_dependencies(short_arm_lengths=short_arm_lengths,
@@ -92,3 +92,5 @@ if __name__ == "__main__":
                                                                                                    plot_spectrum=True,
                                                                                                    plot_dependencies=True
                                                                                                    )
+    # The plots above are shown non-blocking; keep them open when run standalone.
+    plt.show(block=True)
