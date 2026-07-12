@@ -78,10 +78,12 @@ quadratic_order_zero_derivative_point = np.full(shape=(len(long_arm_lengths), le
 quadratic_quadratic_equality_point = np.full(shape=(len(long_arm_lengths), len(short_arm_lengths)), fill_value=np.nan)
 focii_to_lens = np.zeros(shape=(len(long_arm_lengths)))
 for i, long_arm_length in enumerate(long_arm_lengths):  #
-    cavity.place_elements(elements=cavity[-1], position=long_arm_length * RIGHT, reference_center=cavity.surfaces[-2], recalculate_optic=False)
+    cavity.place_element(element=cavity[-1], position=long_arm_length * RIGHT, reference_center=cavity.surfaces[-2],
+                         recalculate_optic=False)
     flag=False
     for j, short_arm_length in enumerate(short_arm_lengths):
-        cavity.place_elements(elements=cavity[1], position = short_arm_length * RIGHT, reference_center=cavity[0])
+        cavity.place_element(element=cavity[1], position=short_arm_length * RIGHT, reference_center=cavity[0],
+                             recalculate_optic=True)
         NAs[i, j] = cavity.arms[0].mode_parameters.NA[0]
         mode_spacings[i, j] = cavity.mode_spacing_transversal_apparent
         if not np.isnan(cavity.arms[0].mode_parameters.NA[0]):

@@ -977,13 +977,13 @@ def _make_fabry_perot(u=1e-5):
                   use_paraxial_ray_tracing=False)
 
 
-def test_place_elements_retraces_and_syncs_standing_wave():
+def test_place_element_retraces_and_syncs_standing_wave():
     cavity = _make_fabry_perot()
     assert cavity.central_line_successfully_traced is True
     z_R_before = cavity.arms[0].mode_parameters.z_R[0]
 
     # Move the second mirror outward along the axis: a different gap => a different (still valid) resonant mode.
-    cavity.place_elements(cavity[1], cavity[1].center + np.array([0.0, 0.0, 2e-5]))
+    cavity.place_element(cavity[1], cavity[1].center + np.array([0.0, 0.0, 2e-5]), recalculate_optic=True)
 
     # The central line and mode parameters were recomputed in place.
     assert cavity.central_line_successfully_traced is True
@@ -997,26 +997,29 @@ def test_place_elements_retraces_and_syncs_standing_wave():
     assert np.allclose(centers, centers[::-1], atol=1e-12)
 
 
-def test_place_elements_reference_center_and_multi():
+def test_place_element_reference_center_variants():
     # reference_center makes position relative; a Surface reference uses its center.
     cavity = _make_fabry_perot()
-    cavity.place_elements(cavity[1], np.array([0.0, 0.0, 5e-3]), reference_center=cavity[0])
+    cavity.place_element(cavity[1], np.array([0.0, 0.0, 5e-3]), recalculate_optic=False, reference_center=cavity[0])
     assert np.allclose(cavity[1].center, cavity[0].center + np.array([0.0, 0.0, 5e-3]), atol=1e-12)
 
-    # Several elements move together as one rigid body (anchored by the first), internal geometry preserved.
     lens_a = _make_lens_group(center_x=0.0)
     lens_b = _make_lens_group(center_x=10e-3)
     system = OpticalSystem([lens_a, lens_b], given_initial_central_line=None, use_paraxial_ray_tracing=False)
-    sep_a = lens_a.surfaces[1].center - lens_a.surfaces[0].center
-    gap_ab = lens_b.surfaces[0].center - lens_a.surfaces[0].center
+    sep_b = lens_b.surfaces[1].center - lens_b.surfaces[0].center
 
-    system.place_elements([lens_a, lens_b], np.array([1.0, 0.2, 0.0]))
-    assert np.allclose(lens_a.surfaces[0].center, [1.0, 0.2, 0.0], atol=1e-12)
-    assert np.allclose(lens_a.surfaces[1].center - lens_a.surfaces[0].center, sep_a, atol=1e-12)
-    assert np.allclose(lens_b.surfaces[0].center - lens_a.surfaces[0].center, gap_ab, atol=1e-12)
+    # An OpticalSystem reference resolves to its last surface's center; a nested element moves rigidly.
+    system.place_element(lens_b, np.array([5e-3, 0.0, 0.0]), recalculate_optic=False, reference_center=lens_a)
+    assert np.allclose(lens_b.surfaces[0].center, lens_a.surfaces[-1].center + np.array([5e-3, 0.0, 0.0]),
+                       atol=1e-12)
+    assert np.allclose(lens_b.surfaces[1].center - lens_b.surfaces[0].center, sep_b, atol=1e-12)
+
+    # Lists of elements are no longer accepted: each element is placed on its own.
+    with pytest.raises(TypeError):
+        system.place_element([lens_a, lens_b], np.array([1.0, 0.2, 0.0]), recalculate_optic=False)
 
 
-def test_place_elements_updates_symmetry_flags():
+def test_place_element_updates_symmetry_flags():
     # Mirrors perturb_cavity's logic: a z displacement breaks the theta (t) symmetry, a y one the phi (p) symmetry,
     # an x (axial, here) one breaks neither. Start from a cavity that is trivial in both transverse axes.
     def fp_symmetric():
@@ -1026,31 +1029,31 @@ def test_place_elements_updates_symmetry_flags():
         return cav
 
     cav = fp_symmetric()
-    cav.place_elements(cav[1], cav[1].center + np.array([0.0, 0.0, 2e-5]))
+    cav.place_element(cav[1], cav[1].center + np.array([0.0, 0.0, 2e-5]), recalculate_optic=False)
     assert cav.t_is_trivial is False and cav.p_is_trivial is True
 
     cav = fp_symmetric()
-    cav.place_elements(cav[1], cav[1].center + np.array([0.0, 1e-6, 0.0]))
+    cav.place_element(cav[1], cav[1].center + np.array([0.0, 1e-6, 0.0]), recalculate_optic=False)
     assert cav.t_is_trivial is True and cav.p_is_trivial is False
 
     cav = fp_symmetric()
-    cav.place_elements(cav[1], cav[1].center + np.array([1e-6, 0.0, 0.0]))
+    cav.place_element(cav[1], cav[1].center + np.array([1e-6, 0.0, 0.0]), recalculate_optic=False)
     assert cav.t_is_trivial is True and cav.p_is_trivial is True
 
 
-def test_with_elements_placed_is_nondestructive():
+def test_with_element_placed_is_nondestructive():
     cavity = _make_fabry_perot()
     center_before = np.array(cavity[1].center)
 
     # By index.
-    moved = cavity.with_elements_placed(1, cavity[1].center + np.array([0.0, 0.0, 2e-5]))
+    moved = cavity.with_element_placed(1, cavity[1].center + np.array([0.0, 0.0, 2e-5]))
     assert moved is not cavity
     assert np.allclose(cavity[1].center, center_before, atol=1e-12)  # original untouched
     assert moved[1].center[2] > center_before[2]
     assert moved.central_line_successfully_traced is True
 
     # By element object, with a Surface reference_center snapshotted from the original.
-    moved2 = cavity.with_elements_placed(cavity[1], np.array([0.0, 0.0, 4e-3]), reference_center=cavity[0])
+    moved2 = cavity.with_element_placed(cavity[1], np.array([0.0, 0.0, 4e-3]), reference_center=cavity[0])
     assert np.allclose(cavity[1].center, center_before, atol=1e-12)
     assert np.allclose(moved2[1].center, cavity[0].center + np.array([0.0, 0.0, 4e-3]), atol=1e-12)
 
@@ -1070,10 +1073,10 @@ def test_to_params_reflects_in_place_edits():
     assert np.isclose(sys.to_params[1].x, 8e-3)  # regenerated, not the stale cached value
 
 
-def test_place_elements_refreshes_plain_optical_system_central_line():
+def test_place_element_refreshes_plain_optical_system_central_line():
     from cavity_design import OpticalSystem
-    # A plain OpticalSystem traces its central line via set_given_central_line, which never sets
-    # central_line_successfully_traced; place_elements must still detect the existing line and refresh it.
+    # A plain OpticalSystem traces its central line via set_given_central_line; with recalculate_optic=True,
+    # place_element retraces it from scratch after the move.
     m0 = CurvedMirror(radius=5e-3, outwards_normal=np.array([-1.0, 0, 0]), center=np.array([-5e-3, 0, 0]),
                       curvature_sign=CurvatureSigns.concave, diameter=0.01)
     m1 = CurvedMirror(radius=5e-3, outwards_normal=np.array([1.0, 0, 0]), center=np.array([5e-3, 0, 0]),
@@ -1083,9 +1086,31 @@ def test_place_elements_refreshes_plain_optical_system_central_line():
     assert sys.central_line_successfully_traced is None  # plain OpticalSystem never sets this flag
     assert np.isclose(sys.arms[0].central_line.length, 10e-3)
 
-    sys.place_elements(sys.elements[1], np.array([8e-3, 0.0, 0.0]))
+    sys.place_element(sys.elements[1], np.array([8e-3, 0.0, 0.0]), recalculate_optic=True)
     # The central line must reflect the moved geometry (mirror at -5mm to the surface now at +8mm).
     assert np.isclose(sys.arms[0].central_line.length, 13e-3)
+
+
+def test_place_element_resets_optics_and_recalculates_on_demand():
+    cavity = _make_fabry_perot()
+    assert cavity.central_line_successfully_traced is True
+
+    # Whatever recalculate_optic is, the move discards all previously computed optics: every arm returns to its
+    # freshly-initialized state (no central line, empty local mode parameters) and the traced flags are cleared.
+    cavity.place_element(cavity[1], cavity[1].center + np.array([0.0, 0.0, 1e-6]), recalculate_optic=False)
+    assert cavity.central_line is None
+    assert cavity.central_line_successfully_traced is None
+    assert cavity.resonating_mode_successfully_traced is None
+    for arm in cavity.arms:
+        assert arm.central_line is None
+        assert np.all(np.isnan(arm.mode_parameters_on_surface_0.q))
+        assert np.all(np.isnan(arm.mode_parameters_on_surface_1.q))
+
+    # With recalculate_optic=True the optics are recomputed from scratch, regardless of the pre-move state.
+    cavity.place_element(cavity[1], cavity[1].center + np.array([0.0, 0.0, 1e-6]), recalculate_optic=True)
+    assert cavity.central_line_successfully_traced is True
+    assert cavity.resonating_mode_successfully_traced is True
+    assert np.isfinite(cavity.arms[0].mode_parameters.z_R[0])
 
 
 def test_surface_level_relative_position_resolved_at_construction():

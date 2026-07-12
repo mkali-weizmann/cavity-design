@@ -547,7 +547,7 @@ class OpticalSystem:
         self.resonating_mode_successfully_traced: Optional[bool] = None
         self.lambda_0_laser: Optional[float] = lambda_0_laser
         # params are intentionally NOT stored: to_params is always regenerated from the live elements, so in-place
-        # edits (e.g. place_elements) are always reflected. The params kwarg is still accepted for backward
+        # edits (e.g. place_element) are always reflected. The params kwarg is still accepted for backward
         # compatibility (callers may pass it), but it is otherwise unused.
         self.power = power
         self.p_is_trivial = p_is_trivial
@@ -598,62 +598,46 @@ class OpticalSystem:
     def __iter__(self):
         return iter(self.elements)
 
-    def place_elements(self, elements, position, reference_center=None, recalculate_optic=True):
-        """Move one or more of this system's own elements to a target position, in place.
+    def place_element(self, element, position, recalculate_optic: bool, reference_center=None):
+        """Move one of this system's own elements to a target position, in place.
 
-        ``elements`` is a single element (a ``Surface`` or a nested ``OpticalSystem``) belonging to this system, or a
-        list of such elements. ``position`` is a length-3 array. The first listed element's reference point (its
-        ``center``, or its first surface's center for a nested ``OpticalSystem``) is moved to ``position``; any
-        further listed elements are translated by the same displacement, so the whole selection moves as one rigid
-        body.
+        ``element`` is a single member of ``self.elements`` — a ``Surface`` or a nested ``OpticalSystem``.
+        ``position`` is a length-3 array; the element's reference point (its ``center``, or its first surface's
+        center for a nested ``OpticalSystem``) is moved there, and for a nested system the rest of its surfaces move
+        rigidly with it.
 
-        ``reference_center`` is optional and may be a length-3 array or a ``Surface`` (its ``center`` is used). When
-        given, ``position`` is interpreted relative to it, i.e. the absolute target is ``reference_center + position``.
+        ``reference_center`` is optional and may be a length-3 array, a ``Surface`` (its ``center`` is used) or an
+        ``OpticalSystem`` (its last surface's center is used). When given, ``position`` is interpreted relative to
+        it, i.e. the absolute target is ``reference_center + position``.
 
-        If the central line / mode parameters had already been traced, they are recomputed after the move (and, for a
-        standing-wave ``Cavity``, the mirrored back-trip surfaces are re-synced first). Returns ``self`` for chaining.
+        Whether or not a recalculation is requested, all previously computed optics are discarded: every arm's
+        central line becomes ``None`` and its local mode parameters become empty ``LocalModeParameters``, exactly as
+        when the arms are first created. With ``recalculate_optic=True`` they are then recomputed from scratch,
+        as at construction, regardless of their state before the move. Returns ``self`` for chaining.
         """
-        if isinstance(elements, (Surface, OpticalSystem)):
-            elements = [elements]
-        else:
-            elements = list(elements)
-        if len(elements) == 0:
-            raise ValueError("place_elements requires at least one element to move.")
+        if not isinstance(element, (Surface, OpticalSystem)):
+            raise TypeError(
+                "place_element moves a single element of this system (a Surface or a nested OpticalSystem); "
+                "to move several elements, place each one separately."
+            )
 
         position = np.asarray(position, dtype=float)
         if reference_center is None:
             offset = np.zeros(3)
+        elif isinstance(reference_center, OpticalSystem):
+            offset = np.asarray(reference_center.surfaces[-1].center, dtype=float)
         elif isinstance(reference_center, Surface):
             offset = np.asarray(reference_center.center, dtype=float)
         else:
             offset = np.asarray(reference_center, dtype=float)
         target = position + offset
 
-        # Whether geometry-dependent results existed before tells us what to refresh afterwards. central_line covers a
-        # plain OpticalSystem (set via set_given_central_line, which never sets central_line_successfully_traced),
-        # while central_line_successfully_traced also catches a Cavity whose trace was attempted but failed.
-        had_central_line = self.central_line is not None or self.central_line_successfully_traced is not None
-        had_mode_parameters = self.resonating_mode_successfully_traced is not None
-
-        first = elements[0]
-        # Remember the first element's reference point (when defined) so we can tell, after the move, along which
+        # Remember the element's reference point (when defined) so we can tell, after the move, along which
         # transverse axes the geometry was displaced — a move can break a previously-trivial theta/phi symmetry.
-        reference_before = _rigid_body_reference_point(first, "first_surface") if first.positions_defined else None
-        if len(elements) == 1:
-            # Delegate the single-element move to set_element_position, which handles both well-defined elements
-            # (rigid translation) and undefined ones (anchor a surface / resolve a relative chain off the target).
-            set_element_position(first, target, reference="first_surface")
-        else:
-            # Several elements move together as one rigid body, anchored by the first.
-            if not first.positions_defined:
-                raise ValueError(
-                    "Cannot move several elements as a rigid body when the first one has undefined positions; "
-                    "place it on its own first (it is anchored and its relative chain is resolved off the target)."
-                )
-            delta = target - _rigid_body_reference_point(first, "first_surface")
-            for element in elements:
-                for axis, axis_delta in zip(("x", "y", "z"), delta):
-                    apply_rigid_body_perturbation(element, axis, axis_delta)
+        reference_before = _rigid_body_reference_point(element, "first_surface") if element.positions_defined else None
+        # set_element_position handles both well-defined elements (rigid translation) and undefined ones (anchor a
+        # surface / resolve a relative chain off the target).
+        set_element_position(element, target, reference="first_surface")
 
         # For a standing-wave cavity this re-copies the moved positions onto the mirrored back-trip surfaces; for a
         # plain system with absolute positions it is a no-op.
@@ -671,43 +655,53 @@ class OpticalSystem:
                 theta_symmetry_broken=abs(displacement[2]) > POSITION_TINY,
                 phi_symmetry_broken=abs(displacement[1]) > POSITION_TINY,
             )
-            self._sync_config_to_nested()
+
+        # The move invalidates all geometry-dependent results, so every arm is reset to its freshly-initialized
+        # state (as in Arm.__init__), whether or not a recalculation is requested.
+        for arm in self.arms:
+            arm.central_line = None
+            arm.mode_parameters_on_surface_0 = LocalModeParameters(q=np.nan, lambda_0_laser=np.nan, n=arm.n)
+            arm.mode_parameters_on_surface_1 = LocalModeParameters(q=np.nan, lambda_0_laser=np.nan, n=arm.n)
+            arm.mode_principle_axes = None
+        self.central_line_successfully_traced = None
+        self.resonating_mode_successfully_traced = None
+        # Propagates the updated triviality flags and the arms reset to the nested systems' own arm objects.
+        self._sync_config_to_nested()
+
         if recalculate_optic:
-            if had_central_line:
-                if isinstance(self, Cavity):
-                    self.set_central_line()
-                else:
-                    self.set_given_central_line(self.default_initial_ray)
-            if had_mode_parameters and isinstance(self, Cavity):
+            if isinstance(self, Cavity):
+                self.set_central_line()
                 self.set_mode_parameters()
+            else:
+                self.set_given_central_line(self.default_initial_ray)
         return self
 
-    def with_elements_placed(self, elements, position, reference_center=None):
-        """Non-destructive ``place_elements``: return a deep copy of this system with the elements moved.
+    def with_element_placed(self, element, position, recalculate_optic: bool = True, reference_center=None):
+        """Non-destructive ``place_element``: return a deep copy of this system with the element moved.
 
-        ``elements`` may be element(s) of this system, or integer index/indices into ``self.elements`` (handy because
-        after the copy the original element objects no longer belong to the returned system). ``position`` and
-        ``reference_center`` behave exactly as in :meth:`place_elements`. ``self`` is left unchanged.
+        ``element`` may be an element of this system, or an integer index into ``self.elements`` (handy because
+        after the copy the original element object no longer belongs to the returned system). ``position``,
+        ``recalculate_optic`` and ``reference_center`` behave exactly as in :meth:`place_element`. ``self`` is left
+        unchanged.
         """
-        if isinstance(elements, (Surface, OpticalSystem, int, np.integer)):
-            elements = [elements]
-        # Resolve the requested elements to indices into self.elements, so the same elements can be found on the copy.
-        indices = []
-        for element in elements:
-            if isinstance(element, (int, np.integer)):
-                indices.append(int(element))
-            else:
-                matches = [i for i, candidate in enumerate(self.elements) if candidate is element]
-                if not matches:
-                    raise ValueError("with_elements_placed: an element to move is not one of this system's elements.")
-                indices.append(matches[0])
-        # Snapshot a Surface reference_center to a plain coordinate so it need not be re-mapped onto the copy.
-        if isinstance(reference_center, Surface):
+        # Resolve the requested element to an index into self.elements, so the same element can be found on the copy.
+        if isinstance(element, (int, np.integer)):
+            index = int(element)
+        else:
+            matches = [i for i, candidate in enumerate(self.elements) if candidate is element]
+            if not matches:
+                raise ValueError("with_element_placed: the element to move is not one of this system's elements.")
+            index = matches[0]
+        # Snapshot a Surface / OpticalSystem reference_center to a plain coordinate so it need not be re-mapped onto
+        # the copy.
+        if isinstance(reference_center, OpticalSystem):
+            reference_center = np.asarray(reference_center.surfaces[-1].center, dtype=float)
+        elif isinstance(reference_center, Surface):
             reference_center = np.asarray(reference_center.center, dtype=float)
 
         new_system = copy.deepcopy(self)
-        new_system.place_elements(
-            [new_system.elements[i] for i in indices], position, reference_center=reference_center
+        new_system.place_element(
+            new_system.elements[index], position, recalculate_optic=recalculate_optic, reference_center=reference_center
         )
         return new_system
 
@@ -1428,7 +1422,7 @@ class OpticalSystem:
             )
 
         # Build the completed cavity directly from the live elements (plus the new end mirror), so any in-place edits
-        # (e.g. place_elements) to the optical system's geometry are honored. The elements are deep-copied so the returned
+        # (e.g. place_element) to the optical system's geometry are honored. The elements are deep-copied so the returned
         # cavity is independent of the input optical system.
         cavity = Cavity(
             elements=[*copy.deepcopy(self.elements), end_mirror],
@@ -1641,7 +1635,7 @@ class OpticalSystem:
                 f"length first = {self.central_line[0].length:.2e}, length last = {self.central_line[len(self.arms) // 2 - 1].length:.2e}"
             )
         else:
-            totle = ax.set_title(
+            title = ax.set_title(
                 f"length first = {self.central_line[0].length:.2e}, length last = {self.central_line[len(self.arms) // 2 - 1].length:.2e}"
             )
         return ax
@@ -3256,7 +3250,7 @@ def _updated_triviality_flags(t_is_trivial, p_is_trivial, theta_symmetry_broken,
     In the convention used throughout, the theta axis is the z axis (``t_is_trivial``) and the phi axis is the y axis
     (``p_is_trivial``). A symmetry that was trivial survives the change only if it was trivial before *and* the change
     leaves its axis undisturbed. The callers decide what "disturbed" means in their domain (e.g. ``perturb_cavity``
-    from the perturbed parameter names — x/y/z/theta/phi — and ``place_elements`` from the displacement vector).
+    from the perturbed parameter names — x/y/z/theta/phi — and ``place_element`` from the displacement vector).
     Returns the updated ``(t_is_trivial, p_is_trivial)`` pair."""
     return t_is_trivial and not theta_symmetry_broken, p_is_trivial and not phi_symmetry_broken
 

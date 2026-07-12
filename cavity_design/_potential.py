@@ -105,7 +105,8 @@ def choose_source_position_for_desired_focus_analytic(
 
 def generate_one_lens_optical_system_existing_elements(NA: float = 0.1, short_arm_length=7.5e-3):
     optical_system = OpticalSystem(elements=[LASER_OPTIK_MIRROR, EDMUND_4p03MM_ASPHERIC], lambda_0_laser=LAMBDA_0_LASER)
-    optical_system.place_elements(elements=optical_system[1], position=short_arm_length*RIGHT, reference_center=optical_system[0])
+    optical_system.place_element(element=optical_system[1], position=short_arm_length * RIGHT,
+                                 recalculate_optic=True, reference_center=optical_system[0])
     cavity=optical_system.complete_to_cavity(NA=NA, end_mirror_object=COASTLINE_20CM_MIRROR)
     return cavity
 
@@ -212,7 +213,14 @@ def generate_two_positive_lenses_optical_system(
         given_initial_central_line=True,
         use_paraxial_ray_tracing=False,
     )
-    optical_system_aspheric.place_elements(elements=[optical_system_aspheric[0], optical_system_aspheric[1]], position=(back_focal_length_aspheric_actual + defocus) * OPTICAL_AXIS)
+    # Move the two lens faces rigidly: the flat face lands at the target, the curved face keeps its offset from it.
+    lens_displacement = (back_focal_length_aspheric_actual + defocus) * OPTICAL_AXIS - optical_system_aspheric[0].center
+    optical_system_aspheric.place_element(element=optical_system_aspheric[1],
+                                          position=optical_system_aspheric[1].center + lens_displacement,
+                                          recalculate_optic=False)
+    optical_system_aspheric.place_element(element=optical_system_aspheric[0],
+                                          position=optical_system_aspheric[0].center + lens_displacement,
+                                          recalculate_optic=True)
 
     aspheric_output_ROC = optical_system_aspheric.output_radius_of_curvature(initial_distance=aspheric_flat.center[0])
 

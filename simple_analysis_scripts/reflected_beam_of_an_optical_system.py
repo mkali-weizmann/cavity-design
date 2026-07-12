@@ -8,7 +8,8 @@ optical_system = OpticalSystem(elements=[LASER_OPTIK_MIRROR, EDMUND_4p03MM_ASPHE
 # %%
 # This formula comes from find_short_arm_length_for_collimation.nb
 short_arm_length = optical_system[0].radius + back_focal_length_of_lens_object(lens_object=optical_system[1])
-optical_system.place_elements(elements=optical_system[1], position=short_arm_length * RIGHT, reference_center=optical_system[0])
+optical_system.place_element(element=optical_system[1], position=short_arm_length * RIGHT,
+                             recalculate_optic=True, reference_center=optical_system[0])
 optical_system_reversed = optical_system.inverse
 
 mode_beginning = optical_system.surfaces[-1].center[0]+1e-2

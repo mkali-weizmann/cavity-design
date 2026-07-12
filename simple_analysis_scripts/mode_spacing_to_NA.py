@@ -4,26 +4,36 @@ from scipy.interpolate import interp1d
 
 N = 100
 
-params = [
-          OpticalSurfaceParams(name='Laser Optik Mirror'     ,surface_type='curved_mirror'                  , x=-5e-03                  , y=0                       , z=0                       , theta=0                       , phi=1e+00 * np.pi           , radius=5e-03                   , curvature_sign=CurvatureSigns.concave, T_c=np.nan                  , n_inside_or_after=1e+00                   , n_outside_or_before=1e+00                   , diameter=7.75e-03                , material_properties=MaterialProperties(refractive_index=1.45e+00                , alpha_expansion=5.2e-07                 , beta_surface_absorption=1e-06                   , kappa_conductivity=1.38e+00                , dn_dT=1.2e-05                 , nu_poisson_ratio=1.6e-01                 , alpha_volume_absorption=1e-03                   , intensity_reflectivity=1e-04                   , intensity_transmittance=9.99899e-01             , temperature=np.nan                  ), polynomial_coefficients=None), [
-          OpticalSurfaceParams(name='low curvature side - Edmund 4.03mm spherical version',surface_type='curved_refractive_surface'      , x=2.452564065600805e-03   , y=0                       , z=0                       , theta=0                       , phi=1e+00 * np.pi           , radius=1.267523034472214e-02   , curvature_sign=CurvatureSigns.convex, T_c=np.nan                  , n_inside_or_after=1.574e+00               , n_outside_or_before=1e+00                   , diameter=5.1e-03                 , material_properties=MaterialProperties(refractive_index=None                    , alpha_expansion=None                    , beta_surface_absorption=None                    , kappa_conductivity=None                    , dn_dT=None                    , nu_poisson_ratio=None                    , alpha_volume_absorption=None                    , intensity_reflectivity=None                    , intensity_transmittance=None                    , temperature=np.nan                  ), polynomial_coefficients=None),
-          OpticalSurfaceParams(name='high curvature side - Edmund 4.03mm spherical version',surface_type='curved_refractive_surface'      , x=5.552564065600805e-03   , y=0                       , z=0                       , theta=0                       , phi=0                       , radius=2.619751468026235e-03   , curvature_sign=CurvatureSigns.concave, T_c=np.nan                  , n_inside_or_after=1e+00                   , n_outside_or_before=1.574e+00               , diameter=5.1e-03                 , material_properties=MaterialProperties(refractive_index=None                    , alpha_expansion=None                    , beta_surface_absorption=None                    , kappa_conductivity=None                    , dn_dT=None                    , nu_poisson_ratio=None                    , alpha_volume_absorption=None                    , intensity_reflectivity=None                    , intensity_transmittance=None                    , temperature=np.nan                  ), polynomial_coefficients=None)],
-          OpticalSurfaceParams(name='End mirror'             ,surface_type='curved_mirror'                  , x=3.005076516394101e-01   , y=0                       , z=0                       , theta=0                       , phi=0                       , radius=2e-01                   , curvature_sign=CurvatureSigns.concave, T_c=np.nan                  , n_inside_or_after=1e+00                   , n_outside_or_before=1e+00                   , diameter=np.nan                  , material_properties=MaterialProperties(refractive_index=None                    , alpha_expansion=None                    , beta_surface_absorption=None                    , kappa_conductivity=None                    , dn_dT=None                    , nu_poisson_ratio=None                    , alpha_volume_absorption=None                    , intensity_reflectivity=None                    , intensity_transmittance=None                    , temperature=np.nan                  ), polynomial_coefficients=None)]
-
-cavity = Cavity.from_params(params=params, standing_wave=True,
-                                    lambda_0_laser=LAMBDA_0_LASER, power=28e3, p_is_trivial=True, t_is_trivial=True, use_paraxial_ray_tracing=True, set_central_line=True, set_mode_parameters=True)
-short_arm_lengths = np.linspace(7.42e-3, 7.573e-3, N)
+cavity = Cavity(elements=[LASER_OPTIK_MIRROR,
+                          EDMUND_4p03MM_ASPHERIC,
+                          THOLABS_100MM_PLANO_CONVEX_LENS,
+                          COASTLINE_20CM_MIRROR],
+                use_paraxial_ray_tracing=True, p_is_trivial=True, t_is_trivial=True, lambda_0_laser=LAMBDA_0_LASER)
+aspheric_BFL = back_focal_length_of_lens_object(lens_object=EDMUND_4p03MM_ASPHERIC)
+collimation_point = cavity[0].radius + aspheric_BFL
 
 # %%
 
-def generate_lens_position_dependencies(short_arm_lengths, plot_dependencies=True):
+def generate_lens_position_dependencies(short_arm_lengths: np.ndarray,
+                                        mid_arm_length: float,
+                                        long_arm_length: float,
+                                        plot_dependencies=True):
     NAs = np.zeros(N)
     mode_spacing = np.zeros(N)
+    # nominal_positions:
+    cavity.place_element(element=cavity[1], position=collimation_point * RIGHT, reference_center=cavity[0],
+                         recalculate_optic=False)
+    cavity.place_element(element=cavity[2], position=mid_arm_length * RIGHT, reference_center=cavity[1],
+                         recalculate_optic=False)
+    cavity.place_element(element=cavity[3], position=long_arm_length * RIGHT, reference_center=cavity[2],
+                         recalculate_optic=False)
+
     for i, short_arm_length in tqdm(enumerate(short_arm_lengths)):
-        cavity_temp = cavity.with_elements_placed(elements=cavity[1], position=short_arm_length*RIGHT, reference_center=cavity[0])
-        NAs[i] = cavity_temp.arms[0].mode_parameters.NA[0]
+        cavity.place_element(element=cavity[1], position=short_arm_length * RIGHT, reference_center=cavity[0],
+                             recalculate_optic=True)
+        NAs[i] = cavity.arms[0].mode_parameters.NA[0]
         try:
-            mode_spacing[i] = cavity_temp.mode_spacing_transversal_apparent
+            mode_spacing[i] = cavity.mode_spacing_transversal_apparent
         except (TypeError, FloatingPointError):
             mode_spacing[i] = np.nan
 
@@ -33,7 +43,8 @@ def generate_lens_position_dependencies(short_arm_lengths, plot_dependencies=Tru
         ax_twin = ax[0].twinx()
         ax_twin.plot(short_arm_lengths, NAs, label='NA')
         ax_twin.set_ylabel('NA')
-        ax[0].plot(short_arm_lengths, mode_spacing / 1e6, label=r'Mode spacing', color='C1')  # use second default color (first is taken by NA)
+        ax[0].plot(short_arm_lengths, mode_spacing / 1e6, label=r'Mode spacing',
+                   color='C1')  # use second default color (first is taken by NA)
         ax[0].grid()
         ax[0].set_xlabel("Small arm's length [m]")
         ax[0].legend()
@@ -51,22 +62,33 @@ def generate_lens_position_dependencies(short_arm_lengths, plot_dependencies=Tru
 
     return NAs, mode_spacing
 
-def generate_lens_position_dependencies_output(plot_cavity=True, plot_spectrum=True, plot_dependencies=True):
+
+def generate_lens_position_dependencies_output(short_arm_lengths: Union[np.ndarray, float],
+                                               mid_arm_length: float,
+                                               long_arm_length: float,
+                                               plot_cavity=True, plot_spectrum=True, plot_dependencies=True):
     if plot_cavity:
         cavity.plot()
         plt.show()
     if plot_spectrum:
         cavity.plot_spectrum(width_over_fsr=0.01)
         plt.show()
-
-    NAs, mode_spacing = generate_lens_position_dependencies(short_arm_lengths,
-                                                            plot_dependencies)
+    if isinstance(short_arm_lengths, (int, float)):
+        short_arm_lengths = np.linspace(collimation_point - short_arm_lengths, collimation_point + short_arm_lengths, N)
+    NAs, mode_spacing = generate_lens_position_dependencies(short_arm_lengths=short_arm_lengths,
+                                                            mid_arm_length=mid_arm_length,
+                                                            long_arm_length=long_arm_length,
+                                                            plot_dependencies=plot_dependencies)
     mode_spacing_interp = interp1d(mode_spacing, NAs, fill_value='extrapolate')
     mode_spacing_over_fsr_interp = lambda x: mode_spacing_interp(x * cavity.free_spectral_range)
     return mode_spacing_interp, mode_spacing_over_fsr_interp
 
+
 if __name__ == "__main__":
-    mode_spacing_interp, mode_spacing_over_fsr_interp = generate_lens_position_dependencies_output(plot_cavity=True,
-                                                                  plot_spectrum=True,
-                                                                  plot_dependencies=True
-                                                                  )
+    mode_spacing_interp, mode_spacing_over_fsr_interp = generate_lens_position_dependencies_output(short_arm_lengths=np.linspace(0.1, 0.9, 10),
+                                                                                                   mid_arm_length=0.5,
+                                                                                                   long_arm_length=1.0,
+                                                                                                   plot_cavity=True,
+                                                                                                   plot_spectrum=True,
+                                                                                                   plot_dependencies=True
+                                                                                                   )
