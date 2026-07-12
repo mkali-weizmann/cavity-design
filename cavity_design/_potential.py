@@ -4,7 +4,7 @@ from functools import reduce
 from ._cavity import *
 from ._utils import *
 from ._surfaces import *
-from ._existing_elements import LASER_OPTIK_MIRROR, EDMUND_4p03MM_ASPHERIC_SPHERICAL_VERSION, COASTLINE_20CM_MIRROR
+from ._existing_elements import LASER_OPTIK_MIRROR, EDMUND_4p03MM_ASPHERIC_SPHERICAL_VERSION, COASTLINE_20CM_MIRROR, EDMUND_4p03MM_ASPHERIC
 from matplotlib.lines import Line2D
 
 H_BAR = 1.0545718e-34
@@ -103,8 +103,8 @@ def choose_source_position_for_desired_focus_analytic(
     return defocus
 
 
-def generate_one_lens_optical_system_temp(NA: float = 0.1, short_arm_length=7.5e-3):
-    optical_system = OpticalSystem(elements=[LASER_OPTIK_MIRROR, EDMUND_4p03MM_ASPHERIC_SPHERICAL_VERSION], lambda_0_laser=LAMBDA_0_LASER)
+def generate_one_lens_optical_system_existing_elements(NA: float = 0.1, short_arm_length=7.5e-3):
+    optical_system = OpticalSystem(elements=[LASER_OPTIK_MIRROR, EDMUND_4p03MM_ASPHERIC], lambda_0_laser=LAMBDA_0_LASER)
     optical_system.place_elements(elements=optical_system[1], position=short_arm_length*RIGHT, reference_center=optical_system[0])
     cavity=optical_system.complete_to_cavity(NA=NA, end_mirror_object=COASTLINE_20CM_MIRROR)
     return cavity
@@ -797,7 +797,7 @@ def analyze_output_wavefront(
     deriv_mirror = np.gradient(residual_distances_mirror, wavefront_points_opposite[:, 1])
     first_zero_crossings = np.where(np.diff(np.sign(deriv_mirror)))[0]
     if len(first_zero_crossings) > 0:
-        zero_derivative_point = wavefront_points_opposite[first_zero_crossings[0], 1]
+        zero_derivative_point = np.abs((NAs_0[first_zero_crossings[0]] if potential_horizontal_axis_in_NAs else wavefront_points_opposite[first_zero_crossings[0], 1]))
     else:
         zero_derivative_point = np.nan
 
