@@ -332,8 +332,8 @@ class Arm:
                         spot_size_on_surface * 2 * 2.5,
                         # A surface may have no material properties at all (the old params path used to silently
                         # attach an empty MaterialProperties as a side effect of to_params).
-                        (surface.material_properties.temperature if surface.material_properties is not None
-                         else np.nan) - ROOM_TEMPERATURE,
+                        (surface.material_properties.temperature if surface.material_properties is not None else np.nan)
+                        - ROOM_TEMPERATURE,
                         angle_of_incidence_deg,
                     ],
                 },
@@ -981,9 +981,7 @@ class OpticalSystem:
                 expression = element.init_syntax
             element_strings.append(expression)
         element_indent = " " * 8
-        elements_block = ",\n".join(
-            element_indent + s.replace("\n", "\n" + element_indent) for s in element_strings
-        )
+        elements_block = ",\n".join(element_indent + s.replace("\n", "\n" + element_indent) for s in element_strings)
         kwargs_block = ",\n".join(
             f"    {key}={init_repr(value)}" for key, value in self._init_syntax_constructor_kwargs()
         )

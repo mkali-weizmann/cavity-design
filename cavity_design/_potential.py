@@ -6,7 +6,12 @@ from functools import reduce
 from ._cavity import *
 from ._utils import *
 from ._surfaces import *
-from ._existing_elements import LASER_OPTIK_MIRROR, EDMUND_4p03MM_ASPHERIC_SPHERICAL_VERSION, COASTLINE_20CM_MIRROR, EDMUND_4p03MM_ASPHERIC
+from ._existing_elements import (
+    LASER_OPTIK_MIRROR,
+    EDMUND_4p03MM_ASPHERIC_SPHERICAL_VERSION,
+    COASTLINE_20CM_MIRROR,
+    EDMUND_4p03MM_ASPHERIC,
+)
 from matplotlib.lines import Line2D
 
 H_BAR = 1.0545718e-34
@@ -50,8 +55,9 @@ def known_lenses_generator(lens_type, dn):
         n_actual = 1.45
         n_design = n_actual + dn
         T_c = 4.35e-3
-        f_lens = focal_length_of_lens_formula(R_1=np.inf, R_2=-0.010350017052321312, n=1.45,
-                                              T_c=4.35e-3)  # Same as the aspheric ones.
+        f_lens = focal_length_of_lens_formula(
+            R_1=np.inf, R_2=-0.010350017052321312, n=1.45, T_c=4.35e-3
+        )  # Same as the aspheric ones.
         R = (
             f_lens * (n_design - 1) * (1 + np.sqrt(1 - T_c / (f_lens * n_design)))
         )  # This is the R value that results in f=f_lens
@@ -107,10 +113,15 @@ def choose_source_position_for_desired_focus_analytic(
 
 def generate_one_lens_optical_system_existing_elements(NA: float = 0.1, short_arm_length=7.5e-3):
     optical_system = OpticalSystem(elements=[LASER_OPTIK_MIRROR, EDMUND_4p03MM_ASPHERIC], lambda_0_laser=LAMBDA_0_LASER)
-    optical_system.place_element(element=optical_system[1], position=short_arm_length * RIGHT,
-                                 recalculate_optic=True, reference_center=optical_system[0])
-    cavity=optical_system.complete_to_cavity(NA=NA, end_mirror_object=COASTLINE_20CM_MIRROR)
+    optical_system.place_element(
+        element=optical_system[1],
+        position=short_arm_length * RIGHT,
+        recalculate_optic=True,
+        reference_center=optical_system[0],
+    )
+    cavity = optical_system.complete_to_cavity(NA=NA, end_mirror_object=COASTLINE_20CM_MIRROR)
     return cavity
+
 
 def generate_one_lens_optical_system(
     R_1: Optional[float] = None,  # For a spherical lens
@@ -205,9 +216,9 @@ def generate_two_positive_lenses_optical_system(
     )
     aspheric_flat.n_2 = n_aspheric_actual
     aspheric_curved.n_1 = n_aspheric_actual
-    back_focal_length_aspheric_actual = back_focal_length_of_lens_formula(R_1=aspheric_flat.radius,
-                                                                          R_2=-aspheric_curved.radius,
-                                                                          n=n_aspheric_actual, T_c=T_c_aspheric)
+    back_focal_length_aspheric_actual = back_focal_length_of_lens_formula(
+        R_1=aspheric_flat.radius, R_2=-aspheric_curved.radius, n=n_aspheric_actual, T_c=T_c_aspheric
+    )
 
     optical_system_aspheric = OpticalSystem(
         elements=[aspheric_flat, aspheric_curved],
@@ -218,12 +229,16 @@ def generate_two_positive_lenses_optical_system(
     )
     # Move the two lens faces rigidly: the flat face lands at the target, the curved face keeps its offset from it.
     lens_displacement = (back_focal_length_aspheric_actual + defocus) * OPTICAL_AXIS - optical_system_aspheric[0].center
-    optical_system_aspheric.place_element(element=optical_system_aspheric[1],
-                                          position=optical_system_aspheric[1].center + lens_displacement,
-                                          recalculate_optic=False)
-    optical_system_aspheric.place_element(element=optical_system_aspheric[0],
-                                          position=optical_system_aspheric[0].center + lens_displacement,
-                                          recalculate_optic=True)
+    optical_system_aspheric.place_element(
+        element=optical_system_aspheric[1],
+        position=optical_system_aspheric[1].center + lens_displacement,
+        recalculate_optic=False,
+    )
+    optical_system_aspheric.place_element(
+        element=optical_system_aspheric[0],
+        position=optical_system_aspheric[0].center + lens_displacement,
+        recalculate_optic=True,
+    )
 
     aspheric_output_ROC = optical_system_aspheric.output_radius_of_curvature(initial_distance=aspheric_flat.center[0])
 
@@ -366,21 +381,25 @@ def generate_two_positive_lenses_cavity(
         NA_small_arm = None
         long_arm_length = None
     else:
-        raise ValueError(f"mirror setting mode {mirror_setting_mode} is not supported. Must be either 'Set NA', 'Set long arm length' or 'Set unconcentricity'.")
+        raise ValueError(
+            f"mirror setting mode {mirror_setting_mode} is not supported. Must be either 'Set NA', 'Set long arm length' or 'Set unconcentricity'."
+        )
 
-
-    optical_system = generate_two_positive_lenses_optical_system(defocus=defocus,
-                                                                 back_focal_length_aspheric_design=back_focal_length_aspheric,
-                                                                 T_c_aspheric=T_c_aspheric,
-                                                                 n_aspheric_design=n_aspheric_design,
-                                                                 n_aspheric_actual=n_aspheric_actual,
-                                                                 n_spherical=n_spherical, T_c_spherical=T_c_spherical,
-                                                                 diameter=diameter,
-                                                                 spherical_aspherical_distance=spherical_aspherical_distance,
-                                                                 desired_focus=desired_focus,
-                                                                 spherical_type=spherical_type,
-                                                                 spherical_focal_length=spherical_focal_length,
-                                                                 spherical_setting_mode=spherical_setting_mode)
+    optical_system = generate_two_positive_lenses_optical_system(
+        defocus=defocus,
+        back_focal_length_aspheric_design=back_focal_length_aspheric,
+        T_c_aspheric=T_c_aspheric,
+        n_aspheric_design=n_aspheric_design,
+        n_aspheric_actual=n_aspheric_actual,
+        n_spherical=n_spherical,
+        T_c_spherical=T_c_spherical,
+        diameter=diameter,
+        spherical_aspherical_distance=spherical_aspherical_distance,
+        desired_focus=desired_focus,
+        spherical_type=spherical_type,
+        spherical_focal_length=spherical_focal_length,
+        spherical_setting_mode=spherical_setting_mode,
+    )
     optical_system_with_small_mirror = OpticalSystem(
         elements=[LASER_OPTIK_MIRROR, *optical_system.elements],
         lambda_0_laser=LAMBDA_0_LASER,
@@ -804,7 +823,13 @@ def analyze_output_wavefront(
     deriv_mirror = np.gradient(residual_distances_mirror, wavefront_points_opposite[:, 1])
     first_zero_crossings = np.where(np.diff(np.sign(deriv_mirror)))[0]
     if len(first_zero_crossings) > 0:
-        zero_derivative_point = np.abs((NAs_0[first_zero_crossings[0]] if potential_horizontal_axis_in_NAs else wavefront_points_opposite[first_zero_crossings[0], 1]))
+        zero_derivative_point = np.abs(
+            (
+                NAs_0[first_zero_crossings[0]]
+                if potential_horizontal_axis_in_NAs
+                else wavefront_points_opposite[first_zero_crossings[0], 1]
+            )
+        )
     else:
         zero_derivative_point = np.nan
 

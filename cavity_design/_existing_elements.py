@@ -227,9 +227,20 @@ THORLABS_8MM_ASPHERIC = OpticalSystem(
             center=3.434e-3 * RIGHT,
             outwards_normal=RIGHT,
             polynomial_coefficients=np.array(
-                [0.00000000e+00, 1.07802206e+02, 5.72281050e+05, 4.21121557e+09, 3.16313244e+13,
-                 -6.49022844e+17, 2.19949315e+18, 5.98323954e+21, 1.68309599e+25, 4.85597863e+28,
-                 1.42904143e+32]),
+                [
+                    0.00000000e00,
+                    1.07802206e02,
+                    5.72281050e05,
+                    4.21121557e09,
+                    3.16313244e13,
+                    -6.49022844e17,
+                    2.19949315e18,
+                    5.98323954e21,
+                    1.68309599e25,
+                    4.85597863e28,
+                    1.42904143e32,
+                ]
+            ),
             n_1=1.577,
             n_2=1,
             curvature_sign=CurvatureSigns.concave,
@@ -242,28 +253,45 @@ THORLABS_8MM_ASPHERIC = OpticalSystem(
     t_is_trivial=True,
 )
 
-EDMUND_8MM_ASPHERIC_31074 = OpticalSystem(elements=[
+EDMUND_8MM_ASPHERIC_31074 = OpticalSystem(
+    elements=[
         AsphericRefractiveSurface(
             center=ORIGIN,
             outwards_normal=LEFT,
             # Note: the coefficients must not be negated (coef[1] must be positive) — the curvature direction is
             # encoded in the outwards normal (LEFT here), as the AsphericSurface assertion requires.
-            polynomial_coefficients=np.array([ 0.00000000e+00,  1.07802206e+02,  5.72279797e+05,  4.21121124e+09, 3.16313103e+13, -6.49022889e+17,  2.19934550e+18,  5.98275755e+21, 1.68293781e+25,  4.85545706e+28,  1.42886875e+32]),
+            polynomial_coefficients=np.array(
+                [
+                    0.00000000e00,
+                    1.07802206e02,
+                    5.72279797e05,
+                    4.21121124e09,
+                    3.16313103e13,
+                    -6.49022889e17,
+                    2.19934550e18,
+                    5.98275755e21,
+                    1.68293781e25,
+                    4.85545706e28,
+                    1.42886875e32,
+                ]
+            ),
             n_1=1,
             n_2=1.574,
             name="Edmund 8mm aspheric - convex side",
             diameter=6.3e-03,
             curvature_sign=CurvatureSigns.convex,
         ),
-    FlatRefractiveSurface(
-        center=3.43 * RIGHT,
-        outwards_normal=RIGHT,
-        n_1=1.574,
-        n_2=1,
-        name="Edmund 8mm aspheric - flat side",
-        diameter=6.3e-3
-    )
-], use_paraxial_ray_tracing=False)
+        FlatRefractiveSurface(
+            center=3.43 * RIGHT,
+            outwards_normal=RIGHT,
+            n_1=1.574,
+            n_2=1,
+            name="Edmund 8mm aspheric - flat side",
+            diameter=6.3e-3,
+        ),
+    ],
+    use_paraxial_ray_tracing=False,
+)
 
 # Register every catalog element: each gets tagged with its variable name (the tag survives deepcopy, so placed and
 # moved copies stay recognizable) and a pristine copy is stored, letting OpticalSystem.init_syntax render these
