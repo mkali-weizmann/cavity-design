@@ -1,3 +1,5 @@
+import copy
+
 from scipy.optimize import newton
 from functools import reduce
 
@@ -127,7 +129,7 @@ def generate_one_lens_optical_system(
     if R_1 is not None and R_2 is not None:
         back_focal_length = back_focal_length_of_lens_formula(R_1=R_1, R_2=R_2, n=n_design, T_c=T_c)
         center = np.array([back_focal_length - defocus + T_c / 2, 0.0, 0.0])
-        surfaces = generate_lens_from_params(
+        lens_element = generate_lens_from_params(
             center=center,
             forward_direction=optical_axis,
             r_1=np.abs(R_1),
@@ -139,10 +141,9 @@ def generate_one_lens_optical_system(
             material_properties=PHYSICAL_SIZES_DICT["material_properties_sapphire"],
             name="spherical_lens",
         )
-        params = surfaces.to_params
     elif back_focal_length is not None:
         back_center = (back_focal_length - defocus) * optical_axis
-        params = generate_aspheric_lens_params(
+        lens_surfaces = generate_aspheric_lens(
             back_focal_length=back_focal_length,
             T_c=T_c,
             n=n_design,
@@ -152,13 +153,17 @@ def generate_one_lens_optical_system(
             polynomial_degree=8,
             name="Aspheric lens",
         )
-        params[0].n_inside_or_after = n_actual
-        params[1].n_outside_or_before = n_actual
+        # The geometry was designed for n_design; the actual refractive index is set after the fact.
+        lens_surfaces[0].n_2 = n_actual
+        lens_surfaces[1].n_1 = n_actual
+        lens_element = OpticalSystem(
+            elements=lens_surfaces, use_paraxial_ray_tracing=False, given_initial_central_line=None
+        )
     else:
         raise ValueError("Either R_1 and R_2, or back_focal_length must be provided.")
 
-    optical_system = OpticalSystem.from_params(
-        params=[params],
+    optical_system = OpticalSystem(
+        elements=[lens_element],
         lambda_0_laser=LAMBDA_0_LASER,
         given_initial_central_line=True,
         use_paraxial_ray_tracing=False,
@@ -188,7 +193,7 @@ def generate_two_positive_lenses_optical_system(
         "Set position and focal length",
     ], "spherical_setting_mode must be either 'Set position and desired focus', 'Set focal length and desired focus' or 'Set position and focal length'"
     OPTICAL_AXIS = RIGHT
-    aspheric_params_list = generate_aspheric_lens_params(
+    aspheric_flat, aspheric_curved = generate_aspheric_lens(
         back_focal_length=back_focal_length_aspheric_design,
         T_c=T_c_aspheric,
         n=n_aspheric_design,
@@ -198,8 +203,6 @@ def generate_two_positive_lenses_optical_system(
         polynomial_degree=24,
         name="aspheric_lens_automatic",
     )
-    aspheric_flat = Surface.from_params(aspheric_params_list[0])
-    aspheric_curved = Surface.from_params(aspheric_params_list[1])
     aspheric_flat.n_2 = n_aspheric_actual
     aspheric_curved.n_1 = n_aspheric_actual
     back_focal_length_aspheric_actual = back_focal_length_of_lens_formula(R_1=aspheric_flat.radius,
@@ -474,9 +477,10 @@ def generate_negative_lens_cavity(
         material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"],
         name="Negative Lens",
     )
-    negative_lens_params = [s.to_params for s in negative_lens_surfaces]
-    optical_system_without_last_mirror = OpticalSystem.from_params(
-        params=[mirror_left.to_params, *optical_system_lens.to_params, negative_lens_params],
+    # The systems below are built from deep copies of the live elements, so that each system owns its own objects
+    # (as the old params round-trip used to guarantee by rebuilding).
+    optical_system_without_last_mirror = OpticalSystem(
+        elements=copy.deepcopy([mirror_left, *optical_system_lens.elements, negative_lens_surfaces]),
         lambda_0_laser=LAMBDA_0_LASER,
         p_is_trivial=True,
         t_is_trivial=True,
@@ -489,8 +493,8 @@ def generate_negative_lens_cavity(
         ) * r_2  # Adjust for the fact that the lens surface is curved, so the distance to the front of the lens is not the same as the distance to the center of the lens.
 
     if right_mirror_distance_to_negative_lens_front is not None and unconcentricity is not None:
-        optical_system_lenses_only = OpticalSystem.from_params(
-            params=[*optical_system_lens.to_params, negative_lens_params],
+        optical_system_lenses_only = OpticalSystem(
+            elements=copy.deepcopy([*optical_system_lens.elements, negative_lens_surfaces]),
             lambda_0_laser=LAMBDA_0_LASER,
             p_is_trivial=True,
             t_is_trivial=True,
@@ -513,13 +517,8 @@ def generate_negative_lens_cavity(
             name="big mirror",
             material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"],
         )
-        cavity = Cavity.from_params(
-            params=[
-                mirror_left.to_params,
-                *optical_system_lens.to_params,
-                negative_lens_params,
-                mirror_right.to_params,
-            ],
+        cavity = Cavity(
+            elements=copy.deepcopy([mirror_left, *optical_system_lens.elements, negative_lens_surfaces, mirror_right]),
             lambda_0_laser=LAMBDA_0_LASER,
             p_is_trivial=True,
             t_is_trivial=True,
@@ -858,8 +857,10 @@ def analyze_potential(
     if small_mirror_object is None:
         small_mirror_object = LASER_OPTIK_MIRROR
 
-    cavity = Cavity.from_params(
-        params=[small_mirror_object.to_params, *optical_system.to_params, results_dict["end_mirror_object"].to_params],
+    # Deep copies, so the cavity owns its own elements (the input optical_system is also returned as-is in
+    # results_dict and must not be mutated by the cavity construction).
+    cavity = Cavity(
+        elements=copy.deepcopy([small_mirror_object, *optical_system.elements, results_dict["end_mirror_object"]]),
         lambda_0_laser=LAMBDA_0_LASER,
         t_is_trivial=True,
         p_is_trivial=True,

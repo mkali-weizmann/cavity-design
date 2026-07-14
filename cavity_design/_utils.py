@@ -256,6 +256,13 @@ def convert_material_to_mirror_or_lens(
     return material_properties
 
 
+PARAMS_DEPRECATION_MESSAGE = (
+    "The OpticalSurfaceParams / params representation is deprecated and will be removed in the future. "
+    "Work with the live Surface/OpticalSystem objects instead; print(cavity) emits the equivalent "
+    "initialization syntax."
+)
+
+
 @dataclass
 class OpticalSurfaceParams:
     name: Optional[str]
@@ -273,6 +280,9 @@ class OpticalSurfaceParams:
     material_properties: MaterialProperties
     diameter: float = np.nan  # diameter of the optical element, None if not specified.
     polynomial_coefficients: Optional[np.ndarray] = None  # For aspheric surfaces only.
+
+    def __post_init__(self):
+        warnings.warn(PARAMS_DEPRECATION_MESSAGE, DeprecationWarning, stacklevel=2)
 
     def __repr__(self):
         surface_type_string = f"'{self.surface_type}'"
@@ -483,6 +493,41 @@ def nvl(var, val: Any = np.nan):
     if var is None or np.isnan(var):
         return val
     return var
+
+
+def init_repr(value) -> str:
+    """Full-precision, eval-able repr of a value, for initialization-syntax strings.
+
+    Floats use repr() (the shortest decimal representation that round-trips exactly, unlike numpy's default
+    truncating print); nan/inf become np.nan/np.inf; numpy arrays become np.array([...]) literals."""
+    if isinstance(value, MaterialProperties):
+        # MaterialProperties' own __repr__ is padded for the aligned params table; here a compact form with only
+        # the set fields is emitted instead.
+        parts = [
+            f"{field_name}={init_repr(getattr(value, field_name))}"
+            for field_name in value.__dataclass_fields__
+            if getattr(value, field_name) is not None
+        ]
+        return f"MaterialProperties({', '.join(parts)})"
+    if isinstance(value, np.ndarray):
+        return "np.array(" + init_repr(value.tolist()) + ")"
+    if isinstance(value, list):
+        return "[" + ", ".join(init_repr(v) for v in value) + "]"
+    if isinstance(value, tuple):
+        inner = ", ".join(init_repr(v) for v in value)
+        return f"({inner},)" if len(value) == 1 else f"({inner})"
+    if isinstance(value, (bool, np.bool_)):
+        return repr(bool(value))
+    if isinstance(value, (int, np.integer)):
+        return repr(int(value))
+    if isinstance(value, (float, np.floating)):
+        value = float(value)
+        if np.isnan(value):
+            return "np.nan"
+        if np.isinf(value):
+            return "np.inf" if value > 0 else "-np.inf"
+        return repr(value)
+    return repr(value)
 
 
 def plane_name_to_xy_indices(plane: str) -> Tuple[int, int]:

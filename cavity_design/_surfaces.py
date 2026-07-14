@@ -12,10 +12,12 @@ from scipy.optimize import brentq
 from ._utils import (
     MaterialProperties,
     OpticalSurfaceParams,
+    PARAMS_DEPRECATION_MESSAGE,
     SurfacesTypes,
     CurvatureSigns,
     PHYSICAL_SIZES_DICT,
     ROOM_TEMPERATURE,
+    init_repr,
     normalize_vector,
     unit_vector_of_angles,
     angles_of_unit_vector,
@@ -291,6 +293,12 @@ class Surface:
 
     @staticmethod
     def from_params(params: OpticalSurfaceParams, name: Optional[str] = None):
+        warnings.warn(PARAMS_DEPRECATION_MESSAGE, DeprecationWarning, stacklevel=2)
+        return Surface._from_params(params, name=name)
+
+    @staticmethod
+    def _from_params(params: OpticalSurfaceParams, name: Optional[str] = None):
+        # Non-warning implementation, for internal use by the deprecated params-based entry points.
         p = params  # Just for brevity in the code
         center = np.array([p.x, p.y, p.z])
         outwards_normal = unit_vector_of_angles(p.theta, p.phi)
@@ -362,6 +370,12 @@ class Surface:
 
     @property
     def to_params(self) -> OpticalSurfaceParams:
+        warnings.warn(PARAMS_DEPRECATION_MESSAGE, DeprecationWarning, stacklevel=2)
+        return self._to_params
+
+    @property
+    def _to_params(self) -> OpticalSurfaceParams:
+        # Non-warning implementation, for internal use by the deprecated params-based entry points.
         x, y, z = self.center
         if isinstance(self, IdealLens):
             radius = self.focal_length
@@ -409,23 +423,25 @@ class Surface:
         if self.material_properties is None:
             self.material_properties = MaterialProperties()
 
-        params = OpticalSurfaceParams(
-            name=self.name,
-            surface_type=surface_type,
-            x=x,
-            y=y,
-            z=z,
-            theta=theta,
-            phi=phi,
-            radius=radius,
-            curvature_sign=curvature_sign,
-            T_c=np.nan,
-            n_inside_or_after=n_2,
-            n_outside_or_before=n_1,
-            diameter=self.diameter,
-            material_properties=self.material_properties,
-            polynomial_coefficients=polynomial_coefficients,
-        )
+        with warnings.catch_warnings():  # The public entry points already warned; don't warn again from in here.
+            warnings.simplefilter("ignore", DeprecationWarning)
+            params = OpticalSurfaceParams(
+                name=self.name,
+                surface_type=surface_type,
+                x=x,
+                y=y,
+                z=z,
+                theta=theta,
+                phi=phi,
+                radius=radius,
+                curvature_sign=curvature_sign,
+                T_c=np.nan,
+                n_inside_or_after=n_2,
+                n_outside_or_before=n_1,
+                diameter=self.diameter,
+                material_properties=self.material_properties,
+                polynomial_coefficients=polynomial_coefficients,
+            )
         return params
 
     @property
@@ -438,6 +454,110 @@ class Surface:
         if isinstance(self, (CurvedSurface, AsphericSurface)) and not isinstance(self, ReflectiveSurface):
             inverted_surface.curvature_sign *= -1
         return inverted_surface
+
+    @property
+    def init_syntax(self) -> str:
+        """The Python expression that reconstructs this surface, at full precision.
+
+        Eval-able in a ``from cavity_design import *`` namespace; this is the surface's part of the textual
+        representation of an optical system (see ``OpticalSystem.init_syntax``)."""
+        class_name = type(self).__name__
+        keyword_arguments = [("name", self.name)]
+        if isinstance(self, AsphericSurface):
+            keyword_arguments += [
+                ("center", self.center),
+                ("outwards_normal", self.outwards_normal),
+                ("polynomial_coefficients", self.polynomial.coef),
+                ("curvature_sign", self.curvature_sign),
+            ]
+            if isinstance(self, AsphericRefractiveSurface):
+                keyword_arguments += [("n_1", self.n_1), ("n_2", self.n_2)]
+            keyword_arguments += [("diameter", self.diameter), ("material_properties", self.material_properties)]
+        elif isinstance(self, CurvedSurface):
+            keyword_arguments += [
+                ("radius", self.radius),
+                ("outwards_normal", self.outwards_normal),
+                ("center", self.center),
+                ("curvature_sign", self.curvature_sign),
+            ]
+            if isinstance(self, CurvedRefractiveSurface):
+                keyword_arguments += [("n_1", self.n_1), ("n_2", self.n_2), ("thickness", self.thickness)]
+            keyword_arguments += [("diameter", self.diameter), ("material_properties", self.material_properties)]
+        elif isinstance(self, FlatSurface):
+            keyword_arguments += [("outwards_normal", self.outwards_normal), ("center", self.center)]
+            if isinstance(self, FlatRefractiveSurface):
+                keyword_arguments += [("n_1", self.n_1), ("n_2", self.n_2)]
+            if isinstance(self, IdealLens):
+                keyword_arguments += [("focal_length", self.focal_length)]
+            # The three concrete flat subclasses name the material argument 'thermal_properties'; the bare
+            # FlatSurface forwards **kwargs to Surface, whose name is 'material_properties'.
+            material_key = (
+                "thermal_properties"
+                if isinstance(self, (FlatMirror, FlatRefractiveSurface, IdealLens))
+                else "material_properties"
+            )
+            keyword_arguments += [("diameter", self.diameter), (material_key, self.material_properties)]
+        else:
+            raise NotImplementedError(f"init_syntax is not implemented for surfaces of type {class_name}")
+        parts = [f"{key}={init_repr(value)}" for key, value in keyword_arguments if value is not None]
+        return f"{class_name}({', '.join(parts)})"
+
+    def to_position(self, position: np.ndarray) -> "Surface":
+        """Return a copy of this surface with its center placed at ``position`` (orientation unchanged).
+
+        Non-mutating and chainable: ``element.to_position(p).to_orientation(n)``. Works also when this surface's
+        position is still undefined (nan)."""
+        new_surface = copy.deepcopy(self)
+        new_surface.center = _to_position_array(position)
+        return new_surface
+
+    def to_orientation(self, outwards_normal: np.ndarray) -> "Surface":
+        """Return a copy of this surface rotated about its center so its outwards normal equals ``outwards_normal``.
+
+        The center (the vertex, for a curved surface) is preserved; derived quantities (e.g. the sphere origin)
+        are recomputed accordingly. Non-mutating and chainable."""
+        new_surface = copy.deepcopy(self)
+        old_center = np.array(new_surface.center)
+        new_surface.outwards_normal = np.asarray(outwards_normal, dtype=float)
+        new_surface.center = old_center
+        return new_surface
+
+
+def surfaces_are_equivalent(surface_1: Surface, surface_2: Surface, rtol: float = 1e-6, atol: float = 1e-9) -> bool:
+    """True when the two surfaces are the same optical surface up to numerical noise.
+
+    Compares the concrete type, the name, the pose (center and outwards normal, nan-tolerant) and the intrinsic
+    optical attributes (radius, curvature sign, refractive indices, focal length, thickness, diameter, polynomial
+    coefficients and material properties)."""
+    if type(surface_1) is not type(surface_2):
+        return False
+    if getattr(surface_1, "name", None) != getattr(surface_2, "name", None):
+        return False
+
+    def values_close(value_1, value_2) -> bool:
+        if value_1 is None or value_2 is None:
+            return value_1 is None and value_2 is None
+        array_1, array_2 = np.asarray(value_1, dtype=complex), np.asarray(value_2, dtype=complex)
+        if array_1.shape != array_2.shape:
+            return False
+        return bool(np.allclose(array_1, array_2, rtol=rtol, atol=atol, equal_nan=True))
+
+    if not values_close(surface_1.center, surface_2.center):
+        return False
+    if not values_close(surface_1.outwards_normal, surface_2.outwards_normal):
+        return False
+    for attribute in ("radius", "curvature_sign", "n_1", "n_2", "focal_length", "thickness", "diameter"):
+        if not values_close(getattr(surface_1, attribute, None), getattr(surface_2, attribute, None)):
+            return False
+    polynomial_1 = getattr(surface_1, "polynomial", None)
+    polynomial_2 = getattr(surface_2, "polynomial", None)
+    if (polynomial_1 is None) != (polynomial_2 is None):
+        return False
+    if polynomial_1 is not None and not values_close(polynomial_1.coef, polynomial_2.coef):
+        return False
+    # MaterialProperties is a dataclass whose auto-generated __eq__ fails on nan fields; its repr is stable and
+    # full-precision, so string equality is the robust comparison.
+    return repr(surface_1.material_properties) == repr(surface_2.material_properties)
 
 
 class PhysicalSurface(Surface):
@@ -1577,6 +1697,12 @@ def generate_aspheric_lens_params(
     material_properties: Optional[MaterialProperties] = None,
     name: Optional[str] = None,
 ) -> List[OpticalSurfaceParams]:
+    warnings.warn(
+        "generate_aspheric_lens_params is deprecated; use generate_aspheric_lens, which returns live surfaces. "
+        + PARAMS_DEPRECATION_MESSAGE,
+        DeprecationWarning,
+        stacklevel=2,
+    )
     if name is None:
         name = "Aspheric Lens"
     p = LensParams(n=n, f=back_focal_length, T_c=T_c)
@@ -1622,6 +1748,57 @@ def generate_aspheric_lens_params(
         material_properties=material_properties,
     )
     return [flat_params, curved_params]
+
+
+def generate_aspheric_lens(
+    back_focal_length: float,
+    T_c: float,
+    n: float,
+    forward_normal: np.ndarray,
+    flat_faces_center: Optional[np.ndarray],
+    diameter: float,
+    polynomial_degree: int = 6,
+    n_outside: float = 1.0,
+    material_properties: Optional[MaterialProperties] = None,
+    name: Optional[str] = None,
+) -> List[Surface]:
+    """Generate the two live surfaces of a plano-convex aspheric lens (flat side first, along ``forward_normal``).
+
+    Object-based replacement of the deprecated ``generate_aspheric_lens_params``. When ``flat_faces_center`` is
+    None (or contains nans), the flat face is left undefined and the curved face's center is encoded as a relative
+    (imaginary) offset of T_c, to be resolved once the lens is placed."""
+    if name is None:
+        name = "Aspheric Lens"
+    p = LensParams(n=n, f=back_focal_length, T_c=T_c)
+    coeffs = solve_aspheric_profile(p, y_max=diameter / 2, degree=polynomial_degree)
+    forward_normal = normalize_vector(np.asarray(forward_normal, dtype=float))
+    if flat_faces_center is None or np.any(np.isnan(flat_faces_center)):
+        flat_faces_center = np.full(3, np.nan)
+        curved_center = T_c * forward_normal * 1j
+    else:
+        flat_faces_center = np.asarray(flat_faces_center, dtype=float)
+        curved_center = flat_faces_center + T_c * forward_normal
+    flat_surface = FlatRefractiveSurface(
+        outwards_normal=-forward_normal,
+        center=flat_faces_center,
+        n_1=n_outside,
+        n_2=n,
+        name=name + " - flat side",
+        thermal_properties=material_properties,
+        diameter=diameter,
+    )
+    curved_surface = AsphericRefractiveSurface(
+        center=curved_center,
+        outwards_normal=forward_normal,
+        polynomial_coefficients=coeffs,
+        n_1=n,
+        n_2=n_outside,
+        curvature_sign=CurvatureSigns.concave,
+        name=name + " - curved side",
+        diameter=diameter,
+        material_properties=material_properties,
+    )
+    return [flat_surface, curved_surface]
 
 
 def convert_curved_refractive_surface_to_ideal_lens(surface: CurvedRefractiveSurface):

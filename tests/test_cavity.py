@@ -1175,3 +1175,139 @@ def test_unresolved_relative_blocks_calculations():
     ray = Ray(origin=np.array([0.0, 0, 0]), k_vector=np.array([1.0, 0, 0]))
     with pytest.raises(ValueError):
         sys.propagate_ray(ray)
+
+
+def _make_standard_catalog_cavity():
+    # The standard mirror-aspheric-lens-mirror cavity, built from (copies of) the catalog elements and placed as in
+    # simple_analysis_scripts/mode_spacing_to_NA.py.
+    from cavity_design import (LASER_OPTIK_MIRROR, EDMUND_4p03MM_ASPHERIC, THOLABS_100MM_PLANO_CONVEX_LENS,
+                               COASTLINE_20CM_MIRROR, back_focal_length_of_lens_object, RIGHT)
+    cavity = Cavity(
+        elements=copy.deepcopy(
+            [LASER_OPTIK_MIRROR, EDMUND_4p03MM_ASPHERIC, THOLABS_100MM_PLANO_CONVEX_LENS, COASTLINE_20CM_MIRROR]
+        ),
+        use_paraxial_ray_tracing=True, p_is_trivial=True, t_is_trivial=True, lambda_0_laser=LAMBDA_0_LASER,
+    )
+    collimation_point = cavity[0].radius + back_focal_length_of_lens_object(lens_object=cavity[1])
+    cavity.place_element(cavity[1], collimation_point * RIGHT, recalculate_optic=False, reference_center=cavity[0])
+    cavity.place_element(cavity[2], 0.5 * RIGHT, recalculate_optic=False, reference_center=cavity[1])
+    cavity.place_element(cavity[3], 1.0 * RIGHT, recalculate_optic=True, reference_center=cavity[2])
+    return cavity
+
+
+def test_init_syntax_round_trip():
+    # The textual representation of a cavity is its initialization syntax: exec-ing it must reproduce the cavity.
+    cavity = _make_standard_catalog_cavity()
+    text = cavity.formatted_init_syntax
+    assert text.startswith("cavity = Cavity(")
+    namespace = {}
+    exec("from cavity_design import *\nimport numpy as np\n" + text, namespace)
+    cavity_2 = namespace["cavity"]
+    for s1, s2 in zip(cavity.surfaces, cavity_2.surfaces):
+        assert type(s1) is type(s2)
+        assert np.allclose(s1.center, s2.center, atol=1e-12)
+        assert np.allclose(s1.outwards_normal, s2.outwards_normal, atol=1e-12)
+    assert np.isclose(cavity.free_spectral_range, cavity_2.free_spectral_range, rtol=1e-12)
+    na_1 = cavity.arms[0].mode_parameters.NA[0]
+    na_2 = cavity_2.arms[0].mode_parameters.NA[0]
+    assert np.isclose(na_1, na_2, rtol=1e-9, equal_nan=True)
+
+
+def test_init_syntax_catalog_recognition_and_fallback():
+    cavity = _make_standard_catalog_cavity()
+    text = cavity.init_syntax
+    # Placed catalog elements are rendered compactly (tag + verified against the registry).
+    assert "EDMUND_4p03MM_ASPHERIC.to_position(" in text
+    assert "COASTLINE_20CM_MIRROR.to_position(" in text
+    # A catalog element whose intrinsics were mutated after construction must fall back to its full constructor.
+    cavity[1]._surfaces[0].n_2 = 1.9
+    text_mutated = cavity.init_syntax
+    assert "EDMUND_4p03MM_ASPHERIC" not in text_mutated
+    assert "AsphericRefractiveSurface(" in text_mutated
+    # The untouched catalog elements are still recognized.
+    assert "COASTLINE_20CM_MIRROR.to_position(" in text_mutated
+
+
+def test_to_position_and_to_orientation_are_nonmutating_and_chainable():
+    from cavity_design import EDMUND_4p03MM_ASPHERIC
+    lens = copy.deepcopy(EDMUND_4p03MM_ASPHERIC)
+    original_first_center = np.array(lens.surfaces[0].center)
+    internal_offset = lens.surfaces[1].center - lens.surfaces[0].center
+    target = np.array([7e-3, 0.0, 0.0])
+
+    placed = lens.to_position(target)
+    assert placed is not lens
+    assert np.allclose(lens.surfaces[0].center, original_first_center, atol=1e-15)  # original untouched
+    assert np.allclose(placed.surfaces[0].center, target, atol=1e-15)
+    assert np.allclose(placed.surfaces[1].center - placed.surfaces[0].center, internal_offset, atol=1e-12)  # rigid
+
+    up = np.array([0.0, 1.0, 0.0])
+    rotated = placed.to_orientation(up)
+    assert np.allclose(placed.surfaces[0].outwards_normal, lens.surfaces[0].outwards_normal, atol=1e-15)  # untouched
+    assert np.allclose(rotated.surfaces[0].outwards_normal, up, atol=1e-12)
+    assert np.allclose(rotated.surfaces[0].center, target, atol=1e-12)  # the rotation pivots on the first surface
+    # Rigid rotation: internal distances preserved, and the second face's normal (RIGHT) rotates to -up.
+    assert np.isclose(np.linalg.norm(rotated.surfaces[1].center - rotated.surfaces[0].center),
+                      np.linalg.norm(internal_offset), atol=1e-12)
+    assert np.allclose(rotated.surfaces[1].outwards_normal, -up, atol=1e-12)
+
+    # Single surface: to_orientation preserves the vertex and recomputes the sphere origin.
+    mirror = CurvedMirror(radius=5e-3, outwards_normal=np.array([1.0, 0, 0]), center=np.array([1e-3, 0, 0]),
+                          curvature_sign=CurvatureSigns.concave, diameter=0.01)
+    moved = mirror.to_position(np.array([2e-3, 0.0, 0.0]))
+    assert np.allclose(mirror.center, [1e-3, 0, 0], atol=1e-15) and np.allclose(moved.center, [2e-3, 0, 0],
+                                                                                atol=1e-15)
+    turned = moved.to_orientation(np.array([0.0, 0.0, 1.0]))
+    assert np.allclose(turned.center, [2e-3, 0, 0], atol=1e-15)
+    assert np.allclose(turned.outwards_normal, [0, 0, 1], atol=1e-15)
+    assert np.allclose(turned.origin, turned.center - turned.radius * turned.outwards_normal, atol=1e-15)
+
+
+def test_params_machinery_deprecation_warnings():
+    from cavity_design import Surface
+    cavity = _make_fabry_perot()
+    with pytest.warns(DeprecationWarning):
+        params = cavity.to_params
+    with pytest.warns(DeprecationWarning):
+        _ = cavity.formatted_textual_params
+    with pytest.warns(DeprecationWarning):
+        surface_params = cavity[0].to_params
+    with pytest.warns(DeprecationWarning):
+        _ = Surface.from_params(surface_params)
+    with pytest.warns(DeprecationWarning):
+        _ = Cavity.from_params(params, standing_wave=True, lambda_0_laser=LAMBDA_0_LASER)
+
+
+def test_object_workflow_emits_no_deprecation_warnings():
+    import warnings as warnings_module
+    # The live-object workflow (construction, placement, repr/init_syntax, specs) must never trigger the params
+    # deprecation warnings from inside the library.
+    with warnings_module.catch_warnings(record=True) as caught:
+        warnings_module.simplefilter("always")
+        cavity = _make_standard_catalog_cavity()
+        _ = cavity.init_syntax
+        _ = repr(cavity)
+        _ = str(cavity)
+        # specs() on the aspheric cavity hits an unrelated pre-existing NotImplementedError (incidence angle for
+        # aspheric surfaces), so the rebuilt element table is exercised on a Fabry-Perot cavity instead (whose
+        # mirrors need material properties, for the finesse/losses rows).
+        from cavity_design import PHYSICAL_SIZES_DICT
+        mirror_properties = PHYSICAL_SIZES_DICT["material_properties_ULE"]
+        radius, u = 5e-3, 1e-5
+        fp = Cavity(
+            elements=[
+                CurvedMirror(radius=radius, outwards_normal=np.array([0, 0, -1.0]), center=np.array([0, 0, -radius]),
+                             curvature_sign=CurvatureSigns.concave, diameter=0.01,
+                             material_properties=mirror_properties),
+                CurvedMirror(radius=radius, outwards_normal=np.array([0, 0, 1.0]), center=np.array([0, 0, radius - u]),
+                             curvature_sign=CurvatureSigns.concave, diameter=0.01,
+                             material_properties=mirror_properties),
+            ],
+            standing_wave=True, lambda_0_laser=LAMBDA_0_LASER, power=1e3, use_paraxial_ray_tracing=False,
+            t_is_trivial=True, p_is_trivial=True,
+        )
+        # A precomputed (dummy) tolerance matrix skips the expensive tolerance computation inside specs().
+        _ = fp.specs(tolerance_dataframe=np.zeros((2, 5)))
+    params_warnings = [w for w in caught if issubclass(w.category, DeprecationWarning)
+                       and "OpticalSurfaceParams" in str(w.message)]
+    assert not params_warnings

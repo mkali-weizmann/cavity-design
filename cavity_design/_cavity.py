@@ -17,6 +17,8 @@ pd.options.display.float_format = "{:.3e}".format
 
 from ._utils import (
     OpticalSurfaceParams,
+    PARAMS_DEPRECATION_MESSAGE,
+    init_repr,
     SurfacesTypes,
     ParamsNames,
     PerturbationPointer,
@@ -84,6 +86,8 @@ from ._surfaces import (
     FlatRefractiveSurface,
     AsphericRefractiveSurface,
     generate_aspheric_lens_params,
+    generate_aspheric_lens,
+    surfaces_are_equivalent,
     POSITION_TINY,
 )
 
@@ -326,7 +330,10 @@ class Arm:
                     "Value": [
                         spot_size_on_surface * 2,
                         spot_size_on_surface * 2 * 2.5,
-                        surface.material_properties.temperature - ROOM_TEMPERATURE,
+                        # A surface may have no material properties at all (the old params path used to silently
+                        # attach an empty MaterialProperties as a side effect of to_params).
+                        (surface.material_properties.temperature if surface.material_properties is not None
+                         else np.nan) - ROOM_TEMPERATURE,
                         angle_of_incidence_deg,
                     ],
                 },
@@ -658,15 +665,7 @@ class OpticalSystem:
 
         # The move invalidates all geometry-dependent results, so every arm is reset to its freshly-initialized
         # state (as in Arm.__init__), whether or not a recalculation is requested.
-        for arm in self.arms:
-            arm.central_line = None
-            arm.mode_parameters_on_surface_0 = LocalModeParameters(q=np.nan, lambda_0_laser=np.nan, n=arm.n)
-            arm.mode_parameters_on_surface_1 = LocalModeParameters(q=np.nan, lambda_0_laser=np.nan, n=arm.n)
-            arm.mode_principle_axes = None
-        self.central_line_successfully_traced = None
-        self.resonating_mode_successfully_traced = None
-        # Propagates the updated triviality flags and the arms reset to the nested systems' own arm objects.
-        self._sync_config_to_nested()
+        self._reset_optics()
 
         if recalculate_optic:
             if isinstance(self, Cavity):
@@ -703,6 +702,53 @@ class OpticalSystem:
         new_system.place_element(
             new_system.elements[index], position, recalculate_optic=recalculate_optic, reference_center=reference_center
         )
+        return new_system
+
+    def _reset_optics(self):
+        """Discard all geometry-dependent results, in place: every arm returns to its freshly-initialized state
+        (as in Arm.__init__), the traced flags are cleared, and the reset (plus the current config flags) is
+        propagated to the nested systems' own arm objects."""
+        for arm in self.arms:
+            arm.central_line = None
+            arm.mode_parameters_on_surface_0 = LocalModeParameters(q=np.nan, lambda_0_laser=np.nan, n=arm.n)
+            arm.mode_parameters_on_surface_1 = LocalModeParameters(q=np.nan, lambda_0_laser=np.nan, n=arm.n)
+            arm.mode_principle_axes = None
+        self.central_line_successfully_traced = None
+        self.resonating_mode_successfully_traced = None
+        self._sync_config_to_nested()
+
+    def to_position(self, position: np.ndarray) -> "OpticalSystem":
+        """Return a copy of this system rigidly placed so that its first surface's center is at ``position``.
+
+        Non-mutating and chainable: ``element.to_position(p).to_orientation(n)``. Works also when this system's
+        positions are still undefined/relative (the first surface is anchored at ``position`` and the relative
+        chain is resolved off it). The copy's computed optics are reset, as after ``place_element``."""
+        new_system = copy.deepcopy(self)
+        set_element_position(new_system, np.asarray(position, dtype=float), reference="first_surface")
+        new_system._reset_optics()
+        return new_system
+
+    def to_orientation(self, outwards_normal: np.ndarray) -> "OpticalSystem":
+        """Return a copy of this system rigidly rotated about its first surface's center, so that the first
+        surface's outwards normal equals ``outwards_normal``.
+
+        Requires defined positions (for an undefined/relative system call ``to_position`` first — chaining
+        ``to_position(...).to_orientation(...)`` keeps the first surface at the requested position, since the
+        rotation pivots on it). Non-mutating; the copy's computed optics are reset."""
+        new_system = copy.deepcopy(self)
+        new_system._assert_positions_defined("rotate the system to a new orientation (call to_position first)")
+        first_surface = new_system._surfaces[0]
+        pivot = np.array(first_surface.center, dtype=float)
+        rotation = _rotation_matrix_between_vectors(
+            first_surface.outwards_normal, np.asarray(outwards_normal, dtype=float)
+        )
+        if rotation is not None:
+            _apply_rigid_rotation(new_system._surfaces, rotation, pivot)
+            if new_system._mechanical_center is not None:
+                new_system._mechanical_center = pivot + rotation @ (
+                    np.array(new_system._mechanical_center, dtype=float) - pivot
+                )
+        new_system._reset_optics()
         return new_system
 
     def _sync_config_to_nested(self):
@@ -849,7 +895,7 @@ class OpticalSystem:
             else:
                 if p.name is None:
                     p.name = f"Surface_{i}"
-                surface_temp = Surface.from_params(p)
+                surface_temp = Surface._from_params(p)
                 if isinstance(surface_temp, tuple):
                     elements.extend(surface_temp)
                 else:
@@ -860,6 +906,7 @@ class OpticalSystem:
     def params_to_elements(
         params: Union[np.ndarray, List],
     ):
+        warnings.warn(PARAMS_DEPRECATION_MESSAGE, DeprecationWarning, stacklevel=2)
         if isinstance(params, np.ndarray):
             raise ValueError(
                 "Cavity.from_params no longer supports np.ndarray input. Please provide a list of OpticalSurfaceParams."
@@ -877,6 +924,7 @@ class OpticalSystem:
         use_paraxial_ray_tracing: bool = False,
         **kwargs,
     ):
+        warnings.warn(PARAMS_DEPRECATION_MESSAGE, DeprecationWarning, stacklevel=2)
         if isinstance(params, np.ndarray):
             raise ValueError(
                 "Cavity.from_params no longer supports np.ndarray input. Please provide a list of OpticalSurfaceParams."
@@ -895,30 +943,81 @@ class OpticalSystem:
 
     @property
     def to_params(self):
-        # Always regenerated from the live elements (a nested OpticalSystem yields a nested list via its own
-        # to_params), so any in-place geometry edit is reflected. Never cached.
-        return [el.to_params for el in self.elements]
+        warnings.warn(PARAMS_DEPRECATION_MESSAGE, DeprecationWarning, stacklevel=2)
+        return self._to_params
+
+    @property
+    def _to_params(self):
+        # Non-warning internal variant. Always regenerated from the live elements (a nested OpticalSystem yields a
+        # nested list via its own _to_params), so any in-place geometry edit is reflected. Never cached.
+        return [el._to_params for el in self.elements]
+
+    def _init_syntax_constructor_kwargs(self) -> list:
+        # The non-element constructor arguments emitted in init_syntax, read off the live attributes.
+        keyword_arguments = [
+            ("use_paraxial_ray_tracing", self.use_paraxial_ray_tracing),
+            ("lambda_0_laser", self.lambda_0_laser),
+            ("t_is_trivial", self.t_is_trivial),
+            ("p_is_trivial", self.p_is_trivial),
+        ]
+        if self.power is not None:
+            keyword_arguments.append(("power", self.power))
+        if getattr(self, "name", None) is not None:
+            keyword_arguments.append(("name", self.name))
+        return keyword_arguments
+
+    @property
+    def init_syntax(self) -> str:
+        """The Python expression that reconstructs this system, at full precision.
+
+        Eval-able in a ``from cavity_design import *`` namespace. Elements recognized as catalog elements from
+        _existing_elements.py (tagged with ``catalog_name`` and verified against the registry) are rendered
+        compactly as ``NAME.to_position(...)[.to_orientation(...)]``; all other elements are rendered as their
+        full constructors."""
+        element_strings = []
+        for element in self.elements:
+            expression = _catalog_init_expression(element)
+            if expression is None:
+                expression = element.init_syntax
+            element_strings.append(expression)
+        element_indent = " " * 8
+        elements_block = ",\n".join(
+            element_indent + s.replace("\n", "\n" + element_indent) for s in element_strings
+        )
+        kwargs_block = ",\n".join(
+            f"    {key}={init_repr(value)}" for key, value in self._init_syntax_constructor_kwargs()
+        )
+        return f"{type(self).__name__}(\n    elements=[\n{elements_block},\n    ],\n{kwargs_block},\n)"
+
+    @property
+    def formatted_init_syntax(self) -> str:
+        # A ready-to-paste assignment statement (this is what the pyperclip workflow copies).
+        variable_name = "cavity" if isinstance(self, Cavity) else "optical_system"
+        return f"{variable_name} = {self.init_syntax}"
 
     @property
     def formatted_textual_params(self) -> str:
-        if self.to_params is None:
-            return "No parameters set for this cavity."
-        textual_representation = "params = " + str(self.to_params).replace(
-            "OpticalSurfaceParams", "\n          OpticalSurfaceParams"
-        ).replace("))]", "))\n         ]")
-        return textual_representation
+        warnings.warn(
+            "formatted_textual_params is deprecated; use formatted_init_syntax (or print the system), which emits "
+            "the initialization syntax. " + PARAMS_DEPRECATION_MESSAGE,
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.formatted_init_syntax
 
     def __str__(self):
-        return self.formatted_textual_params
+        return self.formatted_init_syntax
 
-    @property
-    def to_array(self) -> np.ndarray:
-        array = np.stack([param.to_array for param in self.to_params], axis=0)
-        return array
+    def __repr__(self):
+        element_names = ", ".join(
+            (element.name if getattr(element, "name", None) is not None else type(element).__name__)
+            for element in self.elements
+        )
+        return f"<{type(self).__name__} id={self.id} elements=[{element_names}]>"
 
     @property
     def id(self):
-        hashed_str = int(md5(str(self.to_params).encode("utf-8")).hexdigest()[:5], 16)
+        hashed_str = int(md5(self.init_syntax.encode("utf-8")).hexdigest()[:5], 16)
         return hashed_str
 
     @property
@@ -988,12 +1087,8 @@ class OpticalSystem:
     @property
     def names(self):
         names = [
-            (
-                p.name
-                if p.name is not None
-                else f"{i}: {p.surface_type if isinstance(p, OpticalSurfaceParams) else 'OpticalSystem'}"
-            )
-            for i, p in enumerate(self.elements)
+            (el.name if getattr(el, "name", None) is not None else f"{i}: {type(el).__name__}")
+            for i, el in enumerate(self.elements)
         ]
         return names
 
@@ -1775,6 +1870,7 @@ class Cavity(OpticalSystem):
 
     @staticmethod
     def from_params(params: Union[np.ndarray, list], **kwargs):
+        warnings.warn(PARAMS_DEPRECATION_MESSAGE, DeprecationWarning, stacklevel=2)
         if isinstance(params, np.ndarray):
             raise ValueError(
                 "Cavity.from_params no longer supports np.ndarray input. Please provide a list of OpticalSurfaceParams."
@@ -1847,16 +1943,22 @@ class Cavity(OpticalSystem):
     def last_arm_index(self):
         return len(self.arms) // 2 - 1
 
-    @property
-    def to_params(self):
-        # Always regenerated from the live (unique, forward) input elements, never cached, so in-place geometry edits
-        # are reflected.
-        return [el.to_params for el in self._input_elements]
+    def _init_syntax_constructor_kwargs(self) -> list:
+        keyword_arguments = [
+            ("standing_wave", self.standing_wave),
+            ("lambda_0_laser", self.lambda_0_laser),
+            ("t_is_trivial", self.t_is_trivial),
+            ("p_is_trivial", self.p_is_trivial),
+            ("use_paraxial_ray_tracing", self.use_paraxial_ray_tracing),
+        ]
+        if self.power is not None:
+            keyword_arguments.append(("power", self.power))
+        return keyword_arguments
 
     @property
     def perturbable_params_names(self):
         perturbable_params_names_list = params_to_perturbable_params_names(
-            self.to_params, self.t_is_trivial and self.p_is_trivial
+            self._to_params, self.t_is_trivial and self.p_is_trivial
         )
         return perturbable_params_names_list
 
@@ -2588,12 +2690,18 @@ class Cavity(OpticalSystem):
         print_specs: bool = False,
         contracted: bool = True,
     ):
-        elements_array = self.to_array.T.copy()
-        elements_array = np.real(elements_array) + np.pi * np.imag(elements_array)
+        # The per-element pose/geometry table is built directly from the live surfaces (an OpticalSystem element is
+        # summarized by its first surface).
+        def element_specs_values(element):
+            surface = element.surfaces[0] if isinstance(element, OpticalSystem) else element
+            center = np.real(np.asarray(surface.center, dtype=complex)).astype(float)
+            theta, phi = angles_of_unit_vector(surface.outwards_normal)
+            return [center[0], center[1], center[2], theta, phi, getattr(surface, "radius", np.nan)]
+
         df_elements = pd.DataFrame(
-            elements_array,
+            np.array([element_specs_values(el) for el in self.elements], dtype=float).T,
             columns=self.names,
-            index=list(PRETTY_INDICES_NAMES.values()),
+            index=["x [m]", "y [m]", "z [m]", "Elevation angle [rads]", "Azimuthal angle [rads]", "Radius [m]"],
         )
 
         df_elements_stacked = stack_df_for_print(df_elements)
@@ -3126,6 +3234,28 @@ _RIGID_BODY_TRANSLATION_AXES = {
 }
 
 
+def _rotation_matrix_between_vectors(v_from: np.ndarray, v_to: np.ndarray):
+    # Returns the rotation matrix mapping unit vector v_from onto v_to, or None when they already coincide.
+    # For antiparallel vectors the rotation axis is degenerate; any axis perpendicular to v_from is used (all the
+    # optical elements here are axisymmetric, so the residual roll is immaterial).
+    v_from = normalize_vector(np.asarray(v_from, dtype=float))
+    v_to = normalize_vector(np.asarray(v_to, dtype=float))
+    cross = np.cross(v_from, v_to)
+    cross_norm = np.linalg.norm(cross)
+    dot = float(np.dot(v_from, v_to))
+    if cross_norm < 1e-15:
+        if dot > 0:
+            return None  # no rotation needed
+        helper = np.array([0.0, 0.0, 1.0]) if abs(v_from[2]) < 0.9 else np.array([0.0, 1.0, 0.0])
+        rot_axis = normalize_vector(np.cross(v_from, helper))
+        return rotation_matrix_around_n(rot_axis, np.pi)
+    rot_axis = cross / cross_norm
+    rot_angle = np.arccos(np.clip(dot, -1.0, 1.0))
+    # rotation_matrix_around_n rotates by -theta about n (its entries are stacked transposed relative to the
+    # standard Rodrigues formula), so the axis is negated to obtain the matrix that maps v_from onto v_to.
+    return rotation_matrix_around_n(-rot_axis, rot_angle)
+
+
 def _rigid_body_rotation_matrix(theta: float, phi: float, parameter_name: str, perturbation_value: float):
     # Returns the rotation matrix that rotates the reference normal (given by theta, phi) by perturbing one of its
     # angles, or None when the rotation is negligible. Shared by the params-based and object-based perturbations.
@@ -3136,13 +3266,17 @@ def _rigid_body_rotation_matrix(theta: float, phi: float, parameter_name: str, p
         n_new = unit_vector_of_angles(theta, phi + perturbation_value)
     else:
         raise ValueError(f"'{parameter_name}' is not a rotation parameter (expected 'theta' or 'phi').")
-    cross = np.cross(n_old, n_new)
-    cross_norm = np.linalg.norm(cross)
-    if cross_norm < 1e-15:
-        return None  # no rotation needed
-    rot_axis = cross / cross_norm
-    rot_angle = np.arccos(np.clip(np.dot(n_old, n_new), -1.0, 1.0))
-    return rotation_matrix_around_n(rot_axis, rot_angle)
+    return _rotation_matrix_between_vectors(n_old, n_new)
+
+
+def _apply_rigid_rotation(surfaces: List[Surface], rotation: np.ndarray, pivot: np.ndarray):
+    # Rotate the surfaces rigidly about the pivot, in place. The old poses are captured before mutating, because
+    # for curved surfaces the center depends on the normal.
+    old_centers = [np.array(surface.center, dtype=float) for surface in surfaces]
+    old_normals = [np.array(surface.outwards_normal, dtype=float) for surface in surfaces]
+    for surface, old_center, old_normal in zip(surfaces, old_centers, old_normals):
+        surface.outwards_normal = rotation @ old_normal
+        surface.center = pivot + rotation @ (old_center - pivot)
 
 
 def apply_rigid_body_perturbation_to_params(params, parameter_name, perturbation_value, mechanical_center=None):
@@ -3206,12 +3340,7 @@ def apply_rigid_body_perturbation(element, parameter_name, perturbation_value, m
         R = _rigid_body_rotation_matrix(theta, phi, parameter_name, perturbation_value)
         if R is None:
             return
-        # Capture the old poses before mutating, because for curved surfaces the center depends on the normal.
-        old_centers = [np.array(surface.center, dtype=float) for surface in surfaces]
-        old_normals = [np.array(surface.outwards_normal, dtype=float) for surface in surfaces]
-        for surface, old_center, old_normal in zip(surfaces, old_centers, old_normals):
-            surface.outwards_normal = R @ old_normal
-            surface.center = mechanical_center + R @ (old_center - mechanical_center)
+        _apply_rigid_rotation(surfaces, R, mechanical_center)
         if has_explicit_center:
             element._mechanical_center = mechanical_center + R @ (
                 np.array(element._mechanical_center, dtype=float) - mechanical_center
@@ -3309,6 +3438,63 @@ def set_element_position(element, target_position, reference: str = "first_surfa
     for axis, axis_delta in zip(("x", "y", "z"), delta):
         apply_rigid_body_perturbation(element, axis, axis_delta)
     return element
+
+
+# Catalog of the ready-made elements defined in _existing_elements.py, keyed by their module-level variable name.
+# Used by init_syntax to render recognized elements compactly as NAME.to_position(...)[.to_orientation(...)].
+EXISTING_ELEMENTS_REGISTRY: dict = {}
+
+
+def register_existing_element(catalog_name: str, element):
+    """Register a catalog element (a Surface or an OpticalSystem from _existing_elements.py).
+
+    The element is tagged with ``catalog_name`` — a plain attribute, so it survives deepcopy and placed/moved
+    copies stay recognizable — and a pristine deep copy is stored for verification at rendering time."""
+    element.catalog_name = catalog_name
+    EXISTING_ELEMENTS_REGISTRY[catalog_name] = copy.deepcopy(element)
+    return element
+
+
+def _elements_optically_equivalent(element_1, element_2) -> bool:
+    # Surface-by-surface comparison of two elements (each a Surface or an OpticalSystem), poses included.
+    if isinstance(element_1, OpticalSystem) != isinstance(element_2, OpticalSystem):
+        return False
+    surfaces_1 = element_1._surfaces if isinstance(element_1, OpticalSystem) else [element_1]
+    surfaces_2 = element_2._surfaces if isinstance(element_2, OpticalSystem) else [element_2]
+    if len(surfaces_1) != len(surfaces_2):
+        return False
+    return all(surfaces_are_equivalent(s1, s2) for s1, s2 in zip(surfaces_1, surfaces_2))
+
+
+def _catalog_init_expression(element) -> Optional[str]:
+    """The compact catalog expression reproducing ``element`` (e.g. "EKSMA_LENS_20mm_ASPHERIC.to_position(...)"),
+    or None when the element is not (or no longer) a pristine catalog element.
+
+    The expression is verified before being returned: the pristine registry element is actually run through the
+    emitted to_position/to_orientation calls and compared, surface by surface, against the live element. A catalog
+    element whose intrinsics were mutated after construction (e.g. a changed refractive index) therefore falls
+    back to its full constructor rendering."""
+    catalog_name = getattr(element, "catalog_name", None)
+    if catalog_name is None or catalog_name not in EXISTING_ELEMENTS_REGISTRY:
+        return None
+    pristine = EXISTING_ELEMENTS_REGISTRY[catalog_name]
+
+    if not element.positions_defined:
+        # Not placed yet: renderable as the bare catalog name only if it is exactly the pristine element.
+        return catalog_name if _elements_optically_equivalent(element, pristine) else None
+
+    first_live = element._surfaces[0] if isinstance(element, OpticalSystem) else element
+    first_pristine = pristine._surfaces[0] if isinstance(pristine, OpticalSystem) else pristine
+    live_position = np.array(first_live.center, dtype=float)
+    live_normal = np.array(first_live.outwards_normal, dtype=float)
+
+    candidate = pristine.to_position(live_position)
+    expression = f"{catalog_name}.to_position({init_repr(live_position)})"
+    pristine_normal = np.asarray(first_pristine.outwards_normal, dtype=float)
+    if np.any(np.isnan(pristine_normal)) or not np.allclose(pristine_normal, live_normal, atol=1e-12):
+        candidate = candidate.to_orientation(live_normal)
+        expression += f".to_orientation({init_repr(live_normal)})"
+    return expression if _elements_optically_equivalent(element, candidate) else None
 
 
 def perturb_cavity(
@@ -4221,23 +4407,20 @@ def mirror_lens_mirror_cavity_generator(
             mode=mode_right, z=z_minus_z_0_right_mirror, material_properties=mirrors_material_properties
         )
 
-    mirror_left_params = mirror_left.to_params
-    mirror_left_params.name = "Small Mirror"
+    # Build the cavity directly from the live surfaces (no params round-trip). The two lens faces are grouped in a
+    # nested OpticalSystem rigid body, exactly as the params-based path used to create it.
+    mirror_left.name = "Small Mirror"
     mirror_left.material_properties = mirrors_material_properties
-    mirror_right_params = mirror_right.to_params
-    mirror_right_params.name = "Big Mirror"
+    mirror_right.name = "Big Mirror"
     mirror_right.material_properties = mirrors_material_properties
+    surface_left.name = "Lens_left"
+    surface_right.name = "Lens_right"
+    lens_system = OpticalSystem(
+        [surface_left, surface_right], use_paraxial_ray_tracing=True, given_initial_central_line=None, name="element_1"
+    )
 
-    params_lens_left = surface_left.to_params
-    params_lens_left.name = "Lens_left"
-    params_lens_right = surface_right.to_params
-    params_lens_right.name = "Lens_right"
-    params_lens = [params_lens_left, params_lens_right]
-
-    params = [mirror_left_params, params_lens, mirror_right_params]
-
-    cavity = Cavity.from_params(
-        params,
+    cavity = Cavity(
+        elements=[mirror_left, lens_system, mirror_right],
         lambda_0_laser=lambda_0_laser,
         standing_wave=True,
         p_is_trivial=True,

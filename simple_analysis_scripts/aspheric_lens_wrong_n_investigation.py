@@ -12,7 +12,7 @@ diameter=6.325e-3
 defocus=0
 OPTICAL_AXIS = RIGHT
 # Construct a lens for the design wavelength:
-aspheric_params_list = generate_aspheric_lens_params(
+aspheric_flat, aspheric_curved = generate_aspheric_lens(
         back_focal_length=back_focal_length_aspheric_design,
         T_c=T_c_aspheric,
         n=n_design,
@@ -23,8 +23,6 @@ aspheric_params_list = generate_aspheric_lens_params(
         name="aspheric_lens_automatic",
     )
 # Change the actual refractive index, after geometry was set for the design refractive index:
-aspheric_flat = Surface.from_params(aspheric_params_list[0])
-aspheric_curved = Surface.from_params(aspheric_params_list[1])
 aspheric_flat.n_2 = n_actual
 aspheric_curved.n_1 = n_actual
 
