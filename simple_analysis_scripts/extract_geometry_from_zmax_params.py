@@ -90,22 +90,25 @@ surf2_params = {
     'alpha_4': -1.6010882291619999e-06,
 }
 
-# This should now execute cleanly without the float error
-# num_array = get_taylor_numpy_array(20, numeric_params=surf1_params)
-# print("Numeric NumPy Array:")
-# print("-" * 55)
-# print(repr(num_array))
+surf3_params = {
+    'c': 2.156044124736639089E-01,
+    'k': -0.92552100000000004,
+    'alpha_1': 0.0,
+    'alpha_2': 0.0004789735,
+    'alpha_3': 4.0496920000000002e-06,
+    'alpha_4': 3.1281810000000001e-08,
+    'alpha_5': -6.4986990000000002e-10
+}
 
-## ATTENTION: the output polynomial here should have it's sign inverse because ZMAX uses the sign convention, and
+
+## ATTENTION: the output polynomial for second surfaceshould have it's sign inverse because ZMAX uses the sign convention, and
 # my polynomial representation is indifferent to the direction of the beam, so it always has positive curvature.
-# num_array = get_taylor_numpy_array(20, numeric_params=surf2_params)
+# num_array = get_taylor_numpy_array(20, numeric_params=surf3_params)
 # print("Numeric NumPy Array:")
 # print("-" * 55)
 # print(repr(num_array))
 
 # %%
-
-
 params_edmunds = [
     OpticalSurfaceParams(name='aspheric_lens_left', surface_type='aspheric_surface', x=0, y=0, z=0, theta=0,
                          phi=-1e+00 * np.pi, radius=np.nan, curvature_sign=CurvatureSigns.convex, T_c=3.1 / 2e-3,
@@ -141,6 +144,7 @@ params_edmunds = [
 
 optical_system_edmunds = OpticalSystem.from_params(params=params_edmunds, t_is_trivial=True, p_is_trivial=True,
                                                    use_paraxial_ray_tracing=False)
+
 # %%  A Working version with the design wavelength and the glass window:
 back_focal_length = back_focal_length_of_lens_formula(R_1=optical_system_edmunds[1].radius,
                                                       R_2=-optical_system_edmunds[0].radius,
@@ -151,10 +155,10 @@ initial_ys = np.linspace(0, 0.0015, 10)
 initial_xs = np.ones_like(initial_ys) * (-0.01)
 initial_positions = np.stack([initial_xs, initial_ys, np.zeros_like(initial_ys)], axis=-1)
 ray_0 = Ray(origin=initial_positions, k_vector=RIGHT, n=1)
-rays_edmund = optical_system_edmunds.propagate_ray(ray_0, propagate_with_first_surface_first=True)
+rays_thorlbs = optical_system_edmunds.propagate_ray(ray_0, propagate_with_first_surface_first=True)
 ax = optical_system_edmunds.plot()
 ax.scatter([optical_system_edmunds[1].center[0] + 2.68e-3], [0], color='red', label='Back Focal Point')
-rays_edmund.plot(ax=ax)
+rays_thorlbs.plot(ax=ax)
 ax.set_xlim(-0.005, 0.01)
 # figure_dir = get_obsidian_save_path(filename="extract_geometry_from_zmax_params.svg")
 # plt.savefig(figure_dir)
@@ -188,3 +192,78 @@ ax.set_xlim(-0.005, 0.01)
 plt.title("Equivalent spherical lens with the same radii of curvature and thickness as the aspheric lens")
 plt.show()
 
+# %% Thorlabs aspheric:
+params_thorlabs = [
+OpticalSurfaceParams(name='aspheric_lens_convex', surface_type='aspheric_surface', x=0, y=0, z=0, theta=0,
+                     phi=-1e+00 * np.pi, radius=np.nan, curvature_sign=CurvatureSigns.convex, T_c=(3.434 / 2)*1e-3,
+                     n_inside_or_after=1.584e+00, n_outside_or_before=1e+00, diameter=8.2e-03,
+                     material_properties=MaterialProperties(),
+                     polynomial_coefficients=np.array([ 0.00000000e+00,  1.07802206e+02,  5.72281050e+05,  4.21121557e+09, 3.16313244e+13, -6.49022844e+17,  2.19949315e+18,  5.98323954e+21, 1.68309599e+25,  4.85597863e+28,  1.42904143e+32]),
+                     ),
+OpticalSurfaceParams(name='aspheric_lens_flat', surface_type=SurfacesTypes.flat_refractive_surface, x=3.434e-3, y=0, z=0, theta=0,
+                     phi=0, radius=np.inf, curvature_sign=CurvatureSigns.flat, T_c=(3.434 / 2)*1e-3,
+                     n_inside_or_after=1, n_outside_or_before=1.584e+00, diameter=8.2e-03,
+                     material_properties=MaterialProperties(),
+                     polynomial_coefficients=None,),
+# The window:
+OpticalSurfaceParams(name='window_left', surface_type=SurfacesTypes.flat_refractive_surface, x=3.434e-3+5e-3, y=0, z=0, theta=0,
+                     phi=-1e+00 * np.pi, radius=np.inf, curvature_sign=CurvatureSigns.flat, T_c=(3.434 / 2)*1e-3,
+                     n_inside_or_after=1.5135, n_outside_or_before=1, diameter=8.2e-03,
+                     material_properties=MaterialProperties(),
+                     polynomial_coefficients=None,),
+OpticalSurfaceParams(name='window_right', surface_type=SurfacesTypes.flat_refractive_surface, x=3.434e-3+5e-3+2.5e-4, y=0, z=0, theta=0,
+                     phi=-1e+00 * np.pi, radius=np.inf, curvature_sign=CurvatureSigns.flat, T_c=(3.434 / 2)*1e-3,
+                     n_inside_or_after=1, n_outside_or_before=1.5135, diameter=8.2e-03,
+                     material_properties=MaterialProperties(),
+                     polynomial_coefficients=None,),
+]
+
+optical_system_thorlabs = OpticalSystem.from_params(params=params_thorlabs, t_is_trivial=True, p_is_trivial=True,use_paraxial_ray_tracing=False)
+# optical_system_thorlabs.plot()
+# plt.show()
+# plt.close('all')
+back_focal_length = back_focal_length_of_lens_formula(R_1=optical_system_thorlabs[1].radius,
+                                                      R_2=-optical_system_thorlabs[0].radius,
+                                                      n=optical_system_thorlabs[0].n_2,
+                                                      T_c=optical_system_thorlabs[1].center[0] -
+                                                          optical_system_thorlabs[0].center[0])
+initial_ys = np.linspace(0, 0.0015, 10)
+initial_xs = np.ones_like(initial_ys) * (-0.01)
+initial_positions = np.stack([initial_xs, initial_ys, np.zeros_like(initial_ys)], axis=-1)
+ray_0 = Ray(origin=initial_positions, k_vector=RIGHT, n=1)
+rays_thorlbs = optical_system_thorlabs.propagate_ray(ray_0, propagate_with_first_surface_first=True)
+ax = optical_system_thorlabs.plot()
+ax.scatter([optical_system_thorlabs[1].center[0] + back_focal_length], [0], color='red', label='Back Focal Point')
+rays_thorlbs.plot(ax=ax)
+ax.set_xlim(-0.005, 0.01)
+# figure_dir = get_obsidian_save_path(filename="extract_geometry_from_zmax_params.svg")
+# plt.savefig(figure_dir)
+plt.show()
+# %% With the actual wavelength and without the glass window:
+optical_system_actual = OpticalSystem.from_params(params=params_thorlabs[:2], t_is_trivial=True, p_is_trivial=True,
+                                                  use_paraxial_ray_tracing=False)
+optical_system_actual[0].n_2 = 1.577
+optical_system_actual[1].n_1 = 1.577
+rays_actual = optical_system_actual.propagate_ray(ray_0, propagate_with_first_surface_first=True)
+ax = optical_system_actual.plot()
+rays_actual.plot(ax=ax)
+ax.set_xlim(-0.005, 0.01)
+# figure_dir = get_obsidian_save_path(filename="extract_geometry_from_zmax_params-actual - thorlabs.svg")
+# plt.savefig(figure_dir)
+plt.title("Actual wavelength (1064nm) and actual refractive index (1.577) without the glass window")
+plt.show()
+# %% With an equivalent spherical lens:
+optical_system_spherical = OpticalSystem(elements=[
+    CurvedRefractiveSurface(name="spherical - left",
+                            radius=optical_system_actual[0].radius, outwards_normal=LEFT,
+                            center=optical_system_actual[0].center, n_1=1, n_2=optical_system_actual[0].n_2, diameter=optical_system_actual[0].diameter, curvature_sign=CurvatureSigns.convex),
+    FlatRefractiveSurface(name="spherical - right",
+                            outwards_normal=RIGHT,
+                            center=optical_system_actual[1].center, n_1=optical_system_actual[1].n_1, n_2=1, diameter=optical_system_actual[1].diameter),
+], use_paraxial_ray_tracing=False, p_is_trivial=True, t_is_trivial=True)
+rays_spherical = optical_system_spherical.propagate_ray(ray_0, propagate_with_first_surface_first=True)
+ax = optical_system_spherical.plot()
+rays_spherical.plot(ax=ax)
+ax.set_xlim(-0.005, 0.01)
+plt.title("Equivalent spherical lens with the same radii of curvature and thickness as the aspheric lens")
+plt.show()
