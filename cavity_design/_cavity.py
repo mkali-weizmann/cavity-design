@@ -632,8 +632,12 @@ class OpticalSystem:
         if reference_center is None:
             offset = np.zeros(3)
         elif isinstance(reference_center, OpticalSystem):
+            if not reference_center.surfaces[-1].positions_defined:
+                raise ValueError(f"Can not use surface {reference_center.surfaces[-1].name} as a reference, as it's position is not well defined")
             offset = np.asarray(reference_center.surfaces[-1].center, dtype=float)
         elif isinstance(reference_center, Surface):
+            if not reference_center.positions_defined:
+                raise ValueError(f"Can not use surface {reference_center.name} as a reference, as it's position is not well defined")
             offset = np.asarray(reference_center.center, dtype=float)
         else:
             offset = np.asarray(reference_center, dtype=float)
@@ -982,7 +986,7 @@ class OpticalSystem:
             element_strings.append(expression)
         element_indent = " " * 8
         elements_block = ",\n".join(element_indent + s.replace("\n", "\n" + element_indent) for s in element_strings)
-        kwargs_block = ",\n".join(
+        kwargs_block = ", ".join(
             f"    {key}={init_repr(value)}" for key, value in self._init_syntax_constructor_kwargs()
         )
         return f"{type(self).__name__}(\n    elements=[\n{elements_block},\n    ],\n{kwargs_block},\n)"
@@ -1691,7 +1695,7 @@ class OpticalSystem:
                     fine_resolution=fine_resolution,
                 )
 
-        if self.lambda_0_laser is not None and plot_mode_lines and self.arms[0].central_line is not None:
+        if self.lambda_0_laser is not None and plot_mode_lines and self.central_line_successfully_traced:
             try:
                 spot_size_lines = self.generate_spot_size_lines(dim=dim, plane=plane)
 
@@ -1718,18 +1722,27 @@ class OpticalSystem:
             except (FloatingPointError, AttributeError):
                 # print("Mode was not successfully found, mode lines not plotted.")
                 pass
+            if isinstance(self.mode_parameters, list):
+                for mode in self.mode_parameters:
+                    ax.scatter([mode.center[0, 0]], [mode.center[0, 1]], color=laser_color, marker='o', s=50, alpha=0.8)
         ax.grid()
         if additional_rays is not None:
             ax.legend()
 
+        if self.central_line_successfully_traced:
+            length_first = self.central_line[0].length
+            length_last = self.central_line[len(self.arms) // 2 - 1].length
+        else:
+            length_first = float(np.linalg.norm(self.surfaces[1].center - self.surfaces[0].center))
+            length_last = float(np.linalg.norm(self.surfaces[-1].center - self.surfaces[-2].center))
         if self.resonating_mode_successfully_traced:
             title = ax.set_title(
                 f"NA first = {self.mode_parameters[0].NA[0]:.2e}, NA last = {self.mode_parameters[len(self.arms) // 2 - 1].NA[0]:.2e}\n"
-                f"length first = {self.central_line[0].length:.2e}, length last = {self.central_line[len(self.arms) // 2 - 1].length:.2e}"
+                f"length first = {length_first:.2e}, length last = {length_last:.2e}"
             )
         else:
             title = ax.set_title(
-                f"length first = {self.central_line[0].length:.2e}, length last = {self.central_line[len(self.arms) // 2 - 1].length:.2e}"
+                f"length first = {length_first:.2e}, length last = {length_last:.2e}"
             )
         return ax
 

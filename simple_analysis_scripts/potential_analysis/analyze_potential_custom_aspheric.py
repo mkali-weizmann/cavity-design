@@ -112,7 +112,7 @@ optical_system_aspherical_back = OpticalSystem(elements=[aspherical_back_alterna
                                                t_is_trivial=True, p_is_trivial=True, given_initial_central_line=True,
                                                use_paraxial_ray_tracing=False)
 
-rays_0 = initialize_rays(defocus=defocus, n_rays=n_rays, phi_max=phi_max)
+rays_0 = initialize_rays(phi_max=phi_max, n_rays=n_rays)
 # %%
 # results_dict_original = analyze_potential(optical_system=optical_system_original, rays_0=rays_0, unconcentricity=unconcentricity, print_tests=True)
 # fig, ax = plot_results(results_dict=results_dict_original, far_away_plane=True, unconcentricity=unconcentricity, potential_x_axis_angles=False, rays_labels=["Before lens", "After flat surface", "After aspherical surface"])

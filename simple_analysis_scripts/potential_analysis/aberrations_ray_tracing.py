@@ -78,7 +78,7 @@ def find_wavefront_deviation(cavity: Cavity,
                              ):
     first_mirror = cavity.physical_surfaces[0]
     last_mirror = cavity.physical_surfaces[-1]
-    orthonormal_ray = initialize_rays(n_rays=n_rays, phi_max=max_initial_angle, starting_mirror=first_mirror)
+    orthonormal_ray = initialize_rays(phi_max=max_initial_angle, n_rays=n_rays, starting_mirror=first_mirror)
     tilt_angles = angles_of_unit_vector(orthonormal_ray.k_vector)[1]
     ray_history = cavity.propagate_ray(orthonormal_ray, n_arms=len(cavity.physical_surfaces) - 1)
     intersection_points = ray_history[-1].origin

@@ -2,23 +2,21 @@ from cavity_design import *
 # from simple_analysis_scripts.potential_analysis.analyze_potential import energy_level, analyze_potential_given_cavity, plot_results
 # np.seterr(all="raise")
 # %%
-params = [
-          OpticalSurfaceParams(name='Small Mirror'           ,surface_type='curved_mirror'                  , x=-4.999954683912563e-03  , y=0                       , z=0                       , theta=0                       , phi=1e+00 * np.pi           , radius=5e-03                   , curvature_sign=CurvatureSigns.concave, T_c=np.nan                  , n_inside_or_after=1e+00                   , n_outside_or_before=1e+00                   , diameter=7.75e-03                , material_properties=MaterialProperties(refractive_index=None                    , alpha_expansion=7.5e-08                 , beta_surface_absorption=1e-06                   , kappa_conductivity=1.31e+00                , dn_dT=None                    , nu_poisson_ratio=1.7e-01                 , alpha_volume_absorption=None                    , intensity_reflectivity=9.99889e-01             , intensity_transmittance=1e-04                   , temperature=np.nan                  ), polynomial_coefficients=None), [
-          OpticalSurfaceParams(name='Lens_left'              ,surface_type='curved_refractive_surface'      , x=4.930700511195863e-03   , y=0                       , z=0                       , theta=0                       , phi=1e+00 * np.pi           , radius=2.422e-02               , curvature_sign=CurvatureSigns.convex, T_c=np.nan                  , n_inside_or_after=1.76e+00                , n_outside_or_before=1e+00                   , diameter=7.75e-03                , material_properties=MaterialProperties(refractive_index=1.76e+00                , alpha_expansion=5.5e-06                 , beta_surface_absorption=1e-06                   , kappa_conductivity=4.606e+01               , dn_dT=1.17e-05                , nu_poisson_ratio=3e-01                   , alpha_volume_absorption=1e-02                   , intensity_reflectivity=1e-04                   , intensity_transmittance=9.99899e-01             , temperature=np.nan                  ), polynomial_coefficients=None),
-          OpticalSurfaceParams(name='Lens_right'             ,surface_type='curved_refractive_surface'      , x=7.844498052182406e-03   , y=0                       , z=0                       , theta=0                       , phi=0                       , radius=5.488e-03               , curvature_sign=CurvatureSigns.concave, T_c=np.nan                  , n_inside_or_after=1e+00                   , n_outside_or_before=1.76e+00                , diameter=7.75e-03                , material_properties=MaterialProperties(refractive_index=1.76e+00                , alpha_expansion=5.5e-06                 , beta_surface_absorption=1e-06                   , kappa_conductivity=4.606e+01               , dn_dT=1.17e-05                , nu_poisson_ratio=3e-01                   , alpha_volume_absorption=1e-02                   , intensity_reflectivity=1e-04                   , intensity_transmittance=9.99899e-01             , temperature=np.nan                  ), polynomial_coefficients=None)],
-          OpticalSurfaceParams(name='Big Mirror'             ,surface_type='curved_mirror'                  , x=4.074677357638641e-01   , y=0                       , z=0                       , theta=0                       , phi=0                       , radius=2e-01                   , curvature_sign=CurvatureSigns.concave, T_c=np.nan                  , n_inside_or_after=1e+00                   , n_outside_or_before=1e+00                   , diameter=2.54e-02                , material_properties=MaterialProperties(refractive_index=None                    , alpha_expansion=7.5e-08                 , beta_surface_absorption=1e-06                   , kappa_conductivity=1.31e+00                , dn_dT=None                    , nu_poisson_ratio=1.7e-01                 , alpha_volume_absorption=None                    , intensity_reflectivity=9.99889e-01             , intensity_transmittance=1e-04                   , temperature=np.nan                  ), polynomial_coefficients=None)]
+cavity_paraxial = Cavity(
+    elements=[
+        CurvedMirror(name='Small Mirror', radius=0.005, outwards_normal=np.array([-1.0, 0.0, 0.0]), center=np.array([-0.004999954683912563, 0.0, 0.0]), curvature_sign=-1, diameter=0.00775, material_properties=MaterialProperties(alpha_expansion=7.5e-08, beta_surface_absorption=1e-06, kappa_conductivity=1.31, nu_poisson_ratio=0.17, intensity_reflectivity=0.999889, intensity_transmittance=0.0001, temperature=np.nan)),
+        OpticalSystem(
+            elements=[
+                CurvedRefractiveSurface(name='Lens_left', radius=0.02422, outwards_normal=np.array([-1.0, 0.0, 0.0]), center=np.array([0.004930700511195863, 0.0, 0.0]), curvature_sign=1, n_1=1.0, n_2=1.76, thickness=np.nan, diameter=0.00775, material_properties=MaterialProperties(refractive_index=1.76, alpha_expansion=5.5e-06, beta_surface_absorption=1e-06, kappa_conductivity=46.06, dn_dT=1.17e-05, nu_poisson_ratio=0.3, alpha_volume_absorption=0.01, intensity_reflectivity=0.0001, intensity_transmittance=0.999899, temperature=np.nan)),
+                CurvedRefractiveSurface(name='Lens_right', radius=0.005488, outwards_normal=np.array([1.0, 0.0, 0.0]), center=np.array([0.007844498052182406, 0.0, 0.0]), curvature_sign=-1, n_1=1.76, n_2=1.0, thickness=np.nan, diameter=0.00775, material_properties=MaterialProperties(refractive_index=1.76, alpha_expansion=5.5e-06, beta_surface_absorption=1e-06, kappa_conductivity=46.06, dn_dT=1.17e-05, nu_poisson_ratio=0.3, alpha_volume_absorption=0.01, intensity_reflectivity=0.0001, intensity_transmittance=0.999899, temperature=np.nan)),
+            ],
+            use_paraxial_ray_tracing=True,     lambda_0_laser=1.064e-06,     t_is_trivial=True,     p_is_trivial=True,     power=20000.0,     name='element_1',
+        ),
+        CurvedMirror(name='Big Mirror', radius=0.2, outwards_normal=np.array([1.0, 0.0, 0.0]), center=np.array([0.4074677357638641, 0.0, 0.0]), curvature_sign=-1, diameter=0.0254, material_properties=MaterialProperties(alpha_expansion=7.5e-08, beta_surface_absorption=1e-06, kappa_conductivity=1.31, nu_poisson_ratio=0.17, intensity_reflectivity=0.999889, intensity_transmittance=0.0001, temperature=np.nan)),
+    ],
+    standing_wave=True,     lambda_0_laser=1.064e-06,     t_is_trivial=True,     p_is_trivial=True,     use_paraxial_ray_tracing=True,     power=20000.0,
+)
 # %%
-cavity_paraxial = Cavity.from_params(params=params,
-                            standing_wave=True,
-                            lambda_0_laser=LAMBDA_0_LASER,
-                            set_central_line=True,
-                            set_mode_parameters=True,
-                            t_is_trivial=True,
-                            p_is_trivial=True,
-                            power=2e4,
-                            use_paraxial_ray_tracing=True,
-                            debug_printing_level=1,
-                            )
 plot_mirror_lens_mirror_cavity_analysis(cavity_paraxial)
 plt.xlim([-6e-3, 305e-3])
 plt.show()
@@ -37,17 +35,8 @@ cavity_paraxial.generate_overlaps_graphs(arm_index_for_NA=0, tolerance_dataframe
 # #     dpi=300, bbox_inches='tight')
 plt.show()
 # %%
-cavity_non_paraxial = Cavity.from_params(params=params,
-                            standing_wave=True,
-                            lambda_0_laser=LAMBDA_0_LASER,
-                            set_central_line=True,
-                            set_mode_parameters=True,
-                            t_is_trivial=True,
-                            p_is_trivial=True,
-                            power=2e4,
-                            use_paraxial_ray_tracing=False,
-                            debug_printing_level=1,
-                            )
+cavity_non_paraxial = copy.deepcopy(cavity_paraxial)
+cavity_non_paraxial.use_paraxial_ray_tracing = False
 
 print(2*energy_level(cavity_non_paraxial))
 results_dict = analyze_potential_given_cavity(cavity=cavity_non_paraxial, n_rays=30, phi_max=0.2)

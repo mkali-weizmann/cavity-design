@@ -47,7 +47,7 @@ optical_system_aspheric.place_element(element=optical_system_aspheric[0],
                                       recalculate_optic=True)
 
 optical_system = OpticalSystem([LASER_OPTIK_MIRROR, optical_system_aspheric], use_paraxial_ray_tracing=False, t_is_trivial=True, p_is_trivial=True, lambda_0_laser=LAMBDA_0_LASER)
-rays_0=initialize_rays(n_rays=8, phi_max=0.3)
+rays_0= initialize_rays(phi_max=0.3, n_rays=8)
 propagated_rays = optical_system.propagate_ray(rays_0, propagate_with_first_surface_first=False)
 propagated_rays.length[-1, :] = 3
 ax = optical_system.plot()

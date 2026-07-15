@@ -6,9 +6,9 @@ from cavity_design import *
 # Output beam optical system: mirror substrate (transmissive) followed by 35mm collimating lens
 
 lens_distance = 5.5e-3
-set_element_position(EKSMA_LENS_20mm_ASPHERIC, LASER_OPTIK_MIRROR_REFRACTIVE.surfaces[1].center + lens_distance * LEFT),
+set_element_position(EKSMA_LENS_20MM_ASPHERIC, LASER_OPTIK_MIRROR_REFRACTIVE.surfaces[1].center + lens_distance * LEFT),
 optical_system = OpticalSystem(
-    elements=[LASER_OPTIK_MIRROR_REFRACTIVE, EKSMA_LENS_20mm_ASPHERIC],
+    elements=[LASER_OPTIK_MIRROR_REFRACTIVE, EKSMA_LENS_20MM_ASPHERIC],
     use_paraxial_ray_tracing=True,
     p_is_trivial=True,
     t_is_trivial=True,

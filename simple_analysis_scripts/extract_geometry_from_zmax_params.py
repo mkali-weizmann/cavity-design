@@ -129,49 +129,36 @@ surf1_params_87127 = {
     'alpha_8': 0.0
 }
 
+# Eksma 117-1220 fused-silica aspheric lens
+surf1_params_eksma = {
+    'c': 1.102171277416510442E-01,
+    'k': -0.67000000000000004,
+    'alpha_1': 0.0,
+    'alpha_2': 1.7503618979310571e-05,
+    'alpha_3': 5.0392717735941379e-08,
+    'alpha_4': 1.1411005348584909e-10,
+    'alpha_5': 0.0,
+    'alpha_6': 0.0,
+    'alpha_7': 0.0,
+    'alpha_8': 0.0
+}
+
 ## ATTENTION: the output polynomial for second surfaceshould have it's sign inverse because ZMAX uses the sign convention, and
 # my polynomial representation is indifferent to the direction of the beam, so it always has positive curvature.
-num_array = get_taylor_numpy_array(20, numeric_params=surf1_params_37104)
+num_array = get_taylor_numpy_array(20, numeric_params=surf1_params_eksma)
 print("Numeric NumPy Array:")
 print("-" * 55)
 print(repr(num_array))
 
 # %%
-params_edmunds = [
-    OpticalSurfaceParams(name='aspheric_lens_left', surface_type='aspheric_surface', x=0, y=0, z=0, theta=0,
-                         phi=-1e+00 * np.pi, radius=np.nan, curvature_sign=CurvatureSigns.convex, T_c=3.1 / 2e-3,
-                         n_inside_or_after=1.583e+00, n_outside_or_before=1e+00, diameter=6.3e-03,
-                         material_properties=MaterialProperties(refractive_index=None, alpha_expansion=None,
-                                                                beta_surface_absorption=None, kappa_conductivity=None,
-                                                                dn_dT=None, nu_poisson_ratio=None,
-                                                                alpha_volume_absorption=None,
-                                                                intensity_reflectivity=None,
-                                                                intensity_transmittance=None, temperature=np.nan),
-                         polynomial_coefficients=np.array(
-                             [0.00000000e+00, 1.90857799e+02, 3.33213215e+06, 1.08218014e+11, 4.32910754e+15,
-                              6.27836273e+20, 2.70839583e+25, 1.72102573e+30, 1.13089247e+35, 7.62167883e+39,
-                              5.23938302e+44])),
-    OpticalSurfaceParams(name='aspheric_lens_right', surface_type='aspheric_surface', x=3.1e-3, y=0, z=0, theta=0,
-                         phi=0, radius=np.nan, curvature_sign=CurvatureSigns.concave, T_c=3.1 / 2e-3,
-                         n_inside_or_after=1e+00, n_outside_or_before=1.583e+00, diameter=6.3e-03,
-                         material_properties=MaterialProperties(refractive_index=None, alpha_expansion=None,
-                                                                beta_surface_absorption=None, kappa_conductivity=None,
-                                                                dn_dT=None, nu_poisson_ratio=None,
-                                                                alpha_volume_absorption=None,
-                                                                intensity_reflectivity=None,
-                                                                intensity_transmittance=None, temperature=np.nan),
-                         polynomial_coefficients=-np.array(
-                             [0.00000000e+00, -3.94470149e+01, 4.40171309e+06, -9.01563757e+10, -1.60183137e+15,
-                              -3.23783960e+15, -1.51148859e+19, -7.39192926e+22, -3.73825954e+26, -1.93899408e+30,
-                              -1.02584959e+34])),
-    OpticalSurfaceParams(name='BK7 window', surface_type=SurfacesTypes.flat_refractive_surface, x=3.1e-3 + 1.483e-3,
-                         y=0, z=0, theta=0, phi=0, radius=np.inf, curvature_sign=CurvatureSigns.flat, T_c=np.nan,
-                         n_outside_or_before=1, n_inside_or_after=1.5135, material_properties=MaterialProperties(),
-                         diameter=6.3e-3, polynomial_coefficients=None)
-    ]
-
-optical_system_edmunds = OpticalSystem.from_params(params=params_edmunds, t_is_trivial=True, p_is_trivial=True,
-                                                   use_paraxial_ray_tracing=False)
+optical_system_edmunds = OpticalSystem(
+    elements=[
+        AsphericRefractiveSurface(name='aspheric_lens_left', center=np.array([0.0, 0.0, 0.0]), outwards_normal=np.array([-1.0, 0.0, 0.0]), polynomial_coefficients=np.array([0.0, 190.857799, 3332132.15, 108218014000.0, 4329107540000000.0, 6.27836273e+20, 2.70839583e+25, 1.72102573e+30, 1.13089247e+35, 7.62167883e+39, 5.23938302e+44]), curvature_sign=1, n_1=1.0, n_2=1.583, diameter=0.0063, material_properties=MaterialProperties(temperature=np.nan)),
+        AsphericRefractiveSurface(name='aspheric_lens_right', center=np.array([0.0031, 0.0, 0.0]), outwards_normal=np.array([1.0, 0.0, 0.0]), polynomial_coefficients=np.array([-0.0, 39.4470149, -4401713.09, 90156375700.0, 1601831370000000.0, 3237839600000000.0, 1.51148859e+19, 7.39192926e+22, 3.73825954e+26, 1.93899408e+30, 1.02584959e+34]), curvature_sign=-1, n_1=1.583, n_2=1.0, diameter=0.0063, material_properties=MaterialProperties(temperature=np.nan)),
+        FlatRefractiveSurface(name='BK7 window', outwards_normal=np.array([1.0, 0.0, 0.0]), center=np.array([0.004583, 0.0, 0.0]), n_1=1, n_2=1.5135, diameter=0.0063, thermal_properties=MaterialProperties(temperature=np.nan)),
+    ],
+    use_paraxial_ray_tracing=False,     lambda_0_laser=1.064e-06,     t_is_trivial=True,     p_is_trivial=True,
+)
 
 # %%  A Working version with the design wavelength and the glass window:
 back_focal_length = back_focal_length_of_lens_formula(R_1=optical_system_edmunds[1].radius,
@@ -192,7 +179,7 @@ ax.set_xlim(-0.005, 0.01)
 # plt.savefig(figure_dir)
 plt.show()
 # %% With the actual wavelength and without the glass window:
-optical_system_actual = OpticalSystem.from_params(params=params_edmunds[:2], t_is_trivial=True, p_is_trivial=True,
+optical_system_actual = OpticalSystem.from_params(params=optical_system_edmunds.elements[:2], t_is_trivial=True, p_is_trivial=True,
                                                   use_paraxial_ray_tracing=False)
 optical_system_actual[0].n_2 = 1.574
 optical_system_actual[1].n_1 = 1.574
@@ -221,32 +208,16 @@ plt.title("Equivalent spherical lens with the same radii of curvature and thickn
 plt.show()
 
 # %% Thorlabs aspheric:
-params_thorlabs = [
-OpticalSurfaceParams(name='aspheric_lens_convex', surface_type='aspheric_surface', x=0, y=0, z=0, theta=0,
-                     phi=-1e+00 * np.pi, radius=np.nan, curvature_sign=CurvatureSigns.convex, T_c=(3.434 / 2)*1e-3,
-                     n_inside_or_after=1.584e+00, n_outside_or_before=1e+00, diameter=8.2e-03,
-                     material_properties=MaterialProperties(),
-                     polynomial_coefficients=np.array([ 0.00000000e+00,  1.07802206e+02,  5.72281050e+05,  4.21121557e+09, 3.16313244e+13, -6.49022844e+17,  2.19949315e+18,  5.98323954e+21, 1.68309599e+25,  4.85597863e+28,  1.42904143e+32]),
-                     ),
-OpticalSurfaceParams(name='aspheric_lens_flat', surface_type=SurfacesTypes.flat_refractive_surface, x=3.434e-3, y=0, z=0, theta=0,
-                     phi=0, radius=np.inf, curvature_sign=CurvatureSigns.flat, T_c=(3.434 / 2)*1e-3,
-                     n_inside_or_after=1, n_outside_or_before=1.584e+00, diameter=8.2e-03,
-                     material_properties=MaterialProperties(),
-                     polynomial_coefficients=None,),
-# The window:
-OpticalSurfaceParams(name='window_left', surface_type=SurfacesTypes.flat_refractive_surface, x=3.434e-3+5e-3, y=0, z=0, theta=0,
-                     phi=-1e+00 * np.pi, radius=np.inf, curvature_sign=CurvatureSigns.flat, T_c=(3.434 / 2)*1e-3,
-                     n_inside_or_after=1.5135, n_outside_or_before=1, diameter=8.2e-03,
-                     material_properties=MaterialProperties(),
-                     polynomial_coefficients=None,),
-OpticalSurfaceParams(name='window_right', surface_type=SurfacesTypes.flat_refractive_surface, x=3.434e-3+5e-3+2.5e-4, y=0, z=0, theta=0,
-                     phi=-1e+00 * np.pi, radius=np.inf, curvature_sign=CurvatureSigns.flat, T_c=(3.434 / 2)*1e-3,
-                     n_inside_or_after=1, n_outside_or_before=1.5135, diameter=8.2e-03,
-                     material_properties=MaterialProperties(),
-                     polynomial_coefficients=None,),
-]
-
-optical_system_thorlabs = OpticalSystem.from_params(params=params_thorlabs, t_is_trivial=True, p_is_trivial=True,use_paraxial_ray_tracing=False)
+optical_system_thorlabs = OpticalSystem(
+    elements=[
+        AsphericRefractiveSurface(name='aspheric_lens_convex', center=np.array([0.0, 0.0, 0.0]), outwards_normal=np.array([-1.0, 0.0, 0.0]), polynomial_coefficients=np.array([0.0, 107.802206, 572281.05, 4211215570.0, 31631324400000.0, -6.49022844e+17, 2.19949315e+18, 5.98323954e+21, 1.68309599e+25, 4.85597863e+28, 1.42904143e+32]), curvature_sign=1, n_1=1.0, n_2=1.584, diameter=0.0082, material_properties=MaterialProperties(temperature=np.nan)),
+        FlatRefractiveSurface(name='aspheric_lens_flat', outwards_normal=np.array([1.0, 0.0, 0.0]), center=np.array([0.003434, 0.0, 0.0]), n_1=1.584, n_2=1, diameter=0.0082, thermal_properties=MaterialProperties(temperature=np.nan)),
+        FlatRefractiveSurface(name='window_left', outwards_normal=np.array([-1.0, 0.0, 0.0]), center=np.array([0.008434, 0.0, 0.0]), n_1=1, n_2=1.5135, diameter=0.0082, thermal_properties=MaterialProperties(temperature=np.nan)),
+        FlatRefractiveSurface(name='window_right', outwards_normal=np.array([-1.0, 0.0, 0.0]), center=np.array([0.008684, 0.0, 0.0]), n_1=1.5135, n_2=1, diameter=0.0082, thermal_properties=MaterialProperties(temperature=np.nan)),
+    ],
+    use_paraxial_ray_tracing=False,     lambda_0_laser=1.064e-06,     t_is_trivial=True,     p_is_trivial=True,
+)
+# %%
 # optical_system_thorlabs.plot()
 # plt.show()
 # plt.close('all')
@@ -268,7 +239,7 @@ ax.set_xlim(-0.005, 0.01)
 # plt.savefig(figure_dir)
 plt.show()
 # %% With the actual wavelength and without the glass window:
-optical_system_actual = OpticalSystem.from_params(params=params_thorlabs[:2], t_is_trivial=True, p_is_trivial=True,
+optical_system_actual = OpticalSystem(elements=optical_system_thorlabs[:2], t_is_trivial=True, p_is_trivial=True,
                                                   use_paraxial_ray_tracing=False)
 optical_system_actual[0].n_2 = 1.577
 optical_system_actual[1].n_1 = 1.577
@@ -298,32 +269,16 @@ plt.show()
 
 
 # %% Edmund 37104:
-params_37104 = [
-OpticalSurfaceParams(name='aspheric_lens_convex', surface_type='aspheric_surface', x=0, y=0, z=0, theta=0,
-                     phi=-1e+00 * np.pi, radius=np.nan, curvature_sign=CurvatureSigns.convex, T_c=(3.434 / 2)*1e-3,
-                     n_inside_or_after=1.58e+00, n_outside_or_before=1e+00, diameter=8.2e-03,
-                     material_properties=MaterialProperties(),
-                     polynomial_coefficients=np.array([ 0.00000000e+00,  1.07802206e+02,  5.72279797e+05,  4.21121124e+09, 3.16313103e+13, -6.49022889e+17,  2.19934550e+18,  5.98275755e+21, 1.68293781e+25,  4.85545706e+28,  1.42886875e+32]),
-                     ),
-OpticalSurfaceParams(name='aspheric_lens_flat', surface_type=SurfacesTypes.flat_refractive_surface, x=3.434e-3, y=0, z=0, theta=0,
-                     phi=0, radius=np.inf, curvature_sign=CurvatureSigns.flat, T_c=(3.434 / 2)*1e-3,
-                     n_inside_or_after=1, n_outside_or_before=1.58e+00, diameter=8.2e-03,
-                     material_properties=MaterialProperties(),
-                     polynomial_coefficients=None,),
-# The window:
-OpticalSurfaceParams(name='window_left', surface_type=SurfacesTypes.flat_refractive_surface, x=3.434e-3+4.911e-3, y=0, z=0, theta=0,
-                     phi=-1e+00 * np.pi, radius=np.inf, curvature_sign=CurvatureSigns.flat, T_c=(3.434 / 2)*1e-3,
-                     n_inside_or_after=1.5135, n_outside_or_before=1, diameter=8.2e-03,
-                     material_properties=MaterialProperties(),
-                     polynomial_coefficients=None,),
-OpticalSurfaceParams(name='window_right', surface_type=SurfacesTypes.flat_refractive_surface, x=3.434e-3+4.911e-3+2.5e-4, y=0, z=0, theta=0,
-                     phi=-1e+00 * np.pi, radius=np.inf, curvature_sign=CurvatureSigns.flat, T_c=(3.434 / 2)*1e-3,
-                     n_inside_or_after=1, n_outside_or_before=1.5135, diameter=8.2e-03,
-                     material_properties=MaterialProperties(),
-                     polynomial_coefficients=None,),
-]
-
-optical_system_37104 = OpticalSystem.from_params(params=params_37104, t_is_trivial=True, p_is_trivial=True,use_paraxial_ray_tracing=False)
+optical_system_37104 = OpticalSystem(
+    elements=[
+        AsphericRefractiveSurface(name='aspheric_lens_convex', center=np.array([0.0, 0.0, 0.0]), outwards_normal=np.array([-1.0, 0.0, 0.0]), polynomial_coefficients=np.array([0.0, 107.802206, 572279.797, 4211211240.0, 31631310300000.0, -6.49022889e+17, 2.1993455e+18, 5.98275755e+21, 1.68293781e+25, 4.85545706e+28, 1.42886875e+32]), curvature_sign=1, n_1=1.0, n_2=1.58, diameter=0.0082, material_properties=MaterialProperties(temperature=np.nan)),
+        FlatRefractiveSurface(name='aspheric_lens_flat', outwards_normal=np.array([1.0, 0.0, 0.0]), center=np.array([0.003434, 0.0, 0.0]), n_1=1.58, n_2=1, diameter=0.0082, thermal_properties=MaterialProperties(temperature=np.nan)),
+        FlatRefractiveSurface(name='window_left', outwards_normal=np.array([-1.0, 0.0, 0.0]), center=np.array([0.008345, 0.0, 0.0]), n_1=1, n_2=1.5135, diameter=0.0082, thermal_properties=MaterialProperties(temperature=np.nan)),
+        FlatRefractiveSurface(name='window_right', outwards_normal=np.array([-1.0, 0.0, 0.0]), center=np.array([0.008595, 0.0, 0.0]), n_1=1.5135, n_2=1, diameter=0.0082, thermal_properties=MaterialProperties(temperature=np.nan)),
+    ],
+    use_paraxial_ray_tracing=False,     lambda_0_laser=1.064e-06,     t_is_trivial=True,     p_is_trivial=True,
+)
+# %%
 # optical_system_37104.plot()
 # plt.show()
 # plt.close('all')
@@ -345,7 +300,7 @@ ax.set_xlim(-0.005, 0.01)
 # plt.savefig(figure_dir)
 plt.show()
 # %% With the actual wavelength and without the glass window:
-optical_system_actual = OpticalSystem.from_params(params=params_37104[:2], t_is_trivial=True, p_is_trivial=True,
+optical_system_actual = OpticalSystem(elements=optical_system_37104.elements[:2], t_is_trivial=True, p_is_trivial=True,
                                                   use_paraxial_ray_tracing=False)
 optical_system_actual[0].n_2 = 1.574
 optical_system_actual[1].n_1 = 1.574

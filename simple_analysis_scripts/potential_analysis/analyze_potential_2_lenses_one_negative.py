@@ -62,7 +62,7 @@ optical_system = OpticalSystem(elements=[*optical_system_initial.surfaces, spher
                                t_is_trivial=True, p_is_trivial=True, given_initial_central_line=True,
                                use_paraxial_ray_tracing=False)
 
-rays_0 = initialize_rays(n_rays=n_rays, phi_max=phi_max)
+rays_0 = initialize_rays(phi_max=phi_max, n_rays=n_rays)
 
 results_dict = analyze_potential(
     optical_system=optical_system,

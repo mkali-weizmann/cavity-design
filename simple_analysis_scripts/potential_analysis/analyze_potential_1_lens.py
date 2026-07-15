@@ -20,7 +20,7 @@ defocus = choose_source_position_for_desired_focus_analytic(back_focal_length=ba
                                                             desired_focus=desired_focus, T_c=T_c, n=n_design,
                                                             diameter=diameter, R_1=R_1, R_2=R_2_signed)
 optical_system, optical_axis = generate_one_lens_optical_system(R_1=R_1, R_2=R_2_signed, back_focal_length=back_focal_length, defocus=defocus, T_c=T_c, n_design=n_design, diameter=diameter, n_actual=n_actual,)
-rays_0 = initialize_rays(n_rays=n_rays, phi_max=phi_max)
+rays_0 = initialize_rays(phi_max=phi_max, n_rays=n_rays)
 results_dict = analyze_potential(optical_system=optical_system, rays_0=rays_0, unconcentricity=unconcentricity, print_tests=print_tests)
 
 if print_tests:
@@ -74,7 +74,7 @@ for i, u in enumerate(unconcentricities):
                                                                 desired_focus=desired_focus, T_c=T_c, n=n_design,
                                                                 diameter=diameter, R_1=R_1, R_2=R_2_signed)
     optical_system, optical_axis = generate_one_lens_optical_system(R_1=R_1, R_2=R_2_signed, back_focal_length=back_focal_length, defocus=defocus, T_c=T_c, n_design=n_design, diameter=diameter, n_actual=n_actual, )
-    rays_0 = initialize_rays(defocus=defocus, n_rays=n_rays, phi_max=phi_max, diameter=diameter, back_focal_length=back_focal_length)
+    rays_0 = initialize_rays(phi_max=phi_max, n_rays=n_rays)
     results_dict = analyze_potential(optical_system=optical_system, rays_0=rays_0, unconcentricity=u, print_tests=print_tests)
     paraxial_spot_sizes[i] = results_dict["spot_size_paraxial"]
     paraxial_NAs[i] = results_dict["NA_paraxial"]

@@ -536,7 +536,7 @@ def test_potential_single_lens():
                                                                     back_focal_length=back_focal_length,
                                                                     defocus=defocus, T_c=T_c, n_design=n_design,
                                                                     diameter=diameter, n_actual=n_actual, )
-    rays_0 = initialize_rays(n_rays=n_rays, phi_max=phi_max)
+    rays_0 = initialize_rays(phi_max=phi_max, n_rays=n_rays)
     results_dict = analyze_potential(optical_system=optical_system, rays_0=rays_0, unconcentricity=unconcentricity,
                                      print_tests=print_tests, potential_horizontal_axis_in_NAs=False)
     assert np.isclose(
@@ -563,7 +563,7 @@ def test_free_potential_vs_cavity_potential_comparison():
                                                                     back_focal_length=back_focal_length,
                                                                     defocus=defocus, T_c=T_c, n_design=n_design,
                                                                     diameter=diameter, n_actual=n_actual, )
-    rays_0 = initialize_rays(n_rays=n_rays, phi_max=phi_max)
+    rays_0 = initialize_rays(phi_max=phi_max, n_rays=n_rays)
     results_dict = analyze_potential(optical_system=optical_system, rays_0=rays_0, unconcentricity=unconcentricity,
                                      print_tests=print_tests, potential_horizontal_axis_in_NAs=False)
     cavity = results_dict['cavity']

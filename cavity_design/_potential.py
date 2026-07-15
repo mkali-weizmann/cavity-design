@@ -19,8 +19,8 @@ H_BAR = 1.0545718e-34
 
 # %%
 def initialize_rays(
+    phi_max: Optional[float],
     n_rays=100,
-    phi_max: Optional[float] = None,
     starting_mirror: Optional[CurvedMirror] = None,
 ):
     if starting_mirror is not None:
@@ -923,7 +923,7 @@ def analyze_potential_given_cavity(
         use_paraxial_ray_tracing=cavity.use_paraxial_ray_tracing,
     )
     first_mirror = cavity.physical_surfaces[0]
-    rays_0 = initialize_rays(n_rays=n_rays, phi_max=phi_max, starting_mirror=first_mirror)
+    rays_0 = initialize_rays(phi_max=phi_max, n_rays=n_rays, starting_mirror=first_mirror)
     ray_sequence = optical_system_reduced.propagate_ray(rays_0, propagate_with_first_surface_first=True)
     ray_sequence_cleaned = ray_sequence.remove_escaped_rays
     if len(optical_system_reduced.surfaces) == 0:
@@ -1171,7 +1171,7 @@ def plot_results(
 
 
 def orthonormal_rays_end_points(cavity: Cavity, n_rays: int = 30, phi_max: float = 0.02):
-    rays_initial = initialize_rays(starting_mirror=cavity.surfaces[0], phi_max=phi_max, n_rays=n_rays)
+    rays_initial = initialize_rays(phi_max=phi_max, n_rays=n_rays, starting_mirror=cavity.surfaces[0])
     propagated_ray = cavity.propagate_ray(
         ray=rays_initial, n_arms=len(cavity.arms) // 2, propagate_with_first_surface_first=False
     )

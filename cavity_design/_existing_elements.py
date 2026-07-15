@@ -60,6 +60,7 @@ LASER_OPTIK_MIRROR_REFRACTIVE = OpticalSystem(
         ),
     ],
     use_paraxial_ray_tracing=True,
+    name='LaserOptik Mirror - Refractive Version'
 )
 
 THORLABS_35MM_COLLIMATING_LENS = OpticalSystem(
@@ -85,6 +86,7 @@ THORLABS_35MM_COLLIMATING_LENS = OpticalSystem(
         ),
     ],
     use_paraxial_ray_tracing=True,
+    name='Thorlabs 35mm Collimating Lens'
 )
 
 EDMUND_4p03MM_ASPHERIC_SPHERICAL_VERSION = OpticalSystem(
@@ -111,6 +113,7 @@ EDMUND_4p03MM_ASPHERIC_SPHERICAL_VERSION = OpticalSystem(
         ),
     ],
     use_paraxial_ray_tracing=True,
+    name='Edmund 4.03mm Aspheric Spherical Version',
 )
 
 EDMUND_4p03MM_ASPHERIC = OpticalSystem(
@@ -167,6 +170,7 @@ EDMUND_4p03MM_ASPHERIC = OpticalSystem(
     use_paraxial_ray_tracing=False,
     p_is_trivial=True,
     t_is_trivial=True,
+    name='Edmund 4.03mm Aspheric'
 )
 
 THOLABS_100MM_PLANO_CONVEX_LENS = OpticalSystem(
@@ -192,23 +196,65 @@ THOLABS_100MM_PLANO_CONVEX_LENS = OpticalSystem(
     use_paraxial_ray_tracing=True,
     p_is_trivial=True,
     t_is_trivial=True,
+    name='Thorlabs 100mm Plano Convex Lens'
 )
 
-EKSMA_LENS_20mm_ASPHERIC = OpticalSystem(
-    elements=generate_aspheric_lens(
-        back_focal_length=17.001e-3,
-        T_c=4.35e-3,
-        forward_normal=LEFT,
-        flat_faces_center=ORIGIN + 15e-3 * LEFT,
-        n=PHYSICAL_SIZES_DICT["material_properties_fused_silica"].refractive_index,
-        diameter=INCH / 2,
-        polynomial_degree=10,
-        n_outside=1,
-        name="Eksma 20mm",
-    ),
+DUMMY_LENS = OpticalSystem(
+    elements=[
+        CurvedRefractiveSurface(
+            name="Dummy lens - convex side",
+            radius=102e-3,
+            outwards_normal=LEFT,
+            diameter=INCH,
+            curvature_sign=CurvatureSigns.convex,
+            n_1=1,
+            n_2=PHYSICAL_SIZES_DICT["material_properties_bk7"].refractive_index,
+        ),
+        FlatRefractiveSurface(
+            name="Dummy lens - flat side",
+            center=ORIGIN + 3.6e-3 * RIGHT * 1j,
+            outwards_normal=LEFT,
+            diameter=INCH,
+            n_1=PHYSICAL_SIZES_DICT["material_properties_bk7"].refractive_index,
+            n_2=1,
+        ),
+    ],
+    use_paraxial_ray_tracing=True,
+    p_is_trivial=True,
+    t_is_trivial=True,
+    name='Dummy Lens'
+)
+
+
+EKSMA_LENS_20MM_ASPHERIC = OpticalSystem(
+elements=[
+        FlatRefractiveSurface(
+            name="Eksma 20mm aspheric - flat side",
+            center=ORIGIN,
+            outwards_normal=LEFT,
+            n_1=1,
+            n_2=1.4496,
+            diameter=6.35e-3,
+            thermal_properties=MaterialProperties(),
+        ),
+        AsphericRefractiveSurface(
+            name="Eksma 20mm aspheric - convex side",
+            center=3.434e-3 * RIGHT,
+            outwards_normal=RIGHT,
+            polynomial_coefficients=np.array([0.00000000e+00, 5.51085639e+01, 7.27331328e+04, 1.61094176e+08,
+       3.91471107e+11, 7.78315423e+14, 2.34007091e+18, 7.37064994e+21,
+       2.40071869e+25, 8.01995895e+28, 2.73277068e+32]),
+            n_1=1.4496,
+            n_2=1,
+            curvature_sign=CurvatureSigns.concave,
+            diameter=6.35e-3,
+            material_properties=MaterialProperties(),
+        ),
+    ],
     use_paraxial_ray_tracing=False,
     p_is_trivial=True,
     t_is_trivial=True,
+    name='Eksma 20mm aspheric',
 )
 
 THORLABS_8MM_ASPHERIC = OpticalSystem(
@@ -251,13 +297,22 @@ THORLABS_8MM_ASPHERIC = OpticalSystem(
     use_paraxial_ray_tracing=False,
     p_is_trivial=True,
     t_is_trivial=True,
+    name='Thorlabs 8mm Aspheric',
 )
 
 EDMUND_8MM_ASPHERIC_31074 = OpticalSystem(
     elements=[
-        AsphericRefractiveSurface(
+    FlatRefractiveSurface(
             center=ORIGIN,
             outwards_normal=LEFT,
+            n_1=1,
+            n_2=1.574,
+            name="Edmund 8mm aspheric - flat side",
+            diameter=6.3e-3,
+        ),
+        AsphericRefractiveSurface(
+            center=3.43e-3 * RIGHT,
+            outwards_normal=RIGHT,
             # Note: the coefficients must not be negated (coef[1] must be positive) — the curvature direction is
             # encoded in the outwards normal (LEFT here), as the AsphericSurface assertion requires.
             polynomial_coefficients=np.array(
@@ -275,23 +330,49 @@ EDMUND_8MM_ASPHERIC_31074 = OpticalSystem(
                     1.42886875e32,
                 ]
             ),
-            n_1=1,
-            n_2=1.574,
-            name="Edmund 8mm aspheric - convex side",
-            diameter=6.3e-03,
-            curvature_sign=CurvatureSigns.convex,
-        ),
-        FlatRefractiveSurface(
-            center=3.43 * RIGHT,
-            outwards_normal=RIGHT,
             n_1=1.574,
             n_2=1,
-            name="Edmund 8mm aspheric - flat side",
-            diameter=6.3e-3,
+            name="Edmund 8mm aspheric - convex side",
+            diameter=6.3e-03,
+            curvature_sign=CurvatureSigns.concave,
         ),
+
     ],
     use_paraxial_ray_tracing=False,
+    name='Edmund 8mm Aspheric - 31074',
 )
+
+EDMUND_6MM_ASPHERIC_87127 = OpticalSystem(
+    elements=[
+    FlatRefractiveSurface(
+            center=ORIGIN,
+            outwards_normal=LEFT,
+            n_1=1,
+            n_2=1.784,
+            name="Edmund 6mm aspheric - flat side",
+            diameter=6.3e-3,
+        ),
+        AsphericRefractiveSurface(
+            center=5.16e-3 * RIGHT,
+            outwards_normal=RIGHT,
+            # Note: the coefficients must not be negated (coef[1] must be positive) — the curvature direction is
+            # encoded in the outwards normal (LEFT here), as the AsphericSurface assertion requires.
+            polynomial_coefficients=np.array([ 0.00000000e+00,  1.01043475e+02,  4.80138198e+05,  1.65064522e+09,
+       -6.99279234e+13,  2.84292367e+15, -1.01547369e+19,  3.79992950e+22,
+       -1.47041906e+26,  5.83582271e+29, -2.36245328e+33]),
+            n_1=1.784,
+            n_2=1,
+            name="Edmund 6mm aspheric - convex side",
+            diameter=6.3e-03,
+            curvature_sign=CurvatureSigns.concave,
+        ),
+
+    ],
+    use_paraxial_ray_tracing=False,
+    name='Edmund 6mm Aspheric - 87127',
+)
+
+
 
 # Register every catalog element: each gets tagged with its variable name (the tag survives deepcopy, so placed and
 # moved copies stay recognizable) and a pristine copy is stored, letting OpticalSystem.init_syntax render these
@@ -305,9 +386,12 @@ for _catalog_name, _element in [
     ("EDMUND_4p03MM_ASPHERIC_SPHERICAL_VERSION", EDMUND_4p03MM_ASPHERIC_SPHERICAL_VERSION),
     ("EDMUND_4p03MM_ASPHERIC", EDMUND_4p03MM_ASPHERIC),
     ("THOLABS_100MM_PLANO_CONVEX_LENS", THOLABS_100MM_PLANO_CONVEX_LENS),
-    ("EKSMA_LENS_20mm_ASPHERIC", EKSMA_LENS_20mm_ASPHERIC),
+    ("EKSMA_LENS_20mm_ASPHERIC", EKSMA_LENS_20MM_ASPHERIC),
     ("THORLABS_8MM_ASPHERIC", THORLABS_8MM_ASPHERIC),
     ("EDMUND_8MM_ASPHERIC_31074", EDMUND_8MM_ASPHERIC_31074),
+    ("EDMUND_6MM_ASPHERIC_87127", EDMUND_6MM_ASPHERIC_87127),
+    ("DUMMY_LENS", DUMMY_LENS)
+
 ]:
     register_existing_element(_catalog_name, _element)
 del _catalog_name, _element
