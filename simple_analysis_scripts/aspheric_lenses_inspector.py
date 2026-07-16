@@ -19,14 +19,14 @@ window = OpticalSystem(
     name='window'
 )
 
-EDMUND_4MM_ASPHERIC_16701 = OpticalSystem(
+EDMUND_4p5MM_ASPHERIC_83580 = OpticalSystem(
     elements=[
     FlatRefractiveSurface(
             center=ORIGIN,
             outwards_normal=LEFT,
             n_1=1,
             n_2=1.574, # design n: 1.576
-            name="Edmund 4mm 16701 aspheric - flat side",
+            name="Edmund 4.5mm 83580 aspheric - flat side",
             diameter=6.3e-3,
         ),
         AsphericRefractiveSurface(
@@ -39,7 +39,7 @@ EDMUND_4MM_ASPHERIC_16701 = OpticalSystem(
        6.65751075e+29, 8.01870085e+33, 9.85136292e+37]),
             n_1=1.574, # design n: 1.576
             n_2=1,
-            name="Edmund 4mm 16701 aspheric - convex side",
+            name="Edmund 4.5mm 83580 aspheric - convex side",
             diameter=6.3e-03,
             curvature_sign=CurvatureSigns.concave,
         ),

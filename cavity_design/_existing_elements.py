@@ -435,6 +435,47 @@ EDMUND_4MM_ASPHERIC_16701 = OpticalSystem(
     name="Edmund 4mm Aspheric - 16701",
 )
 
+EDMUND_4p5MM_ASPHERIC_83580 = OpticalSystem(
+    elements=[
+        FlatRefractiveSurface(
+            center=ORIGIN,
+            outwards_normal=LEFT,
+            n_1=1,
+            n_2=1.574,  # design n: 1.576
+            name="Edmund 4.5mm 83580 aspheric - flat side",
+            diameter=6.3e-3,
+        ),
+        AsphericRefractiveSurface(
+            center=3.65e-3 * RIGHT,
+            outwards_normal=RIGHT,
+            # Note: the coefficients must not be negated (coef[1] must be positive) — the curvature direction is
+            # encoded in the outwards normal (LEFT here), as the AsphericSurface assertion requires.
+            polynomial_coefficients=np.array(
+                [
+                    0.00000000e00,
+                    1.92957141e02,
+                    3.60108466e06,
+                    1.09405275e11,
+                    3.76050551e15,
+                    4.60513590e17,
+                    4.99202895e21,
+                    5.66911316e25,
+                    6.65751075e29,
+                    8.01870085e33,
+                    9.85136292e37,
+                ]
+            ),
+            n_1=1.574,  # design n: 1.576
+            n_2=1,
+            name="Edmund 4.5mm 83580 aspheric - convex side",
+            diameter=6.3e-03,
+            curvature_sign=CurvatureSigns.concave,
+        ),
+    ],
+    use_paraxial_ray_tracing=False,
+    name="Edmund 4.5mm Aspheric - 83580",
+)
+
 # Register every catalog element: each gets tagged with its variable name (the tag survives deepcopy, so placed and
 # moved copies stay recognizable) and a pristine copy is stored, letting OpticalSystem.init_syntax render these
 # elements compactly as e.g. EKSMA_LENS_20mm_ASPHERIC.to_position(...).
@@ -452,6 +493,7 @@ for _catalog_name, _element in [
     ("EDMUND_8MM_ASPHERIC_31074", EDMUND_8MM_ASPHERIC_31074),
     ("EDMUND_6MM_ASPHERIC_87127", EDMUND_6MM_ASPHERIC_87127),
     ("EDMUND_4MM_ASPHERIC_16701", EDMUND_4MM_ASPHERIC_16701),
+    ("EDMUND_4p5MM_ASPHERIC_83580", EDMUND_4p5MM_ASPHERIC_83580),
     ("DUMMY_LENS", DUMMY_LENS),
 ]:
     register_existing_element(_catalog_name, _element)
