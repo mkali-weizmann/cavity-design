@@ -4,17 +4,12 @@ from cavity_design import *
 # %%
 cavity_paraxial = Cavity(
     elements=[
-        CurvedMirror(name='Small Mirror', radius=0.005, outwards_normal=np.array([-1.0, 0.0, 0.0]), center=np.array([-0.004999954683912563, 0.0, 0.0]), curvature_sign=-1, diameter=0.00775, material_properties=MaterialProperties(alpha_expansion=7.5e-08, beta_surface_absorption=1e-06, kappa_conductivity=1.31, nu_poisson_ratio=0.17, intensity_reflectivity=0.999889, intensity_transmittance=0.0001, temperature=np.nan)),
-        OpticalSystem(
-            elements=[
-                CurvedRefractiveSurface(name='Lens_left', radius=0.02422, outwards_normal=np.array([-1.0, 0.0, 0.0]), center=np.array([0.004930700511195863, 0.0, 0.0]), curvature_sign=1, n_1=1.0, n_2=1.76, thickness=np.nan, diameter=0.00775, material_properties=MaterialProperties(refractive_index=1.76, alpha_expansion=5.5e-06, beta_surface_absorption=1e-06, kappa_conductivity=46.06, dn_dT=1.17e-05, nu_poisson_ratio=0.3, alpha_volume_absorption=0.01, intensity_reflectivity=0.0001, intensity_transmittance=0.999899, temperature=np.nan)),
-                CurvedRefractiveSurface(name='Lens_right', radius=0.005488, outwards_normal=np.array([1.0, 0.0, 0.0]), center=np.array([0.007844498052182406, 0.0, 0.0]), curvature_sign=-1, n_1=1.76, n_2=1.0, thickness=np.nan, diameter=0.00775, material_properties=MaterialProperties(refractive_index=1.76, alpha_expansion=5.5e-06, beta_surface_absorption=1e-06, kappa_conductivity=46.06, dn_dT=1.17e-05, nu_poisson_ratio=0.3, alpha_volume_absorption=0.01, intensity_reflectivity=0.0001, intensity_transmittance=0.999899, temperature=np.nan)),
-            ],
-            use_paraxial_ray_tracing=True,     lambda_0_laser=1.064e-06,     t_is_trivial=True,     p_is_trivial=True,     power=20000.0,     name='element_1',
-        ),
-        CurvedMirror(name='Big Mirror', radius=0.2, outwards_normal=np.array([1.0, 0.0, 0.0]), center=np.array([0.4074677357638641, 0.0, 0.0]), curvature_sign=-1, diameter=0.0254, material_properties=MaterialProperties(alpha_expansion=7.5e-08, beta_surface_absorption=1e-06, kappa_conductivity=1.31, nu_poisson_ratio=0.17, intensity_reflectivity=0.999889, intensity_transmittance=0.0001, temperature=np.nan)),
+        LASER_OPTIK_MIRROR.to_position(np.array([-0.005, 0.0, 0.0])),
+        EKSMA_LENS_20MM_ASPHERIC.to_position(np.array([0.017623230771841976, 0.0, 0.0])),
+        DUMMY_LENS.to_position(np.array([0.03305723077184197, 0.0, 0.0])),
+        CurvedMirror(name='End mirror', radius=0.2, outwards_normal=np.array([1.0, -0.0, -0.0]), center=np.array([0.4511688875799871, 0.0, 0.0]), curvature_sign=-1, diameter=0.0254, material_properties=MaterialProperties(refractive_index=1.45, alpha_expansion=5.2e-07, beta_surface_absorption=1e-06, kappa_conductivity=1.38, dn_dT=1.2e-05, nu_poisson_ratio=0.16, alpha_volume_absorption=0.001, intensity_reflectivity=0.0001, intensity_transmittance=0.999899, temperature=np.nan)),
     ],
-    standing_wave=True,     lambda_0_laser=1.064e-06,     t_is_trivial=True,     p_is_trivial=True,     use_paraxial_ray_tracing=True,     power=20000.0,
+    standing_wave=True,     lambda_0_laser=1.064e-06,     t_is_trivial=True,     p_is_trivial=True,     use_paraxial_ray_tracing=False,
 )
 # %%
 plot_mirror_lens_mirror_cavity_analysis(cavity_paraxial)

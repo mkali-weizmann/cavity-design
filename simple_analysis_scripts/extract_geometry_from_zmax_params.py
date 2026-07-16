@@ -143,9 +143,38 @@ surf1_params_eksma = {
     'alpha_8': 0.0
 }
 
+# zmax_16701.zmx
+# Standard conic surface: no additional polynomial terms
+surf1_params_16701 = {
+    'c': 2.927041357425966828E-01,
+    'k': -0.59263193000000003,
+    'alpha_1': 0.0,
+    'alpha_2': 0.0,
+    'alpha_3': 0.0,
+    'alpha_4': 0.0,
+    'alpha_5': 0.0,
+    'alpha_6': 0.0,
+    'alpha_7': 0.0,
+    'alpha_8': 0.0
+}
+
+# zmax_83580.zmx
+surf1_params_83580 = {
+    'c': 3.859142816764716266E-01,
+    'k': -0.9029508626753,
+    'alpha_1': 0.0,
+    'alpha_2': 0.0029038575803270001,
+    'alpha_3': 0.0001043665847952,
+    'alpha_4': 3.7149887808210002e-06,
+    'alpha_5': 0.0,
+    'alpha_6': 0.0,
+    'alpha_7': 0.0,
+    'alpha_8': 0.0
+}
+
 ## ATTENTION: the output polynomial for second surfaceshould have it's sign inverse because ZMAX uses the sign convention, and
 # my polynomial representation is indifferent to the direction of the beam, so it always has positive curvature.
-num_array = get_taylor_numpy_array(20, numeric_params=surf1_params_eksma)
+num_array = get_taylor_numpy_array(20, numeric_params=surf1_params_83580)
 print("Numeric NumPy Array:")
 print("-" * 55)
 print(repr(num_array))

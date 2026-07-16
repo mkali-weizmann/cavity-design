@@ -5,7 +5,7 @@ from cavity_design import *
 from tqdm import tqdm
 
 
-elements=[LASER_OPTIK_MIRROR, EKSMA_LENS_20MM_ASPHERIC, THOLABS_100MM_PLANO_CONVEX_LENS, COASTLINE_20CM_MIRROR]
+elements=[LASER_OPTIK_MIRROR, EKSMA_LENS_20MM_ASPHERIC, DUMMY_LENS, COASTLINE_20CM_MIRROR]
 
 # %% 2d map:
 def equality_equation(x, coef):
@@ -15,7 +15,7 @@ def equality_equation(x, coef):
 
 cavity = Cavity(elements=elements, standing_wave=True, lambda_0_laser=LAMBDA_0_LASER, p_is_trivial=True, t_is_trivial=True, use_paraxial_ray_tracing=False, set_central_line=True, set_mode_parameters=True)
 collimation_point = cavity[0].radius + back_focal_length_of_lens_object(lens_object=cavity[1])
-long_arm_lengths = np.array([28e-2, 29e-2, 30e-2, 31e-2, 32e-2, 33e-2, 34e-2, 37e-2])
+long_arm_lengths = np.arange(38e-2, 50e-2, 2e-2)# np.array([28e-2, 29e-2, 30e-2, 31e-2, 32e-2, 33e-2, 34e-2, 37e-2])
 mid_arm_length = 1.6e-2
 short_arm_lengths = np.linspace(collimation_point-1e-3, collimation_point+4e-4, 100)
 
@@ -96,8 +96,8 @@ else:
     fig.subplots_adjust(right=0.68)
     ax.legend(loc='center left', bbox_to_anchor=(1.12, 0.5), borderaxespad=0.0)
     plt.title(f"spherical focal length = {focal_length_of_lens_object(cavity[2]) * 1000:.0f} mm")
-obsidian_path=get_obsidian_save_path(filename='NA as a function of mirrors - eksma 20mm lens.svg')
-plt.savefig(obsidian_path)
+# obsidian_path=get_obsidian_save_path(filename='NA as a function of mirrors - eksma 20mm lens.svg')
+# plt.savefig(obsidian_path)
 plt.show()
 #
 # fig, ax = plt.subplots(figsize=(10, 6))
