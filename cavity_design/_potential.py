@@ -21,7 +21,7 @@ H_BAR = 1.0545718e-34
 def initialize_rays(
     phi_max: Optional[float],
     n_rays=100,
-    starting_mirror: Optional[CurvedMirror] = None,
+    starting_mirror: Optional[SphericalMirror] = None,
 ):
     if starting_mirror is not None:
         tilt_angles = np.linspace(0, phi_max, n_rays)
@@ -356,7 +356,7 @@ def generate_two_positive_lenses_optical_system(
                 aspheric_curved.center + spherical_aspherical_distance * OPTICAL_AXIS
             )
 
-    spherical_0 = CurvedRefractiveSurface(
+    spherical_0 = SphericalRefractiveSurface(
         radius=R_left,
         outwards_normal=-OPTICAL_AXIS,
         center=lens_left_center,
@@ -370,7 +370,7 @@ def generate_two_positive_lenses_optical_system(
 
     if spherical_type == "bi-convex":
         R_right = R_left
-        spherical_1 = CurvedRefractiveSurface(
+        spherical_1 = SphericalRefractiveSurface(
             radius=R_right,
             outwards_normal=OPTICAL_AXIS,
             center=spherical_0.center + T_c_spherical * OPTICAL_AXIS,
@@ -512,7 +512,7 @@ def generate_negative_lens_cavity(
         diameter=diameter_first_lens,
         n_actual=n_actual_first_lens,
     )
-    mirror_left = CurvedMirror(
+    mirror_left = SphericalMirror(
         radius=5e-3,
         outwards_normal=LEFT,
         origin=ORIGIN,
@@ -600,7 +600,7 @@ def generate_negative_lens_cavity(
         right_mirror_ROC = float(
             np.linalg.norm(center_of_curvature - right_mirror_center)
         )
-        mirror_right = CurvedMirror(
+        mirror_right = SphericalMirror(
             radius=right_mirror_ROC,
             center=right_mirror_center,
             diameter=large_elements_CA,
@@ -933,7 +933,7 @@ def analyze_output_wavefront(
     assert (
         L_long_arm > 0
     ), f"Long arm length should be positive, but got {L_long_arm:.3e} m. Try increasing end mirror ROC. The default end mirror ROC works only for output converging wavefront"
-    end_mirror_object = CurvedMirror(
+    end_mirror_object = SphericalMirror(
         radius=end_mirror_ROC,
         outwards_normal=optical_axis,
         center=end_mirror_origin + end_mirror_ROC * optical_axis,
@@ -983,7 +983,7 @@ def analyze_potential(
     rays_0: Ray,
     unconcentricity: float,
     end_mirror_ROC: Optional[float] = None,
-    small_mirror_object: Optional[CurvedMirror] = None,
+    small_mirror_object: Optional[SphericalMirror] = None,
     potential_horizontal_axis_in_NAs: bool = True,
     print_tests: bool = True,
 ):

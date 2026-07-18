@@ -1,9 +1,9 @@
 import numpy as np
 
-from ._surfaces import generate_aspheric_lens, CurvedMirror
+from ._surfaces import generate_aspheric_lens, SphericalMirror
 from ._cavity import (
     OpticalSystem,
-    CurvedRefractiveSurface,
+    SphericalRefractiveSurface,
     CurvatureSigns,
     AsphericRefractiveSurface,
     FlatRefractiveSurface,
@@ -15,21 +15,21 @@ from ._utils import PHYSICAL_SIZES_DICT, LEFT, ORIGIN, RIGHT, INCH, MaterialProp
 # geometry is encoded, as relative (imaginary) offsets from their first surface. Place an element before using it,
 # e.g. EKSMA_LENS_20MM_ASPHERIC.to_position(p) (non-mutating) or set_element_position(element, p) (in place).
 
-LASER_OPTIK_MIRROR = CurvedMirror(
+LASER_OPTIK_MIRROR = SphericalMirror(
     radius=5e-3,
     diameter=7.75e-3,
     outwards_normal=LEFT,
     name="Laser Optik Mirror",
     material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"],
 )
-COASTLINE_20CM_MIRROR = CurvedMirror(
+COASTLINE_20CM_MIRROR = SphericalMirror(
     radius=20e-2,
     diameter=INCH,
     outwards_normal=RIGHT,
     name="Coastline 20cm Mirror",
     material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"],
 )
-COASTLINE_50CM_MIRROR = CurvedMirror(
+COASTLINE_50CM_MIRROR = SphericalMirror(
     radius=50e-2,
     diameter=INCH,
     outwards_normal=RIGHT,
@@ -39,7 +39,7 @@ COASTLINE_50CM_MIRROR = CurvedMirror(
 
 LASER_OPTIK_MIRROR_REFRACTIVE = OpticalSystem(
     elements=[
-        CurvedRefractiveSurface(
+        SphericalRefractiveSurface(
             radius=5e-3,
             diameter=7.75e-3,
             outwards_normal=LEFT,
@@ -51,7 +51,7 @@ LASER_OPTIK_MIRROR_REFRACTIVE = OpticalSystem(
             ].refractive_index,
             material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"],
         ),
-        CurvedRefractiveSurface(
+        SphericalRefractiveSurface(
             curvature_sign=CurvatureSigns.concave,
             radius=5e-3,
             diameter=7.75e-3,
@@ -71,7 +71,7 @@ LASER_OPTIK_MIRROR_REFRACTIVE = OpticalSystem(
 
 THORLABS_35MM_COLLIMATING_LENS = OpticalSystem(
     elements=[
-        CurvedRefractiveSurface(
+        SphericalRefractiveSurface(
             name="Thorlabs 35mm biconvex - right",
             radius=34.9e-3,
             outwards_normal=RIGHT,
@@ -80,7 +80,7 @@ THORLABS_35MM_COLLIMATING_LENS = OpticalSystem(
             n_1=1,
             n_2=PHYSICAL_SIZES_DICT["material_properties_bk7"].refractive_index,
         ),
-        CurvedRefractiveSurface(
+        SphericalRefractiveSurface(
             name="Thorlabs 35mm biconvex - left",
             radius=34.9e-3,
             outwards_normal=LEFT,
@@ -100,7 +100,7 @@ THORLABS_35MM_COLLIMATING_LENS = OpticalSystem(
 
 EDMUND_4p03MM_ASPHERIC_SPHERICAL_VERSION = OpticalSystem(
     elements=[
-        CurvedRefractiveSurface(
+        SphericalRefractiveSurface(
             name="low curvature side - Edmund 4.03mm spherical version",
             radius=(1 / 7.889402975752558833e-02) * 1e-3,
             outwards_normal=LEFT,
@@ -109,7 +109,7 @@ EDMUND_4p03MM_ASPHERIC_SPHERICAL_VERSION = OpticalSystem(
             n_1=1,
             n_2=1.574,
         ),
-        CurvedRefractiveSurface(
+        SphericalRefractiveSurface(
             name="high curvature side - Edmund 4.03mm spherical version",
             radius=(1 / 3.817155986760137343e-01) * 1e-3,
             outwards_normal=RIGHT,
@@ -182,7 +182,7 @@ EDMUND_4p03MM_ASPHERIC = OpticalSystem(
 
 THOLABS_100MM_PLANO_CONVEX_LENS = OpticalSystem(
     elements=[
-        CurvedRefractiveSurface(
+        SphericalRefractiveSurface(
             name="Thorlabs 100mm plano convex - convex",
             radius=51.5e-3,
             outwards_normal=LEFT,
@@ -208,7 +208,7 @@ THOLABS_100MM_PLANO_CONVEX_LENS = OpticalSystem(
 
 DUMMY_LENS = OpticalSystem(
     elements=[
-        CurvedRefractiveSurface(
+        SphericalRefractiveSurface(
             name="Dummy lens - convex side",
             radius=102e-3,
             outwards_normal=LEFT,

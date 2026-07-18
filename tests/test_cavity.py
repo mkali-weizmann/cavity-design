@@ -6,7 +6,7 @@ from numpy.polynomial import Polynomial
 
 
 from cavity_design import (
-    CurvedMirror,
+    SphericalMirror,
     CurvatureSigns,
     Cavity,
     LAMBDA_0_LASER,
@@ -45,14 +45,14 @@ def test_fabry_perot_mode_finding():
     R_2 = 5e-3
     u = 1e-5
     L = R_1 + R_2 - u
-    surface_1 = CurvedMirror(
+    surface_1 = SphericalMirror(
         radius=R_1,
         outwards_normal=np.array([0, 0, -1]),
         center=np.array([0, 0, -R_1]),
         curvature_sign=CurvatureSigns.concave,
         diameter=0.01,
     )
-    surface_2 = CurvedMirror(
+    surface_2 = SphericalMirror(
         radius=R_2,
         outwards_normal=np.array([0, 0, 1]),
         center=np.array([0, 0, -R_1 + L]),
@@ -1072,14 +1072,14 @@ def test_analytical_hessian_for_fabry_perot():
 
 def _make_lens_group(center_x, forward=np.array([1.0, 0.0, 0.0])):
     """Helper: returns an OpticalSystem wrapping two refractive surfaces (a thin lens group)."""
-    from cavity_design import CurvedRefractiveSurface
+    from cavity_design import SphericalRefractiveSurface
 
     T_c = 3e-3
     R = 20e-3
     n_glass = 1.5
     normal_in = -forward
     normal_out = forward
-    s1 = CurvedRefractiveSurface(
+    s1 = SphericalRefractiveSurface(
         radius=R,
         outwards_normal=normal_in,
         center=np.array([center_x - T_c / 2, 0.0, 0.0]),
@@ -1088,7 +1088,7 @@ def _make_lens_group(center_x, forward=np.array([1.0, 0.0, 0.0])):
         curvature_sign=1,
         name="lens_front",
     )
-    s2 = CurvedRefractiveSurface(
+    s2 = SphericalRefractiveSurface(
         radius=R,
         outwards_normal=normal_out,
         center=np.array([center_x + T_c / 2, 0.0, 0.0]),
@@ -1108,18 +1108,18 @@ def _make_lens_group(center_x, forward=np.array([1.0, 0.0, 0.0])):
 
 def test_nested_optical_system_flat_arms():
     """Nesting an OpticalSystem inside another should flatten arms correctly."""
-    from cavity_design import CurvedMirror
+    from cavity_design import SphericalMirror
 
     R = 50e-3
     L = 100e-3
-    m1 = CurvedMirror(
+    m1 = SphericalMirror(
         radius=R,
         outwards_normal=np.array([-1.0, 0, 0]),
         center=np.array([-L / 2, 0, 0]),
         curvature_sign=-1,
     )
     lens = _make_lens_group(center_x=0.0)
-    m2 = CurvedMirror(
+    m2 = SphericalMirror(
         radius=R,
         outwards_normal=np.array([1.0, 0, 0]),
         center=np.array([L / 2, 0, 0]),
@@ -1141,11 +1141,11 @@ def test_nested_optical_system_flat_arms():
 
 def test_nested_to_params_from_params_roundtrip():
     """to_params on a system with a nested group returns a nested list; from_params reconstructs it."""
-    from cavity_design import CurvedMirror
+    from cavity_design import SphericalMirror
 
     R = 50e-3
     L = 100e-3
-    m1 = CurvedMirror(
+    m1 = SphericalMirror(
         radius=R,
         outwards_normal=np.array([-1.0, 0, 0]),
         center=np.array([-L / 2, 0, 0]),
@@ -1153,7 +1153,7 @@ def test_nested_to_params_from_params_roundtrip():
         name="m1",
     )
     lens = _make_lens_group(center_x=0.0)
-    m2 = CurvedMirror(
+    m2 = SphericalMirror(
         radius=R,
         outwards_normal=np.array([1.0, 0, 0]),
         center=np.array([L / 2, 0, 0]),
@@ -1197,7 +1197,7 @@ def test_rigid_body_translation_perturbation():
     """perturb_cavity with a nested element and translation parameter moves both surfaces."""
     R_mirror = 50e-3
     L = 200e-3
-    m1 = CurvedMirror(
+    m1 = SphericalMirror(
         radius=R_mirror,
         outwards_normal=np.array([-1.0, 0, 0]),
         center=np.array([-L / 2, 0, 0]),
@@ -1206,7 +1206,7 @@ def test_rigid_body_translation_perturbation():
         diameter=25e-3,
     )
     lens = _make_lens_group(center_x=0.0)
-    m2 = CurvedMirror(
+    m2 = SphericalMirror(
         radius=R_mirror,
         outwards_normal=np.array([1.0, 0, 0]),
         center=np.array([L / 2, 0, 0]),
@@ -1245,7 +1245,7 @@ def test_rigid_body_rotation_perturbation():
     """perturb_cavity with a nested element and rotation parameter rotates both surfaces around mechanical_center."""
     R_mirror = 50e-3
     L = 200e-3
-    m1 = CurvedMirror(
+    m1 = SphericalMirror(
         radius=R_mirror,
         outwards_normal=np.array([-1.0, 0, 0]),
         center=np.array([-L / 2, 0, 0]),
@@ -1254,7 +1254,7 @@ def test_rigid_body_rotation_perturbation():
         diameter=25e-3,
     )
     lens = _make_lens_group(center_x=0.0)
-    m2 = CurvedMirror(
+    m2 = SphericalMirror(
         radius=R_mirror,
         outwards_normal=np.array([1.0, 0, 0]),
         center=np.array([L / 2, 0, 0]),
@@ -1325,7 +1325,7 @@ def _simple_mirror_params(name, x, phi):
 def test_surface_undefined_pose_and_setters():
     # A curved surface can be created with undefined (nan) pose, and the setters bring it to a defined state.
     R = 5e-3
-    m = CurvedMirror(
+    m = SphericalMirror(
         radius=R,
         outwards_normal=None,
         center=None,
@@ -1358,14 +1358,14 @@ def test_surface_undefined_pose_and_setters():
 def test_undefined_optical_system_construction_skips_and_raises():
     # A cavity with an undefined-pose element constructs without error and skips tracing; explicit calls raise.
     R = 5e-3
-    m1 = CurvedMirror(
+    m1 = SphericalMirror(
         radius=R,
         outwards_normal=np.array([-1.0, 0, 0]),
         center=np.array([-R, 0, 0]),
         curvature_sign=CurvatureSigns.concave,
         diameter=0.01,
     )
-    m2 = CurvedMirror(
+    m2 = SphericalMirror(
         radius=R,
         outwards_normal=None,
         center=None,
@@ -1436,14 +1436,14 @@ def test_object_vs_params_rigid_body_parity():
 def test_perturb_cavity_radius_preserves_vertex():
     # The object-based scalar perturbation of a mirror radius keeps the vertex fixed and changes the radius.
     R = 5e-3
-    m1 = CurvedMirror(
+    m1 = SphericalMirror(
         radius=R,
         outwards_normal=np.array([-1.0, 0, 0]),
         center=np.array([-R, 0, 0]),
         curvature_sign=CurvatureSigns.concave,
         diameter=0.01,
     )
-    m2 = CurvedMirror(
+    m2 = SphericalMirror(
         radius=R,
         outwards_normal=np.array([1.0, 0, 0]),
         center=np.array([R - 1e-5, 0, 0]),
@@ -1494,7 +1494,7 @@ def test_set_element_position_rigid():
     assert np.allclose(lens2.mechanical_center, target, atol=1e-12)
 
     # Works on a single surface too (reference is its own center).
-    m = CurvedMirror(
+    m = SphericalMirror(
         radius=5e-3,
         outwards_normal=np.array([-1.0, 0, 0]),
         center=np.array([-5e-3, 0, 0]),
@@ -1521,14 +1521,14 @@ def test_set_element_position_undefined_surface_sets_center():
 def _make_fabry_perot(u=1e-5):
     R = 5e-3
     L = 2 * R - u
-    m0 = CurvedMirror(
+    m0 = SphericalMirror(
         radius=R,
         outwards_normal=np.array([0, 0, -1.0]),
         center=np.array([0, 0, -R]),
         curvature_sign=CurvatureSigns.concave,
         diameter=0.01,
     )
-    m1 = CurvedMirror(
+    m1 = SphericalMirror(
         radius=R,
         outwards_normal=np.array([0, 0, 1.0]),
         center=np.array([0, 0, -R + L]),
@@ -1667,14 +1667,14 @@ def test_to_params_reflects_in_place_edits():
 
     # to_params must regenerate from the live elements, not return a copy cached at construction (otherwise an
     # in-place move is invisible to anything that rebuilds from params, e.g. OpticalSystem.complete_to_cavity).
-    m0 = CurvedMirror(
+    m0 = SphericalMirror(
         radius=5e-3,
         outwards_normal=np.array([-1.0, 0, 0]),
         center=np.array([-5e-3, 0, 0]),
         curvature_sign=CurvatureSigns.concave,
         diameter=0.01,
     )
-    m1 = CurvedMirror(
+    m1 = SphericalMirror(
         radius=5e-3,
         outwards_normal=np.array([1.0, 0, 0]),
         center=np.array([5e-3, 0, 0]),
@@ -1698,14 +1698,14 @@ def test_place_element_refreshes_plain_optical_system_central_line():
 
     # A plain OpticalSystem traces its central line via set_given_central_line; with recalculate_optic=True,
     # place_element retraces it from scratch after the move.
-    m0 = CurvedMirror(
+    m0 = SphericalMirror(
         radius=5e-3,
         outwards_normal=np.array([-1.0, 0, 0]),
         center=np.array([-5e-3, 0, 0]),
         curvature_sign=CurvatureSigns.concave,
         diameter=0.01,
     )
-    m1 = CurvedMirror(
+    m1 = SphericalMirror(
         radius=5e-3,
         outwards_normal=np.array([1.0, 0, 0]),
         center=np.array([5e-3, 0, 0]),
@@ -1758,14 +1758,14 @@ def test_surface_level_relative_position_resolved_at_construction():
     from cavity_design import OpticalSystem
 
     # First surface real (anchor), second encoded as a +10mm relative step in x (pure imaginary).
-    m0 = CurvedMirror(
+    m0 = SphericalMirror(
         radius=5e-3,
         outwards_normal=np.array([-1.0, 0, 0]),
         center=np.array([-5e-3, 0, 0]),
         curvature_sign=CurvatureSigns.concave,
         diameter=0.01,
     )
-    m1 = CurvedMirror(
+    m1 = SphericalMirror(
         radius=5e-3,
         outwards_normal=np.array([1.0, 0, 0]),
         center=np.array([1j * 10e-3, 0, 0]),
@@ -1785,14 +1785,14 @@ def test_surface_level_relative_position_deferred():
     from cavity_design import OpticalSystem, set_element_position
 
     # First surface undefined, second is a relative step. The system is not defined and the relative stays complex.
-    m0 = CurvedMirror(
+    m0 = SphericalMirror(
         radius=5e-3,
         outwards_normal=np.array([-1.0, 0, 0]),
         center=None,
         curvature_sign=CurvatureSigns.concave,
         diameter=0.01,
     )
-    m1 = CurvedMirror(
+    m1 = SphericalMirror(
         radius=5e-3,
         outwards_normal=np.array([1.0, 0, 0]),
         center=np.array([1j * 10e-3, 0, 0]),
@@ -1819,14 +1819,14 @@ def test_cavity_relative_positions_standing_wave():
     # mirror-image (inverse) surface correctly.
     u = 1e-5
     sep = 10e-3 - u
-    m0 = CurvedMirror(
+    m0 = SphericalMirror(
         radius=5e-3,
         outwards_normal=np.array([-1.0, 0, 0]),
         center=np.array([-5e-3, 0, 0]),
         curvature_sign=CurvatureSigns.concave,
         diameter=0.01,
     )
-    m1 = CurvedMirror(
+    m1 = SphericalMirror(
         radius=5e-3,
         outwards_normal=np.array([1.0, 0, 0]),
         center=np.array([1j * sep, 0, 0]),
@@ -1850,14 +1850,14 @@ def test_cavity_relative_positions_standing_wave():
 def test_unresolved_relative_blocks_calculations():
     from cavity_design import OpticalSystem
 
-    m0 = CurvedMirror(
+    m0 = SphericalMirror(
         radius=5e-3,
         outwards_normal=np.array([-1.0, 0, 0]),
         center=None,
         curvature_sign=CurvatureSigns.concave,
         diameter=0.01,
     )
-    m1 = CurvedMirror(
+    m1 = SphericalMirror(
         radius=5e-3,
         outwards_normal=np.array([1.0, 0, 0]),
         center=np.array([1j * 10e-3, 0, 0]),
@@ -1993,7 +1993,7 @@ def test_to_position_and_to_orientation_are_nonmutating_and_chainable():
     assert np.allclose(rotated.surfaces[1].outwards_normal, -up, atol=1e-12)
 
     # Single surface: to_orientation preserves the vertex and recomputes the sphere origin.
-    mirror = CurvedMirror(
+    mirror = SphericalMirror(
         radius=5e-3,
         outwards_normal=np.array([1.0, 0, 0]),
         center=np.array([1e-3, 0, 0]),
@@ -2052,7 +2052,7 @@ def test_object_workflow_emits_no_deprecation_warnings():
         radius, u = 5e-3, 1e-5
         fp = Cavity(
             elements=[
-                CurvedMirror(
+                SphericalMirror(
                     radius=radius,
                     outwards_normal=np.array([0, 0, -1.0]),
                     center=np.array([0, 0, -radius]),
@@ -2060,7 +2060,7 @@ def test_object_workflow_emits_no_deprecation_warnings():
                     diameter=0.01,
                     material_properties=mirror_properties,
                 ),
-                CurvedMirror(
+                SphericalMirror(
                     radius=radius,
                     outwards_normal=np.array([0, 0, 1.0]),
                     center=np.array([0, 0, radius - u]),

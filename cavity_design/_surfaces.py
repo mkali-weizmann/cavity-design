@@ -239,7 +239,7 @@ class Surface:
         points = self.parameterization(T, S)
         x, y, z = points[..., 0], points[..., 1], points[..., 2]
         if color is None:
-            if isinstance(self, CurvedRefractiveSurface):
+            if isinstance(self, SphericalRefractiveSurface):
                 color = "grey"
             elif isinstance(self, PhysicalSurface):
                 color = "b"
@@ -326,7 +326,7 @@ class Surface:
         center = np.array([p.x, p.y, p.z])
         outwards_normal = unit_vector_of_angles(p.theta, p.phi)
         if p.surface_type == SurfacesTypes.curved_mirror:  # Mirror
-            surface = CurvedMirror(
+            surface = SphericalMirror(
                 radius=p.radius,
                 outwards_normal=outwards_normal,
                 center=center,
@@ -338,7 +338,7 @@ class Surface:
         elif (
             p.surface_type == SurfacesTypes.curved_refractive_surface
         ):  # Refractive surface (one side of a lens)
-            surface = CurvedRefractiveSurface(
+            surface = SphericalRefractiveSurface(
                 radius=p.radius,
                 outwards_normal=outwards_normal,
                 center=center,
@@ -404,17 +404,17 @@ class Surface:
         x, y, z = self.center
         if isinstance(self, IdealLens):
             radius = self.focal_length
-        elif isinstance(self, CurvedSurface):
+        elif isinstance(self, SphericalSurface):
             radius = self.radius
         else:
             radius = 0
         theta, phi = angles_of_unit_vector(self.outwards_normal)
         n_1 = 1
         n_2 = 1
-        if isinstance(self, CurvedMirror):
+        if isinstance(self, SphericalMirror):
             surface_type = SurfacesTypes.curved_mirror
             curvature_sign = self.curvature_sign
-        elif isinstance(self, CurvedRefractiveSurface):
+        elif isinstance(self, SphericalRefractiveSurface):
             surface_type = SurfacesTypes.curved_refractive_surface
             n_1 = self.n_1
             n_2 = self.n_2
@@ -476,7 +476,7 @@ class Surface:
             n_1, n_2 = self.n_1, self.n_2
             inverted_surface.n_1 = n_2
             inverted_surface.n_2 = n_1
-        if isinstance(self, (CurvedSurface, AsphericSurface)) and not isinstance(
+        if isinstance(self, (SphericalSurface, AsphericSurface)) and not isinstance(
             self, ReflectiveSurface
         ):
             inverted_surface.curvature_sign *= -1
@@ -503,14 +503,14 @@ class Surface:
                 ("diameter", self.diameter),
                 ("material_properties", self.material_properties),
             ]
-        elif isinstance(self, CurvedSurface):
+        elif isinstance(self, SphericalSurface):
             keyword_arguments += [
                 ("radius", self.radius),
                 ("outwards_normal", self.outwards_normal),
                 ("center", self.center),
                 ("curvature_sign", self.curvature_sign),
             ]
-            if isinstance(self, CurvedRefractiveSurface):
+            if isinstance(self, SphericalRefractiveSurface):
                 keyword_arguments += [
                     ("n_1", self.n_1),
                     ("n_2", self.n_2),
@@ -982,7 +982,7 @@ class AsphericSurface(Surface):
         self._center = _to_position_array(value)
 
     def find_intersection_with_ray_paraxial(self, ray: Ray) -> np.ndarray:
-        paraxial_surface = CurvedSurface(
+        paraxial_surface = SphericalSurface(
             radius=self.radius,
             outwards_normal=self.outwards_normal,
             center=self.center,
@@ -1097,7 +1097,7 @@ class AsphericRefractiveSurface(AsphericSurface, RefractiveSurface):
     def ABCD_matrix(
         self, cos_theta_incoming: Union[float, np.ndarray] = None
     ) -> np.ndarray:
-        paraxial_approximation_surface = CurvedRefractiveSurface(
+        paraxial_approximation_surface = SphericalRefractiveSurface(
             radius=self.radius,
             outwards_normal=RIGHT,
             center=ORIGIN,
@@ -1523,7 +1523,7 @@ class IdealLens(FlatSurface, PhysicalSurface):
         raise NotImplementedError
 
 
-class CurvedSurface(Surface):
+class SphericalSurface(Surface):
     def __init__(
         self,
         radius: float = np.nan,
@@ -1680,7 +1680,7 @@ class CurvedSurface(Surface):
         )
 
 
-class CurvedMirror(CurvedSurface, ReflectiveSurface):
+class SphericalMirror(SphericalSurface, ReflectiveSurface):
     def __init__(
         self,
         radius: float,
@@ -1706,7 +1706,7 @@ class CurvedMirror(CurvedSurface, ReflectiveSurface):
         )
 
     def __str__(self):
-        return f"CurvedMirror(name={self.name}, center={self.center}, outwards_normal={self.outwards_normal}, radius={self.radius})"
+        return f"SphericalMirror(name={self.name}, center={self.center}, outwards_normal={self.outwards_normal}, radius={self.radius})"
 
     def scatter_direction_paraxial(self, ray: Ray) -> np.ndarray:
         # This is maybe wrong but does not matter too much because anyway they are not used for the central line finding
@@ -1781,7 +1781,7 @@ class CurvedMirror(CurvedSurface, ReflectiveSurface):
             new_thermal_properties = copy.copy(self.material_properties)
             new_thermal_properties.temperature = delta_T
 
-            new_mirror = CurvedMirror(
+            new_mirror = SphericalMirror(
                 radius=new_radius,
                 outwards_normal=self.outwards_normal,
                 center=self.center,
@@ -1790,7 +1790,7 @@ class CurvedMirror(CurvedSurface, ReflectiveSurface):
             return new_mirror
 
 
-class CurvedRefractiveSurface(CurvedSurface, RefractiveSurface):
+class SphericalRefractiveSurface(SphericalSurface, RefractiveSurface):
     def __init__(
         self,
         radius: float,
@@ -1822,7 +1822,7 @@ class CurvedRefractiveSurface(CurvedSurface, RefractiveSurface):
         self.thickness = thickness
 
     def __str__(self):
-        return f"CurvedRefractiveSurface(name={self.name}, center={self.center}, outwards_normal={self.outwards_normal}, radius={self.radius}, n_1={self.n_1}, n_2={self.n_2})"
+        return f"SphericalRefractiveSurface(name={self.name}, center={self.center}, outwards_normal={self.outwards_normal}, radius={self.radius}, n_1={self.n_1}, n_2={self.n_2})"
 
     def ABCD_matrix(
         self, cos_theta_incoming: Union[float, np.ndarray] = None
@@ -1951,7 +1951,7 @@ class CurvedRefractiveSurface(CurvedSurface, RefractiveSurface):
         new_thermal_properties = copy.copy(self.material_properties)
         new_thermal_properties.temperature = ROOM_TEMPERATURE
 
-        return CurvedRefractiveSurface(
+        return SphericalRefractiveSurface(
             radius=radius_new,
             outwards_normal=self.outwards_normal,
             center=center_new,
@@ -2080,7 +2080,7 @@ def generate_aspheric_lens(
     return [flat_surface, curved_surface]
 
 
-def convert_curved_refractive_surface_to_ideal_lens(surface: CurvedRefractiveSurface):
+def convert_curved_refractive_surface_to_ideal_lens(surface: SphericalRefractiveSurface):
     focal_length = (
         1 / (surface.n_2 - surface.n_1) * surface.radius * (surface.curvature_sign)
     )

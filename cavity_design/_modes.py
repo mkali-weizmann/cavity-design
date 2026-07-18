@@ -6,7 +6,7 @@ from typing import Optional, Union
 import numpy as np
 from matplotlib import pyplot as plt
 
-from ._surfaces import CurvedMirror, FlatMirror
+from ._surfaces import SphericalMirror, FlatMirror
 from ._utils import (
     normalize_vector,
     spot_size,
@@ -308,7 +308,7 @@ def match_a_mirror_to_mode(
     z: Optional[float] = None,
     R: Optional[float] = None,
     **mirror_kwargs,
-) -> Union[FlatMirror, CurvedMirror]:
+) -> Union[FlatMirror, SphericalMirror]:
     # Derivation is in section "Matching a mode to a mirror:" in my research file.
     if z is None and R is None or (z is not None and R is not None):
         raise ValueError("You must provide either z or R, but not both, and not neither.")
@@ -323,7 +323,7 @@ def match_a_mirror_to_mode(
             R_z_inverse = np.abs(z / (z**2 + mode.z_R[0] ** 2))
             center = mode.center[0, :] + mode.k_vector * z
             outwards_normal = mode.k_vector * np.sign(z)
-            mirror = CurvedMirror(
+            mirror = SphericalMirror(
                 radius=R_z_inverse**-1,
                 outwards_normal=outwards_normal,
                 center=center,
@@ -339,7 +339,7 @@ def match_a_mirror_to_mode(
                 **mirror_kwargs,
             )
         else:
-            mirror = CurvedMirror(
+            mirror = SphericalMirror(
                 radius=np.abs(R),
                 outwards_normal=outwards_normal,
                 center=center,
@@ -351,7 +351,7 @@ def match_a_mirror_to_mode(
 
 
 def match_a_local_mode_to_mirror(
-    mirror: CurvedMirror,
+    mirror: SphericalMirror,
     lambda_0_laser: float,
     NA: Optional[float] = None,
     z_R: Optional[float] = None,
@@ -376,7 +376,7 @@ def match_a_local_mode_to_mirror(
 
 
 def match_a_mode_to_mirror(
-    mirror: CurvedMirror,
+    mirror: SphericalMirror,
     lambda_0_laser: float,
     NA: Optional[float] = None,
     z_R: Optional[float] = None,

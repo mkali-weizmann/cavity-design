@@ -32,7 +32,7 @@ output_ROC = optical_system_initial.output_radius_of_curvature(
     initial_distance=optical_system_initial.surfaces[0].center[0])
 
 spherical_back_center = optical_system_initial.surfaces[-1].center - output_ROC * (1+relative_position_spherical) * OPTICAL_AXIS
-spherical_back = CurvedRefractiveSurface(
+spherical_back = SphericalRefractiveSurface(
     radius=spherical_radii,
     center=spherical_back_center,
     outwards_normal=OPTICAL_AXIS,
@@ -45,7 +45,7 @@ spherical_back = CurvedRefractiveSurface(
     curvature_sign=CurvatureSigns.concave,
 )
 
-spherical_front = CurvedRefractiveSurface(
+spherical_front = SphericalRefractiveSurface(
     radius=spherical_radii,
     center=spherical_back_center + T_c_spherical * OPTICAL_AXIS,
     outwards_normal=-OPTICAL_AXIS,

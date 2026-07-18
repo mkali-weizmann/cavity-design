@@ -274,7 +274,7 @@ class OpticalSurfaceParams:
     phi: float  # the in-plane angle normal vector to the surface. when the plane is x,y, this is the phi angle.
     radius: float  # radius of curvature. np.inf for flat surfaces, np.nan if not applicable.
     curvature_sign: Union[int, float]  # 1 if the surface is concave, -1 if it is convex
-    T_c: float  # center thickness of the element (used for CurvedRefractiveSurface thermal calculations)
+    T_c: float  # center thickness of the element (used for SphericalRefractiveSurface thermal calculations)
     n_inside_or_after: float  # refractive index after the surface (for a refractive surface)
     n_outside_or_before: float  # refractive index before the surface (for a refractive surface)
     material_properties: MaterialProperties

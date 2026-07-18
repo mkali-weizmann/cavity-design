@@ -16,7 +16,7 @@ Adapted from characterize-one-cavity-playground.py.
 from cavity_design import *
 
 # %% Build the cavity. Catalog elements are placed with .to_position() (returns a positioned
-# copy); the end mirror is defined explicitly to show the full CurvedMirror signature.
+# copy); the end mirror is defined explicitly to show the full SphericalMirror signature.
 cavity = Cavity(
     elements=[
         LASER_OPTIK_MIRROR.to_position(np.array([-0.005, 0.0, 0.0])),
@@ -24,7 +24,7 @@ cavity = Cavity(
             np.array([0.017623230771841976, 0.0, 0.0])
         ),
         DUMMY_LENS.to_position(np.array([0.03305723077184197, 0.0, 0.0])),
-        CurvedMirror(
+        SphericalMirror(
             name="End mirror",
             radius=0.2,
             outwards_normal=np.array([1.0, 0.0, 0.0]),

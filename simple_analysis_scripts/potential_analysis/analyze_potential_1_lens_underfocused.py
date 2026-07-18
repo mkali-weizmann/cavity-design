@@ -25,7 +25,7 @@ defocus = choose_source_position_for_desired_focus_analytic(back_focal_length=ba
                                                             desired_focus=desired_focus, T_c=T_c, n=n_design,
                                                             diameter=diameter, R_1=R_1, R_2=R_2_signed)
 optical_system_lens, optical_axis = generate_one_lens_optical_system(R_1=R_1, R_2=R_2_signed, back_focal_length=back_focal_length, defocus=defocus, T_c=T_c, n_design=n_design, diameter=diameter, n_actual=n_actual)
-mirror_left = CurvedMirror(radius=5e-3, outwards_normal=LEFT, origin=ORIGIN, curvature_sign=CurvatureSigns.concave, name="LaserOptik mirror", diameter=7.75e-3, material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"])
+mirror_left = SphericalMirror(radius=5e-3, outwards_normal=LEFT, origin=ORIGIN, curvature_sign=CurvatureSigns.concave, name="LaserOptik mirror", diameter=7.75e-3, material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"])
 optical_system_without_large_mirror = OpticalSystem.from_params(params=[mirror_left.to_params, *optical_system_lens.to_params],
                                                     lambda_0_laser=LAMBDA_0_LASER, p_is_trivial=True, t_is_trivial=True,
                                                     use_paraxial_ray_tracing=True)

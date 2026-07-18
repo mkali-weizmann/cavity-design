@@ -18,12 +18,17 @@ re-derive from library source.
 - All lengths are in **meters** (SI throughout). Default wavelength: `LAMBDA_0_LASER = 1064e-9`.
 - The optical axis usually runs along **x**. Direction/position constants:
   `LEFT, RIGHT, UP, DOWN, INWARD, OUTWARD, ORIGIN, INCH` (defined in `cavity_design/_utils.py`).
-- **`Cavity`** — a resonator: a list of elements + `standing_wave=True` finds the self-consistent
-  cavity mode (`cavity.arms[i].mode_parameters` → `w_0`, `z_R`, `NA`, ...).
 - **`OpticalSystem`** — a one-pass chain of surfaces (no round-trip condition); also used to model
   compound elements (a lens = two refractive surfaces).
-- **Surfaces** (in `_surfaces.py`): `CurvedMirror`, `FlatMirror`, `CurvedRefractiveSurface`,
-  `FlatRefractiveSurface`, `AsphericRefractiveSurface`, ... plus `MaterialProperties`.
+- **`Cavity`** — a resonator, inheriting from OpticalSystem, where the light goes back and fourth (if `self.standing_wave is True`) or in a loop (if `self.standing_wave is False`) finds the self-consistent cavity mode (`cavity.arms[i].mode_parameters` → `w_0`, `z_R`, `NA`, ...).
+	- The left-most mirror of a cavity is conventionally placed such that it's origin (the center of the sphere) is a `ORIGIN` (at `np.array([0, 0, 0])`)
+	- cavity keys access accesses it's elements: `cavity[0]` is `cavity.elements[0]`
+	- For aberrations calculations, `self.use_paraxial_ray_tracing` should be set to False.
+	- contains spectral calculation, such as `cavity.finesse`, `cavity.free_spectral_range`, `cavity.roundtrip_power_losses`.
+- **Surfaces** (in `_surfaces.py`): `SphericalMirror`, `FlatMirror`, `SphericalRefractiveSurface`,
+  `FlatRefractiveSurface`, `AsphericRefractiveSurface`.
+	- `Surface` is the general, and all inherit from it.
+	- RefractiveSurface
 - **Catalog elements** (in `_existing_elements.py`): pre-built real components, e.g.
   `LASER_OPTIK_MIRROR`, `LASER_OPTIK_MIRROR_REFRACTIVE` (transmissive version),
   `EKSMA_LENS_20MM_ASPHERIC`, `THORLABS_8MM_ASPHERIC`, `DUMMY_LENS`, `COASTLINE_20CM_MIRROR`, ...
@@ -41,6 +46,33 @@ re-derive from library source.
   mixing), `use_paraxial_ray_tracing` (fast ABCD vs. exact ray tracing).
 - Live objects are the source of truth: `repr()` of elements/systems prints init-syntax you can
   paste back into code.
+
+## Cavity initialization example:
+```python
+cavity_paraxial = Cavity(  
+    elements=[  
+        LASER_OPTIK_MIRROR.to_position(np.array([-0.005, 0.0, 0.0])),  
+        EKSMA_LENS_20MM_ASPHERIC.to_position(np.array([0.017623230771841976, 0.0, 0.0])),  
+        DUMMY_LENS.to_position(np.array([0.03305723077184197, 0.0, 0.0])),  
+        SphericalMirror(name='End mirror', radius=0.2, outwards_normal=np.array([1.0, -0.0, -0.0]), center=np.array([0.4511688875799871, 0.0, 0.0]), curvature_sign=-1, diameter=0.0254, material_properties=MaterialProperties(refractive_index=1.45, alpha_expansion=5.2e-07, beta_surface_absorption=1e-06, kappa_conductivity=1.38, dn_dT=1.2e-05, nu_poisson_ratio=0.16, alpha_volume_absorption=0.001, intensity_reflectivity=0.0001, intensity_transmittance=0.999899, temperature=np.nan)),  
+    ],  
+    standing_wave=True,     lambda_0_laser=1.064e-06,     t_is_trivial=True,     p_is_trivial=True,     use_paraxial_ray_tracing=False,  
+)
+# %% Or:
+from cavity_design import *  
+  
+elements=[LASER_OPTIK_MIRROR, EKSMA_LENS_20MM_ASPHERIC, DUMMY_LENS, COASTLINE_20CM_MIRROR]  
+cavity = Cavity(elements=elements, standing_wave=True, lambda_0_laser=LAMBDA_0_LASER, p_is_trivial=True, t_is_trivial=True, use_paraxial_ray_tracing=False, set_central_line=True, set_mode_parameters=True)  
+long_arm_length = 0.4  
+short_arm_length = 7e-3  
+mid_arm_length = 1e-2  
+cavity.place_element(element=cavity[0], position=cavity[0].radius * LEFT, recalculate_optic=False)  
+cavity.place_element(element=cavity[1], position=short_arm_length * RIGHT, reference_center=cavity[0], recalculate_optic=False)  
+cavity.place_element(element=cavity[2], position=mid_arm_length * RIGHT, reference_center=cavity[1], recalculate_optic=False)  
+cavity.place_element(element=cavity[-1], position=long_arm_length * RIGHT, reference_center=cavity[2], recalculate_optic=True)
+```
+
+
 
 ## Operation: cavity perturbation / tolerance analysis
 

@@ -76,9 +76,9 @@ from ._surfaces import (
     Surface,
     PhysicalSurface,
     RefractiveSurface,
-    CurvedSurface,
-    CurvedMirror,
-    CurvedRefractiveSurface,
+    SphericalSurface,
+    SphericalMirror,
+    SphericalRefractiveSurface,
     FlatSurface,
     FlatMirror,
     IdealLens,
@@ -157,7 +157,7 @@ class Arm:
         ray.n = self.n
         if isinstance(self.surface_1, PhysicalSurface):
             # ATTENTION - THIS SHOULD NOT BE HERE FOR NON-STANDING WAVES CAVITIES - BUT I AM DEALING ONLY WITH THOSE...
-            if isinstance(self.surface_1, CurvedMirror):
+            if isinstance(self.surface_1, SphericalMirror):
                 use_paraxial_ray_tracing = False
             propagated_ray = self.surface_1.propagate_ray(
                 ray, paraxial=use_paraxial_ray_tracing
@@ -339,7 +339,7 @@ class Arm:
             local_mode_parameters = self.mode_parameters_on_surfaces[i]
             spot_size_on_surface = local_mode_parameters.spot_size[0]
             surface = self.surfaces[i]
-            if isinstance(surface, CurvedRefractiveSurface):
+            if isinstance(surface, SphericalRefractiveSurface):
                 if i == 0 and surface.n_2 == 1 or i == 1 and surface.n_1 == 1:
                     angle_side = ""
                 else:
@@ -438,7 +438,7 @@ class Arm:
             normal_function = (
                 lambda x: self.surface_0.outwards_normal * sign
             )  # Add sign
-        elif isinstance(self.surface_0, CurvedSurface):
+        elif isinstance(self.surface_0, SphericalSurface):
             normal_function = lambda r: normal_to_a_sphere(
                 r_surface=r,
                 o_center=self.surface_0.origin,
@@ -1262,11 +1262,11 @@ class OpticalSystem:
         starting_power = 1
         for arm in self.arms:
             first_surface = arm.surface_0
-            if isinstance(first_surface, (CurvedMirror, FlatMirror)):
+            if isinstance(first_surface, (SphericalMirror, FlatMirror)):
                 surface_unlost_portion = (
                     first_surface.material_properties.intensity_reflectivity
                 )
-            elif isinstance(first_surface, (CurvedRefractiveSurface, IdealLens)):
+            elif isinstance(first_surface, (SphericalRefractiveSurface, IdealLens)):
                 surface_unlost_portion = (
                     first_surface.material_properties.intensity_transmittance
                 )
@@ -1284,9 +1284,9 @@ class OpticalSystem:
             volume_absorption_unlost_portion = np.exp(
                 -volume_absorption_unlost_portion_log
             )
-            if isinstance(first_surface, (CurvedMirror, FlatMirror)):
+            if isinstance(first_surface, (SphericalMirror, FlatMirror)):
                 starting_power *= surface_unlost_portion
-            elif isinstance(first_surface, CurvedRefractiveSurface):
+            elif isinstance(first_surface, SphericalRefractiveSurface):
                 starting_power *= (
                     surface_unlost_portion * volume_absorption_unlost_portion
                 )
@@ -1300,7 +1300,7 @@ class OpticalSystem:
         else:
             optical_length = 0
             for arm in self.arms:
-                if isinstance(arm.surface_0, CurvedRefractiveSurface):
+                if isinstance(arm.surface_0, SphericalRefractiveSurface):
                     optical_length += arm.central_line.length * arm.surface_0.n_2
                 else:
                     optical_length += arm.central_line.length
@@ -1581,7 +1581,7 @@ class OpticalSystem:
         NA: Optional[float] = None,  # Desired NA in the first arm
         unconcentricity: Optional[float] = None,  # Desire unconcentricity in last arm
         end_mirror_distance_to_last_element: Optional[float] = None,
-        end_mirror_object: Optional[CurvedMirror] = None,
+        end_mirror_object: Optional[SphericalMirror] = None,
         end_mirror_ROC: Optional[float] = None,
         **end_mirror_kwargs,
     ):
@@ -1591,7 +1591,7 @@ class OpticalSystem:
         # general direction by propagating a ray through the optical system, defining the optical axis after it.
         # Validations ------------------------------------------
         assert isinstance(
-            self.surfaces[0], CurvedMirror
+            self.surfaces[0], SphericalMirror
         ), "The first surface of the optical system must be a mirror for it to become a cavity"
         assert (
             (end_mirror_ROC is not None or end_mirror_object is not None)
@@ -1644,7 +1644,7 @@ class OpticalSystem:
         # Generate the end mirror for each of the cases -------
         if NA is not None:
             z_R_first_arm = z_R_of_NA(NA=NA, lambda_laser=LAMBDA_0_LASER)
-            first_mirror: CurvedMirror = self.surfaces[0]
+            first_mirror: SphericalMirror = self.surfaces[0]
             local_mode_parameters_first_mirror = match_a_local_mode_to_mirror(
                 mirror=first_mirror, z_R=z_R_first_arm, lambda_0_laser=LAMBDA_0_LASER
             )
@@ -1718,7 +1718,7 @@ class OpticalSystem:
                     center_of_curvature_mirror = (
                         center_of_curvature_image - unconcentricity * optical_axis
                     )
-                    end_mirror = CurvedMirror(  # Assumes concave mirror, can be generalized if needed
+                    end_mirror = SphericalMirror(  # Assumes concave mirror, can be generalized if needed
                         radius=end_mirror_ROC,
                         outwards_normal=optical_axis,
                         origin=center_of_curvature_mirror,
@@ -1732,7 +1732,7 @@ class OpticalSystem:
                 center_of_curvature_mirror = (
                     center_of_curvature_image - unconcentricity * optical_axis
                 )
-                end_mirror = CurvedMirror(  # Assumes concave mirror, can be generalized if needed
+                end_mirror = SphericalMirror(  # Assumes concave mirror, can be generalized if needed
                     radius=end_mirror_ROC,
                     outwards_normal=optical_axis,
                     origin=center_of_curvature_mirror,
@@ -1748,7 +1748,7 @@ class OpticalSystem:
                 center_of_curvature_mirror = (
                     center_of_curvature_image - unconcentricity * optical_axis
                 )
-                end_mirror = CurvedMirror(  # Assumes concave mirror, can be generalized if needed
+                end_mirror = SphericalMirror(  # Assumes concave mirror, can be generalized if needed
                     radius=end_mirror_ROC,
                     outwards_normal=optical_axis,
                     origin=center_of_curvature_mirror,
@@ -1756,7 +1756,7 @@ class OpticalSystem:
                     **end_mirror_kwargs,
                 )
         else:
-            end_mirror = CurvedMirror(
+            end_mirror = SphericalMirror(
                 radius=end_mirror_ROC,
                 outwards_normal=optical_axis,
                 center=last_surface.center
@@ -2089,7 +2089,7 @@ class OpticalSystem:
                 n_1, n_2 = inverted_surface.n_1, inverted_surface.n_2
                 inverted_surface.n_1 = n_2
                 inverted_surface.n_2 = n_1
-            if isinstance(surface, (CurvedSurface, AsphericSurface)):
+            if isinstance(surface, (SphericalSurface, AsphericSurface)):
                 inverted_surface.curvature_sign *= -1
             inverted_surfaces.append(inverted_surface)
 
@@ -2481,8 +2481,8 @@ class Cavity(OpticalSystem):
     def find_central_line_standing_wave(self):
         # This function assumes the centers of the origins (sphere's center) of the first and last mirrors are withing
         # their arms, which will not be for the case of the astigmatic cavity with the extra mirror, but for now it should work.
-        if not isinstance(self.physical_surfaces[0], CurvedMirror) and isinstance(
-            self.physical_surfaces[-1], CurvedMirror
+        if not isinstance(self.physical_surfaces[0], SphericalMirror) and isinstance(
+            self.physical_surfaces[-1], SphericalMirror
         ):
             warnings.warn(
                 "For this method to work the first and last surfaces should be mirrors, using regular solver instead"
@@ -3929,7 +3929,7 @@ def _apply_scalar_perturbation_to_surface(surface, parameter_name, perturbation_
     # corresponding OpticalSurfaceParams field and rebuilding: radius keeps the surface vertex fixed; an index that
     # the surface type does not actually use is a silent no-op (as it would be on a from_params round-trip).
     if parameter_name == ParamsNames.radius:
-        if isinstance(surface, CurvedSurface):
+        if isinstance(surface, SphericalSurface):
             surface.radius = surface.radius + perturbation_value
     elif parameter_name == ParamsNames.n_inside_or_after:
         if hasattr(surface, "n_2"):
@@ -4584,10 +4584,10 @@ def calculate_incidence_angle(
 
 def find_equal_angles_surface(
     mode_before_lens: ModeParameters,
-    surface_0: CurvedRefractiveSurface,
+    surface_0: SphericalRefractiveSurface,
     T_edge: float = 1e-3,
     h: float = 3.875e-3,
-) -> CurvedRefractiveSurface:
+) -> SphericalRefractiveSurface:
     mode_parameters_just_before_surface_0 = mode_before_lens.local_mode_parameters(
         np.linalg.norm(surface_0.center - mode_before_lens.center[0])
     )
@@ -4602,10 +4602,10 @@ def find_equal_angles_surface(
         n_2=surface_0.n_2,
     )
 
-    def match_surface_to_radius(R_1: float) -> CurvedRefractiveSurface:
+    def match_surface_to_radius(R_1: float) -> SphericalRefractiveSurface:
         T_c = dT_c_0 + T_edge + dT_c_of_a_lens(R=R_1, h=h)
         center_1 = surface_0.center + surface_0.inwards_normal * T_c
-        second_surface = CurvedRefractiveSurface(
+        second_surface = SphericalRefractiveSurface(
             radius=R_1,
             outwards_normal=-surface_0.outwards_normal,
             center=center_1,
@@ -4961,7 +4961,7 @@ def mirror_lens_mirror_cavity_generator(
         intensity_transmittance,
         temperature,
     ) = lens_material_properties.to_array
-    surface_left = CurvedRefractiveSurface(
+    surface_left = SphericalRefractiveSurface(
         radius=R_left,
         outwards_normal=np.array([-1, 0, 0]),
         center=np.array([x_lens_left, 0, 0]),
@@ -4996,7 +4996,7 @@ def mirror_lens_mirror_cavity_generator(
 
         x_2_right = x_lens_left + T_c
 
-        surface_right = CurvedRefractiveSurface(
+        surface_right = SphericalRefractiveSurface(
             radius=R_right,
             outwards_normal=np.array([1, 0, 0]),
             center=np.array([x_2_right, 0, 0]),
@@ -5051,7 +5051,7 @@ def mirror_lens_mirror_cavity_generator(
         center = surface_right.center + mode_right.k_vector * right_arm_length
         outwards_normal = mode_right.k_vector  # not convex compatible currently
         R = big_mirror_radius
-        mirror_right = CurvedMirror(
+        mirror_right = SphericalMirror(
             radius=R,
             outwards_normal=outwards_normal,
             center=center,
@@ -5153,13 +5153,13 @@ def fabry_perot_generator(
             R=-radii[1],
         )
     elif unconcentricity is not None:
-        mirror_1 = CurvedMirror(
+        mirror_1 = SphericalMirror(
             radius=radii[0],
             outwards_normal=np.array([-1, 0, 0]),
             origin=np.array([0, 0, 0]),
             name="Left Mirror",
         )
-        mirror_2 = CurvedMirror(
+        mirror_2 = SphericalMirror(
             radius=radii[1],
             outwards_normal=np.array([1, 0, 0]),
             origin=np.array([-unconcentricity, 0, 0]),
@@ -5533,7 +5533,7 @@ def generate_lens_from_params(
             diameter=diameter,
         )
     else:
-        surface_1 = CurvedRefractiveSurface(
+        surface_1 = SphericalRefractiveSurface(
             radius=np.abs(r_1),
             outwards_normal=-forward_direction * np.sign(r_1),
             center=center_1,
@@ -5555,7 +5555,7 @@ def generate_lens_from_params(
             diameter=diameter,
         )
     else:
-        surface_2 = CurvedRefractiveSurface(
+        surface_2 = SphericalRefractiveSurface(
             radius=np.abs(r_2),
             outwards_normal=-forward_direction * np.sign(r_2),
             center=center_2,

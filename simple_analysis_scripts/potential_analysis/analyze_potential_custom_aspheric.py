@@ -13,7 +13,7 @@ a_2 = 1 / (2*R_1)
 a_4 = 1000
 a_6 = 0
 
-laseroptik_mirror = CurvedMirror(radius=5e-3, outwards_normal=LEFT, center=np.array([-0.00499995, 0, 0]), curvature_sign=CurvatureSigns.concave, diameter=7.75e-3, name="LaserOptik mirror", material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"])
+laseroptik_mirror = SphericalMirror(radius=5e-3, outwards_normal=LEFT, center=np.array([-0.00499995, 0, 0]), curvature_sign=CurvatureSigns.concave, diameter=7.75e-3, name="LaserOptik mirror", material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"])
 polynomial_coefficients_back = np.array([0, a_2, a_4, a_6])  # widget_convenient_exponent(-2.470e-1,scale=0)
 lens_left = AsphericRefractiveSurface(polynomial_coefficients=polynomial_coefficients_back,
                                                   center=np.array([waist_to_lens, 0, 0]),
@@ -26,17 +26,17 @@ lens_left = AsphericRefractiveSurface(polynomial_coefficients=polynomial_coeffic
                                                   diameter=diameter,
                                                   curvature_sign=CurvatureSigns.convex
                                                         )
-lens_right = CurvedRefractiveSurface(radius=R_2,
-                                     curvature_sign=CurvatureSigns.concave,
-                                     outwards_normal=OPTICAL_AXIS,
-                                     center = lens_left.center + np.array([T_c, 0, 0]),
-                                     name="Lens_right",
-                                     n_1=1.45,
-                                     n_2=1,
-                                     material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"],
-                                     thickness=T_c / 2,
-                                     diameter=diameter,
-                                    )
+lens_right = SphericalRefractiveSurface(radius=R_2,
+                                        curvature_sign=CurvatureSigns.concave,
+                                        outwards_normal=OPTICAL_AXIS,
+                                        center = lens_left.center + np.array([T_c, 0, 0]),
+                                        name="Lens_right",
+                                        n_1=1.45,
+                                        n_2=1,
+                                        material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"],
+                                        thickness=T_c / 2,
+                                        diameter=diameter,
+                                        )
 
 optical_system = OpticalSystem(elements=[laseroptik_mirror, lens_left, lens_right], lambda_0_laser=LAMBDA_0_LASER,
                                t_is_trivial=True, p_is_trivial=True, use_paraxial_ray_tracing=False)
@@ -77,14 +77,14 @@ aspheric_flat, aspheric_front = Surface.from_params(
     )
 
 r_spherical = 200e-3
-spherical_back_alternative = CurvedRefractiveSurface(radius=r_spherical,
-                                                     curvature_sign=CurvatureSigns.convex,
-                                                     outwards_normal=-OPTICAL_AXIS,
-                                                     center=aspheric_flat.center, n_1=1, n_2=1.45,
-                                                     name="spherical_lens_alternative",
-                                                     material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"],
-                                                     thickness=T_c_aspheric / 2,
-                                                     diameter=diameter,)
+spherical_back_alternative = SphericalRefractiveSurface(radius=r_spherical,
+                                                        curvature_sign=CurvatureSigns.convex,
+                                                        outwards_normal=-OPTICAL_AXIS,
+                                                        center=aspheric_flat.center, n_1=1, n_2=1.45,
+                                                        name="spherical_lens_alternative",
+                                                        material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"],
+                                                        thickness=T_c_aspheric / 2,
+                                                        diameter=diameter, )
 polynomial_coefficients_back = np.array([0, 0, 0, 0, 0, 0, 0, 0])  # widget_convenient_exponent(-2.470e-1,scale=0)
 outwards_normal = -OPTICAL_AXIS * np.sign(polynomial_coefficients_back[1]) if polynomial_coefficients_back[1] != 0 else -OPTICAL_AXIS
 if polynomial_coefficients_back[1] < 0:

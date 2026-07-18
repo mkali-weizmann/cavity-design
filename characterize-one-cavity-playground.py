@@ -7,7 +7,7 @@ cavity_paraxial = Cavity(
         LASER_OPTIK_MIRROR.to_position(np.array([-0.005, 0.0, 0.0])),
         EKSMA_LENS_20MM_ASPHERIC.to_position(np.array([0.017623230771841976, 0.0, 0.0])),
         DUMMY_LENS.to_position(np.array([0.03305723077184197, 0.0, 0.0])),
-        CurvedMirror(name='End mirror', radius=0.2, outwards_normal=np.array([1.0, -0.0, -0.0]), center=np.array([0.4511688875799871, 0.0, 0.0]), curvature_sign=-1, diameter=0.0254, material_properties=MaterialProperties(refractive_index=1.45, alpha_expansion=5.2e-07, beta_surface_absorption=1e-06, kappa_conductivity=1.38, dn_dT=1.2e-05, nu_poisson_ratio=0.16, alpha_volume_absorption=0.001, intensity_reflectivity=0.0001, intensity_transmittance=0.999899, temperature=np.nan)),
+        SphericalMirror(name='End mirror', radius=0.2, outwards_normal=np.array([1.0, -0.0, -0.0]), center=np.array([0.4511688875799871, 0.0, 0.0]), curvature_sign=-1, diameter=0.0254, material_properties=MaterialProperties(refractive_index=1.45, alpha_expansion=5.2e-07, beta_surface_absorption=1e-06, kappa_conductivity=1.38, dn_dT=1.2e-05, nu_poisson_ratio=0.16, alpha_volume_absorption=0.001, intensity_reflectivity=0.0001, intensity_transmittance=0.999899, temperature=np.nan)),
     ],
     standing_wave=True,     lambda_0_laser=1.064e-06,     t_is_trivial=True,     p_is_trivial=True,     use_paraxial_ray_tracing=False,
 )

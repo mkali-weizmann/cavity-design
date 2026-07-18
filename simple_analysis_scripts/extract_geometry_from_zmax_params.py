@@ -222,12 +222,12 @@ plt.title("Actual wavelength (1064nm) and actual refractive index (1.574) withou
 plt.show()
 # %% With an equivalent spherical lens:
 optical_system_spherical = OpticalSystem(elements=[
-    CurvedRefractiveSurface(name="spherical - left",
-                            radius=optical_system_actual[0].radius, outwards_normal=LEFT,
-                            center=optical_system_actual[0].center, n_1=1, n_2=optical_system_actual[0].n_2, diameter=optical_system_actual[0].diameter, curvature_sign=CurvatureSigns.convex),
-    CurvedRefractiveSurface(name="spherical - right",
-                            radius=optical_system_actual[1].radius, outwards_normal=RIGHT,
-                            center=optical_system_actual[1].center, n_1=optical_system_actual[1].n_1, n_2=1, diameter=optical_system_actual[1].diameter, curvature_sign=CurvatureSigns.concave),
+    SphericalRefractiveSurface(name="spherical - left",
+                               radius=optical_system_actual[0].radius, outwards_normal=LEFT,
+                               center=optical_system_actual[0].center, n_1=1, n_2=optical_system_actual[0].n_2, diameter=optical_system_actual[0].diameter, curvature_sign=CurvatureSigns.convex),
+    SphericalRefractiveSurface(name="spherical - right",
+                               radius=optical_system_actual[1].radius, outwards_normal=RIGHT,
+                               center=optical_system_actual[1].center, n_1=optical_system_actual[1].n_1, n_2=1, diameter=optical_system_actual[1].diameter, curvature_sign=CurvatureSigns.concave),
 ], use_paraxial_ray_tracing=False, p_is_trivial=True, t_is_trivial=True)
 rays_spherical = optical_system_spherical.propagate_ray(ray_0, propagate_with_first_surface_first=True)
 ax = optical_system_spherical.plot()
@@ -282,9 +282,9 @@ plt.title("Actual wavelength (1064nm) and actual refractive index (1.577) withou
 plt.show()
 # %% With an equivalent spherical lens:
 optical_system_spherical = OpticalSystem(elements=[
-    CurvedRefractiveSurface(name="spherical - left",
-                            radius=optical_system_actual[0].radius, outwards_normal=LEFT,
-                            center=optical_system_actual[0].center, n_1=1, n_2=optical_system_actual[0].n_2, diameter=optical_system_actual[0].diameter, curvature_sign=CurvatureSigns.convex),
+    SphericalRefractiveSurface(name="spherical - left",
+                               radius=optical_system_actual[0].radius, outwards_normal=LEFT,
+                               center=optical_system_actual[0].center, n_1=1, n_2=optical_system_actual[0].n_2, diameter=optical_system_actual[0].diameter, curvature_sign=CurvatureSigns.convex),
     FlatRefractiveSurface(name="spherical - right",
                             outwards_normal=RIGHT,
                             center=optical_system_actual[1].center, n_1=optical_system_actual[1].n_1, n_2=1, diameter=optical_system_actual[1].diameter),
@@ -343,9 +343,9 @@ plt.title("Actual wavelength (1064nm) and actual refractive index (1.577) withou
 plt.show()
 # %% With an equivalent spherical lens:
 optical_system_spherical = OpticalSystem(elements=[
-    CurvedRefractiveSurface(name="spherical - left",
-                            radius=optical_system_actual[0].radius, outwards_normal=LEFT,
-                            center=optical_system_actual[0].center, n_1=1, n_2=optical_system_actual[0].n_2, diameter=optical_system_actual[0].diameter, curvature_sign=CurvatureSigns.convex),
+    SphericalRefractiveSurface(name="spherical - left",
+                               radius=optical_system_actual[0].radius, outwards_normal=LEFT,
+                               center=optical_system_actual[0].center, n_1=1, n_2=optical_system_actual[0].n_2, diameter=optical_system_actual[0].diameter, curvature_sign=CurvatureSigns.convex),
     FlatRefractiveSurface(name="spherical - right",
                             outwards_normal=RIGHT,
                             center=optical_system_actual[1].center, n_1=optical_system_actual[1].n_1, n_2=1, diameter=optical_system_actual[1].diameter),
