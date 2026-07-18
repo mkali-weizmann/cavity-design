@@ -51,7 +51,7 @@ EDMUND_4p5MM_ASPHERIC_83580 = OpticalSystem(
 lens = EDMUND_4MM_ASPHERIC_16701
 lens_inverted = EDMUND_4MM_ASPHERIC_16701.inverse
 optical_system_combined = OpticalSystem(elements=[window, lens], use_paraxial_ray_tracing=False, name='optical_system')
-optical_system_combined_inverted = optical_system_combined.inverse
+optical_system_combined_inverted = optical_system_combined.invert()
 
 back_focal_length = back_focal_length_of_lens_object(lens_object=lens)
 plot_system = lens

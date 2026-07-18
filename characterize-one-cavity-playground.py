@@ -1,3 +1,5 @@
+from matplotlib import use
+use("TkAgg")
 from cavity_design import *
 # from simple_analysis_scripts.potential_analysis.analyze_potential import energy_level, analyze_potential_given_cavity, plot_results
 # np.seterr(all="raise")
@@ -12,8 +14,7 @@ cavity_paraxial = Cavity(
     standing_wave=True,     lambda_0_laser=1.064e-06,     t_is_trivial=True,     p_is_trivial=True,     use_paraxial_ray_tracing=False,
 )
 # %%
-plot_mirror_lens_mirror_cavity_analysis(cavity_paraxial)
-plt.xlim([-6e-3, 305e-3])
+cavity_paraxial.plot()
 plt.show()
 # %%
 perturbable_params_names=['x', 'y', 'phi']

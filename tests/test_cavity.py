@@ -2150,3 +2150,107 @@ def test_aspheric_surface_relative_center_resolution():
     )
     # The original floating lens is untouched (to_position is non-mutating).
     assert not lens.positions_defined
+
+
+def test_invert_optical_system_carries_and_verifies_mode():
+    from cavity_design import (
+        LASER_OPTIK_MIRROR_REFRACTIVE,
+        EKSMA_LENS_20MM_ASPHERIC,
+        match_a_mode_to_mirror,
+        LEFT,
+    )
+
+    mirror = LASER_OPTIK_MIRROR_REFRACTIVE.to_position(5e-3 * LEFT)
+    lens = EKSMA_LENS_20MM_ASPHERIC.to_position(
+        mirror.surfaces[1].center + 5.5e-3 * LEFT
+    )
+    system = OpticalSystem(
+        elements=[mirror, lens],
+        use_paraxial_ray_tracing=True,
+        p_is_trivial=True,
+        t_is_trivial=True,
+        lambda_0_laser=LAMBDA_0_LASER,
+    )
+    mode_initial = match_a_mode_to_mirror(
+        lambda_0_laser=LAMBDA_0_LASER,
+        mirror=mirror.surfaces[0],
+        NA=0.02,
+        mode_going_away_from_mirror=False,
+    )
+    system.set_given_mode_parameters(mode_parameters_after_first_surface=mode_initial)
+
+    inverted = system.invert()  # raises internally if the reversed mode mismatches
+    # Elements are preserved as elements (no flattening to single surfaces):
+    assert [type(e).__name__ for e in inverted.elements] == [
+        "OpticalSystem",
+        "OpticalSystem",
+    ]
+    # Surface order reversed:
+    assert inverted.surfaces[0].name == system.surfaces[-1].name
+    # Central line flipped:
+    assert np.allclose(
+        inverted.central_line[0].k_vector, -system.central_line[-1].k_vector
+    )
+    # The reversed-propagated mode at the originally-first surface is the direction-reverse of the forward mode:
+    q_forward = system.arms[0].mode_parameters_on_surface_0.q
+    q_inverted = inverted.arms[-1].mode_parameters_on_surface_1.q
+    assert np.allclose(q_inverted, -np.conj(q_forward), rtol=1e-9)
+
+
+def test_invert_floating_element_preserves_floating_convention():
+    from cavity_design import EKSMA_LENS_20MM_ASPHERIC
+
+    inverted = EKSMA_LENS_20MM_ASPHERIC.invert()
+    assert not inverted.positions_defined
+    # New first surface (originally last) is undefined; the internal step flipped sign and stayed relative:
+    assert np.all(np.isnan(inverted.surfaces[0].center))
+    offset = np.imag(inverted.surfaces[1].center)
+    assert np.allclose(offset, [-3.434e-3, 0.0, 0.0], atol=1e-15)
+    placed = inverted.to_position(np.array([0.01, 0.0, 0.0]))
+    assert placed.positions_defined
+    assert np.allclose(placed.surfaces[1].center, [0.01 - 3.434e-3, 0.0, 0.0])
+
+
+def test_invert_cavity_preserves_structure_and_mode():
+    from cavity_design import (
+        LASER_OPTIK_MIRROR,
+        EKSMA_LENS_20MM_ASPHERIC,
+        DUMMY_LENS,
+        SphericalMirror,
+    )
+
+    cavity = Cavity(
+        elements=[
+            LASER_OPTIK_MIRROR.to_position(np.array([-0.005, 0.0, 0.0])),
+            EKSMA_LENS_20MM_ASPHERIC.to_position(
+                np.array([0.017623230771841976, 0.0, 0.0])
+            ),
+            DUMMY_LENS.to_position(np.array([0.03305723077184197, 0.0, 0.0])),
+            SphericalMirror(
+                name="End mirror",
+                radius=0.2,
+                outwards_normal=np.array([1.0, 0.0, 0.0]),
+                center=np.array([0.4511688875799871, 0.0, 0.0]),
+                curvature_sign=-1,
+                diameter=0.0254,
+            ),
+        ],
+        standing_wave=True,
+        lambda_0_laser=1.064e-06,
+        t_is_trivial=True,
+        p_is_trivial=True,
+        use_paraxial_ray_tracing=False,
+    )
+    assert cavity.resonating_mode_successfully_traced
+
+    inverted = cavity.invert()  # re-derives and verifies the mode internally
+    # Still a Cavity, with the one-way element structure preserved (no flattening, no round-trip in elements):
+    assert type(inverted) is Cavity
+    assert len(inverted.elements) == len(cavity.elements)
+    assert len(inverted.elements_ordered) == len(cavity.elements_ordered)
+    assert inverted.resonating_mode_successfully_traced
+    # The re-derived mode is the direction-reverse of the original at the originally-first surface:
+    q_forward = cavity.arms[0].mode_parameters_on_surface_0.q
+    comparison_arm_index = len(inverted.surfaces) - 2
+    q_inverted = inverted.arms[comparison_arm_index].mode_parameters_on_surface_1.q
+    assert np.allclose(q_inverted, -np.conj(q_forward), rtol=1e-6)

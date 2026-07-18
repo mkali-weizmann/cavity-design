@@ -560,6 +560,13 @@ def simple_mode_propagator(
     return arms
 
 
+def _local_mode_is_valid(local_mode_parameters: LocalModeParameters) -> bool:
+    # A LocalModeParameters describes an actual Gaussian mode only when q is finite and its imaginary part
+    # (the Rayleigh range) is positive; unset modes are stored as nan-q, and failed mode solutions as z_R = 0.
+    q = local_mode_parameters.q
+    return bool(not np.any(np.isnan(q)) and np.all(np.imag(q) > 0))
+
+
 def _resolve_surface_relative_positions(surfaces: List, tiny: float = 1e-16):
     """Resolve imaginary (relative) positions on live surfaces, in place, in the given (flattened) order.
 
@@ -944,16 +951,117 @@ class OpticalSystem:
                 f"Define their center/outwards_normal (e.g. via the setters or absolute/relative params) first."
             )
 
-    @property
-    def inverse(self) -> "OpticalSystem":
-        inverse_elements = [el.inverse for el in reversed(self._elements)]
-        return OpticalSystem(
-            inverse_elements,
-            use_paraxial_ray_tracing=self.use_paraxial_ray_tracing,
-            p_is_trivial=self.p_is_trivial,
-            t_is_trivial=self.t_is_trivial,
-            mechanical_center=self._mechanical_center,
+    @staticmethod
+    def _inverted_element(element: Union[Surface, "OpticalSystem"]):
+        """Structurally inverted copy of a single element (a Surface or a nested OpticalSystem): reversed surface
+        order with swapped refractive indices and flipped curvature signs, keeping the element structure (no
+        flattening). No traced optics are carried over - that is invert()'s job at the top level.
+        """
+        if isinstance(element, OpticalSystem):
+            inverted = type(element)(
+                elements=[
+                    OpticalSystem._inverted_element(sub)
+                    for sub in reversed(element._elements)
+                ],
+                use_paraxial_ray_tracing=element.use_paraxial_ray_tracing,
+                lambda_0_laser=element.lambda_0_laser,
+                p_is_trivial=element.p_is_trivial,
+                t_is_trivial=element.t_is_trivial,
+                mechanical_center=element._mechanical_center,
+                name=element.name,
+            )
+            OpticalSystem._restore_inverted_floating_convention(
+                inverted, element._surfaces
+            )
+            return inverted
+        return element.inverse
+
+    @staticmethod
+    def _restore_inverted_floating_convention(inverted, original_surfaces):
+        # If the original followed the strict floating convention (first surface undefined, every subsequent
+        # surface a pure-imaginary relative offset), re-encode it on the inverted copy: reversal flips the sign
+        # of each internal step and the (new) first surface becomes undefined again. Without this, the
+        # constructor's resolution pass would anchor the now-leading relative offset at the ORIGIN, turning the
+        # floating element into a half-defined one.
+        centers = [np.asarray(s.center) for s in original_surfaces]
+        if len(centers) < 2:
+            return
+        first_is_floating = np.all(np.isnan(np.real(centers[0])))
+        rest_are_relative = all(
+            np.iscomplexobj(c) and np.all(np.abs(np.real(c)) <= POSITION_TINY)
+            for c in centers[1:]
         )
+        if not (first_is_floating and rest_are_relative):
+            return
+        n = len(centers)
+        inverted._surfaces[0].center = None
+        for j in range(1, n):
+            inverted._surfaces[j].center = -np.imag(centers[n - j]) * 1j
+
+    def invert(self, tolerance: float = 1e-6) -> "OpticalSystem":
+        """Inverted copy of this system: elements reversed and individually inverted, kept as elements (no
+        flattening to single surfaces).
+
+        If a central line was traced, it is carried over flipped (starting from the reversed last ray, as
+        intersected with the originally-last surface). If mode parameters were set, the mode at the
+        (originally) last surface is carried over direction-reversed (q -> -conj(q): the sign of z - z_0
+        flips, z_R is preserved) and re-propagated through the inverted system; the re-propagated mode is
+        then verified against the direction-reversed original mode at the (originally) first surface, and a
+        mismatch beyond ``tolerance`` (relative, on the real and imaginary parts of q) raises ValueError.
+        """
+        inverted_elements = [
+            OpticalSystem._inverted_element(el) for el in reversed(self._elements)
+        ]
+
+        initial_ray_inverted = None
+        if len(self.arms) > 0 and self.central_line is not None:
+            last_ray = self.central_line[-1]
+            origin_inverted = self._surfaces[-1].find_intersection_with_ray(last_ray)
+            initial_ray_inverted = Ray(
+                origin=origin_inverted, k_vector=-last_ray.k_vector
+            )
+
+        given_initial_local_mode_parameters = None
+        original_first_mode = None
+        if len(self.arms) > 0:
+            last_mode = self.arms[-1].mode_parameters_on_surface_1
+            if last_mode is not None and _local_mode_is_valid(last_mode):
+                original_first_mode = self.arms[0].mode_parameters_on_surface_0
+                given_initial_local_mode_parameters = LocalModeParameters(
+                    q=-np.conj(last_mode.q),
+                    lambda_0_laser=last_mode.lambda_0_laser,
+                    n=last_mode.n,
+                )
+
+        inverted_system = type(self)(
+            elements=inverted_elements,
+            use_paraxial_ray_tracing=self.use_paraxial_ray_tracing,
+            lambda_0_laser=self.lambda_0_laser,
+            power=self.power,
+            t_is_trivial=self.t_is_trivial,
+            p_is_trivial=self.p_is_trivial,
+            given_initial_central_line=initial_ray_inverted,
+            given_initial_local_mode_parameters=given_initial_local_mode_parameters,
+            mechanical_center=self._mechanical_center,
+            name=self.name,
+        )
+        OpticalSystem._restore_inverted_floating_convention(
+            inverted_system, self._surfaces
+        )
+
+        if given_initial_local_mode_parameters is not None:
+            inverted_last_mode = inverted_system.arms[-1].mode_parameters_on_surface_1
+            expected_q = -np.conj(original_first_mode.q)
+            scale = np.max(np.abs(expected_q))
+            if not np.allclose(
+                inverted_last_mode.q, expected_q, rtol=tolerance, atol=tolerance * scale
+            ):
+                raise ValueError(
+                    f"Inversion consistency check failed: the mode propagated through the inverted system "
+                    f"(q={inverted_last_mode.q} at the originally-first surface) does not match the "
+                    f"direction-reversed original forward mode (q={expected_q})."
+                )
+        return inverted_system
 
     @property
     def surfaces(self):
@@ -1486,31 +1594,6 @@ class OpticalSystem:
         ]
         return mode_parameters
 
-    #         @property
-    #     def mode_parameters(self):
-    #         if np.isnan(self.mode_parameters_on_surface_0.z_R[0]):
-    #             return ModeParameters(
-    #                 center=np.array([[np.nan, np.nan, np.nan], [np.nan, np.nan, np.nan]]),
-    #                 k_vector=np.array([np.nan, np.nan, np.nan]),
-    #                 w_0=np.array([np.nan, np.nan]),
-    #                 principle_axes=np.array([[np.nan, np.nan, np.nan], [np.nan, np.nan, np.nan]]),
-    #                 lambda_0_laser=self.lambda_0_laser,
-    #                 n=self.n,
-    #             )
-    #         center = (
-    #             self.central_line.origin
-    #             - self.mode_parameters_on_surface_0.z_minus_z_0[..., np.newaxis] * self.central_line.k_vector
-    #         )
-    #         mode_parameters = ModeParameters(
-    #             center=center,
-    #             k_vector=self.central_line.k_vector,
-    #             w_0=self.mode_parameters_on_surface_0.w_0,
-    #             principle_axes=self.mode_principle_axes,
-    #             lambda_0_laser=self.lambda_0_laser,
-    #             n=self.n,
-    #         )
-    #         return mode_parameters
-
     def set_given_central_line(self, initial_ray: Ray):
         # This line is to save the central line in the ray history, so that it can be plotted later.
         central_line = self.propagate_ray(initial_ray)
@@ -1777,14 +1860,6 @@ class OpticalSystem:
             standing_wave=True,
         )
         return cavity
-        # if not (
-        #     end_mirror_ROC is not None and end_mirror_distance_to_last_element is not None
-        # ) and not np.isclose(  # If NA should not be overridden
-        #     cavity.arms[-1].mode_parameters.NA[0], NA, rtol=0, atol=1e-3
-        # ):  # and it is not the desired one:
-        #     warnings.warn(
-        #         f"Did not achieve the desired NA, got {cavity.arms[-1].mode_parameters.NA[0]:.3e} instead of {NA:.3e}"
-        #     )
 
     def generate_spot_size_lines(self, dim=2, plane="xy"):
         list_of_spot_size_lines = []
@@ -2014,14 +2089,54 @@ class OpticalSystem:
                 np.linalg.norm(self.surfaces[-1].center - self.surfaces[-2].center)
             )
         if self.resonating_mode_successfully_traced:
-            title = ax.set_title(
+            ax.set_title(
                 f"NA first = {self.mode_parameters[0].NA[0]:.2e}, NA last = {self.mode_parameters[len(self.arms) // 2 - 1].NA[0]:.2e}\n"
                 f"length first = {length_first:.2e}, length last = {length_last:.2e}"
             )
         else:
-            title = ax.set_title(
+            ax.set_title(
                 f"length first = {length_first:.2e}, length last = {length_last:.2e}"
             )
+
+        def plot_mirrors_origin_and_image(optical_system):
+            if not isinstance(optical_system.elements[0], SphericalMirror):
+                return
+            else:
+                origin = optical_system.elements[0].origin
+                if isinstance(optical_system.surfaces[-1], SphericalMirror):
+                    # Do not propagate with last mirror:
+                    optical_system_reduced = OpticalSystem(
+                        elements=optical_system.elements[:-1],
+                        t_is_trivial=optical_system.t_is_trivial,
+                        p_is_trivial=optical_system.p_is_trivial,
+                        use_paraxial_ray_tracing=True,
+                    )
+                else:
+                    optical_system_reduced = optical_system
+                output_point = optical_system_reduced.output_image_of_a_point(
+                    source_position=origin, propagate_with_first_surface=False
+                )
+                ax.scatter(
+                    output_point[x_index],
+                    output_point[y_index],
+                    marker="o",
+                    color="g",
+                    s=20,
+                    alpha=0.5,
+                )
+                ax.scatter(
+                    origin[x_index],
+                    origin[y_index],
+                    marker="o",
+                    color="b",
+                    s=20,
+                    alpha=1,
+                )
+
+        # Plot origins of edge mirrors and their images:
+        plot_mirrors_origin_and_image(self)
+        plot_mirrors_origin_and_image(self.invert())
+
         return ax
 
     @property
@@ -2072,6 +2187,55 @@ class OpticalSystem:
             R_out = (A * initial_distance + B) / (C * initial_distance + D)
         return R_out
 
+    def output_image_of_a_point(
+        self,
+        initial_distance: Optional[float] = None,
+        source_position: Optional[np.ndarray] = None,
+        propagate_with_first_surface: bool = True,
+    ) -> np.ndarray:
+
+        output_radius_of_curvature = self.output_radius_of_curvature(
+            initial_distance=initial_distance,
+            source_position=source_position,
+            propagate_with_first_surface=propagate_with_first_surface,
+        )
+        output_optical_axis = self.central_line_continuation()
+        output_image = (
+            self.surfaces[-1].center
+            - output_radius_of_curvature * output_optical_axis.k_vector
+        )
+        return output_image
+
+    def central_line_continuation(self) -> Ray:
+        # returns the continuation of the central line after the last ordered surface (ordered == including back trip in cavities)
+        if self.central_line_successfully_traced:
+            continuation = self.surfaces_ordered[-1].propagate_ray(
+                self.central_line[-1]
+            )
+        else:
+            if len(self.surfaces) == 1:
+                k_vector = self.surfaces_ordered[0].outwards_normal
+                warnings.warn(
+                    "Only one surface - assuming the continuation is towards the outwards normal to the surface."
+                )
+            elif self.p_is_trivial and self.t_is_trivial:
+                k_vector = normalize_vector(
+                    self.surfaces_ordered[-1].center - self.surfaces_ordered[-2].center
+                )
+            else:
+                raise ValueError(
+                    "Central line is not well defined, can not calculate continuation"
+                )
+            n = (
+                self.surfaces_ordered[-1].n_2
+                if isinstance(self.surfaces_ordered[-1], RefractiveSurface)
+                else 1
+            )
+            continuation = Ray(
+                origin=self.surfaces_ordered[-1].center, k_vector=k_vector, n=n
+            )
+        return continuation
+
     def required_initial_distance_for_desired_output_radius_of_curvature(
         self, desired_R_out: float
     ) -> float:
@@ -2080,37 +2244,6 @@ class OpticalSystem:
         A, B, C, D = ABCD[0, 0], ABCD[0, 1], ABCD[1, 0], ABCD[1, 1]
         initial_distance = -(B + D * desired_R_out) / (A + C * desired_R_out)
         return initial_distance
-
-    def invert(self) -> OpticalSystem:
-        inverted_surfaces = []
-        for surface in self.physical_surfaces[::-1]:
-            inverted_surface = copy.deepcopy(surface)
-            if isinstance(surface, RefractiveSurface):
-                n_1, n_2 = inverted_surface.n_1, inverted_surface.n_2
-                inverted_surface.n_1 = n_2
-                inverted_surface.n_2 = n_1
-            if isinstance(surface, (SphericalSurface, AsphericSurface)):
-                inverted_surface.curvature_sign *= -1
-            inverted_surfaces.append(inverted_surface)
-
-        if self.central_line is not None:
-            origin_inverted = self.physical_surfaces[-1].find_intersection_with_ray(
-                self.central_line[-1]
-            )
-            k_vector_inverted = -self.central_line[-1].k_vector
-            initial_ray_inverted = Ray(
-                origin=origin_inverted, k_vector=k_vector_inverted
-            )
-        else:
-            initial_ray_inverted = None
-
-        inverted_system = OpticalSystem(
-            elements=inverted_surfaces,
-            lambda_0_laser=self.lambda_0_laser,
-            given_initial_central_line=initial_ray_inverted,
-            use_paraxial_ray_tracing=self.use_paraxial_ray_tracing,
-        )
-        return inverted_system
 
 
 ##############
@@ -2208,7 +2341,7 @@ class Cavity(OpticalSystem):
         if standing_wave:
             backwards_list = surfaces[-2::-1]  # not including last  #  C -> B -> A
             backwards_list_inverted = [
-                surface.inverse for surface in backwards_list
+                OpticalSystem._inverted_element(surface) for surface in backwards_list
             ]  # C^-1 -> B^-1 -> A^-1
             ordered_list = (
                 surfaces + backwards_list_inverted
@@ -2256,6 +2389,62 @@ class Cavity(OpticalSystem):
     @property
     def last_arm_index(self):
         return len(self.arms) // 2 - 1
+
+    def invert(self, tolerance: float = 1e-6) -> "Cavity":
+        """Inverted copy of this cavity, preserving the Cavity structure: ``elements`` stays the reversed
+        one-way list (each element individually inverted, no flattening) and the round-trip continuation
+        (``elements_ordered``) is rebuilt by the constructor.
+
+        The central line and the resonating mode are re-derived by the cavity's own solvers (when they were
+        set on the original). If the original mode was traced, the re-derived mode is verified against the
+        direction-reversed original at the (originally) first surface (q -> -conj(q): opposite z - z_0,
+        equal z_R), and a mismatch beyond ``tolerance`` raises ValueError."""
+        inverted_elements = [
+            OpticalSystem._inverted_element(el) for el in reversed(self.elements)
+        ]
+        had_central_line = len(self.arms) > 0 and self.central_line is not None
+        original_first_mode = (
+            self.arms[0].mode_parameters_on_surface_0 if len(self.arms) > 0 else None
+        )
+        had_mode = original_first_mode is not None and _local_mode_is_valid(
+            original_first_mode
+        )
+
+        inverted_cavity = type(self)(
+            elements=inverted_elements,
+            standing_wave=self.standing_wave,
+            lambda_0_laser=self.lambda_0_laser,
+            set_central_line=had_central_line,
+            set_mode_parameters=had_mode,
+            t_is_trivial=self.t_is_trivial,
+            p_is_trivial=self.p_is_trivial,
+            power=self.power,
+            use_brute_force_for_central_line=self.use_brute_force_for_central_line,
+            debug_printing_level=self.debug_printing_level,
+            use_paraxial_ray_tracing=self.use_paraxial_ray_tracing,
+        )
+
+        if had_mode and inverted_cavity.resonating_mode_successfully_traced:
+            # The arm of the inverted cavity whose surface_1 is the originally-first surface (works both for
+            # standing-wave and ring cavities: one-way surface count minus 2).
+            comparison_arm_index = len(inverted_cavity.surfaces) - 2
+            inverted_mode_at_first_surface = inverted_cavity.arms[
+                comparison_arm_index
+            ].mode_parameters_on_surface_1
+            expected_q = -np.conj(original_first_mode.q)
+            scale = np.max(np.abs(expected_q))
+            if not np.allclose(
+                inverted_mode_at_first_surface.q,
+                expected_q,
+                rtol=tolerance,
+                atol=tolerance * scale,
+            ):
+                raise ValueError(
+                    f"Inversion consistency check failed: the resonating mode of the inverted cavity "
+                    f"(q={inverted_mode_at_first_surface.q} at the originally-first surface) does not match "
+                    f"the direction-reversed original mode (q={expected_q})."
+                )
+        return inverted_cavity
 
     def _init_syntax_constructor_kwargs(self) -> list:
         keyword_arguments = [

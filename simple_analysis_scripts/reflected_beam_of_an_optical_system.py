@@ -10,7 +10,7 @@ optical_system = OpticalSystem(elements=[LASER_OPTIK_MIRROR, EDMUND_4p03MM_ASPHE
 short_arm_length = optical_system[0].radius + back_focal_length_of_lens_object(lens_object=optical_system[1])
 optical_system.place_element(element=optical_system[1], position=short_arm_length * RIGHT,
                              recalculate_optic=True, reference_center=optical_system[0])
-optical_system_reversed = optical_system.inverse
+optical_system_reversed = optical_system.invert()
 
 mode_beginning = optical_system.surfaces[-1].center[0]+1e-2
 left_going_mode = ModeParameters(center=np.array([mode_beginning, 0, 0]), k_vector=LEFT, lambda_0_laser=LAMBDA_0_LASER, w_0=np.array([1e-3, 1e-3]))

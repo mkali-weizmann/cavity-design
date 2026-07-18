@@ -18,9 +18,8 @@ re-derive from library source.
 - All lengths are in **meters** (SI throughout). Default wavelength: `LAMBDA_0_LASER = 1064e-9`.
 - The optical axis usually runs along **x**. Direction/position constants:
   `LEFT, RIGHT, UP, DOWN, INWARD, OUTWARD, ORIGIN, INCH` (defined in `cavity_design/_utils.py`).
-- **`OpticalSystem`** — a one-pass chain of surfaces (no round-trip condition); also used to model
-  compound elements (a lens = two refractive surfaces).
-- **`Cavity`** — a resonator, inheriting from OpticalSystem, where the light goes back and fourth (if `self.standing_wave is True`) or in a loop (if `self.standing_wave is False`) finds the self-consistent cavity mode (`cavity.arms[i].mode_parameters` → `w_0`, `z_R`, `NA`, ...).
+- **`OpticalSystem`** (in `_cavity.py`): a one-pass chain of surfaces (no round-trip condition); also used to model compound elements (a lens = two refractive surfaces).
+- **`Cavity`** (in `_cavity.py`): a resonator, inheriting from OpticalSystem, where the light goes back and fourth (if `self.standing_wave is True`) or in a loop (if `self.standing_wave is False`) finds the self-consistent cavity mode (`cavity.arms[i].mode_parameters` → `w_0`, `z_R`, `NA`, ...).
 	- The left-most mirror of a cavity is conventionally placed such that it's origin (the center of the sphere) is a `ORIGIN` (at `np.array([0, 0, 0])`)
 	- cavity keys access accesses it's elements: `cavity[0]` is `cavity.elements[0]`
 	- For aberrations calculations, `self.use_paraxial_ray_tracing` should be set to False.
@@ -28,7 +27,14 @@ re-derive from library source.
 - **Surfaces** (in `_surfaces.py`): `SphericalMirror`, `FlatMirror`, `SphericalRefractiveSurface`,
   `FlatRefractiveSurface`, `AsphericRefractiveSurface`.
 	- `Surface` is the general, and all inherit from it.
-	- RefractiveSurface
+	- `RefractiveSurface` knows how to refract rays/modes.
+	- `ReflectiveSurface` knows how to reflect rays/modes.
+	- Geometrical types of surfaces are: `FlatSurface, SphericalSurface, AsphericSurface`
+	- **Important:** the `surface.curvature_sign` (`CurvatureSigns.convex` (1), `CurvatureSigns.concave` (-1), `CurvatureSigns.flat` (0)) is defined with respect to the incoming ray, not with respect to the higher-refractive-index-side. For example if a lens is biconvex, then the first `spherical_surface` will have `spherical_surface.curvature_sign == CurvatureSigns.convex` , while the second one (to which the ray comes in from the inside of the lens will have `spherical_surface.curvature_sign == CurvatureSigns.concave`). This is done to ease with the intersection calculation of the surface with the ray.
+- **Ray, RaySequence** in (`_rays.py`):
+	- `Ray` is a set of rays, with `origin, length, k_vector` (**normalized** unit vector, direction of the ray), and refractive index `n`. `origin and k_vector` can have any number of dimensions, where the last one is always 3 - for the 3 spatial dimensions.
+		- for example. If `ray` has `ray.origin.shape = (10, 10, 3)` then it represent a set of 10 by 10 rays, where the origin of the `i`'th, `j`'th ray is encoded in `ray.origin[i, j, :]`
+	- `RaySequence` is a sequence of rays, where **the first index** is the ray "step" index. That is, ray_sequence[k, ...] is the continuation (after refracting from a surface, from example) of ray_sequence[k-1, ...]
 - **Catalog elements** (in `_existing_elements.py`): pre-built real components, e.g.
   `LASER_OPTIK_MIRROR`, `LASER_OPTIK_MIRROR_REFRACTIVE` (transmissive version),
   `EKSMA_LENS_20MM_ASPHERIC`, `THORLABS_8MM_ASPHERIC`, `DUMMY_LENS`, `COASTLINE_20CM_MIRROR`, ...
@@ -71,8 +77,6 @@ cavity.place_element(element=cavity[1], position=short_arm_length * RIGHT, refer
 cavity.place_element(element=cavity[2], position=mid_arm_length * RIGHT, reference_center=cavity[1], recalculate_optic=False)  
 cavity.place_element(element=cavity[-1], position=long_arm_length * RIGHT, reference_center=cavity[2], recalculate_optic=True)
 ```
-
-
 
 ## Operation: cavity perturbation / tolerance analysis
 
