@@ -46,9 +46,7 @@ LASER_OPTIK_MIRROR_REFRACTIVE = OpticalSystem(
             name="Laser Optik Mirror - Concave",
             n_1=1,
             curvature_sign=CurvatureSigns.concave,
-            n_2=PHYSICAL_SIZES_DICT[
-                "material_properties_fused_silica"
-            ].refractive_index,
+            n_2=PHYSICAL_SIZES_DICT["material_properties_fused_silica"].refractive_index,
             material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"],
         ),
         SphericalRefractiveSurface(
@@ -58,9 +56,7 @@ LASER_OPTIK_MIRROR_REFRACTIVE = OpticalSystem(
             outwards_normal=LEFT,
             center=3.45e-3 * LEFT * 1j,
             name="Laser Optik Mirror - Convex",
-            n_1=PHYSICAL_SIZES_DICT[
-                "material_properties_fused_silica"
-            ].refractive_index,
+            n_1=PHYSICAL_SIZES_DICT["material_properties_fused_silica"].refractive_index,
             n_2=1,
             material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"],
         ),
