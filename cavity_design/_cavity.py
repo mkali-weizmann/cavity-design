@@ -145,12 +145,13 @@ class Arm:
         self.central_line: Optional[Ray] = central_line
         self.mode_principle_axes: Optional[np.ndarray] = mode_principle_axes
 
-        if isinstance(surface_0, CurvedRefractiveSurface) and isinstance(
-            surface_1, CurvedRefractiveSurface
+        if isinstance(surface_0, RefractiveSurface) and isinstance(
+            surface_1, RefractiveSurface
         ):
-            assert (
-                surface_0.n_2 == surface_1.n_1
-            ), "The refractive index according to first element is not the same as the refractive index according to the second element"
+            assert surface_0.n_2 == surface_1.n_1, (
+                f"The refractive index after surface '{surface_0.name}' (n_2={surface_0.n_2}) is not the same as "
+                f"the refractive index before surface '{surface_1.name}' (n_1={surface_1.n_1})"
+            )
 
     def propagate_ray(self, ray: Ray, use_paraxial_ray_tracing: bool = False):
         ray.n = self.n

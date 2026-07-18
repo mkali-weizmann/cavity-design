@@ -52,7 +52,9 @@
       "Bash(git restore *)",
       "Bash(git commit *)",
       "Bash(git checkout *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(python -m black cavity_design/_cavity.py)",
+      "Bash(python -m pytest -q)"
     ]
   }
 }
