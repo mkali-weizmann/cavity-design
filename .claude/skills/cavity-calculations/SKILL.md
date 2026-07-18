@@ -27,6 +27,12 @@ re-derive from library source.
 - **Catalog elements** (in `_existing_elements.py`): pre-built real components, e.g.
   `LASER_OPTIK_MIRROR`, `LASER_OPTIK_MIRROR_REFRACTIVE` (transmissive version),
   `EKSMA_LENS_20MM_ASPHERIC`, `THORLABS_8MM_ASPHERIC`, `DUMMY_LENS`, `COASTLINE_20CM_MIRROR`, ...
+  Catalog elements are **floating**: their absolute positions are undefined (nan) until placed;
+  only their internal geometry is encoded, as relative offsets. Always place one before using it.
+- Undefined positions: a floating surface stores a size-3 nan `center` (constructed with
+  `center=None` or omitted); an **imaginary** center component is a relative offset from the
+  previous surface, resolved when the element/system is placed. Check `element.positions_defined`;
+  geometry computations on unplaced elements raise.
 - Placing elements: `element.to_position(p)` returns a **copy** placed with its first surface at
   `p` (non-mutating, chainable with `.to_orientation(n)`). `set_element_position(element, p)`
   moves an element **in place** — deepcopy a catalog element first if you use it, so the shared
@@ -78,7 +84,7 @@ beam anywhere along the way. Full runnable version:
 ```python
 from cavity_design import *
 
-mirror = LASER_OPTIK_MIRROR_REFRACTIVE                      # catalog element at ORIGIN
+mirror = LASER_OPTIK_MIRROR_REFRACTIVE.to_position(5e-3 * LEFT)  # catalog elements are floating - place first
 lens = EKSMA_LENS_20MM_ASPHERIC.to_position(mirror.surfaces[1].center + 5.5e-3 * LEFT)
 system = OpticalSystem(elements=[mirror, lens],
                        use_paraxial_ray_tracing=True, t_is_trivial=True, p_is_trivial=True)

@@ -11,9 +11,12 @@ Adapted from simple_analysis_scripts/camera_spot_size_per_cavity_NA.py.
 
 from cavity_design import *
 
-# %% Build the one-pass optical system. The catalog mirror sits at ORIGIN; the lens is placed
-# 5.5 mm to its left with .to_position() (non-mutating - the catalog object stays pristine).
-mirror = LASER_OPTIK_MIRROR_REFRACTIVE
+# %% Build the one-pass optical system. Catalog elements are floating (undefined positions), so each one
+# must be placed first. .to_position() returns a placed copy (non-mutating - the catalog object stays
+# pristine) with its first surface anchored at the given point; the internal relative offsets then resolve.
+mirror = LASER_OPTIK_MIRROR_REFRACTIVE.to_position(
+    5e-3 * LEFT
+)  # concave face at x=-5mm, as in the cavity
 lens = EKSMA_LENS_20MM_ASPHERIC.to_position(mirror.surfaces[1].center + 5.5e-3 * LEFT)
 optical_system = OpticalSystem(
     elements=[mirror, lens],

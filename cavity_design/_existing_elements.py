@@ -11,9 +11,12 @@ from ._cavity import (
 )
 from ._utils import PHYSICAL_SIZES_DICT, LEFT, ORIGIN, RIGHT, INCH, MaterialProperties
 
+# All catalog elements are *floating*: their absolute positions are undefined (nan) and only their internal
+# geometry is encoded, as relative (imaginary) offsets from their first surface. Place an element before using it,
+# e.g. EKSMA_LENS_20MM_ASPHERIC.to_position(p) (non-mutating) or set_element_position(element, p) (in place).
+
 LASER_OPTIK_MIRROR = CurvedMirror(
     radius=5e-3,
-    origin=ORIGIN,
     diameter=7.75e-3,
     outwards_normal=LEFT,
     name="Laser Optik Mirror",
@@ -40,11 +43,12 @@ LASER_OPTIK_MIRROR_REFRACTIVE = OpticalSystem(
             radius=5e-3,
             diameter=7.75e-3,
             outwards_normal=LEFT,
-            origin=ORIGIN,
             name="Laser Optik Mirror - Concave",
             n_1=1,
             curvature_sign=CurvatureSigns.concave,
-            n_2=PHYSICAL_SIZES_DICT["material_properties_fused_silica"].refractive_index,
+            n_2=PHYSICAL_SIZES_DICT[
+                "material_properties_fused_silica"
+            ].refractive_index,
             material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"],
         ),
         CurvedRefractiveSurface(
@@ -52,9 +56,11 @@ LASER_OPTIK_MIRROR_REFRACTIVE = OpticalSystem(
             radius=5e-3,
             diameter=7.75e-3,
             outwards_normal=LEFT,
-            origin=ORIGIN + 3.45e-3 * LEFT,
+            center=3.45e-3 * LEFT * 1j,
             name="Laser Optik Mirror - Convex",
-            n_1=PHYSICAL_SIZES_DICT["material_properties_fused_silica"].refractive_index,
+            n_1=PHYSICAL_SIZES_DICT[
+                "material_properties_fused_silica"
+            ].refractive_index,
             n_2=1,
             material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"],
         ),
@@ -78,7 +84,10 @@ THORLABS_35MM_COLLIMATING_LENS = OpticalSystem(
             name="Thorlabs 35mm biconvex - left",
             radius=34.9e-3,
             outwards_normal=LEFT,
-            center=(LASER_OPTIK_MIRROR_REFRACTIVE.surfaces[1].center + 6.8e-3 * LEFT) * 1j,
+            # Historical value, previously written as (LASER_OPTIK_MIRROR_REFRACTIVE.surfaces[1].center +
+            # 6.8e-3 * LEFT) * 1j when the mirror was pre-placed (its back surface at x=-8.45e-3). Kept numerically
+            # identical here; note it encodes 15.25 mm as this lens's center thickness — verify against the datasheet.
+            center=15.25e-3 * LEFT * 1j,
             diameter=INCH,
             curvature_sign=CurvatureSigns.concave,
             n_1=PHYSICAL_SIZES_DICT["material_properties_bk7"].refractive_index,
@@ -92,7 +101,6 @@ THORLABS_35MM_COLLIMATING_LENS = OpticalSystem(
 EDMUND_4p03MM_ASPHERIC_SPHERICAL_VERSION = OpticalSystem(
     elements=[
         CurvedRefractiveSurface(
-            center=ORIGIN,
             name="low curvature side - Edmund 4.03mm spherical version",
             radius=(1 / 7.889402975752558833e-02) * 1e-3,
             outwards_normal=LEFT,
@@ -105,7 +113,7 @@ EDMUND_4p03MM_ASPHERIC_SPHERICAL_VERSION = OpticalSystem(
             name="high curvature side - Edmund 4.03mm spherical version",
             radius=(1 / 3.817155986760137343e-01) * 1e-3,
             outwards_normal=RIGHT,
-            center=3.1e-3 * RIGHT,
+            center=3.1e-3 * RIGHT * 1j,
             diameter=5.1e-3,
             curvature_sign=CurvatureSigns.concave,
             n_1=1.574,
@@ -119,7 +127,6 @@ EDMUND_4p03MM_ASPHERIC_SPHERICAL_VERSION = OpticalSystem(
 EDMUND_4p03MM_ASPHERIC = OpticalSystem(
     elements=[
         AsphericRefractiveSurface(
-            center=ORIGIN,
             outwards_normal=LEFT,
             polynomial_coefficients=-np.array(
                 [
@@ -143,7 +150,7 @@ EDMUND_4p03MM_ASPHERIC = OpticalSystem(
             curvature_sign=CurvatureSigns.convex,
         ),
         AsphericRefractiveSurface(
-            center=3.1e-3 * RIGHT,
+            center=3.1e-3 * RIGHT * 1j,
             outwards_normal=RIGHT,
             polynomial_coefficients=np.array(
                 [
@@ -186,7 +193,7 @@ THOLABS_100MM_PLANO_CONVEX_LENS = OpticalSystem(
         ),
         FlatRefractiveSurface(
             name="Thorlabs 100mm plano convex - left",
-            center=ORIGIN + 3.6e-3 * RIGHT * 1j,
+            center=3.6e-3 * RIGHT * 1j,
             outwards_normal=LEFT,
             diameter=INCH,
             n_1=PHYSICAL_SIZES_DICT["material_properties_bk7"].refractive_index,
@@ -212,7 +219,7 @@ DUMMY_LENS = OpticalSystem(
         ),
         FlatRefractiveSurface(
             name="Dummy lens - flat side",
-            center=ORIGIN + 3.6e-3 * RIGHT * 1j,
+            center=3.6e-3 * RIGHT * 1j,
             outwards_normal=LEFT,
             diameter=INCH,
             n_1=PHYSICAL_SIZES_DICT["material_properties_bk7"].refractive_index,
@@ -230,7 +237,6 @@ EKSMA_LENS_20MM_ASPHERIC = OpticalSystem(
     elements=[
         FlatRefractiveSurface(
             name="Eksma 20mm aspheric - flat side",
-            center=ORIGIN,
             outwards_normal=LEFT,
             n_1=1,
             n_2=1.4496,
@@ -239,7 +245,7 @@ EKSMA_LENS_20MM_ASPHERIC = OpticalSystem(
         ),
         AsphericRefractiveSurface(
             name="Eksma 20mm aspheric - convex side",
-            center=3.434e-3 * RIGHT,
+            center=3.434e-3 * RIGHT * 1j,
             outwards_normal=RIGHT,
             polynomial_coefficients=np.array(
                 [
@@ -273,7 +279,6 @@ THORLABS_8MM_ASPHERIC = OpticalSystem(
     elements=[
         FlatRefractiveSurface(
             name="aspheric_lens_flat",
-            center=ORIGIN,
             outwards_normal=LEFT,
             n_1=1,
             n_2=1.577,
@@ -282,7 +287,7 @@ THORLABS_8MM_ASPHERIC = OpticalSystem(
         ),
         AsphericRefractiveSurface(
             name="aspheric_lens_convex",
-            center=3.434e-3 * RIGHT,
+            center=3.434e-3 * RIGHT * 1j,
             outwards_normal=RIGHT,
             polynomial_coefficients=np.array(
                 [
@@ -315,7 +320,6 @@ THORLABS_8MM_ASPHERIC = OpticalSystem(
 EDMUND_8MM_ASPHERIC_31074 = OpticalSystem(
     elements=[
         FlatRefractiveSurface(
-            center=ORIGIN,
             outwards_normal=LEFT,
             n_1=1,
             n_2=1.574,
@@ -323,7 +327,7 @@ EDMUND_8MM_ASPHERIC_31074 = OpticalSystem(
             diameter=6.3e-3,
         ),
         AsphericRefractiveSurface(
-            center=3.43e-3 * RIGHT,
+            center=3.43e-3 * RIGHT * 1j,
             outwards_normal=RIGHT,
             # Note: the coefficients must not be negated (coef[1] must be positive) — the curvature direction is
             # encoded in the outwards normal (LEFT here), as the AsphericSurface assertion requires.
@@ -356,7 +360,6 @@ EDMUND_8MM_ASPHERIC_31074 = OpticalSystem(
 EDMUND_6MM_ASPHERIC_87127 = OpticalSystem(
     elements=[
         FlatRefractiveSurface(
-            center=ORIGIN,
             outwards_normal=LEFT,
             n_1=1,
             n_2=1.784,
@@ -364,7 +367,7 @@ EDMUND_6MM_ASPHERIC_87127 = OpticalSystem(
             diameter=6.3e-3,
         ),
         AsphericRefractiveSurface(
-            center=5.16e-3 * RIGHT,
+            center=5.16e-3 * RIGHT * 1j,
             outwards_normal=RIGHT,
             # Note: the coefficients must not be negated (coef[1] must be positive) — the curvature direction is
             # encoded in the outwards normal (LEFT here), as the AsphericSurface assertion requires.
@@ -397,7 +400,6 @@ EDMUND_6MM_ASPHERIC_87127 = OpticalSystem(
 EDMUND_4MM_ASPHERIC_16701 = OpticalSystem(
     elements=[
         FlatRefractiveSurface(
-            center=ORIGIN,
             outwards_normal=LEFT,
             n_1=1,
             n_2=1.784,  # design n: 1.83
@@ -405,7 +407,7 @@ EDMUND_4MM_ASPHERIC_16701 = OpticalSystem(
             diameter=6.3e-3,
         ),
         AsphericRefractiveSurface(
-            center=3.7e-3 * RIGHT,
+            center=3.7e-3 * RIGHT * 1j,
             outwards_normal=RIGHT,
             # Note: the coefficients must not be negated (coef[1] must be positive) — the curvature direction is
             # encoded in the outwards normal (LEFT here), as the AsphericSurface assertion requires.
@@ -438,7 +440,6 @@ EDMUND_4MM_ASPHERIC_16701 = OpticalSystem(
 EDMUND_4p5MM_ASPHERIC_83580 = OpticalSystem(
     elements=[
         FlatRefractiveSurface(
-            center=ORIGIN,
             outwards_normal=LEFT,
             n_1=1,
             n_2=1.574,  # design n: 1.576
@@ -446,7 +447,7 @@ EDMUND_4p5MM_ASPHERIC_83580 = OpticalSystem(
             diameter=6.3e-3,
         ),
         AsphericRefractiveSurface(
-            center=3.65e-3 * RIGHT,
+            center=3.65e-3 * RIGHT * 1j,
             outwards_normal=RIGHT,
             # Note: the coefficients must not be negated (coef[1] must be positive) — the curvature direction is
             # encoded in the outwards normal (LEFT here), as the AsphericSurface assertion requires.
@@ -485,7 +486,10 @@ for _catalog_name, _element in [
     ("COASTLINE_50CM_MIRROR", COASTLINE_50CM_MIRROR),
     ("LASER_OPTIK_MIRROR_REFRACTIVE", LASER_OPTIK_MIRROR_REFRACTIVE),
     ("THORLABS_35MM_COLLIMATING_LENS", THORLABS_35MM_COLLIMATING_LENS),
-    ("EDMUND_4p03MM_ASPHERIC_SPHERICAL_VERSION", EDMUND_4p03MM_ASPHERIC_SPHERICAL_VERSION),
+    (
+        "EDMUND_4p03MM_ASPHERIC_SPHERICAL_VERSION",
+        EDMUND_4p03MM_ASPHERIC_SPHERICAL_VERSION,
+    ),
     ("EDMUND_4p03MM_ASPHERIC", EDMUND_4p03MM_ASPHERIC),
     ("THOLABS_100MM_PLANO_CONVEX_LENS", THOLABS_100MM_PLANO_CONVEX_LENS),
     ("EKSMA_LENS_20MM_ASPHERIC", EKSMA_LENS_20MM_ASPHERIC),
@@ -494,7 +498,6 @@ for _catalog_name, _element in [
     ("EDMUND_6MM_ASPHERIC_87127", EDMUND_6MM_ASPHERIC_87127),
     ("EDMUND_4MM_ASPHERIC_16701", EDMUND_4MM_ASPHERIC_16701),
     ("EDMUND_4p5MM_ASPHERIC_83580", EDMUND_4p5MM_ASPHERIC_83580),
-    ("DUMMY_LENS", DUMMY_LENS),
 ]:
     register_existing_element(_catalog_name, _element)
 del _catalog_name, _element

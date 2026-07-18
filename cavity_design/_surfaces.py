@@ -42,8 +42,11 @@ from ._rays import Ray
 POSITION_TINY = 1e-16
 
 
-def _to_position_array(value: np.ndarray) -> np.ndarray:
+def _to_position_array(value: Optional[np.ndarray]) -> np.ndarray:
     # Keep a genuinely-complex (relative) position as complex; otherwise return a clean real float array.
+    # None (an undefined, "floating" position) is stored as the conventional size-3 nan array.
+    if value is None:
+        return np.full(3, np.nan)
     arr = np.asarray(value)
     if np.iscomplexobj(arr):
         if np.all(np.abs(arr.imag) <= POSITION_TINY):
@@ -71,7 +74,9 @@ class Surface:
         material_properties: MaterialProperties = None,
         **kwargs,
     ):
-        self.outwards_normal = outwards_normal  # Goes through the (nan-safe, normalizing) setter below.
+        self.outwards_normal = (
+            outwards_normal  # Goes through the (nan-safe, normalizing) setter below.
+        )
         self.name = name
         self.radius = radius
         self.diameter = diameter
@@ -108,19 +113,25 @@ class Surface:
 
     @inwards_normal.setter
     def inwards_normal(self, value: Optional[np.ndarray]):
-        self.outwards_normal = None if value is None else -np.asarray(value, dtype=float)
+        self.outwards_normal = (
+            None if value is None else -np.asarray(value, dtype=float)
+        )
 
     @property
     def positions_defined(self) -> bool:
         # True only when both the orientation and the location of the surface are fully specified: no nans and no
         # unresolved (significantly imaginary) relative positions.
-        return _position_is_well_defined(self.outwards_normal) and _position_is_well_defined(self.center)
+        return _position_is_well_defined(
+            self.outwards_normal
+        ) and _position_is_well_defined(self.center)
 
     def normal_at_a_point(self, point: np.ndarray) -> np.ndarray:
         # Pointing outwards towards the convex side
         raise NotImplementedError
 
-    def forward_normal_at_a_point(self, point: np.ndarray, k_vector: Optional[np.ndarray]) -> np.ndarray:
+    def forward_normal_at_a_point(
+        self, point: np.ndarray, k_vector: Optional[np.ndarray]
+    ) -> np.ndarray:
         # Normal to a point, pointing forwards along the ray if k_vector is given
         normal = self.normal_at_a_point(point)
         if k_vector is None:
@@ -128,7 +139,9 @@ class Surface:
         else:
             return normal * np.sign(np.sum(normal * k_vector, axis=-1))[..., np.newaxis]
 
-    def find_intersection_with_ray(self, ray: Ray, paraxial: bool = False) -> np.ndarray:
+    def find_intersection_with_ray(
+        self, ray: Ray, paraxial: bool = False
+    ) -> np.ndarray:
         if paraxial:
             return self.find_intersection_with_ray_paraxial(ray)
         else:
@@ -144,7 +157,9 @@ class Surface:
         if intersection_point is None:
             intersection_point = self.find_intersection_with_ray(ray, paraxial=paraxial)
         if forward_normal is None:
-            forward_normal = self.forward_normal_at_a_point(intersection_point, ray.k_vector)
+            forward_normal = self.forward_normal_at_a_point(
+                intersection_point, ray.k_vector
+            )
         return intersection_point, forward_normal
 
     def find_intersection_with_ray_paraxial(self, ray: Ray) -> np.ndarray:
@@ -157,10 +172,14 @@ class Surface:
         # Physical surfaces override this function to also change the ray's k_vector.
         intersection_point = self.find_intersection_with_ray(ray, paraxial=paraxial)
         length = np.linalg.norm(intersection_point - ray.origin, axis=-1)
-        propagated_ray = Ray(origin=intersection_point, k_vector=ray.k_vector, length=length, n=ray.n)
+        propagated_ray = Ray(
+            origin=intersection_point, k_vector=ray.k_vector, length=length, n=ray.n
+        )
         return propagated_ray
 
-    def parameterization(self, t: Union[np.ndarray, float], p: Union[np.ndarray, float]) -> np.ndarray:
+    def parameterization(
+        self, t: Union[np.ndarray, float], p: Union[np.ndarray, float]
+    ) -> np.ndarray:
         # Take parameters and return points on the surface
         raise NotImplementedError
 
@@ -274,7 +293,9 @@ class Surface:
         #             [self.center[1], center_plus_normal[1]], 'g-')
         return ax
 
-    def generate_ray_from_parameters(self, t: float, p: float, theta: float, phi: float) -> Ray:
+    def generate_ray_from_parameters(
+        self, t: float, p: float, theta: float, phi: float
+    ) -> Ray:
         k_vector = unit_vector_of_angles(theta, phi)
         origin = self.parameterization(t, p)
         return Ray(origin=origin, k_vector=k_vector)
@@ -282,7 +303,9 @@ class Surface:
     def spanning_vectors(self):
         # Returns to vectors that are perpendicular to the inwards normal and to each other.
         # The optical axiMost optical elements, are approximately parallel to the x axis, and so pseudo_y and pseudo_z are approximately y and z.
-        parallel_to_actual_z = np.abs(self.inwards_normal @ np.array([0, 0, 1])) > 0.9999
+        parallel_to_actual_z = (
+            np.abs(self.inwards_normal @ np.array([0, 0, 1])) > 0.9999
+        )
         if not parallel_to_actual_z:
             pseudo_x = np.array([0, 0, 1])
         else:
@@ -312,7 +335,9 @@ class Surface:
                 diameter=p.diameter,
                 material_properties=p.material_properties,
             )
-        elif p.surface_type == SurfacesTypes.curved_refractive_surface:  # Refractive surface (one side of a lens)
+        elif (
+            p.surface_type == SurfacesTypes.curved_refractive_surface
+        ):  # Refractive surface (one side of a lens)
             surface = CurvedRefractiveSurface(
                 radius=p.radius,
                 outwards_normal=outwards_normal,
@@ -451,7 +476,9 @@ class Surface:
             n_1, n_2 = self.n_1, self.n_2
             inverted_surface.n_1 = n_2
             inverted_surface.n_2 = n_1
-        if isinstance(self, (CurvedSurface, AsphericSurface)) and not isinstance(self, ReflectiveSurface):
+        if isinstance(self, (CurvedSurface, AsphericSurface)) and not isinstance(
+            self, ReflectiveSurface
+        ):
             inverted_surface.curvature_sign *= -1
         return inverted_surface
 
@@ -472,7 +499,10 @@ class Surface:
             ]
             if isinstance(self, AsphericRefractiveSurface):
                 keyword_arguments += [("n_1", self.n_1), ("n_2", self.n_2)]
-            keyword_arguments += [("diameter", self.diameter), ("material_properties", self.material_properties)]
+            keyword_arguments += [
+                ("diameter", self.diameter),
+                ("material_properties", self.material_properties),
+            ]
         elif isinstance(self, CurvedSurface):
             keyword_arguments += [
                 ("radius", self.radius),
@@ -481,10 +511,20 @@ class Surface:
                 ("curvature_sign", self.curvature_sign),
             ]
             if isinstance(self, CurvedRefractiveSurface):
-                keyword_arguments += [("n_1", self.n_1), ("n_2", self.n_2), ("thickness", self.thickness)]
-            keyword_arguments += [("diameter", self.diameter), ("material_properties", self.material_properties)]
+                keyword_arguments += [
+                    ("n_1", self.n_1),
+                    ("n_2", self.n_2),
+                    ("thickness", self.thickness),
+                ]
+            keyword_arguments += [
+                ("diameter", self.diameter),
+                ("material_properties", self.material_properties),
+            ]
         elif isinstance(self, FlatSurface):
-            keyword_arguments += [("outwards_normal", self.outwards_normal), ("center", self.center)]
+            keyword_arguments += [
+                ("outwards_normal", self.outwards_normal),
+                ("center", self.center),
+            ]
             if isinstance(self, FlatRefractiveSurface):
                 keyword_arguments += [("n_1", self.n_1), ("n_2", self.n_2)]
             if isinstance(self, IdealLens):
@@ -496,10 +536,19 @@ class Surface:
                 if isinstance(self, (FlatMirror, FlatRefractiveSurface, IdealLens))
                 else "material_properties"
             )
-            keyword_arguments += [("diameter", self.diameter), (material_key, self.material_properties)]
+            keyword_arguments += [
+                ("diameter", self.diameter),
+                (material_key, self.material_properties),
+            ]
         else:
-            raise NotImplementedError(f"init_syntax is not implemented for surfaces of type {class_name}")
-        parts = [f"{key}={init_repr(value)}" for key, value in keyword_arguments if value is not None]
+            raise NotImplementedError(
+                f"init_syntax is not implemented for surfaces of type {class_name}"
+            )
+        parts = [
+            f"{key}={init_repr(value)}"
+            for key, value in keyword_arguments
+            if value is not None
+        ]
         return f"{class_name}({', '.join(parts)})"
 
     def to_position(self, position: np.ndarray) -> "Surface":
@@ -523,7 +572,9 @@ class Surface:
         return new_surface
 
 
-def surfaces_are_equivalent(surface_1: Surface, surface_2: Surface, rtol: float = 1e-6, atol: float = 1e-9) -> bool:
+def surfaces_are_equivalent(
+    surface_1: Surface, surface_2: Surface, rtol: float = 1e-6, atol: float = 1e-9
+) -> bool:
     """True when the two surfaces are the same optical surface up to numerical noise.
 
     Compares the concrete type, the name, the pose (center and outwards normal, nan-tolerant) and the intrinsic
@@ -537,7 +588,9 @@ def surfaces_are_equivalent(surface_1: Surface, surface_2: Surface, rtol: float 
     def values_close(value_1, value_2) -> bool:
         if value_1 is None or value_2 is None:
             return value_1 is None and value_2 is None
-        array_1, array_2 = np.asarray(value_1, dtype=complex), np.asarray(value_2, dtype=complex)
+        array_1, array_2 = np.asarray(value_1, dtype=complex), np.asarray(
+            value_2, dtype=complex
+        )
         if array_1.shape != array_2.shape:
             return False
         return bool(np.allclose(array_1, array_2, rtol=rtol, atol=atol, equal_nan=True))
@@ -546,14 +599,26 @@ def surfaces_are_equivalent(surface_1: Surface, surface_2: Surface, rtol: float 
         return False
     if not values_close(surface_1.outwards_normal, surface_2.outwards_normal):
         return False
-    for attribute in ("radius", "curvature_sign", "n_1", "n_2", "focal_length", "thickness", "diameter"):
-        if not values_close(getattr(surface_1, attribute, None), getattr(surface_2, attribute, None)):
+    for attribute in (
+        "radius",
+        "curvature_sign",
+        "n_1",
+        "n_2",
+        "focal_length",
+        "thickness",
+        "diameter",
+    ):
+        if not values_close(
+            getattr(surface_1, attribute, None), getattr(surface_2, attribute, None)
+        ):
             return False
     polynomial_1 = getattr(surface_1, "polynomial", None)
     polynomial_2 = getattr(surface_2, "polynomial", None)
     if (polynomial_1 is None) != (polynomial_2 is None):
         return False
-    if polynomial_1 is not None and not values_close(polynomial_1.coef, polynomial_2.coef):
+    if polynomial_1 is not None and not values_close(
+        polynomial_1.coef, polynomial_2.coef
+    ):
         return False
     # MaterialProperties is a dataclass whose auto-generated __eq__ fails on nan fields; its repr is stable and
     # full-precision, so string equality is the robust comparison.
@@ -584,7 +649,9 @@ class PhysicalSurface(Surface):
     def center(self):
         raise NotImplementedError
 
-    def parameterization(self, t: Union[np.ndarray, float], p: Union[np.ndarray, float]) -> np.ndarray:
+    def parameterization(
+        self, t: Union[np.ndarray, float], p: Union[np.ndarray, float]
+    ) -> np.ndarray:
         raise NotImplementedError
 
     def get_parameterization(self, points: np.ndarray):
@@ -592,14 +659,23 @@ class PhysicalSurface(Surface):
 
     def propagate_ray(self, ray: Ray, paraxial: bool = False) -> Ray:
         # Scatters ray and updates it's length:
-        intersection_point, forward_normal = self.enrich_intersection_geometries(ray, paraxial=paraxial)
+        intersection_point, forward_normal = self.enrich_intersection_geometries(
+            ray, paraxial=paraxial
+        )
         ray.length = np.linalg.norm(intersection_point - ray.origin, axis=-1)
-        scattered_direction_vector = self.scatter_direction(ray, forward_normal, paraxial=paraxial)
+        scattered_direction_vector = self.scatter_direction(
+            ray, forward_normal, paraxial=paraxial
+        )
         n_output = getattr(self, "n_2", ray.n)
-        return Ray(origin=intersection_point, k_vector=scattered_direction_vector, n=n_output)
+        return Ray(
+            origin=intersection_point, k_vector=scattered_direction_vector, n=n_output
+        )
 
     def scatter_direction(
-        self, ray: Ray, forward_normal: Optional[np.ndarray] = None, paraxial: bool = False
+        self,
+        ray: Ray,
+        forward_normal: Optional[np.ndarray] = None,
+        paraxial: bool = False,
     ) -> np.ndarray:
         if paraxial:
             return self.scatter_direction_paraxial(ray)
@@ -619,11 +695,15 @@ class PhysicalSurface(Surface):
             intersection_point
         )  # Those are the coordinates of pseudo_z and pseudo_y
         t_projection, p_projection = ray.k_vector @ pseudo_z, ray.k_vector @ pseudo_y
-        theta, phi = np.pi / 2 - np.arccos(t_projection), np.pi / 2 - np.arccos(p_projection)
+        theta, phi = np.pi / 2 - np.arccos(t_projection), np.pi / 2 - np.arccos(
+            p_projection
+        )
         input_vector = np.array([t, theta, p, phi])
         if len(input_vector.shape) > 1:
             input_vector = np.swapaxes(input_vector, 0, 1)
-        output_vector = self.ABCD_matrix(cos_theta_incoming=1) @ input_vector  # For the sake of ray tracing, we
+        output_vector = (
+            self.ABCD_matrix(cos_theta_incoming=1) @ input_vector
+        )  # For the sake of ray tracing, we
         # reflect the ray with respect to the optical element's optical axis, and not with respect to the central line
         # that was even not calculate yet. therefore, the cos_theta_incoming used here is the trivial one.
         if len(input_vector.shape) > 1:
@@ -635,7 +715,9 @@ class PhysicalSurface(Surface):
         # surface_normal directions:
         component_t = np.multiply.outer(t_projection_out, pseudo_z)
         component_p = np.multiply.outer(p_projection_out, pseudo_y)
-        component_n = np.multiply.outer((1 - t_projection_out**2 - p_projection_out**2) ** 0.5, forwards_normal)
+        component_n = np.multiply.outer(
+            (1 - t_projection_out**2 - p_projection_out**2) ** 0.5, forwards_normal
+        )
         output_direction_vector = component_t + component_p + component_n
         return output_direction_vector
 
@@ -647,10 +729,14 @@ class PhysicalSurface(Surface):
     ) -> np.ndarray:
         raise NotImplementedError
 
-    def ABCD_matrix(self, cos_theta_incoming: Optional[Union[float, np.ndarray]] = None) -> np.ndarray:
+    def ABCD_matrix(
+        self, cos_theta_incoming: Optional[Union[float, np.ndarray]] = None
+    ) -> np.ndarray:
         raise NotImplementedError
 
-    def thermal_transformation(self, P_laser_power: float, w_spot_size: float, **kwargs):
+    def thermal_transformation(
+        self, P_laser_power: float, w_spot_size: float, **kwargs
+    ):
         raise NotImplementedError
 
 
@@ -674,14 +760,19 @@ class ReflectiveSurface(PhysicalSurface):
         )
 
     def scatter_direction_exact(
-        self, ray: Ray, intersection_point: Optional[np.ndarray] = None, forward_normal: Optional[np.ndarray] = None
+        self,
+        ray: Ray,
+        intersection_point: Optional[np.ndarray] = None,
+        forward_normal: Optional[np.ndarray] = None,
     ) -> np.ndarray:
         # Notice that this function does not reflect along the normal of the mirror but along the normal projection
         # of the ray on the mirror.
         _, forward_normal = self.enrich_intersection_geometries(
             ray, intersection_point=intersection_point, forward_normal=forward_normal
         )
-        reflected_direction_vector = generalized_mirror_law(k_vector=ray.k_vector, n_forwards=forward_normal)
+        reflected_direction_vector = generalized_mirror_law(
+            k_vector=ray.k_vector, n_forwards=forward_normal
+        )
         return reflected_direction_vector
 
 
@@ -709,7 +800,10 @@ class RefractiveSurface(PhysicalSurface):
         self.n_2 = n_2
 
     def scatter_direction_exact(
-        self, ray: Ray, intersection_point: Optional[np.ndarray] = None, forward_normal: Optional[np.ndarray] = None
+        self,
+        ray: Ray,
+        intersection_point: Optional[np.ndarray] = None,
+        forward_normal: Optional[np.ndarray] = None,
     ) -> np.ndarray:
         # explainable derivation of the calculation in lab archives: https://mynotebook.labarchives.com/MTM3NjE3My41fDEwNTg1OTUvMTA1ODU5NS9Ob3RlYm9vay8zMjQzMzA0MzY1fDM0OTMzNjMuNQ==/page/11290221-33
         _, n_forwards = self.enrich_intersection_geometries(
@@ -724,17 +818,29 @@ class RefractiveSurface(PhysicalSurface):
 class AsphericSurface(Surface):
     def __init__(
         self,
-        center: np.ndarray,
-        outwards_normal: np.ndarray,
-        polynomial_coefficients: Union[Polynomial, np.ndarray, List[float]],  # a0, a2, a4...
+        center: Optional[
+            np.ndarray
+        ] = None,  # None: floating (undefined); imaginary: relative to the previous element.
+        outwards_normal: Optional[np.ndarray] = None,
+        polynomial_coefficients: Optional[
+            Union[Polynomial, np.ndarray, List[float]]
+        ] = None,  # a0, a2, a4...
         curvature_sign: int = CurvatureSigns.concave,  # With respect to the incoming beam.
         name: Optional[str] = None,
         diameter: Optional[float] = None,
         material_properties: MaterialProperties = None,
         **kwargs,
     ):
-        super().__init__(outwards_normal=outwards_normal, name=name, radius=np.nan, **kwargs)
-        self._center = np.full(3, np.nan) if center is None else _to_position_array(center)
+        # polynomial_coefficients defaults to None only so that center can default to None (a floating surface,
+        # like the other Surface types allow); the shape itself is not optional.
+        if polynomial_coefficients is None:
+            raise TypeError(
+                "polynomial_coefficients must be provided for an aspheric surface"
+            )
+        super().__init__(
+            outwards_normal=outwards_normal, name=name, radius=np.nan, **kwargs
+        )
+        self._center = _to_position_array(center)
         self.curvature_sign = curvature_sign
         self.name = name
         self.diameter = diameter
@@ -747,7 +853,9 @@ class AsphericSurface(Surface):
         assert (
             self.polynomial.coef[1] >= 0
         ), "Negative curvature in polynomial, Currently the direction of the curvature should be encoded in the outwards normal direction and not in the polynomial coefficients, so the coefficient of the quadratic term should be positive. This might be relaxed in the future if needed."
-        self.thickness_center = self.polynomial((self.diameter / 2) ** 2)  # thickness at the center of the surface
+        self.thickness_center = self.polynomial(
+            (self.diameter / 2) ** 2
+        )  # thickness at the center of the surface
         if self.polynomial.coef[1] == 0:
             self.radius = np.inf
         else:
@@ -765,17 +873,23 @@ class AsphericSurface(Surface):
         ray_origin_relative_to_center = (
             origin_flattened - self.center
         )  # (N, 3) points from the origin of the ray to the tip of the surface.
-        cosine_theta_incidence_to_center_normal = k_vector_flattened @ self.outwards_normal
+        cosine_theta_incidence_to_center_normal = (
+            k_vector_flattened @ self.outwards_normal
+        )
 
         t_1 = (
-            ray_origin_relative_to_center @ self.inwards_normal / cosine_theta_incidence_to_center_normal
+            ray_origin_relative_to_center
+            @ self.inwards_normal
+            / cosine_theta_incidence_to_center_normal
         )  # end at the plane that is thickness_center away from the center along the surface normal
         t_2 = (
             t_1 - self.thickness_center / cosine_theta_incidence_to_center_normal
         )  # Start from the plane that contains the center and is normal to the surface normal
 
         # When coming from the convex side, we might have t_min > t_max, so we need to swap them
-        t_min = np.minimum(t_1, t_2) - 1e-4  # add a small margin to avoid numerical issues
+        t_min = (
+            np.minimum(t_1, t_2) - 1e-4
+        )  # add a small margin to avoid numerical issues
         t_max = np.maximum(t_1, t_2) + 1e-4
 
         results = np.full((origin_flattened.shape[0],), np.nan)
@@ -802,20 +916,30 @@ class AsphericSurface(Surface):
 
     def relative_coordinates(self, r: np.ndarray) -> np.ndarray:
         # Convert a global coordinate to it's cylindrical coordinates relative to the surface's optical axis (rho, x)
-        r_relative = r - self.center  # r.shape, vector pointing from the center of the surface to the point r
+        r_relative = (
+            r - self.center
+        )  # r.shape, vector pointing from the center of the surface to the point r
         r_relative_projected_on_n = (
             r_relative @ self.inwards_normal
         )  # r.shape[:-1], longitudinal position of r relative to the center plane along the inwards normal (bigger value means more inwards)
         r_relative_distance_from_center = np.sqrt(
-            np.clip(np.sum(r_relative**2, -1) - r_relative_projected_on_n**2, a_min=0, a_max=np.inf)
+            np.clip(
+                np.sum(r_relative**2, -1) - r_relative_projected_on_n**2,
+                a_min=0,
+                a_max=np.inf,
+            )
         )  # r.shape[:-1]  # distance of r from optical axis
-        return np.stack([r_relative_distance_from_center, r_relative_projected_on_n], axis=-1)  # \rho, x
+        return np.stack(
+            [r_relative_distance_from_center, r_relative_projected_on_n], axis=-1
+        )  # \rho, x
 
     def defining_equation(self, r: np.ndarray) -> Union[np.ndarray, float]:
         # points on the surface satisfy this equation.
         # points on the concave side have positive values (they are "above" the polynomial curve as y-P(x) > 0) and vice versa.
         relative_coordinates = self.relative_coordinates(r)
-        rho = relative_coordinates[..., 0]  # r.shape[:-1] distance of r from optical axis
+        rho = relative_coordinates[
+            ..., 0
+        ]  # r.shape[:-1] distance of r from optical axis
         x = relative_coordinates[
             ..., 1
         ]  # r.shape[:-1], longitudinal position of r relative to the center plane along the inwards normal (bigger value means more inwards)
@@ -842,8 +966,10 @@ class AsphericSurface(Surface):
         # rho_vec[np.linalg.norm(rho_vec, axis=-1) == 0, :] = self.inwards_normal  # It's either this or the True in the next line
         rho_hat = normalize_vector(rho_vec, ignore_null_vectors=True)  # r.shape[:-1, 3]
         normal = (
-            normal_vector_in_surface_coordinates_normalized[..., 0, np.newaxis] * rho_hat
-            + normal_vector_in_surface_coordinates_normalized[..., 1, np.newaxis] * self.inwards_normal
+            normal_vector_in_surface_coordinates_normalized[..., 0, np.newaxis]
+            * rho_hat
+            + normal_vector_in_surface_coordinates_normalized[..., 1, np.newaxis]
+            * self.inwards_normal
         )
         return normal
 
@@ -865,7 +991,9 @@ class AsphericSurface(Surface):
         intersection_point = paraxial_surface.find_intersection_with_ray_paraxial(ray)
         return intersection_point
 
-    def parameterization(self, t: Union[np.ndarray, float], p: Union[np.ndarray, float]) -> np.ndarray:
+    def parameterization(
+        self, t: Union[np.ndarray, float], p: Union[np.ndarray, float]
+    ) -> np.ndarray:
         # Take parameters and return points on the surface
         raise NotImplementedError
 
@@ -885,9 +1013,13 @@ class AsphericSurface(Surface):
         **kwargs,
     ) -> plt.Axes:
         if plane != "xy" or self.outwards_normal[2] != 0:
-            raise NotImplementedError("Plotting AsphericSurface is only implemented for the 'xy' plane.")
+            raise NotImplementedError(
+                "Plotting AsphericSurface is only implemented for the 'xy' plane."
+            )
         if dim != 2:
-            raise NotImplementedError("Plotting AsphericSurface is only implemented for 2D plots.")
+            raise NotImplementedError(
+                "Plotting AsphericSurface is only implemented for 2D plots."
+            )
         if fine_resolution:
             N_points = 10000
         else:
@@ -905,16 +1037,24 @@ class AsphericSurface(Surface):
             + transverse_direction * t_dummy[:, np.newaxis]
             + self.polynomial(t_dummy**2)[:, np.newaxis] * longitudinal_direction
         )
-        ax.plot(r[:, 0], r[:, 1], color=color if color is not None else "blue", **kwargs)
+        ax.plot(
+            r[:, 0], r[:, 1], color=color if color is not None else "blue", **kwargs
+        )
 
         r_back_side = (
-            self.center + self.inwards_normal * self.thickness_center + transverse_direction * t_dummy[:, np.newaxis]
+            self.center
+            + self.inwards_normal * self.thickness_center
+            + transverse_direction * t_dummy[:, np.newaxis]
         )
         # create kwargs without linestyle to avoid warning:
         kwargs.pop("linestyle", None)
         kwargs.pop("ls", None)
         ax.plot(
-            r_back_side[:, 0], r_back_side[:, 1], linestyle="--", color=color if color is not None else "blue", **kwargs
+            r_back_side[:, 0],
+            r_back_side[:, 1],
+            linestyle="--",
+            color=color if color is not None else "blue",
+            **kwargs,
         )
         return ax
 
@@ -922,11 +1062,15 @@ class AsphericSurface(Surface):
 class AsphericRefractiveSurface(AsphericSurface, RefractiveSurface):
     def __init__(
         self,
-        center: np.ndarray,
-        outwards_normal: np.ndarray,
-        polynomial_coefficients: Union[Polynomial, np.ndarray, List[float]],  # a0, a2, a4...
-        n_1: float,
-        n_2: float,
+        center: Optional[
+            np.ndarray
+        ] = None,  # None: floating (undefined); imaginary: relative to the previous element.
+        outwards_normal: Optional[np.ndarray] = None,
+        polynomial_coefficients: Optional[
+            Union[Polynomial, np.ndarray, List[float]]
+        ] = None,  # a0, a2, a4...
+        n_1: float = 1,
+        n_2: float = 1,
         name: Optional[str] = None,
         diameter: Optional[float] = None,
         curvature_sign: int = CurvatureSigns.concave,  # With respect to the incoming beam.
@@ -950,7 +1094,9 @@ class AsphericRefractiveSurface(AsphericSurface, RefractiveSurface):
     def __str__(self):
         return f"AsphericRefractiveSurface(name={self.name}, center={self.center}, outwards_normal={self.outwards_normal}, polynomial_coefficients={self.polynomial.coef}, n_1={self.n_1}, n_2={self.n_2}, curvature_sign={self.curvature_sign})"
 
-    def ABCD_matrix(self, cos_theta_incoming: Union[float, np.ndarray] = None) -> np.ndarray:
+    def ABCD_matrix(
+        self, cos_theta_incoming: Union[float, np.ndarray] = None
+    ) -> np.ndarray:
         paraxial_approximation_surface = CurvedRefractiveSurface(
             radius=self.radius,
             outwards_normal=RIGHT,
@@ -959,19 +1105,27 @@ class AsphericRefractiveSurface(AsphericSurface, RefractiveSurface):
             n_2=self.n_2,
             curvature_sign=self.curvature_sign,
         )
-        return paraxial_approximation_surface.ABCD_matrix(cos_theta_incoming=cos_theta_incoming)
+        return paraxial_approximation_surface.ABCD_matrix(
+            cos_theta_incoming=cos_theta_incoming
+        )
 
-    def thermal_transformation(self, P_laser_power: float, w_spot_size: float, **kwargs):
+    def thermal_transformation(
+        self, P_laser_power: float, w_spot_size: float, **kwargs
+    ):
         raise NotImplementedError
 
     @staticmethod
     def pseudo_spherical(
         radius: float,
-        center: np.ndarray,
-        outwards_normal: np.ndarray,
-        polynomial_coefficients: Union[Polynomial, np.ndarray, List[float]],  # a0, a2, a4...
-        n_1: float,
-        n_2: float,
+        center: Optional[
+            np.ndarray
+        ] = None,  # None: floating (undefined); imaginary: relative to the previous element.
+        outwards_normal: Optional[np.ndarray] = None,
+        polynomial_coefficients: Optional[
+            Union[Polynomial, np.ndarray, List[float]]
+        ] = None,  # a0, a2, a4... corrections to the spherical profile
+        n_1: float = 1,
+        n_2: float = 1,
         name: Optional[str] = None,
         diameter: Optional[float] = None,
         curvature_sign: int = CurvatureSigns.concave,  # With respect to the incoming beam.
@@ -989,20 +1143,34 @@ class AsphericRefractiveSurface(AsphericSurface, RefractiveSurface):
             ]
         )
         # pad polynomial_coefficients to be the same length as base_polynomial_coefficients, if it is longer, trim it ad ad a warning:
+        if (
+            polynomial_coefficients is None
+        ):  # No correction - a purely (pseudo-)spherical profile.
+            polynomial_coefficients = np.zeros(1)
         if isinstance(polynomial_coefficients, Polynomial):
             polynomial_coefficients_array = polynomial_coefficients.coef
         else:
             polynomial_coefficients_array = np.array(polynomial_coefficients)
         if len(polynomial_coefficients_array) > len(base_polynomial_coefficients):
-            warnings.warn("Polynomial coefficients are longer than the base polynomial coefficients, trimming them.")
-            polynomial_coefficients_array = polynomial_coefficients_array[: len(base_polynomial_coefficients)]
+            warnings.warn(
+                "Polynomial coefficients are longer than the base polynomial coefficients, trimming them."
+            )
+            polynomial_coefficients_array = polynomial_coefficients_array[
+                : len(base_polynomial_coefficients)
+            ]
         elif len(polynomial_coefficients_array) < len(base_polynomial_coefficients):
             polynomial_coefficients_array = np.pad(
                 polynomial_coefficients_array,
-                (0, len(base_polynomial_coefficients) - len(polynomial_coefficients_array)),
+                (
+                    0,
+                    len(base_polynomial_coefficients)
+                    - len(polynomial_coefficients_array),
+                ),
                 mode="constant",
             )
-        final_polynomial_coefficients = base_polynomial_coefficients + polynomial_coefficients_array
+        final_polynomial_coefficients = (
+            base_polynomial_coefficients + polynomial_coefficients_array
+        )
         return AsphericRefractiveSurface(
             center=center,
             outwards_normal=outwards_normal,
@@ -1026,9 +1194,13 @@ class FlatSurface(Surface):
         name: Optional[str] = None,
         **kwargs,
     ):
-        super().__init__(outwards_normal=outwards_normal, name=name, radius=np.inf, **kwargs)
+        super().__init__(
+            outwards_normal=outwards_normal, name=name, radius=np.inf, **kwargs
+        )
         if distance_from_origin is not None and center is not None:
-            raise ValueError("Only one of distance_from_origin or center must be specified")
+            raise ValueError(
+                "Only one of distance_from_origin or center must be specified"
+            )
         # An undefined position is stored as a size-3 nan center. distance_from_origin is a derived property.
         if distance_from_origin is not None:
             self.center_of_mirror_private = self.outwards_normal * distance_from_origin
@@ -1046,9 +1218,16 @@ class FlatSurface(Surface):
     def find_intersection_with_ray_exact(self, ray: Ray) -> np.ndarray:
         surface_reference_point = self.outwards_normal * self.distance_from_origin
         ray_origin_to_surface_reference_point = surface_reference_point - ray.origin
-        ray_origin_distance_from_surface = ray_origin_to_surface_reference_point @ self.outwards_normal
-        cos_angle_between_ray_direction_and_plane_normal = ray.k_vector @ self.outwards_normal
-        ray_length_to_surface = ray_origin_distance_from_surface / cos_angle_between_ray_direction_and_plane_normal
+        ray_origin_distance_from_surface = (
+            ray_origin_to_surface_reference_point @ self.outwards_normal
+        )
+        cos_angle_between_ray_direction_and_plane_normal = (
+            ray.k_vector @ self.outwards_normal
+        )
+        ray_length_to_surface = (
+            ray_origin_distance_from_surface
+            / cos_angle_between_ray_direction_and_plane_normal
+        )
         intersection_point = ray.parameterization(ray_length_to_surface)
         return intersection_point
 
@@ -1065,13 +1244,19 @@ class FlatSurface(Surface):
             forwards_normal = self.inwards_normal
             cos_theta = np.abs(cos_theta)
         sin_abs_theta = np.linalg.norm(np.cross(ray.k_vector, forwards_normal))
-        theta = np.arcsin(sin_abs_theta)  # You might as - but wait, can't we use the arccos of the cos_theta already
+        theta = np.arcsin(
+            sin_abs_theta
+        )  # You might as - but wait, can't we use the arccos of the cos_theta already
         # calculated? the answer is no, because d/dx(cos) is 0 around 0 and d/dx(arccos) is infinite around 0, Which
         # leads to numerical instability when dealing with small angles.
 
-        closest_point_in_plane_to_global_origin = self.distance_from_origin * self.outwards_normal  # v in notes
+        closest_point_in_plane_to_global_origin = (
+            self.distance_from_origin * self.outwards_normal
+        )  # v in notes
 
-        displacement_in_plane = ray.origin - (forwards_normal @ ray.origin) * forwards_normal
+        displacement_in_plane = (
+            ray.origin - (forwards_normal @ ray.origin) * forwards_normal
+        )
 
         ray_origin_projected_onto_plane = (
             closest_point_in_plane_to_global_origin + displacement_in_plane
@@ -1081,15 +1266,21 @@ class FlatSurface(Surface):
             self.distance_from_origin - (self.outwards_normal @ ray.origin)
         )  # h in notes
 
-        vector_in_plane_in_k_n_plane = ray.k_vector - cos_theta * forwards_normal  # u in notes
+        vector_in_plane_in_k_n_plane = (
+            ray.k_vector - cos_theta * forwards_normal
+        )  # u in notes
 
         if np.linalg.norm(vector_in_plane_in_k_n_plane) < 1e-20:
             intersection_point = ray_origin_projected_onto_plane
         else:
-            vector_in_plane_in_k_n_plane = normalize_vector(vector_in_plane_in_k_n_plane)
+            vector_in_plane_in_k_n_plane = normalize_vector(
+                vector_in_plane_in_k_n_plane
+            )
             intersection_point = (
                 ray_origin_projected_onto_plane
-                + theta * distance_between_rays_origin_and_plane * vector_in_plane_in_k_n_plane
+                + theta
+                * distance_between_rays_origin_and_plane
+                * vector_in_plane_in_k_n_plane
             )
         return intersection_point
 
@@ -1103,13 +1294,17 @@ class FlatSurface(Surface):
         # distance_from_origin is derived from this, so nothing else to update.
         self.center_of_mirror_private = _to_position_array(value)
 
-    def parameterization(self, t: Union[np.ndarray, float], p: Union[np.ndarray, float]):
+    def parameterization(
+        self, t: Union[np.ndarray, float], p: Union[np.ndarray, float]
+    ):
         pseudo_z, pseudo_y = self.spanning_vectors()
         if isinstance(t, (float, int)):
             t = np.array(t)
         if isinstance(p, (float, int)):
             p = np.array(p)
-        points = self.center + t[..., np.newaxis] * pseudo_z + p[..., np.newaxis] * pseudo_y
+        points = (
+            self.center + t[..., np.newaxis] * pseudo_z + p[..., np.newaxis] * pseudo_y
+        )
         return points
 
     def get_parameterization(self, points: np.ndarray):
@@ -1119,7 +1314,9 @@ class FlatSurface(Surface):
         return t, p
 
     def normal_at_a_point(self, point: np.ndarray) -> np.ndarray:
-        outwards_normal_reshaped = np.broadcast_to(self.outwards_normal, point.shape).copy()
+        outwards_normal_reshaped = np.broadcast_to(
+            self.outwards_normal, point.shape
+        ).copy()
         return outwards_normal_reshaped
 
 
@@ -1161,17 +1358,23 @@ class FlatMirror(FlatSurface, ReflectiveSurface):
     def get_parameterization(self, points: np.ndarray):
         return super().get_parameterization(points)
 
-    def parameterization(self, t: Union[np.ndarray, float], p: Union[np.ndarray, float]) -> np.ndarray:
+    def parameterization(
+        self, t: Union[np.ndarray, float], p: Union[np.ndarray, float]
+    ) -> np.ndarray:
         return super().parameterization(t, p)
 
-    def ABCD_matrix(self, cos_theta_incoming: Union[float, np.ndarray] = None) -> np.ndarray:
+    def ABCD_matrix(
+        self, cos_theta_incoming: Union[float, np.ndarray] = None
+    ) -> np.ndarray:
         # Assumes the ray is in the x-y plane, and the mirror is in the z-x plane
         return np.array([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, -1, 0], [0, 0, 0, -1]])
 
     # radius is a plain attribute set to np.inf by FlatSurface.__init__ (no read-only property, so the base
     # `self.radius = radius` assignment does not fail).
 
-    def thermal_transformation(self, P_laser_power: float, w_spot_size: float, **kwargs):
+    def thermal_transformation(
+        self, P_laser_power: float, w_spot_size: float, **kwargs
+    ):
         raise NotImplementedError
 
 
@@ -1202,17 +1405,23 @@ class FlatRefractiveSurface(FlatSurface, RefractiveSurface):
     def __str__(self):
         return f"FlatRefractiveSurface(name={self.name}, center={self.center}, outwards_normal={self.outwards_normal}, n_1={self.n_1}, n_2={self.n_2})"
 
-    def ABCD_matrix(self, cos_theta_incoming: Union[float, np.ndarray] = None) -> np.ndarray:
+    def ABCD_matrix(
+        self, cos_theta_incoming: Union[float, np.ndarray] = None
+    ) -> np.ndarray:
         # Note \! this code assumes the ray is in the x\-y plane\! Until it is fixed, the only perturbations in x,y,phi should be calculated\!
         cos_theta_incoming = np.asarray(cos_theta_incoming)
         sin_theta_incoming = np.sqrt(1 - cos_theta_incoming**2)
         sin_theta_outgoing = (self.n_1 / self.n_2) * sin_theta_incoming
         cos_theta_outgoing = stable_sqrt(1 - sin_theta_outgoing**2)
-        mat = np.zeros(cos_theta_incoming.shape + (4, 4), dtype=cos_theta_outgoing.dtype)
+        mat = np.zeros(
+            cos_theta_incoming.shape + (4, 4), dtype=cos_theta_outgoing.dtype
+        )
         mat[..., 0, 0] = 1
         mat[..., 1, 1] = self.n_1 / self.n_2
         mat[..., 2, 2] = cos_theta_outgoing / cos_theta_incoming
-        mat[..., 3, 3] = (self.n_1 * cos_theta_incoming) / (self.n_2 * cos_theta_outgoing)
+        mat[..., 3, 3] = (self.n_1 * cos_theta_incoming) / (
+            self.n_2 * cos_theta_outgoing
+        )
         return mat
 
 
@@ -1253,7 +1462,9 @@ class IdealLens(FlatSurface, PhysicalSurface):
     def get_parameterization(self, points: np.ndarray):
         return super().get_parameterization(points)
 
-    def parameterization(self, t: Union[np.ndarray, float], p: Union[np.ndarray, float]) -> np.ndarray:
+    def parameterization(
+        self, t: Union[np.ndarray, float], p: Union[np.ndarray, float]
+    ) -> np.ndarray:
         return super().parameterization(t, p)
 
     def scatter_direction_exact(
@@ -1268,27 +1479,35 @@ class IdealLens(FlatSurface, PhysicalSurface):
             forward_normal=forward_normal,
         )
         pseudo_z, pseudo_y = self.spanning_vectors()
-        t, p = self.get_parameterization(intersection_point)  # Those are the coordinates of pseudo_z and pseudo_y
+        t, p = self.get_parameterization(
+            intersection_point
+        )  # Those are the coordinates of pseudo_z and pseudo_y
         t_projection, p_projection = ray.k_vector @ pseudo_z, ray.k_vector @ pseudo_y
-        theta, phi = np.pi / 2 - np.arccos(t_projection), np.pi / 2 - np.arccos(p_projection)
+        theta, phi = np.pi / 2 - np.arccos(t_projection), np.pi / 2 - np.arccos(
+            p_projection
+        )
         input_vector = np.array([t, theta, p, phi])
         if len(input_vector.shape) > 1:
             input_vector = np.swapaxes(input_vector, 0, 1)
         output_vector = self.ABCD_matrix(cos_theta_incoming=1) @ input_vector
         if len(input_vector.shape) > 1:
             output_vector = np.swapaxes(output_vector, 0, 1)
-        t_projection_out, p_projection_out = np.cos(np.pi / 2 - output_vector[1, ...]), np.cos(
-            np.pi / 2 - output_vector[3, ...]
-        )
+        t_projection_out, p_projection_out = np.cos(
+            np.pi / 2 - output_vector[1, ...]
+        ), np.cos(np.pi / 2 - output_vector[3, ...])
         # ABCD_MATRIX METHOD
         component_t = np.multiply.outer(t_projection_out, pseudo_z)
         component_p = np.multiply.outer(p_projection_out, pseudo_y)
-        component_n = np.multiply.outer((1 - t_projection_out**2 - p_projection_out**2) ** 0.5, forward_normal)
+        component_n = np.multiply.outer(
+            (1 - t_projection_out**2 - p_projection_out**2) ** 0.5, forward_normal
+        )
         output_direction_vector = component_t + component_p + component_n
 
         return output_direction_vector
 
-    def ABCD_matrix(self, cos_theta_incoming: Union[float, np.ndarray] = None) -> np.ndarray:
+    def ABCD_matrix(
+        self, cos_theta_incoming: Union[float, np.ndarray] = None
+    ) -> np.ndarray:
         # THIS CURRENTLY DOES NOT HOLD FOR THE CASE WHERE THE RAY IS NOT PERPENDICULAR TO THE LENS!
         ABCD = np.array(
             [
@@ -1308,8 +1527,12 @@ class CurvedSurface(Surface):
     def __init__(
         self,
         radius: float = np.nan,
-        outwards_normal: Optional[np.ndarray] = None,  # Pointing from the origin of the sphere to the mirror's center.
-        center: Optional[np.ndarray] = None,  # Not the center of the sphere but the center of
+        outwards_normal: Optional[
+            np.ndarray
+        ] = None,  # Pointing from the origin of the sphere to the mirror's center.
+        center: Optional[
+            np.ndarray
+        ] = None,  # Not the center of the sphere but the center of
         # the plate.
         origin: Optional[np.ndarray] = None,  # The center of the sphere.
         curvature_sign: int = -1,
@@ -1319,7 +1542,9 @@ class CurvedSurface(Surface):
         name: Optional[str] = None,
         **kwargs,
     ):
-        super().__init__(outwards_normal=outwards_normal, name=name, radius=radius, **kwargs)
+        super().__init__(
+            outwards_normal=outwards_normal, name=name, radius=radius, **kwargs
+        )
         self.curvature_sign = curvature_sign
         # An undefined position is stored as a size-3 nan origin. The origin is the center of the sphere; it is derived
         # from the surface center (the vertex) via the inwards normal when a center is given instead.
@@ -1346,17 +1571,23 @@ class CurvedSurface(Surface):
         return intersection_point
 
     def find_intersection_with_ray_paraxial(self, ray: Ray) -> np.ndarray:
-        flat_surface = FlatSurface(center=self.center, outwards_normal=self.outwards_normal)
+        flat_surface = FlatSurface(
+            center=self.center, outwards_normal=self.outwards_normal
+        )
         intersection_point = flat_surface.find_intersection_with_ray_paraxial(ray)
         return intersection_point
 
     def parameterization(
         self,
-        t: Union[np.ndarray, float],  # the length of arc to travel on the sphere from the center
+        t: Union[
+            np.ndarray, float
+        ],  # the length of arc to travel on the sphere from the center
         # of the mirror to the point of interest, in the direction "pseudo_z". pseudo_z is
         # described in the get_spanning_vectors method. it is analogous to theta / R in the
         # classical parameterization.
-        p: Union[np.ndarray, float],  # The same as theta but in the direction of pseudo_y. It is analogous
+        p: Union[
+            np.ndarray, float
+        ],  # The same as theta but in the direction of pseudo_y. It is analogous
         # to phi / R in the classical parameterization.
     ) -> np.ndarray:
         # This parameterization treats the sphere as if as the center of the mirror was on the x-axis.
@@ -1366,7 +1597,9 @@ class CurvedSurface(Surface):
         # Notice how the order of rotations matters. First we rotate around the z axis, then around the y-axis.
         # Doing it the other way around would give parameterization that is not aligned with the conventional theta, phi
         # parameterization. This is important for the get_parameterization method.
-        rotation_matrix = rotation_matrix_around_n(pseudo_y, -t / self.radius) @ rotation_matrix_around_n(
+        rotation_matrix = rotation_matrix_around_n(
+            pseudo_y, -t / self.radius
+        ) @ rotation_matrix_around_n(
             pseudo_z, p / self.radius
         )  # The minus sign is because of the
         # orientation of the pseudo_y axis.
@@ -1377,7 +1610,12 @@ class CurvedSurface(Surface):
     def get_parameterization(self, points: np.ndarray):
         pseudo_y, pseudo_z = self.get_spanning_vectors()
         normalized_points = (points - self.origin) / self.radius
-        p = np.arctan2(normalized_points @ pseudo_y, normalized_points @ self.outwards_normal) * self.radius
+        p = (
+            np.arctan2(
+                normalized_points @ pseudo_y, normalized_points @ self.outwards_normal
+            )
+            * self.radius
+        )
         # Notice that theta is like theta but instead of ranging in [0, pi] it ranges in [-pi/2, pi/2].
         t = np.arcsin(np.clip(normalized_points @ pseudo_z, -1, 1)) * self.radius
         return t, p
@@ -1409,7 +1647,9 @@ class CurvedSurface(Surface):
         # For the case of the sphere with normal on the x-axis, those will be the y and z axis.
         # For the case of the sphere with normal on the y-axis, those will be the x and z axis.
         pseudo_y = np.cross(np.array([0, 0, 1]), self.inwards_normal)
-        pseudo_z = np.cross(self.inwards_normal, pseudo_y)  # Should be approximately equal to \hat{z}, and exactly
+        pseudo_z = np.cross(
+            self.inwards_normal, pseudo_y
+        )  # Should be approximately equal to \hat{z}, and exactly
         # equal if the outwards_normal is in the x-y plane.
         return pseudo_y, pseudo_z
 
@@ -1429,7 +1669,15 @@ class CurvedSurface(Surface):
         **kwargs,
     ):
         diameter = nvl(nvl(diameter, self.diameter), 0.6 * self.radius)
-        super().plot(ax, name, dim, diameter=diameter, plane=plane, fine_resolution=fine_resolution, **kwargs)
+        super().plot(
+            ax,
+            name,
+            dim,
+            diameter=diameter,
+            plane=plane,
+            fine_resolution=fine_resolution,
+            **kwargs,
+        )
 
 
 class CurvedMirror(CurvedSurface, ReflectiveSurface):
@@ -1515,11 +1763,18 @@ class CurvedMirror(CurvedSurface, ReflectiveSurface):
                 / (self.material_properties.kappa_conductivity * w_spot_size)
             )
             delta_curvature = (
-                -delta_T * self.material_properties.alpha_expansion * poisson_ratio_factor / w_spot_size
+                -delta_T
+                * self.material_properties.alpha_expansion
+                * poisson_ratio_factor
+                / w_spot_size
             )  # The minus is because we are cooling it down.
             # delta_z = delta_curvature * w_spot_size ** 2  # Technically the curvature is calculated based on this delta_z, but I skip it in the code and calculate the curvature directly.
-            new_radius = (self.radius**-1 + delta_curvature) ** -1  # ARBITRARY - TAKING ONLY THE T AXIS
-            self.material_properties.temperature = ROOM_TEMPERATURE - delta_T  # The delta_T is negative, and after
+            new_radius = (
+                self.radius**-1 + delta_curvature
+            ) ** -1  # ARBITRARY - TAKING ONLY THE T AXIS
+            self.material_properties.temperature = (
+                ROOM_TEMPERATURE - delta_T
+            )  # The delta_T is negative, and after
             # cooling the mirror goes to room temperature. Therefore, the temperature is when heated is the room
             # temperature minus the delta_T.
 
@@ -1540,7 +1795,9 @@ class CurvedRefractiveSurface(CurvedSurface, RefractiveSurface):
         self,
         radius: float,
         outwards_normal: np.ndarray,  # Pointing from the origin of the sphere to the mirror's center.
-        center: Optional[np.ndarray] = None,  # Not the center of the sphere but the center of the plate.
+        center: Optional[
+            np.ndarray
+        ] = None,  # Not the center of the sphere but the center of the plate.
         origin: Optional[np.ndarray] = None,  # The center of the sphere.
         n_1: float = 1,
         n_2: float = 1.5,
@@ -1567,12 +1824,20 @@ class CurvedRefractiveSurface(CurvedSurface, RefractiveSurface):
     def __str__(self):
         return f"CurvedRefractiveSurface(name={self.name}, center={self.center}, outwards_normal={self.outwards_normal}, radius={self.radius}, n_1={self.n_1}, n_2={self.n_2})"
 
-    def ABCD_matrix(self, cos_theta_incoming: Union[float, np.ndarray] = None) -> np.ndarray:
+    def ABCD_matrix(
+        self, cos_theta_incoming: Union[float, np.ndarray] = None
+    ) -> np.ndarray:
         cos_theta_incoming = np.asarray(cos_theta_incoming)
-        cos_theta_outgoing = np.sqrt(1 - (self.n_1 / self.n_2) ** 2 * (1 - cos_theta_incoming**2))
+        cos_theta_outgoing = np.sqrt(
+            1 - (self.n_1 / self.n_2) ** 2 * (1 - cos_theta_incoming**2)
+        )
         R_signed = self.radius * self.curvature_sign
-        delta_n_e_out_of_plane = self.n_1 * cos_theta_incoming - self.n_2 * cos_theta_outgoing
-        delta_n_e_in_plane = delta_n_e_out_of_plane / (cos_theta_incoming * cos_theta_outgoing)
+        delta_n_e_out_of_plane = (
+            self.n_1 * cos_theta_incoming - self.n_2 * cos_theta_outgoing
+        )
+        delta_n_e_in_plane = delta_n_e_out_of_plane / (
+            cos_theta_incoming * cos_theta_outgoing
+        )
 
         ABCD = np.zeros((*cos_theta_incoming.shape, 4, 4), dtype=float)
         ABCD[..., 0, 0] = 1
@@ -1580,7 +1845,9 @@ class CurvedRefractiveSurface(CurvedSurface, RefractiveSurface):
         ABCD[..., 1, 1] = self.n_1 / self.n_2
         ABCD[..., 2, 2] = cos_theta_outgoing / cos_theta_incoming
         ABCD[..., 3, 2] = delta_n_e_in_plane / (R_signed * self.n_2)
-        ABCD[..., 3, 3] = cos_theta_incoming * self.n_1 / (cos_theta_outgoing * self.n_2)
+        ABCD[..., 3, 3] = (
+            cos_theta_incoming * self.n_1 / (cos_theta_outgoing * self.n_2)
+        )
         return ABCD
 
     def thermal_transformation(
@@ -1620,7 +1887,9 @@ class CurvedRefractiveSurface(CurvedSurface, RefractiveSurface):
             / (self.material_properties.kappa_conductivity * w_spot_size**2)
         )
         delta_optical_length_curvature_n_surface = (
-            -PHYSICAL_SIZES_DICT["c_lens_focal_length_expansion"] * common_coefficient * self.material_properties.dn_dT
+            -PHYSICAL_SIZES_DICT["c_lens_focal_length_expansion"]
+            * common_coefficient
+            * self.material_properties.dn_dT
         )
         delta_optical_length_curvature_n_volumetric = (
             -PHYSICAL_SIZES_DICT["c_lens_volumetric_absorption"]
@@ -1645,15 +1914,25 @@ class CurvedRefractiveSurface(CurvedSurface, RefractiveSurface):
             + delta_optical_length_curvature_buldging * curvature_transform_lens
         )
 
-        if change_lens_by_changing_n:  # Equation (2) from the documentation in the link above
+        if (
+            change_lens_by_changing_n
+        ):  # Equation (2) from the documentation in the link above
             radius_new = self.radius
             n_new = n_inside - delta_optical_length_curvature * self.radius
 
-        elif change_lens_by_changing_R:  # Equation (3) from the documentation in the link above
-            radius_new = n_inside * self.radius / (n_inside - delta_optical_length_curvature * self.radius)
+        elif (
+            change_lens_by_changing_R
+        ):  # Equation (3) from the documentation in the link above
+            radius_new = (
+                n_inside
+                * self.radius
+                / (n_inside - delta_optical_length_curvature * self.radius)
+            )
             n_new = n_inside
         else:
-            raise ValueError("at least change_lens_by_changing_n or change_lens_by_changing_R has to be True")
+            raise ValueError(
+                "at least change_lens_by_changing_n or change_lens_by_changing_R has to be True"
+            )
 
         if self.n_1 == 1:
             n_1 = 1
@@ -1802,7 +2081,9 @@ def generate_aspheric_lens(
 
 
 def convert_curved_refractive_surface_to_ideal_lens(surface: CurvedRefractiveSurface):
-    focal_length = 1 / (surface.n_2 - surface.n_1) * surface.radius * (surface.curvature_sign)
+    focal_length = (
+        1 / (surface.n_2 - surface.n_1) * surface.radius * (surface.curvature_sign)
+    )
     ideal_lens = IdealLens(
         outwards_normal=surface.outwards_normal,
         center=surface.center,
