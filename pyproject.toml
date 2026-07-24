@@ -21,6 +21,7 @@ dependencies = [
     "pyperclip",
     "PyQt5==5.15.11",
     "pywin32==311 ; sys_platform == 'win32'",
+    "sympy>=1.14.0",
 ]
 
 [dependency-groups]
