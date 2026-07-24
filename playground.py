@@ -18,8 +18,20 @@
 
 
 # %%
+from pathlib import Path
 import pandas as pd
-df = pd.read_csv(r"C:\Users\michaeka\Weizmann Institute Dropbox\Michael Kali\Labs Dropbox\Laser Phase Plate\Daily measurements and notes\2026-07-02\after removing the sperical lens\6 15\without.csv", skiprows=2)
+
+DROPBOX_DIR = Path.home() / "Weizmann Institute Dropbox" / "Michael Kali" / "Labs Dropbox"
+csv_path = (
+    DROPBOX_DIR
+    / "Laser Phase Plate"
+    / "Daily measurements and notes"
+    / "2026-07-02"
+    / "after removing the sperical lens"
+    / "6 15"
+    / "without.csv"
+)
+df = pd.read_csv(csv_path, skiprows=2)
 
 # Plot first (x) and third (y) columns as Frequency vs Transmission
 import matplotlib.pyplot as plt
@@ -39,6 +51,6 @@ plt.title('Transmission vs Frequency')
 plt.tick_params(axis='both', labelbottom=False, labelleft=False)
 plt.grid(True)
 plt.tight_layout()
-plt.savefig(r"C:\Users\michaeka\Desktop\plot.svg", format='svg')
+plt.savefig(Path.home() / "Desktop" / "plot.svg", format='svg')
 plt.show()
 

@@ -1356,8 +1356,8 @@ def copy_parameters_func(local_parameters):
 
 def copy_figure_as_svg_to_clipboard(fig=None):
     import io
+    import platform
     import matplotlib.pyplot as plt
-    import win32clipboard
 
     if fig is None:
         fig = plt.gcf()
@@ -1366,13 +1366,33 @@ def copy_figure_as_svg_to_clipboard(fig=None):
     fig.savefig(buf, format="svg", bbox_inches="tight")
     svg_bytes = buf.getvalue()
 
-    svg_format = win32clipboard.RegisterClipboardFormat("image/svg+xml")
-    win32clipboard.OpenClipboard()
-    try:
-        win32clipboard.EmptyClipboard()
-        win32clipboard.SetClipboardData(svg_format, svg_bytes)
-    finally:
-        win32clipboard.CloseClipboard()
+    system = platform.system()
+    if system == "Windows":
+        import win32clipboard
+
+        svg_format = win32clipboard.RegisterClipboardFormat("image/svg+xml")
+        win32clipboard.OpenClipboard()
+        try:
+            win32clipboard.EmptyClipboard()
+            win32clipboard.SetClipboardData(svg_format, svg_bytes)
+        finally:
+            win32clipboard.CloseClipboard()
+    elif system == "Linux":
+        import shutil
+        import subprocess
+
+        if shutil.which("xclip"):
+            command = ["xclip", "-selection", "clipboard", "-t", "image/svg+xml"]
+        elif shutil.which("wl-copy"):
+            command = ["wl-copy", "-t", "image/svg+xml"]
+        else:
+            raise RuntimeError(
+                "Copying a figure to the clipboard on Linux requires 'xclip' (X11) or "
+                "'wl-copy' (Wayland) to be installed, e.g. `sudo apt install xclip`."
+            )
+        subprocess.run(command, input=svg_bytes, check=True)
+    else:
+        raise NotImplementedError(f"copy_figure_as_svg_to_clipboard is not supported on {system!r}.")
 
 
 def get_obsidian_save_path(filename: Optional[str] = None, overwrite: bool = False) -> str:
