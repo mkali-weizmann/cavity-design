@@ -1,0 +1,33 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cavity-design"
+version = "0.1.0"
+description = "Calculations to design a stable thin cavity"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy==2.2.6",
+    "scipy==1.15.3",
+    "matplotlib==3.8.4",
+    "pillow==11.2.1",
+    "ipywidgets==8.1.2",
+    "jupyterlab",
+    "pandas==2.2.2",
+    "openpyxl==3.1.5",
+    "python-dotenv==0.21.1",
+    "tqdm==4.67.1",
+    "pyperclip",
+    "PyQt5==5.15.11",
+    "pywin32==311 ; sys_platform == 'win32'",
+]
+
+[dependency-groups]
+dev = [
+    "pytest==9.0.2",
+    "black==24.4.2",
+]
+
+[tool.black]
+line-length = 120
