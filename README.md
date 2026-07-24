@@ -1,6 +1,21 @@
 # cavity-design
 Calculations to design a stable thin cavity
 
+## Setup
+
+Dependencies are managed with [uv](https://docs.astral.sh/uv/). Install uv, then from the repo root:
+
+```
+uv sync
+```
+
+This creates a `.venv` with the pinned Python version (see `.python-version`) and all dependencies from `pyproject.toml` / `uv.lock`. Run commands inside the environment with `uv run`, e.g.:
+
+```
+uv run pytest
+uv run jupyter lab
+```
+
 Code conventions:
 - The angle "t" represents the theta angles of spherical coordinates (the angle from the z-axis)
 - The angle "p" represents the phi angles of spherical coordinates (the angle from the x-axis of the projection of a vector onto the xy plane)
@@ -50,6 +65,6 @@ For each NA:
         - Calculate their overlap integral.
       - Find `shift` such that `f(shift) = 0.9`.
 
-Formatting: ```python -m black -l 120 cavity.py```
+Formatting: ```uv run black -l 120 cavity.py```
 
 
