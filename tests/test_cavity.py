@@ -36,6 +36,7 @@ from cavity_design import (
     hessian_ray_tracing,
     hessian_ABCD_matrices,
     mirrors_jacobian,
+    C_LIGHT_SPEED,
 )
 
 
@@ -79,6 +80,91 @@ def test_fabry_perot_mode_finding():
     assert (
         theoretical_waist / actual_waist - 1
     ) < 1e-6, f"Fabry Perot generation failed: Waist mismatch - theoretical {theoretical_waist}, actual {actual_waist}"
+
+
+def test_fabry_perot_transversal_mode_spacing():
+    # Compares cavity.mode_spacing_transversal_apparent against Siegman's analytical
+    # transverse-mode-spacing formula for a two-mirror Fabry-Perot resonator.
+    # Theory: Siegman, "Lasers", Ch. 19 (PDF pp. 771-789, esp. 788-789). The resonant
+    # frequencies are
+    #     nu_qmn = (c / 2L) * [q + (m + n + 1) / pi * arccos(+/- sqrt(g_1 * g_2))],
+    # so the spacing between adjacent transverse modes is
+    #     df_transverse = (1 / pi) * arccos(+/- sqrt(g_1 * g_2)) * FSR,
+    # with the sign of the sqrt taken as the (common) sign of g_1, g_2. Note the argument
+    # is sqrt(g_1 * g_2), NOT g_1 * g_2. mode_spacing_transversal_apparent folds the result
+    # into [0, FSR/2], so we fold the analytical value the same way before comparing.
+    R_1 = 5e-3
+    R_2 = 7e-3
+    u = 50e-6
+    L = R_1 + R_2 - u
+
+    mirror_1 = SphericalMirror(
+        radius=R_1,
+        origin=np.array([0.0, 0.0, 0.0]),
+        curvature_sign=CurvatureSigns.concave,
+        diameter=0.0254 / 2,
+        outwards_normal=np.array([-1.0, 0.0, 0.0]),
+    )
+    mirror_2 = SphericalMirror(
+        radius=R_2,
+        origin=np.array([-u, 0.0, 0.0]),
+        curvature_sign=CurvatureSigns.concave,
+        diameter=0.0254 / 2,
+        outwards_normal=np.array([1.0, 0.0, 0.0]),
+    )
+    cavity = Cavity(
+        elements=[mirror_1, mirror_2],
+        standing_wave=True,
+        lambda_0_laser=LAMBDA_0_LASER,
+        use_paraxial_ray_tracing=True,
+        p_is_trivial=True,
+        t_is_trivial=True,
+    )
+
+    g_1 = 1 - L / R_1
+    g_2 = 1 - L / R_2
+    fsr = C_LIGHT_SPEED / (2 * L)
+
+    # --- Beam geometry (Siegman, PDF pp. 771-789) --------------------------------------
+    # Waist size, spot sizes on the two mirrors, and mirror-to-waist distances.
+    w_0_squared_analytical = (
+        L
+        * LAMBDA_0_LASER
+        / np.pi
+        * np.sqrt(g_1 * g_2 * (1 - g_1 * g_2) / (g_1 + g_2 - 2 * g_1 * g_2) ** 2)
+    )
+    w_1_squared_analytical = L * LAMBDA_0_LASER / np.pi * np.sqrt(g_2 / (g_1 * (1 - g_1 * g_2)))
+    w_2_squared_analytical = L * LAMBDA_0_LASER / np.pi * np.sqrt(g_1 / (g_2 * (1 - g_1 * g_2)))
+    z_1_analytical = g_2 * (1 - g_1) / (g_1 + g_2 - 2 * g_1 * g_2) * L
+    z_2_analytical = g_1 * (1 - g_2) / (g_1 + g_2 - 2 * g_1 * g_2) * L
+
+    w_0_squared_numerical = cavity.mode_parameters[0].w_0 ** 2
+    w_1_squared_numerical = cavity.arms[0].mode_parameters_on_surface_0.spot_size ** 2
+    w_2_squared_numerical = cavity.arms[0].mode_parameters_on_surface_1.spot_size ** 2
+    z_1_numerical = cavity.arms[0].mode_parameters_on_surface_0.z_minus_z_0
+    z_2_numerical = cavity.arms[0].mode_parameters_on_surface_1.z_minus_z_0
+
+    # Numerical quantities carry a (tangential, sagittal) pair; both agree for this
+    # astigmatism-free cavity. z_minus_z_0 is signed relative to the waist, so compare |.|.
+    assert w_0_squared_numerical == pytest.approx(w_0_squared_analytical, rel=1e-6)
+    assert w_1_squared_numerical == pytest.approx(w_1_squared_analytical, rel=1e-6)
+    assert w_2_squared_numerical == pytest.approx(w_2_squared_analytical, rel=1e-6)
+    assert np.abs(z_1_numerical) == pytest.approx(np.abs(z_1_analytical), rel=1e-6)
+    assert np.abs(z_2_numerical) == pytest.approx(np.abs(z_2_analytical), rel=1e-6)
+
+    # --- Transverse mode spacing -------------------------------------------------------
+    gouy_argument = np.sign(g_1) * np.sqrt(g_1 * g_2)
+    df_transverse = np.arccos(gouy_argument) / np.pi * fsr
+    # Fold into [0, FSR/2] exactly as mode_spacing_transversal_apparent does.
+    df_apparent_analytical = np.abs(np.mod(df_transverse + fsr / 2, fsr) - fsr / 2)
+
+    df_apparent_numerical = cavity.mode_spacing_transversal_apparent
+
+    assert cavity.free_spectral_range == pytest.approx(fsr, rel=1e-9)
+    assert df_apparent_numerical == pytest.approx(df_apparent_analytical, rel=1e-6), (
+        f"Transverse mode spacing mismatch: analytical {df_apparent_analytical}, "
+        f"numerical {df_apparent_numerical}"
+    )
 
 
 def test_mirror_lens_mirror_design():
