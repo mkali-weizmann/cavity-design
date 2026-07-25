@@ -30,5 +30,14 @@ dev = [
     "black==24.4.2",
 ]
 
+[tool.uv]
+# Force the lock to include wheels usable on Windows. Without this, universal
+# resolution picks pyqt5-qt5==5.15.19 (Linux/macOS-only wheels) and the install
+# fails on win_amd64. Listing the Windows environment makes uv fork the
+# resolution and select a Windows-compatible pyqt5-qt5 for this platform.
+required-environments = [
+    "sys_platform == 'win32' and platform_machine == 'AMD64'",
+]
+
 [tool.black]
 line-length = 120

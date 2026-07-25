@@ -1,56 +1,45 @@
-# # %%
-# from cavity_design import *
-#
-# T_c=2.2e-3
-# BFL = 2.68e-3
-# lens = OpticalSystem.from_params(generate_aspheric_lens_params(back_focal_length=BFL,
-#                                                                T_c=T_c, n=1.583, forward_normal=RIGHT,
-#                                                                flat_faces_center=ORIGIN, diameter=6.325e-3,
-#                                                                polynomial_degree=18),
-#                                  )
-# EFL = focal_length_of_lens(R_1=lens[0].radius, R_2=-lens[1].radius, n=lens[0].n_2, T_c=T_c)
-# lens.plot()
-# # set aspect ratio equal so x and y scales match
-# plt.gca().set_aspect('equal', adjustable='box')
-# plt.title(f"BFL = {BFL:.2e}, EFL = {EFL:.2e}, T_c = {T_c:.2e}")
-# plt.show()
 # %%
+from cavity_design import *
 
 
+u = 50e-6
+R_1 = 5e-3
+R_2 = 7e-3
+L = R_1 + R_2 - u
+
+mirror_1 = SphericalMirror(radius=R_1, origin=ORIGIN, curvature_sign=CurvatureSigns.concave, name='mirror_1', diameter=INCH / 2, outwards_normal=LEFT)
+mirror_2 = SphericalMirror(radius=R_2, origin=ORIGIN + u * LEFT, curvature_sign=CurvatureSigns.concave, name='mirror_2', diameter=INCH / 2, outwards_normal=RIGHT)
+cavity = Cavity(elements=[mirror_1, mirror_2], use_paraxial_ray_tracing=True, p_is_trivial=True, t_is_trivial=True, lambda_0_laser=LAMBDA_0_LASER)
+
+g_1 = 1 - L / R_1
+g_2 = 1 - L / R_2
+
+gouy_phase_term = np.arccos(-np.sqrt(g_1 * g_2))
+
+mode_spacing_analytical = (1-gouy_phase_term / np.pi) * C_LIGHT_SPEED / (2 * L)
+mode_spacing_numerical = cavity.mode_spacing_transversal_apparent
+
+w_0_squared_analytical = L * LAMBDA_0_LASER / np.pi * np.sqrt(g_1 * g_2 * (1 - g_1 * g_2) / (g_1 + g_2 -2*g_1 * g_2) ** 2)
+w_0_squared_numerical = cavity.mode_parameters[0].w_0**2
+
+w_1_squared_numerical = cavity.arms[0].mode_parameters_on_surface_0.spot_size**2
+w_2_squared_numerical = cavity.arms[0].mode_parameters_on_surface_1.spot_size**2
+
+w_1_squared_analytical = L * LAMBDA_0_LASER / np.pi * np.sqrt(g_2 / (g_1 * (1 - g_1 * g_2)))
+w_2_squared_analytical = L * LAMBDA_0_LASER / np.pi * np.sqrt(g_1 / (g_2 * (1 - g_1 * g_2)))
+
+z_1_analytical = g_2 * (1-g_1) / (g_1 + g_2 - 2*g_1*g_2) * L
+z_2_analytical = g_1 * (1-g_2) / (g_1 + g_2 - 2*g_1*g_2) * L
+
+z_1_numerical = cavity.arms[0].mode_parameters_on_surface_0.z_minus_z_0
+z_2_numerical = cavity.arms[0].mode_parameters_on_surface_1.z_minus_z_0
 # %%
-from pathlib import Path
-import pandas as pd
-
-DROPBOX_DIR = Path.home() / "Weizmann Institute Dropbox" / "Michael Kali" / "Labs Dropbox"
-csv_path = (
-    DROPBOX_DIR
-    / "Laser Phase Plate"
-    / "Daily measurements and notes"
-    / "2026-07-02"
-    / "after removing the sperical lens"
-    / "6 15"
-    / "without.csv"
-)
-df = pd.read_csv(csv_path, skiprows=2)
-
-# Plot first (x) and third (y) columns as Frequency vs Transmission
-import matplotlib.pyplot as plt
-
-# convert to numeric, drop rows where conversion failed and keep only frequencies between 0.7 and 0.9
-x = pd.to_numeric(df.iloc[:, 0], errors='coerce')
-y = pd.to_numeric(df.iloc[:, 2], errors='coerce')
-# keep only rows where both x and y are numeric and frequency is in the desired range
-mask = x.notna() & y.notna() & (x >= 0.7) & (x <= 0.9)
-x = x[mask]
-y = y[mask]
-
-plt.plot(x, y, linestyle='-', markersize=3)
-plt.xlabel('Frequency')
-plt.ylabel('transmission')
-plt.title('Transmission vs Frequency')
-plt.tick_params(axis='both', labelbottom=False, labelleft=False)
-plt.grid(True)
-plt.tight_layout()
-plt.savefig(Path.home() / "Desktop" / "plot.svg", format='svg')
-plt.show()
-
+# print everything:
+print(f"g_1: {g_1}, g_2: {g_2}")
+print(f"gouy_phase_term: {gouy_phase_term}")
+print(f"mode_spacing_analytical: {mode_spacing_analytical}, mode_spacing_numerical: {mode_spacing_numerical}")
+print(f"w_0_squared_analytical: {w_0_squared_analytical}, w_0_squared_numerical: {w_0_squared_numerical}")
+print(f"w_1_squared_analytical: {w_1_squared_analytical}, w_1_squared_numerical: {w_1_squared_numerical}")
+print(f"w_2_squared_analytical: {w_2_squared_analytical}, w_2_squared_numerical: {w_2_squared_numerical}")
+print(f"z_1_analytical: {z_1_analytical}, z_1_numerical: {z_1_numerical}")
+print(f"z_2_analytical: {z_2_analytical}, z_2_numerical: {z_2_numerical}")
