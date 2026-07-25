@@ -67,4 +67,9 @@ For each NA:
 
 Formatting: ```uv run black -l 120 cavity.py```
 
-
+# Working remotely with plots:
+1. Start VcXsrv on Windows — launch XLaunch with the same settings as before (Multiple windows → Start no client → Disable access control → Additional parameters: -listen tcp). (Tip: to skip this step entirely, you can put a shortcut with these exact settings in your    
+  Windows Startup folder so it launches automatically at login — let me know if you want help setting that up.)                                                                                                                                                                  
+2. Open PuTTY, connect using your saved "Remote Linux 2" session, log in. Leave this window open in the background all day — closing it kills the X11 tunnel.                                                                                                                  
+3. In that PuTTY window, run echo $DISPLAY and confirm it still says localhost:10.0. If it shows a different number (e.g. localhost:10.1 — can happen if another forwarded session was already open), update the DISPLAY value in your PyCharm run configurations              
+(NA_per_elements_position, playground, and any others you add) to match.                                                          

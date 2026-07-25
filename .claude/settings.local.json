@@ -54,7 +54,9 @@
       "Bash(git checkout *)",
       "Bash(git push *)",
       "Bash(python -m black cavity_design/_cavity.py)",
-      "Bash(python -m pytest -q)"
+      "Bash(python -m pytest -q)",
+      "Bash(python3 -c \"import matplotlib; print\\(matplotlib.get_backend\\(\\)\\)\")",
+      "Bash(python3 -c \"import tkinter\")"
     ]
   }
 }
