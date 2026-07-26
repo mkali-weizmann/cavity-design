@@ -17,6 +17,7 @@ from ._utils import PHYSICAL_SIZES_DICT, LEFT, ORIGIN, RIGHT, INCH, MaterialProp
 
 LASER_OPTIK_MIRROR = SphericalMirror(
     radius=5e-3,
+    origin=ORIGIN, # This one is at the origin as a convention. all other elements are undefined.
     diameter=7.75e-3,
     outwards_normal=LEFT,
     name="Laser Optik Mirror",

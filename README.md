@@ -23,6 +23,30 @@ INDICES_DICT = {'x': 0, 'y': 1, 't': 2, 'p': 3, 'r': 4, 'n_1': 5, 'w': 6, 'n_2':
 The ray–sphere intersection in `SphericalSurface.find_intersection_with_ray_exact` selects which of the two roots to keep using the surface's given `curvature_sign`. This is fast but assumes the curvature is known and returns the wrong root in extreme, very-non-paraxial cases (e.g. a ray that clips the cap twice near its rim, or approaches from behind). We tried a more robust variant that instead picks the nearest forward intersection lying on the physical cap (effectively "first valid positive intersection"), but it ran ~8% slower on our mixed paraxial/exact workloads. Since those extreme cases do not arise in our paraxial-dominated use, we reverted to the original method for efficiency. The unused robust implementation (plus its tests) lives on the `exact-intersection-slower-method` branch; the params-only `main` keeps the lighter method.
 
 
+## uv migration attempt (reverted; kept on the `migrate-to-uv` branch)
+
+We tried migrating dependency management from `requirements.txt` to **uv** (`pyproject.toml` + `uv.lock`, hatchling backend). On Windows this surfaced a chain of environment problems, so **`main` was reverted to the pre-migration, `requirements.txt`-based setup**, which runs the analysis notebooks cleanly (no tracebacks, no flicker). The uv work is preserved on the **`migrate-to-uv`** branch (pushed to GitHub) for anyone who wants to finish it.
+
+Problems hit during the migration — all traceable to moving from a hand-curated Windows venv to a freshly-resolved, cross-platform, mostly-unpinned uv environment:
+
+- **`pyqt5-qt5` had no Windows wheel.** uv's universal resolution (done with Ubuntu support in mind) locked a Linux/macOS-only version. Fixed by declaring `[tool.uv] required-environments` for `sys_platform == 'win32' and platform_machine == 'AMD64'`.
+- **Wrong Python.** With no `.python-version`, `uv run` grabbed the newest interpreter (3.14), for which the pinned scientific stack (numpy/scipy/matplotlib 3.8.4) has no wheels. The pre-migration env was Python **3.11**.
+- **ipywidgets rendered as plain text.** `jupyterlab` was left unpinned and resolved to 4.6.x, which does not render the `jupyterlab_widgets` frontend extension. Pinned back to `jupyterlab==4.5.3`.
+- **`.venv` under Dropbox.** uv's default `.venv` lives inside the project, which sits on a Dropbox-synced path, causing "file in use" lock errors during `uv sync`. Worked around by putting the env at `C:\venvs\cavity-design` via the `UV_PROJECT_ENVIRONMENT` variable.
+- **Interactive Qt backend broke.** The clean uv env installed only *declared* deps, so **PySide6** — present ad-hoc in the old venv and selected via a global `QT_API=pyside6` env var — was missing. Standardizing on **PyQt5** instead made the `%matplotlib qt` figure window freeze ("Not Responding") and surfaced a matplotlib async draw-race (`'NoneType' object has no attribute 'canvas' / 'dpi_scale_trans'`). Installing PySide6 fixed the freeze, but the draw-race persisted even after matching Python 3.11 / ipython 9.9.0 / ipykernel 7.1.0 — it is a timing-sensitive interaction with the notebook's live-figure clearing code, not a packaging issue. Reverting `main` is what actually cleared it.
+
+What the **`migrate-to-uv`** branch contains (a near-working state; the notebook still shows the transient draw-race):
+
+- `pyproject.toml` (hatchling, `requires-python >= 3.11`) + `uv.lock`, with `[tool.uv] required-environments` for Windows.
+- Dependency pins matched to the pre-migration versions: `jupyterlab==4.5.3`, `ipython==9.9.0`, `ipykernel==7.1.0`, `matplotlib==3.8.4`, `PyQt5==5.15.11`, plus `PySide6>=6.5`.
+- `analyze_potential.ipynb`: an explicit `os.environ["QT_API"] = "pyside6"` pin (replacing the old global env var) and a `_drawing_suspended` guard around `clear_figure_extra_axes` to suppress the draw-race.
+- Not on the branch: the Python-3.11 pin was set locally via `.python-version` (never committed); the env lived at `C:\venvs\cavity-design`.
+
+The one unrecoverable unknown was the **original venv's PySide6 version** (that venv was deleted, and `requirements.txt` never pinned PySide6) — the most likely remaining cause of the draw-race and the first thing to try (an older PySide6) if the migration is revisited.
+
+Local dev note: the `.git/hooks/pre-commit` hook runs the tests and must invoke a *working* Python — it calls the project venv's Python directly, because the system Python 3.11 on this machine has a broken `pyreadline` that crashes pytest at startup. It also skips `tests/test_skill_examples.py` (slow — it runs every example script end-to-end).
+
+
 # The tolerances pseudo code:
 
 For each NA:
