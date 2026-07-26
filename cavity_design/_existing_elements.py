@@ -202,6 +202,32 @@ THOLABS_100MM_PLANO_CONVEX_LENS = OpticalSystem(
     name="Thorlabs 100mm Plano Convex Lens",
 )
 
+THOLABS_200MM_PLANO_CONVEX_LENS = OpticalSystem(
+    elements=[
+        SphericalRefractiveSurface(
+            name="Thorlabs 200mm plano convex - convex",
+            radius=103e-3,
+            outwards_normal=LEFT,
+            diameter=INCH,
+            curvature_sign=CurvatureSigns.convex,
+            n_1=1,
+            n_2=PHYSICAL_SIZES_DICT["material_properties_bk7"].refractive_index,
+        ),
+        FlatRefractiveSurface(
+            name="Thorlabs 200mm plano convex - left",
+            center=2.8e-3 * RIGHT * 1j,
+            outwards_normal=LEFT,
+            diameter=INCH,
+            n_1=PHYSICAL_SIZES_DICT["material_properties_bk7"].refractive_index,
+            n_2=1,
+        ),
+    ],
+    use_paraxial_ray_tracing=True,
+    p_is_trivial=True,
+    t_is_trivial=True,
+    name="Thorlabs 100mm Plano Convex Lens - LA-1708-B",
+)
+
 DUMMY_LENS = OpticalSystem(
     elements=[
         SphericalRefractiveSurface(
