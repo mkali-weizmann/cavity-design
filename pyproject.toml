@@ -17,6 +17,11 @@ dependencies = [
     # frontend extension, so ipywidgets show only their text repr. 4.5.3 is the
     # last known-good version with this widget stack.
     "jupyterlab==4.5.3",
+    # Pinned to the pre-uv-migration versions (recorded from the old
+    # C:\venvs\cavity-design venv). ipykernel drives the interactive Qt event
+    # loop; newer versions changed the timing and surfaced a matplotlib draw-race.
+    "ipython==9.9.0",
+    "ipykernel==7.1.0",
     "pandas==2.2.2",
     "openpyxl==3.1.5",
     "python-dotenv==0.21.1",
