@@ -13,13 +13,21 @@ dependencies = [
     "matplotlib==3.8.4",
     "pillow==11.2.1",
     "ipywidgets==8.1.2",
-    "jupyterlab",
+    # Pinned: JupyterLab 4.6.x does not render the jupyterlab_widgets 3.0.16
+    # frontend extension, so ipywidgets show only their text repr. 4.5.3 is the
+    # last known-good version with this widget stack.
+    "jupyterlab==4.5.3",
     "pandas==2.2.2",
     "openpyxl==3.1.5",
     "python-dotenv==0.21.1",
     "tqdm==4.67.1",
     "pyperclip",
     "PyQt5==5.15.11",
+    # PySide6 is the Qt binding used for matplotlib's interactive backend
+    # (%matplotlib qt) in the analysis notebooks. PyQt5's event loop does not
+    # integrate cleanly under this ipykernel/IPython stack (frozen "Not
+    # Responding" figure window); PySide6 is the pre-migration, known-good binding.
+    "PySide6>=6.5",
     "pywin32==311 ; sys_platform == 'win32'",
     "sympy>=1.14.0",
 ]

@@ -18,8 +18,9 @@ from ._utils import PHYSICAL_SIZES_DICT, LEFT, ORIGIN, RIGHT, INCH, MaterialProp
 LASER_OPTIK_MIRROR = SphericalMirror(
     radius=5e-3,
     diameter=7.75e-3,
+    origin=ORIGIN,  # this optical element is the only one whose place is well-defined, because I work with its position as a convention.
     outwards_normal=LEFT,
-    name="Laser Optik Mirror",
+    name="LaserOptik Mirror",
     material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"],
 )
 COASTLINE_20CM_MIRROR = SphericalMirror(
