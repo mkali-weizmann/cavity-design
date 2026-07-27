@@ -226,7 +226,7 @@ THOLABS_200MM_PLANO_CONVEX_LENS = OpticalSystem(
     use_paraxial_ray_tracing=True,
     p_is_trivial=True,
     t_is_trivial=True,
-    name="Thorlabs 100mm Plano Convex Lens - LA-1708-B",
+    name="Thorlabs 200mm Plano Convex Lens - LA-1708-B",
 )
 
 DUMMY_LENS = OpticalSystem(
@@ -515,12 +515,14 @@ for _catalog_name, _element in [
     ),
     ("EDMUND_4p03MM_ASPHERIC", EDMUND_4p03MM_ASPHERIC),
     ("THOLABS_100MM_PLANO_CONVEX_LENS", THOLABS_100MM_PLANO_CONVEX_LENS),
+    ("Thorlabs 200mm Plano Convex Lens - LA-1708-B", THOLABS_200MM_PLANO_CONVEX_LENS),
     ("EKSMA_LENS_20MM_ASPHERIC", EKSMA_LENS_20MM_ASPHERIC),
     ("THORLABS_8MM_ASPHERIC", THORLABS_8MM_ASPHERIC),
     ("EDMUND_8MM_ASPHERIC_31074", EDMUND_8MM_ASPHERIC_31074),
     ("EDMUND_6MM_ASPHERIC_87127", EDMUND_6MM_ASPHERIC_87127),
     ("EDMUND_4MM_ASPHERIC_16701", EDMUND_4MM_ASPHERIC_16701),
     ("EDMUND_4p5MM_ASPHERIC_83580", EDMUND_4p5MM_ASPHERIC_83580),
+    ("Dummy Lens", DUMMY_LENS)
 ]:
     register_existing_element(_catalog_name, _element)
 del _catalog_name, _element
