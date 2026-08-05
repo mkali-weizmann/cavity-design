@@ -1,12 +1,13 @@
 # %%
+import matplotlib.pyplot as plt
+
 from cavity_design import *
 
-optical_system = OpticalSystem(elements=[LASER_OPTIK_MIRROR, EDMUND_4p03MM_ASPHERIC_SPHERICAL_VERSION],
+optical_system = OpticalSystem(elements=[LASER_OPTIK_MIRROR, EDMUND_4p5MM_ASPHERIC_83580],
                                use_paraxial_ray_tracing=True, p_is_trivial=True, t_is_trivial=True, lambda_0_laser=LAMBDA_0_LASER)
 
 
 # %%
-# This formula comes from find_short_arm_length_for_collimation.nb
 short_arm_length = optical_system[0].radius + back_focal_length_of_lens_object(lens_object=optical_system[1])
 optical_system.place_element(element=optical_system[1], position=short_arm_length * RIGHT,
                              recalculate_optic=True, reference_center=optical_system[0])
@@ -40,4 +41,6 @@ for i, mode in enumerate(propagated_mode_list):
     mode.plot(ax=ax, first_point=points[i], last_point=points[i+1], color='red', linestyle='--')
 plt.xlim(-0.01, 0.12)
 plt.title(f"Short arm length: {(optical_system.surfaces[1].center[0] - optical_system.surfaces[0].center[0])*1000:.3f}mm")
+# save_path = get_obsidian_save_path(filename="collimation condition of 83580.svg")
+# plt.savefig(save_path)
 plt.show()
