@@ -54,7 +54,9 @@
       "Bash(git checkout *)",
       "Bash(git push *)",
       "Bash(python -m black cavity_design/_cavity.py)",
-      "Bash(python -m pytest -q)"
+      "Bash(python -m pytest -q)",
+      "Bash(C:\\\\Users\\\\OsipLab\\\\venvs\\\\cavity-design\\\\Scripts\\\\python.exe *)",
+      "Skill(keybindings-help)"
     ]
   }
 }
