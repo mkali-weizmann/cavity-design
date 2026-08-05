@@ -15,9 +15,9 @@ def equality_equation(x, coef):
 
 cavity = Cavity(elements=elements, standing_wave=True, lambda_0_laser=LAMBDA_0_LASER, p_is_trivial=True, t_is_trivial=True, use_paraxial_ray_tracing=False, set_central_line=True, set_mode_parameters=True)
 short_arm_length_collimation = cavity[0].radius + back_focal_length_of_lens_object(lens_object=cavity[1])
-long_arm_lengths = np.arange(28e-2, 42e-2, 2e-2)# np.array([28e-2, 29e-2, 30e-2, 31e-2, 32e-2, 33e-2, 34e-2, 37e-2])
+long_arm_lengths = np.array([34e-2])# , np.arange(28e-2, 42e-2, 2e-2)# np.array([28e-2, 29e-2, 30e-2, 31e-2, 32e-2, 33e-2, 34e-2, 37e-2])
 mid_arm_length = 1.6e-2
-short_arm_lengths = np.linspace(short_arm_length_collimation - 1e-4, short_arm_length_collimation + 8e-4, 200)
+short_arm_lengths = np.linspace(7.32e-3, 7.35e-3, 500)# np.linspace(short_arm_length_collimation - 1e-4, short_arm_length_collimation + 8e-4, 200)
 
 spherical_lens_nominal_position = short_arm_length_collimation + cavity[1].T_c + mid_arm_length # Measured from small mirror.
 Large_to_small_mirror_minus_long_arm_length_nominal = short_arm_length_collimation + cavity[1].T_c if len(elements) == 3\

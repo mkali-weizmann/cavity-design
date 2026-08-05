@@ -5,8 +5,8 @@ from scipy.interpolate import interp1d
 N = 100
 
 cavity = Cavity(elements=[LASER_OPTIK_MIRROR,
-                          EDMUND_4p03MM_ASPHERIC,
-                          THOLABS_100MM_PLANO_CONVEX_LENS,
+                          EDMUND_4p5MM_ASPHERIC_83580,
+                          THOLABS_200MM_PLANO_CONVEX_LENS,
                           COASTLINE_20CM_MIRROR],
                 use_paraxial_ray_tracing=True, p_is_trivial=True, t_is_trivial=True, lambda_0_laser=LAMBDA_0_LASER)
 aspheric_BFL = back_focal_length_of_lens_object(lens_object=EDMUND_4p03MM_ASPHERIC)
