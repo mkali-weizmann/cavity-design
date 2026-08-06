@@ -2,18 +2,55 @@ from copy import deepcopy
 from cavity_design import *
 from scipy.interpolate import interp1d
 
-cavity = Cavity(elements=[LASER_OPTIK_MIRROR,
-                          EDMUND_4p5MM_ASPHERIC_83580,
-                          COASTLINE_20CM_MIRROR],
-                use_paraxial_ray_tracing=True, p_is_trivial=True, t_is_trivial=True, lambda_0_laser=LAMBDA_0_LASER)
-aspheric_BFL = back_focal_length_of_lens_object(lens_object=cavity[1])
-collimation_point = cavity[0].radius + aspheric_BFL
+# The cavity is not built at import time: callers (in particular the os-lab PicoScope analysis
+# scripts, which reach this module through pico_scope/mode_analysis.py) choose the elements, so the
+# person doing the measurement never has to edit this file.
+DEFAULT_ELEMENTS = ["LASER_OPTIK_MIRROR",
+                    "EDMUND_4p5MM_ASPHERIC_83580",
+                    "COASTLINE_20CM_MIRROR"]
+
+
+class UnknownCavityElement(ValueError):
+    """A cavity element name that is not in EXISTING_ELEMENTS_REGISTRY."""
+
+
+def resolve_elements(elements):
+    """Catalog names (or ready-made element objects) -> fresh deep copies.
+
+    The copies matter: Cavity.__init__ only does list(elements) and place_element() mutates in
+    place, so handing over the catalog singletons themselves would leave them placed and moved for
+    everyone else in the session.
+    """
+    resolved = []
+    for element in elements:
+        if isinstance(element, str):
+            if element not in EXISTING_ELEMENTS_REGISTRY:
+                raise UnknownCavityElement(
+                    f"unknown cavity element {element!r}. Available elements: "
+                    + ", ".join(sorted(EXISTING_ELEMENTS_REGISTRY))
+                )
+            resolved.append(deepcopy(EXISTING_ELEMENTS_REGISTRY[element]))
+        else:
+            resolved.append(deepcopy(element))
+    return resolved
+
+
+def build_cavity(elements=DEFAULT_ELEMENTS, lambda_0_laser=LAMBDA_0_LASER):
+    """Build the cavity from catalog names; return (cavity, collimation_point)."""
+    cavity = Cavity(elements=resolve_elements(elements),
+                    use_paraxial_ray_tracing=True, p_is_trivial=True, t_is_trivial=True,
+                    lambda_0_laser=lambda_0_laser)
+    aspheric_BFL = back_focal_length_of_lens_object(lens_object=cavity[1])
+    collimation_point = cavity[0].radius + aspheric_BFL
+    return cavity, collimation_point
 
 # %%
 
 def generate_lens_position_dependencies(short_arm_lengths: np.ndarray,
                                         mid_arm_length: float,
                                         long_arm_length: float,
+                                        cavity,
+                                        collimation_point: float,
                                         plot_dependencies=True):
     NAs = np.zeros_like(short_arm_lengths)
     mode_spacing = np.zeros_like(short_arm_lengths)
@@ -63,7 +100,9 @@ def generate_lens_position_dependencies_output(short_arm_lengths: Union[np.ndarr
                                                mid_arm_length: float,
                                                long_arm_length: float,
                                                N_points=100,
-                                               plot_cavity=True, plot_spectrum=True, plot_dependencies=True):
+                                               plot_cavity=True, plot_spectrum=True, plot_dependencies=True,
+                                               elements=DEFAULT_ELEMENTS):
+    cavity, collimation_point = build_cavity(elements)
     if isinstance(short_arm_lengths, (int, float)):
         short_arm_lengths = np.linspace(collimation_point - short_arm_lengths, collimation_point + short_arm_lengths, N_points)
     elif isinstance(short_arm_lengths, tuple):
@@ -83,6 +122,8 @@ def generate_lens_position_dependencies_output(short_arm_lengths: Union[np.ndarr
     NAs, mode_spacing = generate_lens_position_dependencies(short_arm_lengths=short_arm_lengths,
                                                             mid_arm_length=mid_arm_length,
                                                             long_arm_length=long_arm_length,
+                                                            cavity=cavity,
+                                                            collimation_point=collimation_point,
                                                             plot_dependencies=plot_dependencies)
     mode_spacing_interp = interp1d(mode_spacing, NAs, fill_value='extrapolate')
     mode_spacing_over_fsr_interp = lambda x: mode_spacing_interp(x * cavity.free_spectral_range)
