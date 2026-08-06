@@ -878,6 +878,17 @@ class OpticalSystem:
         return element.inverse
 
     @staticmethod
+    def _follows_floating_convention(surfaces) -> bool:
+        """True when the surfaces follow the strict floating convention: the first surface's position is undefined
+        and every subsequent one is a pure-imaginary (relative) offset."""
+        centers = [np.asarray(s.center) for s in surfaces]
+        if len(centers) < 2:
+            return False
+        first_is_floating = np.all(np.isnan(np.real(centers[0])))
+        rest_are_relative = all(np.iscomplexobj(c) and np.all(np.abs(np.real(c)) <= POSITION_TINY) for c in centers[1:])
+        return bool(first_is_floating and rest_are_relative)
+
+    @staticmethod
     def _restore_inverted_floating_convention(inverted, original_surfaces):
         # If the original followed the strict floating convention (first surface undefined, every subsequent
         # surface a pure-imaginary relative offset), re-encode it on the inverted copy: reversal flips the sign
@@ -887,9 +898,7 @@ class OpticalSystem:
         centers = [np.asarray(s.center) for s in original_surfaces]
         if len(centers) < 2:
             return
-        first_is_floating = np.all(np.isnan(np.real(centers[0])))
-        rest_are_relative = all(np.iscomplexobj(c) and np.all(np.abs(np.real(c)) <= POSITION_TINY) for c in centers[1:])
-        if not (first_is_floating and rest_are_relative):
+        if not OpticalSystem._follows_floating_convention(original_surfaces):
             return
         n = len(centers)
         inverted._surfaces[0].center = None
@@ -952,6 +961,103 @@ class OpticalSystem:
                     f"direction-reversed original forward mode (q={expected_q})."
                 )
         return inverted_system
+
+    def flip(self) -> "OpticalSystem":
+        """A copy of this element physically turned around, still traversed in the original direction.
+
+        :meth:`invert` reverses only the *optical* traversal: surface order, refractive indices and curvature
+        signs are reversed, but the hardware is left exactly where and how it is, so the inverted system is meant
+        to be traversed backwards. ``flip`` composes that inversion with the geometric turn-around - every
+        outwards normal is negated (which is what re-points a curved cap or an aspheric bulge the other way) and
+        the internal spacings are mirrored. The result is the *same physical component mounted back-to-front*,
+        to be traversed in the same direction as the original.
+
+        Use it when a catalog element, whose orientation encodes the direction it is meant to face, is needed
+        facing the other way - e.g. a plano-convex lens catalogued with its flat side towards +x, used in a layout
+        where the flat side must face -x.
+
+        A **floating** element (first surface undefined, the rest pure relative offsets) stays floating: the
+        spacing chain is walked in the reversed order, so the flipped copy is placed exactly like the original.
+
+        A **placed** element is turned around in place: the geometry is mirrored through the plane orthogonal to
+        the line joining the first and last surface, positioned at their midpoint. The element therefore keeps the
+        span it occupied, with its entry face where the entry face used to be - it is the same hardware rotated in
+        its mount - so ``element.flip().to_position(p)`` and ``element.to_position(p).flip()`` agree. Any traced
+        optics are re-derived, since the geometry moved. (For a single-surface system, or one whose first and last
+        surfaces coincide, the mirror plane is taken orthogonal to the first surface's outwards normal instead.)
+
+        Note that mirroring equals a physical turn-around only for elements that are rotationally symmetric about
+        that axis - which every lens and mirror in the catalog is. A folded or otherwise chiral system would be
+        mapped to its mirror image, which is not something you can achieve by rotating the real hardware.
+
+        Not implemented for a ``Cavity``: turning a resonator around also has to reckon with the standing-wave
+        back-trip surfaces and the round-trip condition, which is what the dedicated :meth:`Cavity.invert` does.
+        """
+        if isinstance(self, Cavity):
+            raise NotImplementedError(
+                "flip() is not implemented for a Cavity - turning a resonator around also has to reckon with the "
+                "standing-wave back-trip surfaces and the round-trip condition. Use Cavity.invert() to reverse "
+                "the propagation direction, or flip the individual elements before building the cavity."
+            )
+        flipped = type(self)(
+            elements=[OpticalSystem._inverted_element(el) for el in reversed(self._elements)],
+            use_paraxial_ray_tracing=self.use_paraxial_ray_tracing,
+            lambda_0_laser=self.lambda_0_laser,
+            power=self.power,
+            t_is_trivial=self.t_is_trivial,
+            p_is_trivial=self.p_is_trivial,
+            # The geometry is about to be mirrored, so anything traced now would be stale; it is re-derived below.
+            given_initial_central_line=None,
+            mechanical_center=self._mechanical_center,
+            name=self.name,
+        )
+        # In both branches the outwards normals are re-pointed first and the centers written afterwards: for a
+        # curved surface the center is derived from the sphere origin and the normal, so writing it last is what
+        # recomputes the origin consistently.
+        if OpticalSystem._follows_floating_convention(self._surfaces):
+            for surface in flipped._surfaces:
+                surface.outwards_normal = -np.asarray(surface.outwards_normal, dtype=float)
+            # _inverted_element negated each internal offset so that the hardware would stay put; the physical
+            # turn-around negates them back, leaving the original spacings walked in the reversed order.
+            original_centers = [np.asarray(s.center) for s in self._surfaces]
+            n = len(original_centers)
+            flipped._surfaces[0].center = None
+            for j in range(1, n):
+                flipped._surfaces[j].center = np.imag(original_centers[n - j]) * 1j
+            return flipped
+
+        if not self.positions_defined:
+            raise ValueError(
+                "flip() needs an element that is either fully placed or floating (first surface undefined, the "
+                "rest relative offsets); this one is partially defined."
+            )
+
+        first_center = np.asarray(self._surfaces[0].center, dtype=float)
+        last_center = np.asarray(self._surfaces[-1].center, dtype=float)
+        axis = last_center - first_center
+        if np.linalg.norm(axis) <= POSITION_TINY:
+            # A single surface, or a degenerate system whose ends coincide: its own normal defines the axis.
+            axis = np.asarray(self._surfaces[0].outwards_normal, dtype=float)
+        axis = normalize_vector(axis)
+        pivot = (first_center + last_center) / 2
+
+        def mirrored_point(point: np.ndarray) -> np.ndarray:
+            return point - 2 * ((point - pivot) @ axis) * axis
+
+        def mirrored_vector(vector: np.ndarray) -> np.ndarray:
+            return vector - 2 * (vector @ axis) * axis
+
+        target_centers = [mirrored_point(np.asarray(s.center, dtype=float)) for s in flipped._surfaces]
+        for surface in flipped._surfaces:
+            surface.outwards_normal = mirrored_vector(np.asarray(surface.outwards_normal, dtype=float))
+        for surface, target_center in zip(flipped._surfaces, target_centers):
+            surface.center = target_center
+        if flipped._mechanical_center is not None:
+            flipped._mechanical_center = mirrored_point(np.asarray(flipped._mechanical_center, dtype=float))
+
+        flipped.resolve_relative_positions()
+        flipped.set_given_central_line(flipped.default_initial_ray)
+        return flipped
 
     @property
     def surfaces(self):

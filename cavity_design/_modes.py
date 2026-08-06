@@ -19,6 +19,10 @@ from ._utils import (
 )
 from ._rays import Ray
 
+# How far above radius / 2 a Rayleigh range may still land and count as the limiting (largest admissible) mode.
+# Only absorbs floating-point round-trip error - a genuinely too-small NA overshoots by orders of magnitude.
+NA_MATCHING_RELATIVE_TOLERANCE = 1e-9
+
 
 class LocalModeParameters:
     # The gaussian mode parameters at a point, without global coordinates information like where it is and where is it
@@ -364,11 +368,34 @@ def match_a_local_mode_to_mirror(
     elif z_R is None and (NA is None or lambda_0_laser is None):
         raise ValueError("You must provide either z_R or NA and lambda_0_laser, but not neither.")
 
+    # A Gaussian beam's wavefront radius R(z) = z + z_R**2 / z never drops below its minimum 2 * z_R, so a mode can
+    # only be matched to this mirror while z_R <= mirror.radius / 2. Past that the square root below turns imaginary
+    # and the mode would silently come back as nan, so report the limit - and the NA that reaches it - instead.
+    # The tolerance keeps the limiting mode itself (z_R exactly radius / 2) admissible: NA_MATCHING_RELATIVE_TOLERANCE
+    # round-trips through z_R_of_NA to within an ulp or two, and rejecting the very NA the message advertises would
+    # make the advice unusable.
+    z_R_max = mirror.radius / 2
+    if np.any(z_R > z_R_max * (1 + NA_MATCHING_RELATIVE_TOLERANCE)):
+        message = (
+            f"No mode of Rayleigh range z_R={np.max(z_R):.6g} m can be matched to a mirror of radius "
+            f"{mirror.radius:.6g} m: the mirror's curvature is only reached while z_R <= radius / 2 = "
+            f"{z_R_max:.6g} m."
+        )
+        if lambda_0_laser is not None:
+            # The exact inverse of the z_R_of_NA call above, so the reported NA can be substituted as-is.
+            NA_min = NA_of_z_R(z_R=z_R_max, lambda_0_laser=lambda_0_laser / n)
+            asked_for = f" (you asked for NA={NA:.6g})" if NA is not None else ""
+            message += f" The smallest NA this mirror supports is {NA_min:.6g}{asked_for}; use that value or larger."
+        raise ValueError(message)
+
     if mode_going_away_from_mirror:
         position_sign = -1
     else:
         position_sign = 1
-    z_minus_z_0 = position_sign * (mirror.radius + np.sqrt(mirror.radius**2 - 4 * z_R**2)) / 2
+    # Clamped because at the admissible boundary the radicand can land a rounding step below zero; there it is
+    # physically zero and the waist sits at radius / 2.
+    radicand = np.maximum(mirror.radius**2 - 4 * z_R**2, 0)
+    z_minus_z_0 = position_sign * (mirror.radius + np.sqrt(radicand)) / 2
     q = z_minus_z_0 + 1j * z_R
     local_mode_parameters = LocalModeParameters(q=np.array([q, q]), lambda_0_laser=lambda_0_laser, n=n)
 

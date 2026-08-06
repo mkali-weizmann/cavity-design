@@ -37,6 +37,9 @@ from cavity_design import (
     hessian_ABCD_matrices,
     mirrors_jacobian,
     C_LIGHT_SPEED,
+    ORIGIN,
+    RIGHT,
+    surfaces_are_equivalent,
 )
 
 
@@ -2295,6 +2298,163 @@ def test_invert_floating_element_preserves_floating_convention():
     placed = inverted.to_position(np.array([0.01, 0.0, 0.0]))
     assert placed.positions_defined
     assert np.allclose(placed.surfaces[1].center, [0.01 - 3.434e-3, 0.0, 0.0])
+
+
+def test_matching_a_too_small_NA_reports_the_smallest_usable_one():
+    from cavity_design import match_a_mode_to_mirror, NA_of_z_R, COASTLINE_20CM_REFRACTIVE, LEFT
+
+    mirror = COASTLINE_20CM_REFRACTIVE.to_position(0.2 * LEFT).surfaces[0]
+    # A mode only reaches the mirror's curvature while z_R <= radius / 2, so NA has a hard floor.
+    NA_min = NA_of_z_R(z_R=mirror.radius / 2, lambda_0_laser=LAMBDA_0_LASER)
+
+    with pytest.raises(ValueError, match=r"smallest NA this mirror supports is 0.00184033"):
+        match_a_mode_to_mirror(
+            lambda_0_laser=LAMBDA_0_LASER, mirror=mirror, NA=0.001, mode_going_away_from_mirror=False
+        )
+
+    # The advertised minimum must itself be usable - the boundary round-trips through z_R_of_NA to within an ulp,
+    # so a naive strict comparison would reject the very value the message tells the user to substitute.
+    limiting_mode = match_a_mode_to_mirror(
+        lambda_0_laser=LAMBDA_0_LASER, mirror=mirror, NA=NA_min, mode_going_away_from_mirror=False
+    )
+    assert np.asarray(limiting_mode.z_R)[0] == pytest.approx(mirror.radius / 2, rel=1e-9)
+    # At the limit the waist sits radius / 2 from the mirror (the confocal case).
+    assert np.asarray(limiting_mode.center)[0, 0] == pytest.approx(mirror.center[0] + mirror.radius / 2, abs=1e-12)
+
+    # The tolerance is not a loophole: anything meaningfully below the floor is still rejected.
+    with pytest.raises(ValueError, match="smallest NA"):
+        match_a_mode_to_mirror(
+            lambda_0_laser=LAMBDA_0_LASER, mirror=mirror, NA=NA_min * (1 - 1e-6), mode_going_away_from_mirror=False
+        )
+
+    # Passing z_R directly hits the same guard, and the message still names the NA to substitute.
+    with pytest.raises(ValueError, match="smallest NA this mirror supports"):
+        match_a_mode_to_mirror(
+            lambda_0_laser=LAMBDA_0_LASER, mirror=mirror, z_R=0.5, mode_going_away_from_mirror=False
+        )
+
+
+def test_flip_turns_a_floating_lens_around():
+    from cavity_design import THOLABS_200MM_PLANO_CONVEX_LENS
+
+    lens = THOLABS_200MM_PLANO_CONVEX_LENS
+    flipped = lens.flip()
+
+    # The catalogued lens is convex-first, flat-second; turned around it is flat-first, convex-second.
+    assert [type(s).__name__ for s in lens.surfaces] == ["SphericalRefractiveSurface", "FlatRefractiveSurface"]
+    assert [type(s).__name__ for s in flipped.surfaces] == ["FlatRefractiveSurface", "SphericalRefractiveSurface"]
+    # Optical inversion: the indices are swapped and the curvature sign flips ...
+    assert (flipped.surfaces[0].n_1, flipped.surfaces[0].n_2) == (lens.surfaces[0].n_1, lens.surfaces[0].n_2)
+    assert flipped.surfaces[1].curvature_sign == -lens.surfaces[0].curvature_sign
+    # ... and the physical turn-around negates every outwards normal, so the cap now bulges the other way.
+    assert np.allclose(flipped.surfaces[1].outwards_normal, -lens.surfaces[0].outwards_normal)
+    # It stays floating, and the centre thickness keeps its sign (the spacing is walked in the reversed order).
+    assert not flipped.positions_defined
+    assert np.all(np.isnan(flipped.surfaces[0].center))
+    assert np.allclose(np.imag(flipped.surfaces[1].center), [2.8e-3, 0.0, 0.0], atol=1e-15)
+
+    # flip() is an involution.
+    assert all(surfaces_are_equivalent(a, b) for a, b in zip(lens.flip().flip().surfaces, lens.surfaces))
+
+
+def test_flip_preserves_focal_length_but_moves_the_principal_planes():
+    from cavity_design import THOLABS_200MM_PLANO_CONVEX_LENS
+
+    def trace_collimated(lens, height=1e-3):
+        """Exact-trace a ray parallel to the axis at `height`; return its back focal distance."""
+        placed = copy.deepcopy(lens).to_position(ORIGIN)
+        ray = Ray(origin=np.array([[-5e-3, height, 0.0]]), k_vector=np.array([RIGHT]))
+        for surface in placed.surfaces:
+            ray = surface.propagate_ray(ray)
+        crossing = ray.origin[..., 0] - ray.origin[..., 1] * ray.k_vector[..., 0] / ray.k_vector[..., 1]
+        return float(crossing[0] - placed.surfaces[-1].center[0])
+
+    lens = THOLABS_200MM_PLANO_CONVEX_LENS
+    back_focal_catalogued = trace_collimated(lens)
+    back_focal_flipped = trace_collimated(lens.flip())
+    # Same lens, so the same power (~200 mm nominal) either way round ...
+    assert 0.195 < back_focal_catalogued < 0.21
+    assert 0.195 < back_focal_flipped < 0.21
+    # ... but turning a plano-convex lens around shifts the principal planes, so the back focal distance moves by
+    # roughly the centre thickness / n.
+    assert back_focal_flipped - back_focal_catalogued == pytest.approx(2.8e-3 / 1.507, rel=0.05)
+
+
+def test_flip_of_a_placed_element_turns_it_around_in_place():
+    from cavity_design import THOLABS_200MM_PLANO_CONVEX_LENS, EDMUND_4p5MM_ASPHERIC_83580
+
+    position = np.array([0.2, 0.0, 0.0])
+    for lens in (THOLABS_200MM_PLANO_CONVEX_LENS, EDMUND_4p5MM_ASPHERIC_83580):
+        placed = lens.to_position(position)
+        flipped = placed.flip()
+        # Turned around in its mount: the element keeps the span it occupied, faces reversed.
+        assert np.allclose(flipped.surfaces[0].center, placed.surfaces[0].center)
+        assert np.allclose(flipped.surfaces[-1].center, placed.surfaces[-1].center)
+        assert [type(s).__name__ for s in flipped.surfaces] == [type(s).__name__ for s in placed.surfaces][::-1]
+        # Mirroring about the midpoint makes flipping commute with placement ...
+        assert all(
+            surfaces_are_equivalent(a, b) for a, b in zip(lens.flip().to_position(position).surfaces, flipped.surfaces)
+        )
+        # ... and it is still an involution.
+        assert all(surfaces_are_equivalent(a, b) for a, b in zip(placed.surfaces, flipped.flip().surfaces))
+
+
+def test_flip_of_a_placed_system_reverses_the_spacings_and_retraces():
+    from cavity_design import THOLABS_200MM_PLANO_CONVEX_LENS, EDMUND_4p5MM_ASPHERIC_83580
+
+    system = OpticalSystem(
+        elements=[THOLABS_200MM_PLANO_CONVEX_LENS, EDMUND_4p5MM_ASPHERIC_83580],
+        use_paraxial_ray_tracing=True,
+        p_is_trivial=True,
+        t_is_trivial=True,
+    )
+    system.place_element(element=system[0], position=np.array([0.2, 0.0, 0.0]), recalculate_optic=False)
+    system.place_element(element=system[1], position=1e-2 * RIGHT, reference_center=system[0], recalculate_optic=True)
+    flipped = system.flip()
+
+    spacings = np.diff([s.center[0] for s in system.surfaces])
+    assert np.allclose(np.diff([s.center[0] for s in flipped.surfaces]), spacings[::-1])
+    assert np.allclose(flipped.surfaces[0].center, system.surfaces[0].center)
+    assert np.allclose(flipped.surfaces[-1].center, system.surfaces[-1].center)
+    # The geometry moved, so the optics are re-derived rather than carried over stale.
+    assert np.allclose(flipped.central_line.k_vector[0], RIGHT)
+
+
+def test_flip_of_a_cavity_is_rejected_in_favour_of_invert():
+    from cavity_design import LASER_OPTIK_MIRROR, EKSMA_LENS_20MM_ASPHERIC, COASTLINE_20CM_MIRROR, LEFT
+
+    cavity = Cavity(
+        elements=[
+            LASER_OPTIK_MIRROR.to_position(5e-3 * LEFT),
+            EKSMA_LENS_20MM_ASPHERIC.to_position(np.array([0.0176, 0.0, 0.0])),
+            COASTLINE_20CM_MIRROR.to_position(np.array([0.25, 0.0, 0.0])).to_orientation(RIGHT),
+        ],
+        standing_wave=True,
+        lambda_0_laser=LAMBDA_0_LASER,
+        t_is_trivial=True,
+        p_is_trivial=True,
+        use_paraxial_ray_tracing=True,
+    )
+    with pytest.raises(NotImplementedError, match="Cavity"):
+        cavity.flip()
+
+
+def test_flip_of_a_tilted_element_mirrors_about_its_own_axis():
+    from cavity_design import THOLABS_200MM_PLANO_CONVEX_LENS
+
+    # The mirror plane must be orthogonal to the element's own first->last line, not to x.
+    axis = np.array([1.0, 0.3, 0.0]) / np.linalg.norm([1.0, 0.3, 0.0])
+    tilted = OpticalSystem(
+        elements=[THOLABS_200MM_PLANO_CONVEX_LENS.to_position(ORIGIN).to_orientation(-axis)],
+        use_paraxial_ray_tracing=True,
+        p_is_trivial=False,
+        t_is_trivial=False,
+    )
+    flipped = tilted.flip()
+    for original, turned in zip(tilted.surfaces, reversed(flipped.surfaces)):
+        assert np.allclose(turned.outwards_normal, -original.outwards_normal)
+    assert np.allclose(flipped.surfaces[0].center, tilted.surfaces[0].center)
+    assert np.allclose(flipped.surfaces[-1].center, tilted.surfaces[-1].center)
 
 
 def test_invert_cavity_preserves_structure_and_mode():
