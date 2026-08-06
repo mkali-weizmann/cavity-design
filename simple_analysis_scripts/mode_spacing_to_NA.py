@@ -2,8 +2,6 @@ from copy import deepcopy
 from cavity_design import *
 from scipy.interpolate import interp1d
 
-N = 100
-
 cavity = Cavity(elements=[LASER_OPTIK_MIRROR,
                           EDMUND_4p5MM_ASPHERIC_83580,
                           COASTLINE_20CM_MIRROR],
@@ -64,11 +62,12 @@ def generate_lens_position_dependencies(short_arm_lengths: np.ndarray,
 def generate_lens_position_dependencies_output(short_arm_lengths: Union[np.ndarray, float, tuple],
                                                mid_arm_length: float,
                                                long_arm_length: float,
+                                               N_points=100,
                                                plot_cavity=True, plot_spectrum=True, plot_dependencies=True):
     if isinstance(short_arm_lengths, (int, float)):
-        short_arm_lengths = np.linspace(collimation_point - short_arm_lengths, collimation_point + short_arm_lengths, N)
+        short_arm_lengths = np.linspace(collimation_point - short_arm_lengths, collimation_point + short_arm_lengths, N_points)
     elif isinstance(short_arm_lengths, tuple):
-        short_arm_lengths = np.linspace(collimation_point - short_arm_lengths[0], collimation_point + short_arm_lengths[1], N)
+        short_arm_lengths = np.linspace(collimation_point - short_arm_lengths[0], collimation_point + short_arm_lengths[1], N_points)
 
     if plot_cavity or plot_spectrum:
         nominal_lengths = np.array([short_arm_lengths[len(short_arm_lengths)//2], mid_arm_length, long_arm_length]) if len(
@@ -94,6 +93,7 @@ if __name__ == "__main__":
     mode_spacing_interp, mode_spacing_over_fsr_interp = generate_lens_position_dependencies_output(short_arm_lengths=(0.9e-4, 2e-4),
                                                                                                    mid_arm_length=0.015,
                                                                                                    long_arm_length=0.35,
+                                                                                                   N_points=100,
                                                                                                    plot_cavity=True,
                                                                                                    plot_spectrum=True,
                                                                                                    plot_dependencies=True
