@@ -93,32 +93,27 @@ COASTLINE_20CM_REFRACTIVE = OpticalSystem(
 
 NEWPORT_200MM_PLANO_CONVEX = OpticalSystem(
 elements=[
-        SphericalRefractiveSurface(
-            name="Coastline 200mm plano convex - left",
-            radius=34.9e-3,
-            outwards_normal=LEFT,
-            # Historical value, previously written as (LASER_OPTIK_MIRROR_REFRACTIVE.surfaces[1].center +
-            # 6.8e-3 * LEFT) * 1j when the mirror was pre-placed (its back surface at x=-8.45e-3). Kept numerically
-            # identical here; note it encodes 15.25 mm as this lens's center thickness — verify against the datasheet.
-            center=15.25e-3 * LEFT * 1j,
-            diameter=INCH,
-            curvature_sign=CurvatureSigns.concave,
-            n_1=PHYSICAL_SIZES_DICT["material_properties_bk7"].refractive_index,
-            n_2=1,
-        ),
-        SphericalRefractiveSurface(
-            name="Coastline 200mm plano convex - conve",
-            radius=34.9e-3,
+        FlatRefractiveSurface(
+            name="NEWPORT_200MM_PLANO_CONVEX - flat",
             outwards_normal=RIGHT,
             diameter=INCH,
-            curvature_sign=CurvatureSigns.convex,
             n_1=1,
-            n_2=PHYSICAL_SIZES_DICT["material_properties_bk7"].refractive_index,
+            n_2=1.45,
+        ),
+        SphericalRefractiveSurface(
+            name="NEWPORT_200MM_PLANO_CONVEX - convex",
+            center =3.883e-3 * LEFT * 1j,
+            radius=91.8e-3,  # R1 = 91.8 mm -> f = R / (n - 1) = 91.8 / 0.45 = 204 mm.
+            outwards_normal=LEFT,
+            diameter=INCH,
+            curvature_sign=CurvatureSigns.concave,
+            n_1=1.45,
+            n_2=1,
         ),
 
     ],
     use_paraxial_ray_tracing=True,
-    name="Thorlabs 35mm Collimating Lens",
+    name="Newport 200mm Plano-Convex - SPX028AR.1",
 )
 
 THORLABS_35MM_COLLIMATING_LENS = OpticalSystem(

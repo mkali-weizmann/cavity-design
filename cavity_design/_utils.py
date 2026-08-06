@@ -1375,6 +1375,64 @@ def copy_figure_as_svg_to_clipboard(fig=None):
         win32clipboard.CloseClipboard()
 
 
+# The two functions below are duplicated verbatim in the os-lab project, in utilities/utils.py -
+# the two projects are independent, so keep the copies in sync by hand.
+def copy_figure_as_png_to_clipboard(fig=None, dpi=200):
+    """Copy a matplotlib figure to the system clipboard as a PNG.
+
+    `fig` defaults to the current figure. The figure is re-rendered at `dpi` rather than grabbed
+    off the screen, so the copy does not depend on how large the window happens to be. Both
+    clipboard flavours are set: the real PNG bytes ('image/png') and a bitmap, which is what
+    Word / Obsidian actually reach for when pasting.
+
+    Needs a Qt backend (matplotlib.use('Qt5Agg')) - there is no Qt clipboard without a Qt app.
+    """
+    import io
+    import matplotlib.pyplot as plt
+    from matplotlib.backends.qt_compat import QtCore, QtGui, QtWidgets
+
+    if fig is None:
+        fig = plt.gcf()
+    application = QtWidgets.QApplication.instance()
+    if application is None:
+        raise RuntimeError(
+            "copying a figure to the clipboard needs a running Qt application - select the Qt "
+            "backend with matplotlib.use('Qt5Agg') before creating the figure")
+
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=dpi, bbox_inches="tight")
+    png_bytes = buf.getvalue()
+
+    mime = QtCore.QMimeData()
+    mime.setData("image/png", QtCore.QByteArray(png_bytes))
+    mime.setImageData(QtGui.QImage.fromData(png_bytes, "PNG"))
+    application.clipboard().setMimeData(mime)
+    return fig
+
+
+def enable_copy_to_clipboard(fig=None, dpi=200):
+    """Bind Ctrl+C on `fig` (default: the current figure) to copy_figure_as_png_to_clipboard().
+
+    The binding follows rcParams['keymap.copy'] - the same setting matplotlib's own copy tool
+    uses, which the classic toolbar never consults, so it clashes with nothing. Returns the
+    connection id, should you want fig.canvas.mpl_disconnect(cid).
+
+    The plot window needs the keyboard focus; with the focus on the console, Ctrl+C interrupts
+    the script as usual.
+    """
+    import matplotlib.pyplot as plt
+
+    if fig is None:
+        fig = plt.gcf()
+
+    def on_key(event):
+        if event.key in plt.rcParams["keymap.copy"]:
+            copy_figure_as_png_to_clipboard(fig, dpi=dpi)
+            print(f"Copied figure {fig.get_label() or fig.number} to the clipboard.")
+
+    return fig.canvas.mpl_connect("key_press_event", on_key)
+
+
 def get_obsidian_save_path(filename: Optional[str] = None, overwrite: bool = False) -> str:
     import os
     from pathlib import Path

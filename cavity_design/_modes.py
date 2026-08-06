@@ -397,5 +397,5 @@ def match_a_mode_to_mirror(
         k_vector = mirror.outwards_normal
     mode_parameters = local_mode_parameters.to_mode_parameters(
         location_of_local_mode_parameter=mirror.center, k_vector=k_vector
-    )  # ASSUMEs CONCAVE MIRRORS, WHICH IS ALWAYS THE CASE
+    )  # ASSUMES CONCAVE MIRRORS, WHICH IS ALWAYS THE CASE
     return mode_parameters

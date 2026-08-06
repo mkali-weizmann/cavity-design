@@ -6,7 +6,7 @@ Code conventions:
 - The angle "p" represents the phi angles of spherical coordinates (the angle from the x-axis of the projection of a vector onto the xy plane)
 - When the curvature sign of a spherical surface is +1 then the ray hits it from the inside, and when it is -1 then the ray hits the surface from the inside.
 - Given a cavity, the thermal_transformation method assumes the cavity is heated, and cools it down.
-- The geometry and thermal properties of a cavity is fully defined by a matrix params, where each row specifies the parameters of a surface, weather it is a mirror or a lens's inteface.
+- The geometry and thermal properties of a cavity is fully defined by a matrix params, where each row specifies the parameters of a surface, weather it is a mirror or a lens's interface.
   - each column of the row specifies a different parameter of the surface, where the index is matched to the parameter according to this dictionary:
 
 ```
