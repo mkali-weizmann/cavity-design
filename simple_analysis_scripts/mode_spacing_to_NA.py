@@ -1,4 +1,3 @@
-import warnings
 from copy import deepcopy
 from cavity_design import *
 from scipy.interpolate import interp1d
@@ -94,34 +93,87 @@ def generate_lens_position_dependencies(short_arm_lengths: np.ndarray,
     return NAs, mode_spacing
 
 
+class ModeSpacingOutOfRange(ValueError):
+    """A mode spacing the simulated lens scan does not cover."""
+
+
+OUT_OF_RANGE_ADVICE = ("Simulation did not produce such a mode spacing, try changing the short arm "
+                       "lengths range, or increase the N_points for better resolution.")
+
+
+def _finite_sorted_by_spacing(mode_spacing, values):
+    """(mode spacing [MHz], values) with the non-finite points dropped, sorted by mode spacing.
+
+    Sorted because both np.interp and interp1d want an increasing x; the scan is monotonic in mode
+    spacing over the useful range anyway. The scan does produce non-finite points (an unstable
+    cavity has no mode spacing), and they carry no support.
+    """
+    spacing_mhz = np.asarray(mode_spacing, dtype=float) / 1e6
+    values = np.asarray(values, dtype=float)
+    finite = np.isfinite(spacing_mhz) & np.isfinite(values)
+    spacing_mhz, values = spacing_mhz[finite], values[finite]
+    if spacing_mhz.size < 2:
+        raise ModeSpacingOutOfRange(
+            f"the simulation produced only {spacing_mhz.size} valid mode spacing point(s). "
+            + OUT_OF_RANGE_ADVICE)
+    order = np.argsort(spacing_mhz)
+    return spacing_mhz[order], values[order]
+
+
+def _check_within_support(mode_spacing_MHz, support_MHz):
+    """Raise ModeSpacingOutOfRange unless `mode_spacing_MHz` lies inside the simulated support."""
+    low, high = support_MHz
+    values = np.atleast_1d(np.asarray(mode_spacing_MHz, dtype=float))
+    if not np.all(np.isfinite(values)) or values.min() < low or values.max() > high:
+        shown = (f"{values[0]:.4g}" if values.size == 1
+                 else np.array2string(values, precision=4, threshold=8))
+        raise ModeSpacingOutOfRange(
+            f"mode spacing {shown} MHz is outside the simulated range "
+            f"[{low:.4g}, {high:.4g}] MHz. " + OUT_OF_RANGE_ADVICE)
+
+
+def make_mode_spacing_to_na(mode_spacing, NAs):
+    """Build the mode spacing [Hz] -> NA interpolator over the simulated support only.
+
+    Unlike a plain interp1d(..., fill_value='extrapolate'), a value outside the scanned range
+    raises ModeSpacingOutOfRange instead of quietly extrapolating a number nobody simulated. The
+    returned callable carries the support as `.support_MHz`.
+    """
+    spacing_mhz, nas = _finite_sorted_by_spacing(mode_spacing, NAs)
+    support_MHz = (float(spacing_mhz[0]), float(spacing_mhz[-1]))
+    interpolate = interp1d(spacing_mhz, nas)
+
+    def mode_spacing_to_na(mode_spacing_Hz):
+        mode_spacing_MHz = np.asarray(mode_spacing_Hz, dtype=float) / 1e6
+        _check_within_support(mode_spacing_MHz, support_MHz)
+        return interpolate(mode_spacing_MHz)
+
+    mode_spacing_to_na.support_MHz = support_MHz
+    return mode_spacing_to_na
+
+
 def short_arm_for_mode_spacing(short_arm_lengths, mode_spacing, mode_spacing_MHz):
     """Invert the simulated curve: the small arm length that yields `mode_spacing_MHz`.
 
-    `mode_spacing` is the simulated array in Hz. Returns None when the value falls outside the
-    simulated range (extrapolating a scan this narrow would be meaningless). The scan is monotonic
-    in mode spacing over the useful range; the array is sorted here only because np.interp needs an
-    increasing x.
+    `mode_spacing` is the simulated array in Hz. Raises ModeSpacingOutOfRange when the value falls
+    outside the scanned range - extrapolating a scan this narrow would be meaningless.
     """
-    spacing_mhz = np.asarray(mode_spacing, dtype=float) / 1e6
-    arms = np.asarray(short_arm_lengths, dtype=float)
-    finite = np.isfinite(spacing_mhz) & np.isfinite(arms)
-    spacing_mhz, arms = spacing_mhz[finite], arms[finite]
-    if spacing_mhz.size == 0 or not spacing_mhz.min() <= mode_spacing_MHz <= spacing_mhz.max():
-        return None
-    order = np.argsort(spacing_mhz)
-    return float(np.interp(mode_spacing_MHz, spacing_mhz[order], arms[order]))
+    spacing_mhz, arms = _finite_sorted_by_spacing(mode_spacing, short_arm_lengths)
+    _check_within_support(mode_spacing_MHz, (float(spacing_mhz[0]), float(spacing_mhz[-1])))
+    return float(np.interp(mode_spacing_MHz, spacing_mhz, arms))
 
 
 def plot_dependencies_figure(short_arm_lengths, NAs, mode_spacing, cavity=None,
-                             measured_mode_spacing_MHz=None, color='r', linestyle='--'):
+                             measured_mode_spacing_MHz=None, measured_short_arm=None,
+                             color='r', linestyle='--'):
     """Draw the dependencies figure and return it.
 
     Top left: mode spacing and NA against the small arm's length. Top right: NA against mode
     spacing. Underneath, spanning both columns, the cavity itself (when `cavity` is given - it is
     drawn as it stands, so place it at the geometry you want shown before calling).
     Given a measured mode spacing [MHz], each top panel gets a vertical line marking it - on the
-    left at the small arm length that would produce it (skipped, with a warning, when the
-    measurement falls outside the simulated scan).
+    left at the small arm length that produces it (`measured_short_arm`, computed here when the
+    caller does not pass the value it already has).
     """
     # Re-running the simulation replaces the old figure rather than opening another one.
     if plt.fignum_exists(DEPENDENCIES_FIGURE_LABEL):
@@ -147,16 +199,13 @@ def plot_dependencies_figure(short_arm_lengths, NAs, mode_spacing, cavity=None,
     ax_na.grid()
 
     if measured_mode_spacing_MHz is not None:
+        if measured_short_arm is None:
+            measured_short_arm = short_arm_for_mode_spacing(short_arm_lengths, mode_spacing,
+                                                            measured_mode_spacing_MHz)
         label = f'Measured: {measured_mode_spacing_MHz:.4g} MHz'
         ax_na.axvline(measured_mode_spacing_MHz, color=color, ls=linestyle, label=label)
         ax_na.legend()
-        short_arm = short_arm_for_mode_spacing(short_arm_lengths, mode_spacing,
-                                               measured_mode_spacing_MHz)
-        if short_arm is None:
-            warnings.warn(f'the measured {measured_mode_spacing_MHz:.4g} MHz is outside the '
-                          f'simulated range - marking the mode-spacing panel only')
-        else:
-            ax_arm.axvline(short_arm, color=color, ls=linestyle, label=label)
+        ax_arm.axvline(measured_short_arm, color=color, ls=linestyle, label=label)
 
     # after the marker, so it joins the two curves in the twinned axes' combined legend
     handles1, labels1 = ax_arm.get_legend_handles_labels()
@@ -199,19 +248,33 @@ def generate_lens_position_dependencies_output(short_arm_lengths: Union[np.ndarr
                                                             cavity=cavity,
                                                             collimation_point=collimation_point)
 
-    # The scan left the lens at its last position; put the cavity back at its nominal geometry,
-    # which is both what gets drawn and what free_spectral_range below is read from.
+    # Raises ModeSpacingOutOfRange if the scan never reached the measurement - checked here rather
+    # than at plotting time, so the caller hears about it whether or not it asked for a figure.
+    measured_short_arm = None
+    if measured_mode_spacing_MHz is not None:
+        measured_short_arm = short_arm_for_mode_spacing(short_arm_lengths, mode_spacing,
+                                                        measured_mode_spacing_MHz)
+
+    # The scan left the lens at its last position. Restore the nominal geometry, then - when there
+    # is a measurement - move the lens to the small arm length that reproduces it, so the cavity
+    # that gets drawn (and the free_spectral_range read below) is the one that was measured, with
+    # the same NA the caller is about to look up.
     nominal_lengths = np.array([short_arm_lengths[len(short_arm_lengths)//2], mid_arm_length, long_arm_length]) if len(
         cavity.elements) == 4 else np.array([collimation_point, long_arm_length])
     cavity.set_arms_lengths(nominal_lengths)
+    if measured_short_arm is not None:
+        cavity.place_element(element=cavity[1], position=measured_short_arm * RIGHT,
+                             reference_center=cavity[0], recalculate_optic=True)
 
     if plot_system:
         plot_dependencies_figure(short_arm_lengths, NAs, mode_spacing, cavity=cavity,
-                                 measured_mode_spacing_MHz=measured_mode_spacing_MHz)
+                                 measured_mode_spacing_MHz=measured_mode_spacing_MHz,
+                                 measured_short_arm=measured_short_arm)
         plt.show(block=False)
 
-    mode_spacing_interp = interp1d(mode_spacing, NAs, fill_value='extrapolate')
-    mode_spacing_over_fsr_interp = lambda x: mode_spacing_interp(x * cavity.free_spectral_range)
+    mode_spacing_interp = make_mode_spacing_to_na(mode_spacing, NAs)
+    free_spectral_range = cavity.free_spectral_range
+    mode_spacing_over_fsr_interp = lambda x: mode_spacing_interp(x * free_spectral_range)
     return mode_spacing_interp, mode_spacing_over_fsr_interp
 
 
