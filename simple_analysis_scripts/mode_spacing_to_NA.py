@@ -6,10 +6,9 @@ N = 100
 
 cavity = Cavity(elements=[LASER_OPTIK_MIRROR,
                           EDMUND_4p5MM_ASPHERIC_83580,
-                          THOLABS_200MM_PLANO_CONVEX_LENS,
                           COASTLINE_20CM_MIRROR],
                 use_paraxial_ray_tracing=True, p_is_trivial=True, t_is_trivial=True, lambda_0_laser=LAMBDA_0_LASER)
-aspheric_BFL = back_focal_length_of_lens_object(lens_object=EDMUND_4p03MM_ASPHERIC)
+aspheric_BFL = back_focal_length_of_lens_object(lens_object=cavity[1])
 collimation_point = cavity[0].radius + aspheric_BFL
 
 # %%
@@ -18,15 +17,12 @@ def generate_lens_position_dependencies(short_arm_lengths: np.ndarray,
                                         mid_arm_length: float,
                                         long_arm_length: float,
                                         plot_dependencies=True):
-    NAs = np.zeros(N)
-    mode_spacing = np.zeros(N)
+    NAs = np.zeros_like(short_arm_lengths)
+    mode_spacing = np.zeros_like(short_arm_lengths)
     # nominal_positions:
-    cavity.place_element(element=cavity[1], position=collimation_point * RIGHT, reference_center=cavity[0],
-                         recalculate_optic=False)
-    cavity.place_element(element=cavity[2], position=mid_arm_length * RIGHT, reference_center=cavity[1],
-                         recalculate_optic=False)
-    cavity.place_element(element=cavity[3], position=long_arm_length * RIGHT, reference_center=cavity[2],
-                         recalculate_optic=False)
+    nominal_lengths = np.array([collimation_point, mid_arm_length, long_arm_length]) if len(
+        cavity.elements) == 4 else np.array([collimation_point, long_arm_length])
+    cavity.set_arms_lengths(nominal_lengths)
 
     for i, short_arm_length in tqdm(enumerate(short_arm_lengths)):
         cavity.place_element(element=cavity[1], position=short_arm_length * RIGHT, reference_center=cavity[0],
@@ -47,7 +43,9 @@ def generate_lens_position_dependencies(short_arm_lengths: np.ndarray,
                    color='C1')  # use second default color (first is taken by NA)
         ax[0].grid()
         ax[0].set_xlabel("Small arm's length [m]")
-        ax[0].legend()
+        handles1, labels1 = ax[0].get_legend_handles_labels()
+        handles2, labels2 = ax_twin.get_legend_handles_labels()
+        ax[0].legend(handles1 + handles2, labels1 + labels2)
 
         ax[1].plot(mode_spacing / 1e6, NAs)
         ax[1].set_xlabel(r'Mode spacing [MHz]')
@@ -63,18 +61,26 @@ def generate_lens_position_dependencies(short_arm_lengths: np.ndarray,
     return NAs, mode_spacing
 
 
-def generate_lens_position_dependencies_output(short_arm_lengths: Union[np.ndarray, float],
+def generate_lens_position_dependencies_output(short_arm_lengths: Union[np.ndarray, float, tuple],
                                                mid_arm_length: float,
                                                long_arm_length: float,
                                                plot_cavity=True, plot_spectrum=True, plot_dependencies=True):
+    if isinstance(short_arm_lengths, (int, float)):
+        short_arm_lengths = np.linspace(collimation_point - short_arm_lengths, collimation_point + short_arm_lengths, N)
+    elif isinstance(short_arm_lengths, tuple):
+        short_arm_lengths = np.linspace(collimation_point - short_arm_lengths[0], collimation_point + short_arm_lengths[1], N)
+
+    if plot_cavity or plot_spectrum:
+        nominal_lengths = np.array([short_arm_lengths[len(short_arm_lengths)//2], mid_arm_length, long_arm_length]) if len(
+            cavity.elements) == 4 else np.array([collimation_point, long_arm_length])
+        cavity.set_arms_lengths(nominal_lengths)
     if plot_cavity:
         cavity.plot()
         plt.show(block=False)
     if plot_spectrum:
         cavity.plot_spectrum(width_over_fsr=0.01)
         plt.show(block=False)
-    if isinstance(short_arm_lengths, (int, float)):
-        short_arm_lengths = np.linspace(collimation_point - short_arm_lengths, collimation_point + short_arm_lengths, N)
+
     NAs, mode_spacing = generate_lens_position_dependencies(short_arm_lengths=short_arm_lengths,
                                                             mid_arm_length=mid_arm_length,
                                                             long_arm_length=long_arm_length,
@@ -85,9 +91,9 @@ def generate_lens_position_dependencies_output(short_arm_lengths: Union[np.ndarr
 
 
 if __name__ == "__main__":
-    mode_spacing_interp, mode_spacing_over_fsr_interp = generate_lens_position_dependencies_output(short_arm_lengths=np.linspace(0.1, 0.9, 10),
-                                                                                                   mid_arm_length=0.5,
-                                                                                                   long_arm_length=1.0,
+    mode_spacing_interp, mode_spacing_over_fsr_interp = generate_lens_position_dependencies_output(short_arm_lengths=(0.9e-4, 2e-4),
+                                                                                                   mid_arm_length=0.015,
+                                                                                                   long_arm_length=0.35,
                                                                                                    plot_cavity=True,
                                                                                                    plot_spectrum=True,
                                                                                                    plot_dependencies=True

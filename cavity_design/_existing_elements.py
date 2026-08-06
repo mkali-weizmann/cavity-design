@@ -66,6 +66,61 @@ LASER_OPTIK_MIRROR_REFRACTIVE = OpticalSystem(
     name="LaserOptik Mirror - Refractive Version",
 )
 
+COASTLINE_20CM_REFRACTIVE = OpticalSystem(
+    elements=[
+        SphericalRefractiveSurface(
+            radius=200e-3,
+            diameter=INCH,
+            outwards_normal=LEFT,
+            name="Coastline 20cm - Concave",
+            n_1=1,
+            curvature_sign=CurvatureSigns.concave,
+            n_2=PHYSICAL_SIZES_DICT["material_properties_fused_silica"].refractive_index,
+            material_properties=PHYSICAL_SIZES_DICT["material_properties_fused_silica"],
+        ),
+        FlatRefractiveSurface(
+            diameter=INCH,
+            outwards_normal=LEFT,
+            center=6.35e-3 * LEFT * 1j,
+            name="Coastline 20cm - Convex",
+            n_1=PHYSICAL_SIZES_DICT["material_properties_fused_silica"].refractive_index,
+            n_2=1,
+        ),
+    ],
+    use_paraxial_ray_tracing=True,
+    name="LaserOptik Mirror - Refractive Version",
+)
+
+NEWPORT_200MM_PLANO_CONVEX = OpticalSystem(
+elements=[
+        SphericalRefractiveSurface(
+            name="Coastline 200mm plano convex - left",
+            radius=34.9e-3,
+            outwards_normal=LEFT,
+            # Historical value, previously written as (LASER_OPTIK_MIRROR_REFRACTIVE.surfaces[1].center +
+            # 6.8e-3 * LEFT) * 1j when the mirror was pre-placed (its back surface at x=-8.45e-3). Kept numerically
+            # identical here; note it encodes 15.25 mm as this lens's center thickness — verify against the datasheet.
+            center=15.25e-3 * LEFT * 1j,
+            diameter=INCH,
+            curvature_sign=CurvatureSigns.concave,
+            n_1=PHYSICAL_SIZES_DICT["material_properties_bk7"].refractive_index,
+            n_2=1,
+        ),
+        SphericalRefractiveSurface(
+            name="Coastline 200mm plano convex - conve",
+            radius=34.9e-3,
+            outwards_normal=RIGHT,
+            diameter=INCH,
+            curvature_sign=CurvatureSigns.convex,
+            n_1=1,
+            n_2=PHYSICAL_SIZES_DICT["material_properties_bk7"].refractive_index,
+        ),
+
+    ],
+    use_paraxial_ray_tracing=True,
+    name="Thorlabs 35mm Collimating Lens",
+)
+
 THORLABS_35MM_COLLIMATING_LENS = OpticalSystem(
     elements=[
         SphericalRefractiveSurface(

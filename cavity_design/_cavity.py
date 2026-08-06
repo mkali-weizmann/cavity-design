@@ -634,7 +634,7 @@ class OpticalSystem:
     def __iter__(self):
         return iter(self.elements)
 
-    def place_element(self, element, position, recalculate_optic: bool, reference_center=None):
+    def place_element(self, element,  position, recalculate_optic: bool, reference_center=None):
         """Move one of this system's own elements to a target position, in place.
 
         ``element`` is a single member of ``self.elements`` — a ``Surface`` or a nested ``OpticalSystem``.
@@ -1199,7 +1199,11 @@ class OpticalSystem:
             initial_k_vector = self.central_line[0].k_vector
         else:
             initial_k_vector = self.arms[0].surface_1.center - self.arms[0].surface_0.center
-            initial_k_vector = normalize_vector(initial_k_vector)
+            if np.linalg.norm(initial_k_vector) == 0:
+                initial_k_vector = self.surfaces[0].inwards_normal
+                warnings.warn("First and second surface touch - taking the first vector to be the inwards normal of surface[0]")
+            else:
+                initial_k_vector = normalize_vector(initial_k_vector)
         return initial_k_vector
 
     @property
@@ -1675,6 +1679,12 @@ class OpticalSystem:
                 list_of_spot_size_lines.extend(spot_size_lines_separated)
         return list_of_spot_size_lines
 
+    def set_arms_lengths(self, lengths: np.ndarray):
+        for i, l in enumerate(lengths):
+            recalculate_optic = False if i < len(lengths) - 1 else True
+            if not np.isnan(l):
+                self.place_element(self[i+1], l * RIGHT, recalculate_optic=recalculate_optic, reference_center=self[i])
+
     def plot(
         self,
         ax: Optional[plt.Axes] = None,
@@ -1690,6 +1700,8 @@ class OpticalSystem:
         fine_resolution=False,
         **kwargs,
     ) -> plt.Axes:
+        assert self.positions_defined, "Element positions are not defined"
+
         if axis_span is None:
 
             axes_range = np.array(
@@ -1940,7 +1952,7 @@ class OpticalSystem:
                 lambda_0_laser=self.lambda_0_laser,
                 t_is_trivial=self.t_is_trivial,
                 p_is_trivial=self.p_is_trivial,
-                given_initial_central_line=(self.central_line[1] if self.central_line is not None else True),
+                given_initial_central_line=self.central_line[1] if self.central_line is not None else True,
                 use_paraxial_ray_tracing=self.use_paraxial_ray_tracing,
             )
 
@@ -3146,6 +3158,10 @@ class Cavity(OpticalSystem):
         fig: Optional[plt.Figure] = None,
         ax: Optional[plt.Axes] = None,
     ):
+        if np.isnan(self.mode_spacing_transversal):
+            warnings.warn("Cavity is paraxially unstable - skipping plot_spectrum method")
+            return
+
         fsr = self.free_spectral_range
         lorentzian_width = fsr * width_over_fsr
         main_mode_picks_position = np.arange(n_base_mode) * fsr
