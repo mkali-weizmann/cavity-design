@@ -3,8 +3,8 @@ from copy import deepcopy
 from cavity_design import *
 from scipy.interpolate import interp1d
 
-# Figure number of the dependencies plot, so a measurement can find it and mark itself on it
-# after the (slow) simulation has already run - see mark_mode_spacing().
+# Figure number of the dependencies plot: re-running the simulation then replaces that window
+# instead of opening another one.
 DEPENDENCIES_FIGURE_LABEL = 'Dependencies'
 
 # The cavity is not built at import time: callers (in particular the os-lab PicoScope analysis
@@ -74,8 +74,7 @@ def generate_lens_position_dependencies(short_arm_lengths: np.ndarray,
                                         mid_arm_length: float,
                                         long_arm_length: float,
                                         cavity,
-                                        collimation_point: float,
-                                        plot_dependencies=True):
+                                        collimation_point: float):
     NAs = np.zeros_like(short_arm_lengths)
     mode_spacing = np.zeros_like(short_arm_lengths)
     # nominal_positions:
@@ -92,51 +91,7 @@ def generate_lens_position_dependencies(short_arm_lengths: np.ndarray,
         except (TypeError, FloatingPointError):
             mode_spacing[i] = np.nan
 
-    if plot_dependencies:
-        plot_dependencies_figure(short_arm_lengths, NAs, mode_spacing)
-    plt.show(block=False)
-
     return NAs, mode_spacing
-
-
-def plot_dependencies_figure(short_arm_lengths, NAs, mode_spacing):
-    """Draw the two-panel dependencies figure and return it.
-
-    Left: mode spacing and NA against the small arm's length. Right: NA against mode spacing.
-    The simulated curves are kept on the figure (`dependencies_data` / `dependencies_axes`) so a
-    measured mode spacing can be marked on it later, without re-running the simulation.
-    """
-    # Re-running the simulation replaces the old figure rather than piling axes onto it.
-    if plt.fignum_exists(DEPENDENCIES_FIGURE_LABEL):
-        plt.close(DEPENDENCIES_FIGURE_LABEL)
-    fig, ax = plt.subplots(1, 2, figsize=(12, 5), num=DEPENDENCIES_FIGURE_LABEL)
-
-    ax_twin = ax[0].twinx()
-    ax_twin.plot(short_arm_lengths, NAs, label='NA')
-    ax_twin.set_ylabel('NA')
-    ax[0].plot(short_arm_lengths, mode_spacing / 1e6, label=r'Mode spacing',
-               color='C1')  # use second default color (first is taken by NA)
-    ax[0].grid()
-    ax[0].set_xlabel("Small arm's length [m]")
-    handles1, labels1 = ax[0].get_legend_handles_labels()
-    handles2, labels2 = ax_twin.get_legend_handles_labels()
-    ax[0].legend(handles1 + handles2, labels1 + labels2)
-
-    ax[1].plot(mode_spacing / 1e6, NAs)
-    ax[1].set_xlabel(r'Mode spacing [MHz]')
-    ax[1].set_ylabel('NA')
-    ax[1].set_ylim(0, 0.22)
-    ax[1].grid()
-
-    plt.suptitle('Dependencies')
-    fig.tight_layout()
-    fig.legend()
-
-    fig.dependencies_data = (np.asarray(short_arm_lengths, dtype=float),
-                             np.asarray(NAs, dtype=float),
-                             np.asarray(mode_spacing, dtype=float))
-    fig.dependencies_axes = (ax[0], ax[1], ax_twin)
-    return fig
 
 
 def short_arm_for_mode_spacing(short_arm_lengths, mode_spacing, mode_spacing_MHz):
@@ -157,70 +112,104 @@ def short_arm_for_mode_spacing(short_arm_lengths, mode_spacing, mode_spacing_MHz
     return float(np.interp(mode_spacing_MHz, spacing_mhz[order], arms[order]))
 
 
-def mark_mode_spacing(mode_spacing_MHz, fig=None, color='r', linestyle='--'):
-    """Mark a measured mode spacing on the dependencies figure.
+def plot_dependencies_figure(short_arm_lengths, NAs, mode_spacing, cavity=None,
+                             measured_mode_spacing_MHz=None, color='r', linestyle='--'):
+    """Draw the dependencies figure and return it.
 
-    Right panel: a vertical line at the spacing itself. Left panel: a vertical line at the small
-    arm length that produces it. `fig` defaults to the open dependencies figure. Returns that small
-    arm length, or None if the figure is missing or the spacing is outside the simulated scan.
+    Top left: mode spacing and NA against the small arm's length. Top right: NA against mode
+    spacing. Underneath, spanning both columns, the cavity itself (when `cavity` is given - it is
+    drawn as it stands, so place it at the geometry you want shown before calling).
+    Given a measured mode spacing [MHz], each top panel gets a vertical line marking it - on the
+    left at the small arm length that would produce it (skipped, with a warning, when the
+    measurement falls outside the simulated scan).
     """
-    if fig is None:
-        if not plt.fignum_exists(DEPENDENCIES_FIGURE_LABEL):
-            warnings.warn('no dependencies figure is open - nothing to mark '
-                          '(run the simulation with plot_dependencies=True)')
-            return None
-        fig = plt.figure(DEPENDENCIES_FIGURE_LABEL)
-    short_arm_lengths, _NAs, mode_spacing = fig.dependencies_data
-    ax_left, ax_right, ax_twin = fig.dependencies_axes
-    label = f'Measured: {mode_spacing_MHz:.4g} MHz'
+    # Re-running the simulation replaces the old figure rather than opening another one.
+    if plt.fignum_exists(DEPENDENCIES_FIGURE_LABEL):
+        plt.close(DEPENDENCIES_FIGURE_LABEL)
+    fig = plt.figure(figsize=(12, 9), num=DEPENDENCIES_FIGURE_LABEL)
+    grid = fig.add_gridspec(2, 2)
+    ax_arm = fig.add_subplot(grid[0, 0])
+    ax_na = fig.add_subplot(grid[0, 1])
+    ax_cavity = fig.add_subplot(grid[1, :])  # the cavity spans both columns underneath
 
-    ax_right.axvline(mode_spacing_MHz, color=color, ls=linestyle, label=label)
-    ax_right.legend()
+    ax_twin = ax_arm.twinx()
+    ax_twin.plot(short_arm_lengths, NAs, label='NA')
+    ax_twin.set_ylabel('NA')
+    ax_arm.plot(short_arm_lengths, mode_spacing / 1e6, label=r'Mode spacing',
+                color='C1')  # use second default color (first is taken by NA)
+    ax_arm.grid()
+    ax_arm.set_xlabel("Small arm's length [m]")
 
-    short_arm = short_arm_for_mode_spacing(short_arm_lengths, mode_spacing, mode_spacing_MHz)
-    if short_arm is None:
-        warnings.warn(f'{mode_spacing_MHz:.4g} MHz is outside the simulated range '
-                      f'- marking the mode-spacing panel only')
+    ax_na.plot(mode_spacing / 1e6, NAs)
+    ax_na.set_xlabel(r'Mode spacing [MHz]')
+    ax_na.set_ylabel('NA')
+    ax_na.set_ylim(0, 0.22)
+    ax_na.grid()
+
+    if measured_mode_spacing_MHz is not None:
+        label = f'Measured: {measured_mode_spacing_MHz:.4g} MHz'
+        ax_na.axvline(measured_mode_spacing_MHz, color=color, ls=linestyle, label=label)
+        ax_na.legend()
+        short_arm = short_arm_for_mode_spacing(short_arm_lengths, mode_spacing,
+                                               measured_mode_spacing_MHz)
+        if short_arm is None:
+            warnings.warn(f'the measured {measured_mode_spacing_MHz:.4g} MHz is outside the '
+                          f'simulated range - marking the mode-spacing panel only')
+        else:
+            ax_arm.axvline(short_arm, color=color, ls=linestyle, label=label)
+
+    # after the marker, so it joins the two curves in the twinned axes' combined legend
+    handles1, labels1 = ax_arm.get_legend_handles_labels()
+    handles2, labels2 = ax_twin.get_legend_handles_labels()
+    ax_arm.legend(handles1 + handles2, labels1 + labels2)
+
+    if cavity is not None:
+        cavity.plot(ax=ax_cavity)
+        ax_cavity.set_title('Cavity')
     else:
-        ax_left.axvline(short_arm, color=color, ls=linestyle, label=label)
-        # rebuild the combined legend so the marker joins the two curves of the twinned axes
-        handles1, labels1 = ax_left.get_legend_handles_labels()
-        handles2, labels2 = ax_twin.get_legend_handles_labels()
-        ax_left.legend(handles1 + handles2, labels1 + labels2)
+        ax_cavity.set_axis_off()
 
-    fig.canvas.draw_idle()
-    return short_arm
+    plt.suptitle('Dependencies')
+    fig.tight_layout()
+    return fig
 
 
 def generate_lens_position_dependencies_output(short_arm_lengths: Union[np.ndarray, float, tuple],
                                                mid_arm_length: float,
                                                long_arm_length: float,
                                                N_points=100,
-                                               plot_cavity=True, plot_spectrum=True, plot_dependencies=True,
-                                               elements=DEFAULT_ELEMENTS):
+                                               plot_system=True,
+                                               elements=DEFAULT_ELEMENTS,
+                                               measured_mode_spacing_MHz=None):
+    """Scan the lens position and return (mode spacing [Hz] -> NA, (df / FSR) -> NA).
+
+    With plot_system=True the whole system is shown in one window: the two dependency panels and,
+    underneath them, the cavity at its nominal geometry. `measured_mode_spacing_MHz` is marked on
+    both dependency panels.
+    """
     cavity, collimation_point = build_cavity(elements)
     if isinstance(short_arm_lengths, (int, float)):
         short_arm_lengths = np.linspace(collimation_point - short_arm_lengths, collimation_point + short_arm_lengths, N_points)
     elif isinstance(short_arm_lengths, tuple):
         short_arm_lengths = np.linspace(collimation_point - short_arm_lengths[0], collimation_point + short_arm_lengths[1], N_points)
 
-    if plot_cavity or plot_spectrum:
-        nominal_lengths = np.array([short_arm_lengths[len(short_arm_lengths)//2], mid_arm_length, long_arm_length]) if len(
-            cavity.elements) == 4 else np.array([collimation_point, long_arm_length])
-        cavity.set_arms_lengths(nominal_lengths)
-    if plot_cavity:
-        cavity.plot()
-        plt.show(block=False)
-    if plot_spectrum:
-        cavity.plot_spectrum(width_over_fsr=0.01)
-        plt.show(block=False)
-
     NAs, mode_spacing = generate_lens_position_dependencies(short_arm_lengths=short_arm_lengths,
                                                             mid_arm_length=mid_arm_length,
                                                             long_arm_length=long_arm_length,
                                                             cavity=cavity,
-                                                            collimation_point=collimation_point,
-                                                            plot_dependencies=plot_dependencies)
+                                                            collimation_point=collimation_point)
+
+    # The scan left the lens at its last position; put the cavity back at its nominal geometry,
+    # which is both what gets drawn and what free_spectral_range below is read from.
+    nominal_lengths = np.array([short_arm_lengths[len(short_arm_lengths)//2], mid_arm_length, long_arm_length]) if len(
+        cavity.elements) == 4 else np.array([collimation_point, long_arm_length])
+    cavity.set_arms_lengths(nominal_lengths)
+
+    if plot_system:
+        plot_dependencies_figure(short_arm_lengths, NAs, mode_spacing, cavity=cavity,
+                                 measured_mode_spacing_MHz=measured_mode_spacing_MHz)
+        plt.show(block=False)
+
     mode_spacing_interp = interp1d(mode_spacing, NAs, fill_value='extrapolate')
     mode_spacing_over_fsr_interp = lambda x: mode_spacing_interp(x * cavity.free_spectral_range)
     return mode_spacing_interp, mode_spacing_over_fsr_interp
@@ -231,9 +220,7 @@ if __name__ == "__main__":
                                                                                                    mid_arm_length=0.015,
                                                                                                    long_arm_length=0.35,
                                                                                                    N_points=100,
-                                                                                                   plot_cavity=True,
-                                                                                                   plot_spectrum=True,
-                                                                                                   plot_dependencies=True
+                                                                                                   plot_system=True,
                                                                                                    )
     # The plots above are shown non-blocking; keep them open when run standalone.
     plt.show(block=True)
