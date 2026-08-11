@@ -1,83 +1,151 @@
 # %%
 from cavity_design import *
 from scipy.interpolate import interp1d
+# The catalog lookup is the one mode_spacing_to_NA.py already uses, so a name that works for the mode-spacing
+# simulation works here too, and there is one list of legal names in the project rather than two.
+from simple_analysis_scripts.mode_spacing_to_NA import (UnknownCavityElement, available_element_names,
+                                                        resolve_elements)
 
-# The cavity has two arms: a short one, then two lenses, then a long one that ends on the Coastline 20cm mirror.
-# The mode is defined by its NA in the *long* arm (there it is matched to the Coastline mirror), but the quantity we
+# The cavity has two arms: a short one, then the intracavity lens(es), then a long one that ends on the end mirror.
+# The mode is defined by its NA in the *long* arm (there it is matched to the end mirror), but the quantity we
 # care about is its NA in the *short* arm. So the long-arm mode is propagated in both directions:
-#   - leftwards, out through the Coastline mirror substrate and the Newport collimating lens, onto the camera;
-#   - rightwards, back into the cavity through the two intracavity lenses, into the short arm.
+#   - leftwards, out through the mirror substrate and the collimating lens, onto the camera;
+#   - rightwards, back into the cavity through the intracavity lens(es), into the short arm.
 # Nothing below the definitions runs on import: the plots and the prompt sit under `if __name__ == "__main__"`, so
 # another library can import make_spot_size_to_NA_interpolator() without opening a window or asking a question.
 #
-# The four distances below are only DEFAULTS, for running this file standalone. Every one of them is a parameter of
-# make_spot_size_to_NA_interpolator(), so the library that owns the measurement (os-lab's
-# utilities/media_tools/postprocessing_camera_video.py) states the geometry it measured - in particular the long arm
+# The parts lists and the four distances below are only DEFAULTS, for running this file standalone. Every one of them
+# is a parameter of make_spot_size_to_NA_interpolator(), so the library that owns the measurement (os-lab's
+# utilities/media_tools/postprocessing_camera_video.py) states the system it measured - in particular the long arm
 # length, which changes between measurements and is asked for there on every run - and nothing here has to be edited.
 
-DEFAULT_LONG_ARM_LENGTH = 0.4  # Coastline mirror surface -> Thorlabs 200mm lens.
-DEFAULT_MID_ARM_LENGTH = 1e-2  # Thorlabs 200mm lens -> Edmund 4.5mm aspheric.
-DEFAULT_LENS_DISTANCE = 59e-3  # Coastline mirror surface -> Newport 200mm collimating lens (outside the cavity).
-DEFAULT_CAMERA_DISTANCE = 0.02  # Newport lens -> camera sensor.
+DEFAULT_LONG_ARM_LENGTH = 0.4  # end mirror surface -> first intracavity lens.
+DEFAULT_MID_ARM_LENGTH = 1e-2  # first intracavity lens -> second one; unused when there is only one.
+DEFAULT_LENS_DISTANCE = 59e-3  # end mirror surface -> collimating lens (outside the cavity).
+DEFAULT_CAMERA_DISTANCE = 0.02  # last outgoing element -> camera sensor.
+
+# The parts, named after the catalog (available_element_names()) and listed in the order the beam meets them.
+DEFAULT_OUTGOING_ELEMENTS = ['COASTLINE_20CM_REFRACTIVE', 'NEWPORT_200MM_PLANO_CONVEX']
+DEFAULT_INTRACAVITY_ELEMENTS = ['THOLABS_200MM_PLANO_CONVEX_LENS', 'EDMUND_4p5MM_ASPHERIC_83580']
 
 # Figure label of the dependencies plot: re-running the simulation replaces that window instead of opening another one.
 DEPENDENCIES_FIGURE_LABEL = 'Camera spot size -> NA'
 
-# Output beam optical system: mirror substrate (transmissive) followed by the Newport 200mm collimating lens.
-# The catalog elements are deep-copied because place_element moves them in place.
-outgoing_system = OpticalSystem(
-    elements=[copy.deepcopy(COASTLINE_20CM_REFRACTIVE), copy.deepcopy(NEWPORT_200MM_PLANO_CONVEX)],
-    use_paraxial_ray_tracing=True,
-    p_is_trivial=True,
-    t_is_trivial=True,
-)
-outgoing_system.place_element(element=outgoing_system[0], position=outgoing_system[0][0].radius * LEFT, recalculate_optic=False)
 
-# Intracavity optical system, travelled rightwards: the two lenses that separate the long arm from the short arm.
-# Both lenses are catalogued for the real cavity, where they sit to the *left* of the Coastline mirror; here the
-# layout is mirrored (Coastline on the left, short arm on the right), so each lens has to be turned around with
-# .flip() - otherwise the Thorlabs flat face would look at the mid arm instead of the long arm, and the Edmund
-# aspheric face would look at the short arm instead of the mid arm.
-intracavity_system = OpticalSystem(
-    elements=[THOLABS_200MM_PLANO_CONVEX_LENS.flip(), EDMUND_4p5MM_ASPHERIC_83580.flip()],
-    use_paraxial_ray_tracing=True,
-    p_is_trivial=True,
-    t_is_trivial=True,
-)
+class UnsuitableEndMirror(UnknownCavityElement):
+    """The outgoing system does not start at a curved mirror, so no mode can be matched to it.
+
+    A subclass of UnknownCavityElement because it is the same kind of mistake - a parts list the caller has to fix -
+    and callers that already fail loudly on a bad element name then fail loudly on this too.
+    """
 
 
-def place_outgoing_lens(lens_distance: float = DEFAULT_LENS_DISTANCE,
-                        camera_distance: float = DEFAULT_CAMERA_DISTANCE):
-    """Put the Newport collimating lens `lens_distance` from the Coastline mirror, the camera `camera_distance` behind
-    it, and record where the camera sensor now is (module-level `camera_position`, read by propagate_long_arm_mode)."""
+def build_systems(outgoing_elements=DEFAULT_OUTGOING_ELEMENTS,
+                  intracavity_elements=DEFAULT_INTRACAVITY_ELEMENTS,
+                  flip_intracavity: bool = True):
+    """Build the two optical systems from catalog names, and publish them at module level.
+
+    `outgoing_elements` is the output beam's path, in the order it meets them: the cavity end mirror in TRANSMISSION
+    (the ..._REFRACTIVE entry of the catalog) first, then whatever stands between it and the camera. That first
+    surface is what the long-arm mode is matched to, and it is the origin every distance in this file is measured
+    from, so the list cannot start with anything else.
+    `intracavity_elements` is the way back into the cavity, from the long arm towards the short arm: one lens, or two
+    with `mid_arm_length` between them. They are `.flip()`ed (turn off with `flip_intracavity=False`) because the
+    catalog orientations belong to the real cavity, where these lenses sit on the *other* side of the end mirror;
+    here the layout is mirrored (mirror on the left, short arm on the right), so a plano-convex lens catalogued with
+    its flat face towards the mid arm would otherwise present it to the long arm instead.
+
+    Sets `outgoing_system`, `intracavity_system` and `NA_LONG_ARM_MIN`; returns the two systems. The elements still
+    have to be positioned afterwards - place_outgoing_lenses() and place_intracavity_lenses() do that.
+    """
+    global outgoing_system, intracavity_system, NA_LONG_ARM_MIN
+    # resolve_elements() hands out deep copies, because place_element moves an element in place and the catalog
+    # entries are shared singletons; .flip() likewise returns a turned-around copy.
+    outgoing_system = OpticalSystem(elements=resolve_elements(outgoing_elements), use_paraxial_ray_tracing=True,
+                                    p_is_trivial=True, t_is_trivial=True)
+    radius = getattr(outgoing_system[0][0], 'radius', None)  # a flat surface reports inf, not nothing
+    if radius is None or not np.isfinite(radius):
+        raise UnsuitableEndMirror(
+            f"the outgoing system must start at the cavity's curved end mirror in transmission (a ..._REFRACTIVE "
+            f"catalog entry); the first surface of {outgoing_elements[0]!r} has radius {radius}, so there is no "
+            f"curvature to match a mode to.")
+    # Put the mirror so that its cavity-facing surface sits at the origin.
+    outgoing_system.place_element(element=outgoing_system[0], position=outgoing_system[0][0].radius * LEFT,
+                                  recalculate_optic=len(outgoing_system.elements) == 1)
+
+    elements = resolve_elements(intracavity_elements)
+    intracavity_system = OpticalSystem(elements=[element.flip() for element in elements] if flip_intracavity
+                                       else elements,
+                                       use_paraxial_ray_tracing=True, p_is_trivial=True, t_is_trivial=True)
+
+    # A mode can only be matched to the end mirror while its Rayleigh range fits in R/2; below the corresponding NA
+    # (1.84e-3 for R = 200 mm) match_a_mode_to_mirror raises and names this same floor. Ask the library for it rather
+    # than re-deriving it, so the two can never drift apart. It follows the mirror, hence the rebuild here.
+    NA_LONG_ARM_MIN = NA_of_z_R(z_R=outgoing_system.surfaces[0].radius / 2, lambda_0_laser=LAMBDA_0_LASER)
+    return outgoing_system, intracavity_system
+
+
+NA_LONG_ARM_MAX = 0.01
+build_systems()
+
+
+def gaps_between_elements(system, gaps, gaps_name: str):
+    """The distances between `system`'s consecutive elements, from a scalar (all equal) or a sequence.
+
+    A one-element system has no gaps at all, so whatever `gaps_name` was set to is simply not used - said out loud,
+    because a mid arm length that quietly does nothing is a distance someone will believe they simulated.
+    """
+    n_gaps = len(system.elements) - 1
+    if n_gaps == 0:
+        if gaps is not None:
+            print(f"Note: the system holds a single element, so {gaps_name} = {gaps} is not used.")
+        return []
+    if gaps is None:
+        raise ValueError(f"{gaps_name} is needed: the system holds {n_gaps + 1} elements.")
+    if np.isscalar(gaps):
+        return [float(gaps)] * n_gaps
+    gaps = [float(gap) for gap in gaps]
+    if len(gaps) != n_gaps:
+        raise ValueError(f"{gaps_name} holds {len(gaps)} distances, but {n_gaps + 1} elements need {n_gaps}.")
+    return gaps
+
+
+def place_outgoing_lenses(lens_distance=DEFAULT_LENS_DISTANCE, camera_distance: float = DEFAULT_CAMERA_DISTANCE):
+    """Line the outgoing elements up behind the end mirror and put the camera `camera_distance` behind the last one.
+
+    `lens_distance` is the gap between consecutive outgoing elements (a scalar, or one distance per gap); the mirror
+    itself stays where build_systems() put it. Records the sensor's place in the module-level `camera_position`,
+    which propagate_long_arm_mode() reads.
+    """
     global camera_position
-    outgoing_system.place_element(element=outgoing_system[1], position=lens_distance * LEFT, recalculate_optic=True,
-                                  reference_center=outgoing_system[0])
+    last = len(outgoing_system.elements) - 1
+    for i, gap in enumerate(gaps_between_elements(outgoing_system, lens_distance, 'lens_distance'), start=1):
+        outgoing_system.place_element(element=outgoing_system[i], position=gap * LEFT, recalculate_optic=(i == last),
+                                      reference_center=outgoing_system[i - 1])
     camera_position = outgoing_system.surfaces[-1].center + camera_distance * LEFT
 
 
-place_outgoing_lens()
-
-# A mode can only be matched to the Coastline mirror while its Rayleigh range fits in R/2; below the corresponding
-# NA (1.84e-3 for R = 200 mm) match_a_mode_to_mirror raises and names this same floor. Ask the library for it rather
-# than re-deriving it, so the two can never drift apart.
-NA_LONG_ARM_MIN = NA_of_z_R(z_R=outgoing_system.surfaces[0].radius / 2, lambda_0_laser=LAMBDA_0_LASER)
-NA_LONG_ARM_MAX = 0.01
+place_outgoing_lenses()
 
 
-def place_intracavity_lenses(long_arm_length: float, mid_arm_length: float = DEFAULT_MID_ARM_LENGTH):
-    """Put the two intracavity lenses at `long_arm_length` from the Coastline mirror, `mid_arm_length` apart."""
+def place_intracavity_lenses(long_arm_length: float, mid_arm_length=DEFAULT_MID_ARM_LENGTH):
+    """Put the first intracavity lens at `long_arm_length` from the end mirror, the rest `mid_arm_length` apart.
+
+    `mid_arm_length` is only consulted when there is more than one lens (see gaps_between_elements).
+    """
+    last = len(intracavity_system.elements) - 1
     intracavity_system.place_element(element=intracavity_system[0], position=long_arm_length * RIGHT,
-                                     recalculate_optic=False, reference_center=outgoing_system.surfaces[0])
-    intracavity_system.place_element(element=intracavity_system[1], position=mid_arm_length * RIGHT,
-                                     recalculate_optic=True, reference_center=intracavity_system[0])
+                                     recalculate_optic=(last == 0), reference_center=outgoing_system.surfaces[0])
+    for i, gap in enumerate(gaps_between_elements(intracavity_system, mid_arm_length, 'mid_arm_length'), start=1):
+        intracavity_system.place_element(element=intracavity_system[i], position=gap * RIGHT,
+                                         recalculate_optic=(i == last), reference_center=intracavity_system[i - 1])
 
 
 place_intracavity_lenses(DEFAULT_LONG_ARM_LENGTH)
 
 
 def propagate_long_arm_mode(NA_long_arm: float):
-    """Match a mode of the given NA to the Coastline mirror and propagate it both ways.
+    """Match a mode of the given NA to the cavity's end mirror and propagate it both ways.
 
     Returns (camera spot size, short-arm NA, outgoing modes, intracavity modes).
     """
@@ -89,7 +157,7 @@ def propagate_long_arm_mode(NA_long_arm: float):
         mode_parameters_before_first_surface=mode_parameters_long_arm)
     camera_spot_size = modes_outgoing[-1].local_mode_parameters_at_a_point(camera_position).spot_size[0]
 
-    # The same mode, now travelling rightwards - into the cavity, through the two lenses, into the short arm.
+    # The same mode, now travelling rightwards - into the cavity, through the intracavity lens(es), into the short arm.
     modes_intracavity = intracavity_system.propagate_mode_parameters_return_global(
         mode_parameters_before_first_surface=mode_parameters_long_arm.invert_direction())
     NA_short_arm = modes_intracavity[-1].NA[0]
@@ -128,19 +196,22 @@ if __name__ == "__main__":
     camera_spot_size, NA_short_arm, modes_outgoing, modes_intracavity = propagate_long_arm_mode(NA_long_arm)
     print(f"NA in the long arm = {NA_long_arm:.4f} -> NA in the short arm = {NA_short_arm:.4f}, "
           f"spot size on the camera = {camera_spot_size * 1e3:.3f} mm")
-    for surface_index, label in ((0, "Thorlabs 200mm lens"), (2, "Edmund 4.5mm aspheric")):
+    # The beam on the entry face of each intracavity element, whatever the parts list holds.
+    surface_index = 0
+    for element in intracavity_system.elements:
         surface = intracavity_system.surfaces[surface_index]
         beam_radius = modes_intracavity[surface_index].local_mode_parameters_at_a_point(surface.center).spot_size[0]
-        print(f"beam radius on the {label} = {beam_radius * 1e3:.3f} mm "
+        print(f"beam radius on the {element.name} = {beam_radius * 1e3:.3f} mm "
               f"(clear radius {surface.diameter / 2 * 1e3:.2f} mm)")
+        surface_index += len(getattr(element, 'surfaces', [element]))
 
     ax = outgoing_system.plot()
     intracavity_system.plot(ax=ax)
-    plot_modes(outgoing_system, modes_outgoing, ax, first_point=ORIGIN, last_point=outgoing_system.surfaces[-1].center + 0.2 * LEFT,
+    plot_modes(outgoing_system, modes_outgoing, ax, first_point=ORIGIN, last_point=camera_position + 0.02 * LEFT,
                color='red', linestyle='--')
     plot_modes(intracavity_system, modes_intracavity, ax, first_point=ORIGIN,
                last_point=intracavity_system.surfaces[-1].center + 5e-3 * RIGHT, color='blue', linestyle='--')
-    plt.xlim(-0.5, 0.25)
+    plt.xlim(camera_position[0] - 0.05, intracavity_system.surfaces[-1].center[0] + 0.05)
     plt.ylim(-1e-2, 1e-2)
     plt.grid()
     plt.show()
@@ -320,10 +391,12 @@ def plot_dependencies_figure(camera_spot_sizes, NAs_long_arm, NAs_short_arm, lon
 
 
 def make_spot_size_to_NA_interpolator(long_arm_length: float = DEFAULT_LONG_ARM_LENGTH,
-                                      mid_arm_length: float = DEFAULT_MID_ARM_LENGTH,
-                                      lens_distance: float = DEFAULT_LENS_DISTANCE,
+                                      mid_arm_length=DEFAULT_MID_ARM_LENGTH,
+                                      lens_distance=DEFAULT_LENS_DISTANCE,
                                       camera_distance: float = DEFAULT_CAMERA_DISTANCE,
-                                      NA_long_arm_range: tuple = (NA_LONG_ARM_MIN, NA_LONG_ARM_MAX),
+                                      outgoing_elements=None,
+                                      intracavity_elements=None,
+                                      NA_long_arm_range: tuple = None,
                                       N_points: int = 200,
                                       measured_spot_sizes_m=(),
                                       measured_labels=(),
@@ -331,15 +404,30 @@ def make_spot_size_to_NA_interpolator(long_arm_length: float = DEFAULT_LONG_ARM_
     """Scan the long-arm NA at this geometry and return the camera spot size [m] -> short-arm NA function.
 
     The scan is what makes the mapping: for every long-arm NA the same mode is propagated out to the camera and back
-    into the short arm, giving one (camera spot size, short-arm NA) pair. `NA_long_arm_range` cannot start below
-    NA_LONG_ARM_MIN - the mode does not match the Coastline mirror there.
-    All four distances are stated by the caller (see the note at the top of this file), so the measuring library never
-    has to edit this one. With `plot=True` the whole system is shown in one window - the two dependency panels and the
-    optical system underneath - with every spot size in `measured_spot_sizes_m` (labelled by `measured_labels`, e.g.
-    ('w_x', 'w_y')) marked on it.
+    into the short arm, giving one (camera spot size, short-arm NA) pair. `NA_long_arm_range` defaults to
+    (NA_LONG_ARM_MIN, NA_LONG_ARM_MAX) of whichever end mirror is in use, and cannot start below NA_LONG_ARM_MIN -
+    the mode does not match the mirror there.
+    The parts lists and all four distances are stated by the caller (see the note at the top of this file), so the
+    measuring library never has to edit this one; `outgoing_elements` / `intracavity_elements` rebuild the systems
+    (see build_systems for the order and orientation they are read in), and `mid_arm_length` is ignored when the
+    cavity holds a single intracavity lens. With `plot=True` the whole system is shown in one window - the two
+    dependency panels and the optical system underneath - with every spot size in `measured_spot_sizes_m` (labelled
+    by `measured_labels`, e.g. ('w_x', 'w_y')) marked on it.
     The elements are left at the geometry that was simulated; the returned callable no longer depends on them.
     """
-    place_outgoing_lens(lens_distance, camera_distance)
+    if outgoing_elements is not None or intracavity_elements is not None:
+        build_systems(outgoing_elements if outgoing_elements is not None else DEFAULT_OUTGOING_ELEMENTS,
+                      intracavity_elements if intracavity_elements is not None else DEFAULT_INTRACAVITY_ELEMENTS)
+    if NA_long_arm_range is None:  # read after the rebuild: the floor belongs to the mirror that is now in place
+        NA_long_arm_range = (NA_LONG_ARM_MIN, NA_LONG_ARM_MAX)
+    if NA_long_arm_range[1] <= NA_long_arm_range[0]:
+        # Typically a sharper end mirror than the default one: its NA floor climbed above NA_LONG_ARM_MAX, and the
+        # scan would run backwards into NAs the mirror cannot hold. Say so here, where the fix is named.
+        raise ValueError(
+            f"NA_long_arm_range = {tuple(NA_long_arm_range)} is empty: this end mirror does not support a mode below "
+            f"NA = {NA_LONG_ARM_MIN:.4g} (its radius is {outgoing_system.surfaces[0].radius:.4g} m). Raise the range's "
+            f"upper end above that floor.")
+    place_outgoing_lenses(lens_distance, camera_distance)
     NAs_long_arm = np.linspace(NA_long_arm_range[0], NA_long_arm_range[1], N_points)
     camera_spot_sizes, NAs_short_arm = scan_long_arm_NAs(long_arm_length, NAs_long_arm, mid_arm_length)
     spot_size_to_NA = make_spot_size_to_NA(camera_spot_sizes, NAs_short_arm)
