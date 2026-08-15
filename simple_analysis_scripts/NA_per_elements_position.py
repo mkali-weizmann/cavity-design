@@ -5,7 +5,7 @@ from cavity_design import *
 from tqdm import tqdm
 
 
-elements=[LASER_OPTIK_MIRROR, EDMUND_4p5MM_ASPHERIC_83580, COASTLINE_20CM_MIRROR]
+elements=[LASER_OPTIK_MIRROR, EDMUND_4MM_ASPHERIC_16701, COASTLINE_20CM_MIRROR]
 
 # %% 2d map:
 def equality_equation(x, coef):
@@ -17,7 +17,7 @@ cavity = Cavity(elements=elements, standing_wave=True, lambda_0_laser=LAMBDA_0_L
 short_arm_length_collimation = cavity[0].radius + back_focal_length_of_lens_object(lens_object=cavity[1])
 long_arm_lengths = np.arange(28e-2, 42e-2, 2e-2)# np.array([28e-2, 29e-2, 30e-2, 31e-2, 32e-2, 33e-2, 34e-2, 37e-2])
 mid_arm_length = 1.6e-2
-short_arm_lengths = np.linspace(short_arm_length_collimation - 1e-4, short_arm_length_collimation + 8e-4, 200)  # np.linspace(7.32e-3, 7.35e-3, 500)#
+short_arm_lengths = np.linspace(short_arm_length_collimation, short_arm_length_collimation + 8e-4, 200)  # np.linspace(7.32e-3, 7.35e-3, 500)#
 
 spherical_lens_nominal_position = short_arm_length_collimation + cavity[1].T_c + mid_arm_length # Measured from small mirror.
 Large_to_small_mirror_minus_long_arm_length_nominal = short_arm_length_collimation + cavity[1].T_c if len(elements) == 3\

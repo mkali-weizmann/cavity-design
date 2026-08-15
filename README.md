@@ -25,7 +25,7 @@ The ray–sphere intersection in `SphericalSurface.find_intersection_with_ray_ex
 
 ## uv migration attempt (reverted; kept on the `migrate-to-uv` branch)
 
-We tried migrating dependency management from `requirements.txt` to **uv** (`pyproject.toml` + `uv.lock`, hatchling backend). On Windows this surfaced a chain of environment problems, so **`main` was reverted to the pre-migration, `requirements.txt`-based setup**, which runs the analysis notebooks cleanly (no tracebacks, no flicker). The uv work is preserved on the **`migrate-to-uv`** branch (pushed to GitHub) for anyone who wants to finish it.
+We tried migrating dependency management from `requirements.txt` to **uv** (`pyproject.toml` + `uv.lock`, hatchling backend). On Windows this surfaced a chain of environment problems, so **`main` was reverted to the pre-migration, `requirements.txt`-based setup**, which at the time appeared to run the analysis notebooks cleanly. (It didn't, quite — see the root-cause section at the end of this section.) The uv work is preserved on the **`migrate-to-uv`** branch (pushed to GitHub) for anyone who wants to finish it.
 
 Problems hit during the migration — all traceable to moving from a hand-curated Windows venv to a freshly-resolved, cross-platform, mostly-unpinned uv environment:
 
@@ -33,7 +33,7 @@ Problems hit during the migration — all traceable to moving from a hand-curate
 - **Wrong Python.** With no `.python-version`, `uv run` grabbed the newest interpreter (3.14), for which the pinned scientific stack (numpy/scipy/matplotlib 3.8.4) has no wheels. The pre-migration env was Python **3.11**.
 - **ipywidgets rendered as plain text.** `jupyterlab` was left unpinned and resolved to 4.6.x, which does not render the `jupyterlab_widgets` frontend extension. Pinned back to `jupyterlab==4.5.3`.
 - **`.venv` under Dropbox.** uv's default `.venv` lives inside the project, which sits on a Dropbox-synced path, causing "file in use" lock errors during `uv sync`. Worked around by putting the env at `C:\venvs\cavity-design` via the `UV_PROJECT_ENVIRONMENT` variable.
-- **Interactive Qt backend broke.** The clean uv env installed only *declared* deps, so **PySide6** — present ad-hoc in the old venv and selected via a global `QT_API=pyside6` env var — was missing. Standardizing on **PyQt5** instead made the `%matplotlib qt` figure window freeze ("Not Responding") and surfaced a matplotlib async draw-race (`'NoneType' object has no attribute 'canvas' / 'dpi_scale_trans'`). Installing PySide6 fixed the freeze, but the draw-race persisted even after matching Python 3.11 / ipython 9.9.0 / ipykernel 7.1.0 — it is a timing-sensitive interaction with the notebook's live-figure clearing code, not a packaging issue. Reverting `main` is what actually cleared it.
+- **Interactive Qt backend broke.** The clean uv env installed only *declared* deps, so **PySide6** — present ad-hoc in the old venv and selected via a global `QT_API=pyside6` env var — was missing. Standardizing on **PyQt5** instead made the `%matplotlib qt` figure window freeze ("Not Responding") and surfaced a matplotlib async draw-race (`'NoneType' object has no attribute 'canvas' / 'dpi_scale_trans'`). Installing PySide6 fixed the freeze, but the draw-race persisted even after matching Python 3.11 / ipython 9.9.0 / ipykernel 7.1.0 — it is a timing-sensitive interaction with the notebook's live-figure clearing code, not a packaging issue. Reverting `main` appeared to clear it, but that was coincidence — the race is latent in the notebook code on `main` too, and resurfaced there on 2026-08-15. See the root-cause section below.
 
 What the **`migrate-to-uv`** branch contains (a near-working state; the notebook still shows the transient draw-race):
 
@@ -42,7 +42,18 @@ What the **`migrate-to-uv`** branch contains (a near-working state; the notebook
 - `analyze_potential.ipynb`: an explicit `os.environ["QT_API"] = "pyside6"` pin (replacing the old global env var) and a `_drawing_suspended` guard around `clear_figure_extra_axes` to suppress the draw-race.
 - Not on the branch: the Python-3.11 pin was set locally via `.python-version` (never committed); the env lived at `C:\venvs\cavity-design`.
 
-The one unrecoverable unknown was the **original venv's PySide6 version** (that venv was deleted, and `requirements.txt` never pinned PySide6) — the most likely remaining cause of the draw-race and the first thing to try (an older PySide6) if the migration is revisited.
+### Draw-race root cause — resolved 2026-08-15 (it was never a packaging problem)
+
+The paragraphs above blamed the draw-race on the Qt binding, and guessed that the **original venv's PySide6 version** was the unrecoverable unknown behind it. Both are wrong, and neither is worth chasing again:
+
+- **`QT_API` never mattered here.** In `C:\venvs\cavity-design`, with `QT_API` unset, `matplotlib.backends.qt_compat` already resolves to **PySide6 6.11.1** — its preference order is PyQt6 → PySide6 → PyQt5 → PySide2, and PyQt6 isn't installed. So the global `QT_API=pyside6` var, and its later deletion, changed nothing; the binding was PySide6 throughout. Check `qt_compat.QT_API` before theorising about bindings.
+- **`requirements.txt` is a curated subset, not a `pip freeze`** (it omits jupyterlab, ipython and ipykernel), so PySide6's absence from it says nothing about what the original venv contained.
+
+The real cause is in the notebook's own live-figure code. `plot_results` adds a twin axes each call (`ax2 = ax[0].twinx()`, `cavity_design/_potential.py:1192`), and `clear_figure_extra_axes` removes it at the top of every widget callback. Removing a twin axes is itself clean — verified against matplotlib 3.8.4: `twinx()` → `remove()` → `draw()` does not raise, and the axes is properly gone from `fig.axes`, `fig._localaxes` and the twin grouper. The crash was a **race**: each callback ended with `plt.show()`, which only *schedules* a `draw_idle()`. That queued draw snapshots the artist list (twin included) and runs later; if the next callback fires first, the twin is removed mid-pass and the draw walks an axes whose `.figure` is `None` → `matplotlib/axes/_base.py:3040`, `'NoneType' object has no attribute 'canvas'`. The aborted draw is also why the window sat half-painted until it regained focus and Windows sent a fresh expose event.
+
+Fixed in `analyze_potential.ipynb` by making each callback own its drawing: `fig.canvas.flush_events()` at the top of `clear_figure_extra_axes` (drain queued draws before mutating the figure), and a `refresh(fig)` helper — `fig.canvas.draw()` + `fig.canvas.flush_events()` — replacing the in-callback `plt.show()` calls, so nothing is left pending for the next callback to race. This is the opposite of the `_drawing_suspended` guard on `migrate-to-uv`, which suppressed draws and caused blank-frame flicker.
+
+This removes the last blocker attributed to uv: the migration's genuine problems were the four packaging ones listed above, all of which have fixes on the branch.
 
 Local dev note: the `.git/hooks/pre-commit` hook runs the tests and must invoke a *working* Python — it calls the project venv's Python directly, because the system Python 3.11 on this machine has a broken `pyreadline` that crashes pytest at startup. It also skips `tests/test_skill_examples.py` (slow — it runs every example script end-to-end).
 
