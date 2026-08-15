@@ -84,7 +84,12 @@ profile_default/
 ipython_config.py
 
 # pyenv
-.python-version
+#   Deliberately NOT ignored: uv reads .python-version to pick the interpreter,
+#   and this project requires 3.11 (the pinned scientific stack has no wheels for
+#   3.14, which uv otherwise grabs as "newest available"). The first uv migration
+#   attempt failed on exactly this, because the boilerplate ignore below hid the
+#   pin from the commit.
+# .python-version
 
 # pipenv
 #   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
@@ -139,5 +144,3 @@ dmypy.json
 /theory/Optical resonators v3.pptx
 /Untitled.ipynb
 /outputs/debugging
-
-cavity_jupyter_lab.bat
