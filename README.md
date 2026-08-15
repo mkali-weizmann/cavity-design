@@ -46,28 +46,6 @@ The notebooks use `%matplotlib qt` for a live figure window. Nothing in this rep
 
 This matters because `qt_compat`'s preference order is PyQt6 → PySide6 → PyQt5 → PySide2, and it picks the first one installed *regardless of what you think you configured*. The old hand-built env had both PyQt5 and PySide6 present, so it silently ran PySide6 while `requirements.txt` pinned PyQt5, and the `QT_API=pyside6` environment variable people kept setting was a no-op. Declaring one binding removes the ambiguity; dropping PyQt5 also removes the `pyqt5-qt5` Windows-wheel problem entirely. If you ever need to check what is actually in use: `python -c "from matplotlib.backends import qt_compat; print(qt_compat.QT_API)"`.
 
-### History: the first migration attempt (2026-07, reverted)
-
-An earlier attempt is preserved on the **`migrate-to-uv`** branch. It was reverted after a chain of Windows environment problems, all of which are addressed above: the `pyqt5-qt5` wheel (now moot — PyQt5 is gone), the wrong interpreter (now pinned and committed), ipywidgets rendering as plain text under an unpinned JupyterLab 4.6.x (now `jupyterlab==4.5.3`), and `.venv` under Dropbox (now an explicit out-of-tree path).
-
-The fifth and decisive problem was blamed on uv but wasn't uv's fault at all — see below. Note also that that branch's `analyze_potential.ipynb` carries a `QT_API` pin and a `_drawing_suspended` guard that are both obsolete; do not port them forward.
-
-### Draw-race root cause — resolved 2026-08-15 (it was never a packaging problem)
-
-The first attempt blamed a live-figure draw-race on the Qt binding, and guessed that the **original venv's PySide6 version** was the unrecoverable unknown behind it. Both are wrong, and neither is worth chasing again:
-
-- **`QT_API` never mattered here.** In `C:\venvs\cavity-design`, with `QT_API` unset, `matplotlib.backends.qt_compat` already resolves to **PySide6 6.11.1** — its preference order is PyQt6 → PySide6 → PyQt5 → PySide2, and PyQt6 isn't installed. So the global `QT_API=pyside6` var, and its later deletion, changed nothing; the binding was PySide6 throughout. Check `qt_compat.QT_API` before theorising about bindings.
-- **The old `requirements.txt` was a curated subset, not a `pip freeze`** (it omitted jupyterlab, ipython and ipykernel), so PySide6's absence from it said nothing about what the original venv contained. It has since been replaced by `pyproject.toml` + `uv.lock`.
-
-The real cause is in the notebook's own live-figure code. `plot_results` adds a twin axes each call (`ax2 = ax[0].twinx()`, `cavity_design/_potential.py:1192`), and `clear_figure_extra_axes` removes it at the top of every widget callback. Removing a twin axes is itself clean — verified against matplotlib 3.8.4: `twinx()` → `remove()` → `draw()` does not raise, and the axes is properly gone from `fig.axes`, `fig._localaxes` and the twin grouper. The crash was a **race**: each callback ended with `plt.show()`, which only *schedules* a `draw_idle()`. That queued draw snapshots the artist list (twin included) and runs later; if the next callback fires first, the twin is removed mid-pass and the draw walks an axes whose `.figure` is `None` → `matplotlib/axes/_base.py:3040`, `'NoneType' object has no attribute 'canvas'`. The aborted draw is also why the window sat half-painted until it regained focus and Windows sent a fresh expose event.
-
-Fixed in `analyze_potential.ipynb` by making each callback own its drawing: `fig.canvas.flush_events()` at the top of `clear_figure_extra_axes` (drain queued draws before mutating the figure), and a `refresh(fig)` helper — `fig.canvas.draw()` + `fig.canvas.flush_events()` — replacing the in-callback `plt.show()` calls, so nothing is left pending for the next callback to race. This is the opposite of the `_drawing_suspended` guard on `migrate-to-uv`, which suppressed draws and caused blank-frame flicker.
-
-This removed the last blocker attributed to uv, and is what made the second migration possible: the genuine problems were the four packaging ones, all fixed above.
-
-Local dev note: the `.git/hooks/pre-commit` hook runs the tests and must invoke a *working* Python — it calls a project venv's Python directly (trying the uv environment first, then the older hand-built one), rather than bare `python`, because the system Python 3.11 on this machine has a broken `pyreadline` that crashes pytest at startup. It avoids `uv run` so that it still works on branches that predate the migration and have no `pyproject.toml`. It also skips `tests/test_skill_examples.py` (slow — it runs every example script end-to-end).
-
-
 # The tolerances pseudo code:
 
 For each NA:
