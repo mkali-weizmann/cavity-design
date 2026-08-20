@@ -163,9 +163,20 @@ def short_arm_for_mode_spacing(short_arm_lengths, mode_spacing, mode_spacing_MHz
     return float(np.interp(mode_spacing_MHz, spacing_mhz, arms))
 
 
+def na_for_mode_spacing(mode_spacing, NAs, mode_spacing_MHz):
+    """The simulated NA at `mode_spacing_MHz` - the number a measurement is taken for.
+
+    `mode_spacing` is the simulated array in Hz. Raises ModeSpacingOutOfRange when the value falls
+    outside the scanned range, exactly as the interpolator does.
+    """
+    spacing_mhz, nas = _finite_sorted_by_spacing(mode_spacing, NAs)
+    _check_within_support(mode_spacing_MHz, (float(spacing_mhz[0]), float(spacing_mhz[-1])))
+    return float(np.interp(mode_spacing_MHz, spacing_mhz, nas))
+
+
 def plot_dependencies_figure(short_arm_lengths, NAs, mode_spacing, cavity=None,
                              measured_mode_spacing_MHz=None, measured_short_arm=None,
-                             color='r', linestyle='--'):
+                             measured_na=None, color='r', linestyle='--'):
     """Draw the dependencies figure and return it.
 
     Top left: mode spacing and NA against the small arm's length. Top right: NA against mode
@@ -173,7 +184,9 @@ def plot_dependencies_figure(short_arm_lengths, NAs, mode_spacing, cavity=None,
     drawn as it stands, so place it at the geometry you want shown before calling).
     Given a measured mode spacing [MHz], each top panel gets a vertical line marking it - on the
     left at the small arm length that produces it (`measured_short_arm`, computed here when the
-    caller does not pass the value it already has).
+    caller does not pass the value it already has) - plus a horizontal line and a marker at the NA
+    it maps to (`measured_na`, likewise computed here when not passed), so the figure shows the
+    result of the measurement and not only its input.
     """
     # Re-running the simulation replaces the old figure rather than opening another one.
     if plt.fignum_exists(DEPENDENCIES_FIGURE_LABEL):
@@ -202,10 +215,17 @@ def plot_dependencies_figure(short_arm_lengths, NAs, mode_spacing, cavity=None,
         if measured_short_arm is None:
             measured_short_arm = short_arm_for_mode_spacing(short_arm_lengths, mode_spacing,
                                                             measured_mode_spacing_MHz)
-        label = f'Measured: {measured_mode_spacing_MHz:.4g} MHz'
+        if measured_na is None:
+            measured_na = na_for_mode_spacing(mode_spacing, NAs, measured_mode_spacing_MHz)
+        label = f'Measured: {measured_mode_spacing_MHz:.4g} MHz -> NA = {measured_na:.4g}'
         ax_na.axvline(measured_mode_spacing_MHz, color=color, ls=linestyle, label=label)
+        ax_na.axhline(measured_na, color=color, ls=linestyle)
+        ax_na.plot(measured_mode_spacing_MHz, measured_na, 'o', color=color)
         ax_na.legend()
+        # On the left panel the NA is the twinned axis, so the resulting NA is marked there
         ax_arm.axvline(measured_short_arm, color=color, ls=linestyle, label=label)
+        ax_twin.axhline(measured_na, color=color, ls=linestyle)
+        ax_twin.plot(measured_short_arm, measured_na, 'o', color=color)
 
     # after the marker, so it joins the two curves in the twinned axes' combined legend
     handles1, labels1 = ax_arm.get_legend_handles_labels()
@@ -234,7 +254,7 @@ def generate_lens_position_dependencies_output(short_arm_lengths: Union[np.ndarr
 
     With plot_system=True the whole system is shown in one window: the two dependency panels and,
     underneath them, the cavity at its nominal geometry. `measured_mode_spacing_MHz` is marked on
-    both dependency panels.
+    both dependency panels, together with the NA it maps to.
     """
     cavity, collimation_point = build_cavity(elements)
     if isinstance(short_arm_lengths, (int, float)):
@@ -250,10 +270,11 @@ def generate_lens_position_dependencies_output(short_arm_lengths: Union[np.ndarr
 
     # Raises ModeSpacingOutOfRange if the scan never reached the measurement - checked here rather
     # than at plotting time, so the caller hears about it whether or not it asked for a figure.
-    measured_short_arm = None
+    measured_short_arm = measured_na = None
     if measured_mode_spacing_MHz is not None:
         measured_short_arm = short_arm_for_mode_spacing(short_arm_lengths, mode_spacing,
                                                         measured_mode_spacing_MHz)
+        measured_na = na_for_mode_spacing(mode_spacing, NAs, measured_mode_spacing_MHz)
 
     # The scan left the lens at its last position. Restore the nominal geometry, then - when there
     # is a measurement - move the lens to the small arm length that reproduces it, so the cavity
@@ -269,7 +290,8 @@ def generate_lens_position_dependencies_output(short_arm_lengths: Union[np.ndarr
     if plot_system:
         plot_dependencies_figure(short_arm_lengths, NAs, mode_spacing, cavity=cavity,
                                  measured_mode_spacing_MHz=measured_mode_spacing_MHz,
-                                 measured_short_arm=measured_short_arm)
+                                 measured_short_arm=measured_short_arm,
+                                 measured_na=measured_na)
         plt.show(block=False)
 
     mode_spacing_interp = make_mode_spacing_to_na(mode_spacing, NAs)
