@@ -25,11 +25,16 @@ re-derive from library source.
 	- For aberrations calculations, `self.use_paraxial_ray_tracing` should be set to False.
 	- contains spectral calculation, such as `cavity.finesse`, `cavity.free_spectral_range`, `cavity.roundtrip_power_losses`.
 - **Surfaces** (in `_surfaces.py`): `SphericalMirror`, `FlatMirror`, `SphericalRefractiveSurface`,
-  `FlatRefractiveSurface`, `AsphericRefractiveSurface`.
+  `FlatRefractiveSurface`, `AsphericRefractiveSurface`, `RefractiveCartesianOval`.
 	- `Surface` is the general, and all inherit from it.
 	- `RefractiveSurface` knows how to refract rays/modes.
 	- `ReflectiveSurface` knows how to reflect rays/modes.
-	- Geometrical types of surfaces are: `FlatSurface, SphericalSurface, AsphericSurface`
+	- Geometrical types of surfaces are: `FlatSurface, SphericalSurface, AsphericSurface, CartesianOval`
+	- A `CartesianOval` images one conjugate pair *exactly* (no spherical aberration), unlike the polynomial
+	  fit of an `AsphericSurface`. It is defined by the signed focal distances `E_1` (object) and `E_2` (image)
+	  from the vertex along the propagation direction, plus `n_1`/`n_2` - which set its *shape*, not just its
+	  refraction. `E > 0` is a real object/image, `E < 0` a virtual one. Its `curvature_sign` and `radius` are
+	  derived from those four numbers, so `curvature_sign` is not free to choose as it is for an asphere.
 	- **Important:** the `surface.curvature_sign` (`CurvatureSigns.convex` (1), `CurvatureSigns.concave` (-1), `CurvatureSigns.flat` (0)) is defined with respect to the incoming ray, not with respect to the higher-refractive-index-side. For example if a lens is biconvex, then the first `spherical_surface` will have `spherical_surface.curvature_sign == CurvatureSigns.convex` , while the second one (to which the ray comes in from the inside of the lens will have `spherical_surface.curvature_sign == CurvatureSigns.concave`). This is done to ease with the intersection calculation of the surface with the ray.
 - **Ray, RaySequence** in (`_rays.py`):
 	- `Ray` is a set of rays, with `origin, length, k_vector` (**normalized** unit vector, direction of the ray), and refractive index `n`. `origin and k_vector` can have any number of dimensions, where the last one is always 3 - for the 3 spatial dimensions.

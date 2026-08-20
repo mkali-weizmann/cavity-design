@@ -40,6 +40,12 @@ from cavity_design import (
     ORIGIN,
     RIGHT,
     surfaces_are_equivalent,
+    CartesianOval,
+    RefractiveCartesianOval,
+    signed_vertex_radius_of_a_cartesian_oval,
+    SphericalRefractiveSurface,
+    LEFT,
+    normalize_vector,
 )
 
 
@@ -2500,3 +2506,376 @@ def test_invert_cavity_preserves_structure_and_mode():
     comparison_arm_index = len(inverted.surfaces) - 2
     q_inverted = inverted.arms[comparison_arm_index].mode_parameters_on_surface_1.q
     assert np.allclose(q_inverted, -np.conj(q_forward), rtol=1e-6)
+
+
+# ----------------------------------------------------------------------------------------------------
+# Cartesian ovals
+# ----------------------------------------------------------------------------------------------------
+
+# (n_1, n_2, E_1, E_2) covering every combination of real/virtual object and real/virtual image.
+CARTESIAN_OVAL_CONJUGATES = [
+    (1.0, 1.5, 1.0, 1.0),  # real object    -> real image,    n_2 > n_1
+    (1.5, 1.0, 1.0, 2.0),  # real object    -> real image,    n_2 < n_1
+    (1.0, 1.5, 1.0, -2.5),  # real object    -> virtual image
+    (1.0, 1.5, -2.0, 1.0),  # virtual object -> real image
+    (1.5, 1.0, -2.0, -0.5),  # virtual object -> virtual image
+]
+
+
+def _cartesian_oval_incoming_fan(surface, half_angle=0.14, n_rays=9):
+    """A fan of rays diverging from / converging on the object focus, whichever E_1 calls for."""
+    optical_axis = surface.propagation_direction
+    transverse = np.cross(optical_axis, np.array([0.0, 0.0, 1.0]))
+    angles = np.linspace(-half_angle, half_angle, n_rays)
+    k_vector = np.stack([np.cos(t) * optical_axis + np.sin(t) * transverse for t in angles])
+    if surface.E_1 > 0:
+        # Real object: the rays leave focus_1.
+        origin = np.tile(surface.focus_1, (n_rays, 1))
+    else:
+        # Virtual object: the rays arrive from upstream, aimed at focus_1, and are intercepted before it.
+        origin = surface.focus_1 - 2 * abs(surface.E_1) * k_vector
+    return Ray(origin=origin, k_vector=k_vector, n=surface.n_1)
+
+
+def _distance_from_point_to_ray_lines(ray, point):
+    """Perpendicular distance from a point to each ray's (infinite) line.
+
+    Using the line rather than the forward half-line makes this work for a virtual image too, where the
+    outgoing rays only meet the focus when extended backwards."""
+    delta = point - ray.origin
+    along = np.sum(delta * ray.k_vector, axis=-1)
+    return np.linalg.norm(delta - along[..., np.newaxis] * ray.k_vector, axis=-1)
+
+
+@pytest.mark.parametrize("n_1, n_2, E_1, E_2", CARTESIAN_OVAL_CONJUGATES)
+def test_cartesian_oval_perfect_focus(n_1, n_2, E_1, E_2):
+    # The defining property, and the one a polynomial asphere cannot satisfy: every ray of a wide fan is
+    # refracted exactly through the image focus, with no spherical aberration whatsoever.
+    surface = RefractiveCartesianOval(
+        center=ORIGIN, outwards_normal=LEFT, E_1=E_1, E_2=E_2, n_1=n_1, n_2=n_2, diameter=1.2
+    )
+    assert not np.allclose(surface.focus_1, surface.focus_2), "degenerate conjugates make this test vacuous"
+
+    outgoing = surface.propagate_ray(_cartesian_oval_incoming_fan(surface))
+    assert np.all(np.isfinite(outgoing.origin)), "some rays failed to intersect the surface"
+    # A genuinely non-paraxial fan: the marginal ray must be well off the axis.
+    assert surface.radial_distance_from_axis(outgoing.origin).max() > 0.1
+
+    misses = _distance_from_point_to_ray_lines(outgoing, surface.focus_2)
+    assert np.all(misses < 1e-12), f"rays missed focus_2 by up to {misses.max()}"
+
+
+def test_cartesian_oval_tilted_axis_perfect_focus():
+    # The same, on an optical axis that is neither along x nor inside a coordinate plane, so that no
+    # accidental alignment can hide a frame error.
+    outwards_normal = normalize_vector(np.array([-1.0, 0.3, 0.2]))
+    center = np.array([0.011, -0.004, 0.007])
+    surface = RefractiveCartesianOval(
+        center=center, outwards_normal=outwards_normal, E_1=0.02, E_2=0.05, n_1=1.0, n_2=1.45, diameter=6.35e-3
+    )
+    outgoing = surface.propagate_ray(_cartesian_oval_incoming_fan(surface, half_angle=0.075))
+    assert np.all(np.isfinite(outgoing.origin))
+    misses = _distance_from_point_to_ray_lines(outgoing, surface.focus_2)
+    assert np.all(misses < 1e-15), f"rays missed focus_2 by up to {misses.max()}"
+
+
+@pytest.mark.parametrize("n_1, n_2, E_1, E_2", CARTESIAN_OVAL_CONJUGATES)
+def test_cartesian_oval_pose_conventions(n_1, n_2, E_1, E_2):
+    surface = RefractiveCartesianOval(
+        center=np.array([0.1, 0.0, 0.0]), outwards_normal=LEFT, E_1=E_1, E_2=E_2, n_1=n_1, n_2=n_2, diameter=0.2
+    )
+    signed_radius = signed_vertex_radius_of_a_cartesian_oval(n_1=n_1, n_2=n_2, E_1=E_1, E_2=E_2)
+
+    assert surface.radius >= 0
+    assert np.isclose(surface.radius, abs(signed_radius))
+    assert surface.curvature_sign == np.sign(signed_radius)
+    # origin is the center of curvature, on the far side from outwards_normal.
+    np.testing.assert_allclose(surface.origin, surface.center - surface.outwards_normal * surface.radius, atol=1e-15)
+    # The surface bulges towards outwards_normal, so the sag along inwards_normal is non-negative.
+    rho = np.linspace(0, surface.diameter / 2, 11)
+    assert np.all(surface.local_sag(rho) >= 0)
+    # Near the axis the sag is the parabola of the matching sphere.
+    assert np.isclose(surface.local_sag(1e-4), 1e-8 / (2 * surface.radius), rtol=1e-6)
+    # The foci sit on the optical axis at the signed distances they were given.
+    np.testing.assert_allclose(surface.focus_1, surface.center - E_1 * surface.propagation_direction, atol=1e-15)
+    np.testing.assert_allclose(surface.focus_2, surface.center + E_2 * surface.propagation_direction, atol=1e-15)
+
+
+def test_cartesian_oval_matches_the_quartic_polynomial():
+    # Ties the implementation back to the Cartesian oval polynomial. Squaring
+    #     n_1*sign(E_1)*L_1 + n_2*sign(E_2)*L_2 = C,   C = n_1*E_1 + n_2*E_2
+    # once gives the grouped form below. Note the sign of the radical term, which is what selects the
+    # branch: a plain '+' there describes a surface that does not image the two foci at all.
+    n_1, n_2, E_1, E_2 = 1.0, 1.45, 0.02, 0.05
+    surface = RefractiveCartesianOval(
+        center=np.array([0.1, 0.0, 0.0]), outwards_normal=LEFT, E_1=E_1, E_2=E_2, n_1=n_1, n_2=n_2, diameter=6.35e-3
+    )
+    C = surface.C
+    assert np.isclose(C, n_1 * E_1 + n_2 * E_2)
+
+    optical_axis = surface.propagation_direction
+    transverse = np.cross(optical_axis, np.array([0.0, 0.0, 1.0]))
+    rho = np.linspace(0, surface.diameter / 2, 17)
+    points = surface.center + np.outer(rho, transverse) + np.outer(surface.local_sag(rho), surface.inwards_normal)
+    x = (points - surface.center) @ optical_axis
+    rho_squared = np.sum((points - surface.center) ** 2, axis=-1) - x**2
+
+    left_hand_side = (
+        (n_1**2 - n_2**2) * (x**2 + rho_squared)
+        + 2 * x * (n_1**2 * E_1 + n_2**2 * E_2)
+        + (n_1**2 * E_1**2 - n_2**2 * E_2**2 - C**2)
+    )
+    right_hand_side = -2 * C * n_2 * np.sign(E_2) * np.sqrt((x - E_2) ** 2 + rho_squared)
+    np.testing.assert_allclose(left_hand_side, right_hand_side, atol=1e-15)
+    # And the un-squared residual that the solvers actually drive to zero.
+    assert np.abs(surface.defining_equation(points)).max() < 1e-15
+
+
+def test_cartesian_oval_normal_satisfies_snells_law():
+    # The normal is the gradient of the optical path residual; check it against Snell's law directly,
+    # independently of the refraction code path.
+    n_1, n_2 = 1.0, 1.45
+    surface = RefractiveCartesianOval(
+        center=ORIGIN, outwards_normal=LEFT, E_1=0.02, E_2=0.05, n_1=n_1, n_2=n_2, diameter=6.35e-3
+    )
+    incoming = _cartesian_oval_incoming_fan(surface, half_angle=0.075)
+    outgoing = surface.propagate_ray(incoming)
+    normal = surface.normal_at_a_point(outgoing.origin)
+    np.testing.assert_allclose(np.linalg.norm(normal, axis=-1), 1.0, atol=1e-14)
+
+    # The tangential component of n*k is continuous across the surface.
+    def tangential(k_vector):
+        return k_vector - np.sum(k_vector * normal, axis=-1)[..., np.newaxis] * normal
+
+    np.testing.assert_allclose(n_1 * tangential(incoming.k_vector), n_2 * tangential(outgoing.k_vector), atol=1e-14)
+
+
+def test_cartesian_oval_departs_from_its_matching_sphere():
+    # The oval is not secretly its own vertex sphere: at this numerical aperture that sphere shows plain
+    # spherical aberration, so the higher-order shape is doing real work.
+    n_1, n_2, E_1, E_2 = 1.0, 1.5, 1.0, 1.0
+    oval = RefractiveCartesianOval(
+        center=ORIGIN, outwards_normal=LEFT, E_1=E_1, E_2=E_2, n_1=n_1, n_2=n_2, diameter=0.4
+    )
+    matching_sphere = SphericalRefractiveSurface(
+        radius=oval.radius,
+        outwards_normal=LEFT,
+        center=ORIGIN,
+        n_1=n_1,
+        n_2=n_2,
+        curvature_sign=oval.curvature_sign,
+    )
+    fan = _cartesian_oval_incoming_fan(oval, half_angle=0.14)
+    assert _distance_from_point_to_ray_lines(oval.propagate_ray(fan), oval.focus_2).max() < 1e-12
+    sphere_misses = _distance_from_point_to_ray_lines(matching_sphere.propagate_ray(fan), oval.focus_2)
+    assert np.nanmax(sphere_misses) > 1e-4
+
+
+def test_cartesian_oval_beats_a_fitted_polynomial_asphere():
+    # The reason this surface type exists. An AsphericRefractiveSurface can only approximate the perfect
+    # profile with a truncated even polynomial; fitting one to the oval's own sag - with as many
+    # coefficients as the lens in test_aspheric_lens - still leaves a focus residual many orders of
+    # magnitude above the oval's, which is exact by construction.
+    n_1, n_2, E_1, E_2 = 1.0, 1.5, 1.0, 1.0
+    diameter = 0.4
+    oval = RefractiveCartesianOval(
+        center=ORIGIN, outwards_normal=LEFT, E_1=E_1, E_2=E_2, n_1=n_1, n_2=n_2, diameter=diameter
+    )
+
+    rho = np.linspace(0, diameter / 2, 400)
+    polynomial_coefficients = np.polyfit(rho**2, oval.local_sag(rho), 4)[::-1]
+    polynomial_coefficients[0] = 0.0  # the profile passes through the vertex
+    fitted_asphere = AsphericRefractiveSurface(
+        center=ORIGIN,
+        outwards_normal=LEFT,
+        polynomial_coefficients=polynomial_coefficients,
+        n_1=n_1,
+        n_2=n_2,
+        curvature_sign=oval.curvature_sign,
+        diameter=diameter,
+    )
+    # The fit really is a good one - this is not a straw man.
+    assert np.abs(Polynomial(polynomial_coefficients)(rho**2) - oval.local_sag(rho)).max() < 1e-6
+
+    fan = _cartesian_oval_incoming_fan(oval, half_angle=0.14)
+    oval_misses = _distance_from_point_to_ray_lines(oval.propagate_ray(fan), oval.focus_2)
+    asphere_misses = _distance_from_point_to_ray_lines(fitted_asphere.propagate_ray(fan), oval.focus_2)
+    assert oval_misses.max() < 1e-12
+    assert np.nanmax(asphere_misses) > 1e-7
+    assert np.nanmax(asphere_misses) > 1e6 * oval_misses.max()
+
+
+def test_cartesian_oval_inverse():
+    surface = RefractiveCartesianOval(
+        center=np.array([0.1, 0.0, 0.0]),
+        outwards_normal=LEFT,
+        E_1=0.02,
+        E_2=0.05,
+        n_1=1.0,
+        n_2=1.45,
+        diameter=6.35e-3,
+        name="oval",
+    )
+    inverted = surface.inverse
+
+    # Same shape in space, opposite illumination.
+    np.testing.assert_allclose(inverted.center, surface.center, atol=1e-15)
+    np.testing.assert_allclose(inverted.outwards_normal, surface.outwards_normal, atol=1e-15)
+    np.testing.assert_allclose(inverted.origin, surface.origin, atol=1e-15)
+    assert np.isclose(inverted.radius, surface.radius)
+    assert inverted.curvature_sign == -surface.curvature_sign
+    # The foci swap roles without moving.
+    np.testing.assert_allclose(inverted.focus_1, surface.focus_2, atol=1e-15)
+    np.testing.assert_allclose(inverted.focus_2, surface.focus_1, atol=1e-15)
+    assert (inverted.n_1, inverted.n_2) == (surface.n_2, surface.n_1)
+
+    # Tracing the inverse focuses just as exactly, and inverting twice is the identity.
+    outgoing = inverted.propagate_ray(_cartesian_oval_incoming_fan(inverted, half_angle=0.05))
+    assert np.all(_distance_from_point_to_ray_lines(outgoing, inverted.focus_2) < 1e-15)
+    assert surfaces_are_equivalent(surface, inverted.inverse)
+
+
+def test_cartesian_oval_paraxial_agrees_with_the_matching_sphere():
+    n_1, n_2, E_1, E_2 = 1.0, 1.45, 0.02, 0.05
+    surface = RefractiveCartesianOval(
+        center=np.array([0.1, 0.0, 0.0]), outwards_normal=LEFT, E_1=E_1, E_2=E_2, n_1=n_1, n_2=n_2, diameter=6.35e-3
+    )
+    # The vertex radius is the textbook paraxial refraction result for these conjugates.
+    assert np.isclose(surface.radius, abs((n_2 - n_1) / (n_1 / E_1 + n_2 / E_2)))
+
+    matching_sphere = SphericalRefractiveSurface(
+        radius=surface.radius,
+        outwards_normal=LEFT,
+        center=surface.center,
+        n_1=n_1,
+        n_2=n_2,
+        curvature_sign=surface.curvature_sign,
+    )
+    np.testing.assert_allclose(
+        surface.ABCD_matrix(cos_theta_incoming=np.array(1.0)),
+        matching_sphere.ABCD_matrix(cos_theta_incoming=np.array(1.0)),
+    )
+    # Close to the axis the exact intersection converges onto the sphere's.
+    for height, tolerance in ((1e-6, 1e-9), (1e-5, 1e-8)):
+        ray = Ray(origin=np.array([0.0, height, 0.0]), k_vector=np.array([1.0, 0.0, 0.0]), n=n_1)
+        np.testing.assert_allclose(
+            surface.find_intersection_with_ray_exact(ray),
+            matching_sphere.find_intersection_with_ray_exact(ray),
+            atol=tolerance,
+        )
+
+
+def test_cartesian_oval_ray_shapes_and_aperture():
+    surface = RefractiveCartesianOval(
+        center=ORIGIN, outwards_normal=LEFT, E_1=0.02, E_2=0.05, n_1=1.0, n_2=1.45, diameter=6.35e-3
+    )
+    # A single ray keeps the bare (3,) shape, and a grid of rays keeps its leading shape.
+    single = Ray(origin=np.array([-0.01, 1e-3, 0.0]), k_vector=np.array([1.0, 0.0, 0.0]), n=1.0)
+    assert surface.find_intersection_with_ray_exact(single).shape == (3,)
+
+    grid_origin = np.zeros((3, 4, 3))
+    grid_origin[..., 0] = -0.01
+    grid_origin[..., 1] = np.linspace(-1e-3, 1e-3, 12).reshape(3, 4)
+    grid_k_vector = np.zeros((3, 4, 3))
+    grid_k_vector[..., 0] = 1.0
+    grid = Ray(origin=grid_origin, k_vector=grid_k_vector, n=1.0)
+    intersections = surface.find_intersection_with_ray_exact(grid)
+    assert intersections.shape == (3, 4, 3)
+    assert np.all(np.isfinite(intersections))
+    assert surface.normal_at_a_point(intersections).shape == (3, 4, 3)
+
+    # A ray outside the clear aperture misses, and shows up as nan rather than as a spurious hit.
+    heights = np.array([3.0e-3, 4.0e-3])  # the aperture radius is 3.175e-3
+    outside = Ray(
+        origin=np.stack([np.full_like(heights, -0.01), heights, np.zeros_like(heights)], axis=-1),
+        k_vector=np.tile(np.array([1.0, 0.0, 0.0]), (2, 1)),
+        n=1.0,
+    )
+    hit, miss = surface.find_intersection_with_ray_exact(outside)
+    assert np.all(np.isfinite(hit))
+    assert np.all(np.isnan(miss))
+
+
+def test_cartesian_oval_init_syntax_round_trip():
+    surface = RefractiveCartesianOval(
+        center=np.array([0.1, 0.0, 0.0]),
+        outwards_normal=LEFT,
+        E_1=0.02,
+        E_2=0.05,
+        n_1=1.0,
+        n_2=1.45,
+        diameter=6.35e-3,
+        material_properties=MaterialProperties(refractive_index=1.45),
+        name="round trip oval",
+    )
+    assert "RefractiveCartesianOval(" in surface.init_syntax
+    assert surfaces_are_equivalent(surface, eval(surface.init_syntax))
+    # An inverted oval round-trips too - its curvature_sign is the one that differs from the default.
+    assert surfaces_are_equivalent(surface.inverse, eval(surface.inverse.init_syntax))
+    # The bare geometry class carries n_1/n_2 as well, since they define its shape.
+    bare = CartesianOval(center=ORIGIN, outwards_normal=LEFT, E_1=0.02, E_2=0.05, n_1=1.0, n_2=1.45, diameter=6.35e-3)
+    assert surfaces_are_equivalent(bare, eval(bare.init_syntax))
+
+
+def test_cartesian_oval_floating_center():
+    # Same floating-position convention as the other surface types: center may be omitted, and the shape
+    # (unlike the pose) is mandatory.
+    surface = RefractiveCartesianOval(outwards_normal=RIGHT, E_1=0.02, E_2=0.05, n_1=1.0, n_2=1.45, diameter=6.35e-3)
+    assert surface.center.shape == (3,) and np.all(np.isnan(surface.center))
+    assert not surface.positions_defined
+    # Intrinsic geometry is available even while floating.
+    assert np.isfinite(surface.radius) and np.isfinite(surface.thickness_center)
+
+    surface.center = np.array([0.01, 0.0, 0.0])
+    assert surface.positions_defined
+    surface.center = None
+    assert not surface.positions_defined
+
+    with pytest.raises(TypeError):
+        RefractiveCartesianOval(outwards_normal=RIGHT)
+
+
+def test_cartesian_oval_relative_center_resolution():
+    # An imaginary center is a relative offset from the previous surface, resolved when the containing
+    # OpticalSystem is placed.
+    T_c = 3.4e-3
+    flat = FlatRefractiveSurface(
+        outwards_normal=LEFT, n_1=1, n_2=1.45, diameter=6.35e-3, name="floating oval lens - flat side"
+    )
+    oval = RefractiveCartesianOval(
+        center=T_c * RIGHT * 1j,
+        outwards_normal=RIGHT,
+        E_1=0.02,
+        E_2=0.05,
+        n_1=1.45,
+        n_2=1,
+        diameter=6.35e-3,
+        name="floating oval lens - oval side",
+    )
+    lens = OpticalSystem(elements=[flat, oval], use_paraxial_ray_tracing=True)
+    assert not lens.positions_defined
+
+    anchor = np.array([0.01, 0.0, 0.0])
+    placed = lens.to_position(anchor)
+    assert placed.positions_defined
+    np.testing.assert_allclose(placed.surfaces[0].center, anchor, atol=1e-12)
+    np.testing.assert_allclose(placed.surfaces[1].center, anchor + T_c * RIGHT, atol=1e-12)
+    assert not lens.positions_defined
+
+
+def test_cartesian_oval_rejects_inconsistent_parameters():
+    base = dict(center=ORIGIN, outwards_normal=LEFT, n_1=1.0, n_2=1.45, diameter=6.35e-3)
+    with pytest.raises(ValueError, match="non-zero"):
+        RefractiveCartesianOval(E_1=0.0, E_2=0.05, **base)
+    with pytest.raises(ValueError, match="must differ"):
+        RefractiveCartesianOval(
+            center=ORIGIN, outwards_normal=LEFT, n_1=1.45, n_2=1.45, E_1=0.02, E_2=0.05, diameter=6.35e-3
+        )
+    # curvature_sign is fixed by the optics, not free as it is for an asphere.
+    with pytest.raises(ValueError, match="contradicts the optics"):
+        RefractiveCartesianOval(E_1=0.02, E_2=0.05, curvature_sign=CurvatureSigns.concave, **base)
+    # An afocal oval has a flat vertex, so its illumination direction has to be stated explicitly.
+    with pytest.raises(ValueError, match="flat"):
+        RefractiveCartesianOval(E_1=0.02, E_2=-0.02 * 1.45, **base)
+    afocal = RefractiveCartesianOval(E_1=0.02, E_2=-0.02 * 1.45, curvature_sign=CurvatureSigns.convex, **base)
+    assert np.isinf(afocal.radius)

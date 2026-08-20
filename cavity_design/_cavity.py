@@ -85,6 +85,8 @@ from ._surfaces import (
     AsphericSurface,
     FlatRefractiveSurface,
     AsphericRefractiveSurface,
+    CartesianOval,
+    RefractiveCartesianOval,
     generate_aspheric_lens_params,
     generate_aspheric_lens,
     surfaces_are_equivalent,
@@ -4313,8 +4315,10 @@ def calculate_incidence_angle(surface: Surface, mode_parameters: ModeParameters)
     # And a demonstration that it works is here: https://www.desmos.com/calculator/qk6yradzbn
     if isinstance(surface, FlatSurface):
         return np.arccos(surface.outwards_normal @ mode_parameters.k_vector)
-    if isinstance(surface, AsphericSurface):
-        raise NotImplementedError("Calculate incidence angle for aspheric surfaces is not implemented yet.")
+    if isinstance(surface, (AsphericSurface, CartesianOval)):
+        raise NotImplementedError(
+            "Calculate incidence angle for aspheric and Cartesian-oval surfaces is not implemented yet."
+        )
     optical_axis = surface.outwards_normal
     surface_center_to_waist_position_vector = mode_parameters.center[0, :] - surface.center
     w_0, z_R, R, z_0, z_s = (
@@ -5016,13 +5020,13 @@ def generate_mirror_lens_mirror_cavity_textual_summary(
             - cavity.mode_parameters[short_arm_index].center[0, 0]
         )
         if NA_angles is None:
-            if not isinstance(cavity.surfaces[1], AsphericSurface):
+            if not isinstance(cavity.surfaces[1], (AsphericSurface, CartesianOval)):
                 angle_left = cavity.arms[short_arm_index].calculate_incidence_angle(
                     surface_index=lens_long_arm_surface_in_arm_index
                 )
             else:
                 angle_left = np.nan
-            if not isinstance(cavity.surfaces[2], AsphericSurface):
+            if not isinstance(cavity.surfaces[2], (AsphericSurface, CartesianOval)):
                 angle_right = cavity.arms[long_arm_index].calculate_incidence_angle(
                     surface_index=lens_short_arm_surface_in_arm_index
                 )
