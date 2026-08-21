@@ -46,6 +46,11 @@ from cavity_design import (
     SphericalRefractiveSurface,
     LEFT,
     normalize_vector,
+    cartesian_oval_longitudinal_expansion,
+    PHYSICAL_SIZES_DICT,
+    generate_cartesian_oval_lens,
+    cartesian_oval_lens_intermediate_image_distance,
+    CARTESIAN_OVAL_LENS_SPLITS,
 )
 
 
@@ -2879,3 +2884,402 @@ def test_cartesian_oval_rejects_inconsistent_parameters():
         RefractiveCartesianOval(E_1=0.02, E_2=-0.02 * 1.45, **base)
     afocal = RefractiveCartesianOval(E_1=0.02, E_2=-0.02 * 1.45, curvature_sign=CurvatureSigns.convex, **base)
     assert np.isinf(afocal.radius)
+
+@pytest.mark.parametrize("n_1, n_2, E_1, E_2", CARTESIAN_OVAL_CONJUGATES)
+@pytest.mark.parametrize("method", ["taylor", "fit"])
+def test_cartesian_oval_sag_expansion_matches_the_exact_sag(n_1, n_2, E_1, E_2, method):
+    # The polynomial coefficients must reproduce the oval's own local_sag, and do so better and better as the
+    # degree grows - that is the whole contract of the expansion.
+    # The aperture is set as a fraction of the vertex radius rather than to a fixed size, so that every conjugate
+    # pair here is sampled at a comparable steepness - and well inside the radius of convergence of the series.
+    radius = abs(signed_vertex_radius_of_a_cartesian_oval(n_1=n_1, n_2=n_2, E_1=E_1, E_2=E_2))
+    oval = CartesianOval(center=ORIGIN, outwards_normal=LEFT, E_1=E_1, E_2=E_2, n_1=n_1, n_2=n_2, diameter=0.4 * radius)
+    rho = np.linspace(0, oval.diameter / 2, 41)
+    exact_sag = oval.local_sag(rho)
+
+    errors = []
+    for degree in (2, 4, 6, 10):
+        coefficients = oval.sag_polynomial_coefficients(degree=degree, method=method)
+        assert len(coefficients) == degree // 2 + 1
+        assert coefficients[0] == 0, "the vertex of the expansion must sit on the oval's center"
+        errors.append(np.max(np.abs(Polynomial(coefficients)(rho**2) - exact_sag)))
+
+    assert np.all(np.diff(errors) < 0), f"the expansion did not improve with degree: {errors}"
+    assert errors[-1] < 1e-5 * radius
+
+
+@pytest.mark.parametrize("n_1, n_2, E_1, E_2", CARTESIAN_OVAL_CONJUGATES)
+def test_cartesian_oval_expansion_starts_at_the_matching_sphere(n_1, n_2, E_1, E_2):
+    # The quadratic term of any sag polynomial is 1/(2R), so the leading term of the expansion has to be the
+    # sphere that osculates the oval at its vertex - and hence the asphere built from it reports the same radius.
+    oval = CartesianOval(center=ORIGIN, outwards_normal=LEFT, E_1=E_1, E_2=E_2, n_1=n_1, n_2=n_2, diameter=0.5)
+    longitudinal = cartesian_oval_longitudinal_expansion(n_1=n_1, n_2=n_2, E_1=E_1, E_2=E_2, n_coefficients=4)
+    signed_radius = signed_vertex_radius_of_a_cartesian_oval(n_1=n_1, n_2=n_2, E_1=E_1, E_2=E_2)
+
+    assert longitudinal[0] == 0
+    assert np.isclose(longitudinal[1], 1 / (2 * signed_radius))
+    assert np.isclose(oval.sag_polynomial_coefficients(degree=6)[1], 1 / (2 * oval.radius))
+
+
+def test_aplanatic_cartesian_oval_expands_into_a_sphere():
+    # When C == 0 the defining equation collapses to L_1/L_2 = const - a sphere of Apollonius, i.e. the aplanatic
+    # points. The expansion then has to come out as the sphere's own Taylor series, coefficient for coefficient.
+    # This is also the case that a solve based on the squared (quartic) form of the oval would divide by zero on.
+    n_1, n_2, E_1 = 1.0, 1.5, 0.03
+    E_2 = -n_1 * E_1 / n_2  # makes C = n_1*E_1 + n_2*E_2 vanish
+    oval = CartesianOval(center=ORIGIN, outwards_normal=LEFT, E_1=E_1, E_2=E_2, n_1=n_1, n_2=n_2, diameter=0.012)
+    assert oval.C == 0
+
+    sphere = AsphericRefractiveSurface.pseudo_spherical(
+        radius=oval.radius,
+        outwards_normal=LEFT,
+        center=ORIGIN,
+        diameter=oval.diameter,
+        curvature_sign=oval.curvature_sign,
+    )
+    assert np.allclose(oval.sag_polynomial_coefficients(degree=10), sphere.polynomial.coef, rtol=1e-11, atol=0)
+
+
+def test_cartesian_oval_sag_expansion_rejects_a_bad_degree():
+    oval = CartesianOval(center=ORIGIN, outwards_normal=LEFT, E_1=1.0, E_2=2.0, n_1=1.0, n_2=1.5, diameter=0.5)
+    for degree in (0, 1, 5, -4):
+        with pytest.raises(ValueError, match="degree"):
+            oval.sag_polynomial_coefficients(degree=degree)
+    with pytest.raises(ValueError, match="method"):
+        oval.sag_polynomial_coefficients(degree=6, method="chebyshev")
+
+
+@pytest.mark.parametrize("method", ["taylor", "fit"])
+def test_pseudo_cartesian_oval_converges_to_the_oval(method):
+    # The point of the factory: as the degree grows the asphere's focus approaches the oval's exact one, and even
+    # at a modest degree it beats the sphere that matches the same vertex.
+    oval = RefractiveCartesianOval(
+        center=ORIGIN, outwards_normal=LEFT, E_1=0.03, E_2=0.06, n_1=1.0, n_2=1.5, diameter=0.01
+    )
+    incoming = _cartesian_oval_incoming_fan(oval, half_angle=0.15, n_rays=15)
+
+    def worst_focus_miss(surface):
+        outgoing = surface.propagate_ray(incoming)
+        assert np.all(np.isfinite(outgoing.origin)), "some rays failed to intersect the surface"
+        return _distance_from_point_to_ray_lines(outgoing, oval.focus_2).max()
+
+    misses = [
+        worst_focus_miss(AsphericRefractiveSurface.pseudo_cartesian_oval(oval, degree=degree, expansion_method=method))
+        for degree in (2, 4, 6, 10)
+    ]
+    assert np.all(np.diff(misses) < 0), f"the asphere did not improve with degree: {misses}"
+    assert worst_focus_miss(oval) < 1e-12 < misses[-1], "the oval itself must still be the exact one"
+
+    matching_sphere = AsphericRefractiveSurface.pseudo_spherical(
+        radius=oval.radius,
+        outwards_normal=LEFT,
+        center=ORIGIN,
+        n_1=oval.n_1,
+        n_2=oval.n_2,
+        diameter=oval.diameter,
+        curvature_sign=oval.curvature_sign,
+    )
+    assert misses[-1] < 0.01 * worst_focus_miss(matching_sphere)
+
+
+def test_pseudo_cartesian_oval_takes_its_parameters_from_the_oval():
+    material_properties = PHYSICAL_SIZES_DICT["material_properties_fused_silica"]
+    oval = RefractiveCartesianOval(
+        center=np.array([0.011, -0.004, 0.0]),
+        outwards_normal=normalize_vector(np.array([-1.0, 0.3, 0.0])),
+        E_1=0.02,
+        E_2=0.05,
+        n_1=1.0,
+        n_2=1.45,
+        diameter=6.35e-3,
+        name="oval",
+        material_properties=material_properties,
+    )
+    asphere = AsphericRefractiveSurface.pseudo_cartesian_oval(oval, degree=6)
+
+    assert np.allclose(asphere.center, oval.center)
+    assert np.allclose(asphere.outwards_normal, oval.outwards_normal)
+    assert asphere.curvature_sign == oval.curvature_sign  # derived from the optics, never guessed
+    assert np.isclose(asphere.radius, oval.radius)
+    assert (asphere.n_1, asphere.n_2) == (oval.n_1, oval.n_2)
+    assert asphere.diameter == oval.diameter and asphere.name == oval.name
+    assert asphere.material_properties is material_properties
+
+    # The same surface described by its parameters instead of by an object.
+    from_parameters = AsphericRefractiveSurface.pseudo_cartesian_oval(
+        E_1=oval.E_1,
+        E_2=oval.E_2,
+        n_1=oval.n_1,
+        n_2=oval.n_2,
+        center=oval.center,
+        outwards_normal=oval.outwards_normal,
+        diameter=oval.diameter,
+        degree=6,
+    )
+    assert np.allclose(from_parameters.polynomial.coef, asphere.polynomial.coef)
+
+    # An explicit argument overrides the oval it came from.
+    overridden = AsphericRefractiveSurface.pseudo_cartesian_oval(oval, degree=6, n_2=1.6, name="overridden")
+    assert (overridden.n_2, overridden.name) == (1.6, "overridden")
+    assert not np.allclose(overridden.polynomial.coef, asphere.polynomial.coef)
+
+
+def test_pseudo_cartesian_oval_adds_corrections_on_top():
+    oval = CartesianOval(center=ORIGIN, outwards_normal=LEFT, E_1=0.03, E_2=0.06, n_1=1.0, n_2=1.5, diameter=0.01)
+    corrections = [0, 0, 1.5e3, -2e5]
+    asphere = AsphericRefractiveSurface.pseudo_cartesian_oval(oval, degree=10, polynomial_coefficients=corrections)
+
+    expected = oval.sag_polynomial_coefficients(degree=10) + np.pad(corrections, (0, 6 - len(corrections)))
+    assert np.allclose(asphere.polynomial.coef, expected)
+
+    # Corrections beyond the requested degree are trimmed, with a warning - as in pseudo_spherical.
+    with pytest.warns(UserWarning, match="trimming"):
+        trimmed = AsphericRefractiveSurface.pseudo_cartesian_oval(oval, degree=4, polynomial_coefficients=corrections)
+    assert np.allclose(trimmed.polynomial.coef, oval.sag_polynomial_coefficients(degree=4) + corrections[:3])
+
+
+def test_pseudo_cartesian_oval_of_a_floating_oval():
+    # A floating oval has no center yet; the expansion is pure local geometry, so it must still work.
+    oval = CartesianOval(outwards_normal=LEFT, E_1=0.03, E_2=0.06, n_1=1.0, n_2=1.5, diameter=0.01)
+    asphere = AsphericRefractiveSurface.pseudo_cartesian_oval(oval, degree=6)
+    assert not asphere.positions_defined
+    assert np.allclose(asphere.polynomial.coef, oval.sag_polynomial_coefficients(degree=6))
+
+    asphere.center = np.array([0.002, 0.0, 0.0])
+    assert asphere.positions_defined
+
+
+def test_pseudo_spherical_from_a_spherical_surface():
+    material_properties = PHYSICAL_SIZES_DICT["material_properties_fused_silica"]
+    sphere = SphericalRefractiveSurface(
+        radius=8e-3,
+        outwards_normal=LEFT,
+        center=np.array([1e-3, 0.0, 0.0]),
+        n_1=1.0,
+        n_2=1.45,
+        curvature_sign=CurvatureSigns.convex,
+        diameter=7.75e-3,
+        name="a catalog surface",
+        material_properties=material_properties,
+    )
+    asphere = AsphericRefractiveSurface.pseudo_spherical(sphere)
+
+    # Identical to spelling every parameter out by hand, which is how this was called before.
+    by_hand = AsphericRefractiveSurface.pseudo_spherical(
+        radius=8e-3,
+        outwards_normal=LEFT,
+        center=np.array([1e-3, 0.0, 0.0]),
+        n_1=1.0,
+        n_2=1.45,
+        curvature_sign=CurvatureSigns.convex,
+        diameter=7.75e-3,
+        name="a catalog surface",
+        material_properties=material_properties,
+    )
+    assert surfaces_are_equivalent(asphere, by_hand)
+    assert np.allclose(asphere.polynomial.coef, by_hand.polynomial.coef)
+    assert asphere.name == by_hand.name and asphere.material_properties is material_properties
+
+    # It really is the same sphere: a fan of rays hits both within the paraxial residual of the expansion.
+    ray = Ray(
+        origin=np.array([[-0.02, y, 0.0] for y in np.linspace(-2e-3, 2e-3, 9)]),
+        k_vector=np.tile(RIGHT, (9, 1)),
+        n=1.0,
+    )
+    assert np.allclose(
+        asphere.find_intersection_with_ray_exact(ray), sphere.find_intersection_with_ray_exact(ray), atol=1e-9
+    )
+
+    # An explicit argument still wins over the surface it came from.
+    overridden = AsphericRefractiveSurface.pseudo_spherical(sphere, n_2=1.6, diameter=5e-3)
+    assert (overridden.n_2, overridden.diameter) == (1.6, 5e-3)
+    assert overridden.n_1 == sphere.n_1 and overridden.curvature_sign == sphere.curvature_sign
+
+
+def test_pseudo_spherical_from_a_plain_spherical_surface():
+    # A mirror carries no refractive indices, so those fall back to their defaults rather than blowing up.
+    mirror = SphericalMirror(
+        radius=5e-3,
+        outwards_normal=LEFT,
+        center=np.array([-5e-3, 0.0, 0.0]),
+        curvature_sign=CurvatureSigns.concave,
+        diameter=7.75e-3,
+    )
+    asphere = AsphericRefractiveSurface.pseudo_spherical(mirror)
+    assert (asphere.n_1, asphere.n_2) == (1, 1)
+    assert asphere.curvature_sign == mirror.curvature_sign
+    assert np.isclose(asphere.radius, mirror.radius)
+
+
+def test_pseudo_spherical_needs_a_radius():
+    with pytest.raises(TypeError, match="radius"):
+        AsphericRefractiveSurface.pseudo_spherical(outwards_normal=LEFT, center=ORIGIN, diameter=7.75e-3)
+
+# (back_focal_length, front_focal_length, T_c, n) of a few two-oval lenses worth checking.
+CARTESIAN_OVAL_LENSES = [
+    (5e-3, 50e-3, 4e-3, 1.5),  # a fast collector: strongly asymmetric conjugates
+    (50e-3, 5e-3, 4e-3, 1.5),  # the same, run backwards
+    (8e-3, 30e-3, 6e-3, 1.45),  # a genuinely thick element
+    (12e-3, -40e-3, 3e-3, 1.5),  # a virtual image
+    (-30e-3, 20e-3, 3e-3, 1.5),  # a virtual object
+]
+
+
+def _cartesian_oval_lens_fan(lens, back_focal_length, marginal_ray_height, n_rays=15):
+    """A fan of rays leaving (or aimed at) the object point of a placed two-oval lens.
+
+    The fan is specified by the height its marginal ray reaches at the back face rather than by an angle, so that
+    lenses with very different object distances are all sampled at a comparable fraction of the clear aperture."""
+    back_surface = lens.surfaces[0]
+    optical_axis = back_surface.propagation_direction
+    transverse = np.cross(optical_axis, np.array([0.0, 0.0, 1.0]))
+    half_angle = np.arctan(marginal_ray_height / abs(back_focal_length))
+    angles = np.linspace(-half_angle, half_angle, n_rays)
+    k_vector = np.stack([np.cos(t) * optical_axis + np.sin(t) * transverse for t in angles])
+    object_point = back_surface.center - back_focal_length * optical_axis
+    if back_focal_length > 0:
+        origin = np.tile(object_point, (n_rays, 1))
+    else:  # A virtual object: the rays are intercepted on their way to it.
+        origin = object_point - 2 * abs(back_focal_length) * k_vector
+    return Ray(origin=origin, k_vector=k_vector, n=back_surface.n_1)
+
+
+def _trace_through_cartesian_oval_lens(lens, incoming):
+    inside = lens.surfaces[0].propagate_ray(incoming)
+    return inside, lens.surfaces[1].propagate_ray(inside)
+
+
+@pytest.mark.parametrize("back_focal_length, front_focal_length, T_c, n", CARTESIAN_OVAL_LENSES)
+@pytest.mark.parametrize("split", CARTESIAN_OVAL_LENS_SPLITS)
+def test_cartesian_oval_lens_images_its_conjugate_pair_exactly(back_focal_length, front_focal_length, T_c, n, split):
+    # The defining property of the element: both faces are exact ovals, so the pair is stigmatic to machine
+    # precision - and it is so for *every* split, since the split only moves the (perfect) intermediate image.
+    lens = generate_cartesian_oval_lens(
+        back_focal_length=back_focal_length,
+        front_focal_length=front_focal_length,
+        T_c=T_c,
+        n=n,
+        diameter=4e-3,
+        split=split,
+    ).to_position(ORIGIN)
+    incoming = _cartesian_oval_lens_fan(lens, back_focal_length, marginal_ray_height=0.6e-3)
+    inside, outgoing = _trace_through_cartesian_oval_lens(lens, incoming)
+    assert np.all(np.isfinite(outgoing.origin)), "some rays failed to cross the lens"
+
+    image_point = lens.surfaces[1].center + front_focal_length * lens.surfaces[1].propagation_direction
+    misses = _distance_from_point_to_ray_lines(outgoing, image_point)
+    assert np.all(misses < 1e-12), f"rays missed the image point by up to {misses.max()}"
+
+
+def test_cartesian_oval_lens_is_floating_and_placeable():
+    T_c = 4e-3
+    lens = generate_cartesian_oval_lens(back_focal_length=5e-3, front_focal_length=50e-3, T_c=T_c, n=1.5, diameter=3e-3)
+    back, front = lens.surfaces
+    assert np.all(np.isnan(back.center)), "the back face should be left undefined"
+    assert np.allclose(front.center, T_c * RIGHT * 1j), "the front face should be a relative offset of T_c"
+
+    placed = lens.to_position(ORIGIN)
+    assert np.allclose(placed.surfaces[0].center, ORIGIN)
+    assert np.allclose(placed.surfaces[1].center, T_c * RIGHT)
+    assert np.all(np.isnan(lens.surfaces[0].center)), "to_position must not mutate the original"
+    # Both faces have to be traversed in the same direction for the lens to be a lens at all.
+    assert np.allclose(placed.surfaces[0].propagation_direction, RIGHT)
+    assert np.allclose(placed.surfaces[1].propagation_direction, RIGHT)
+    assert (placed.surfaces[0].n_1, placed.surfaces[0].n_2) == (1.0, 1.5)
+    assert (placed.surfaces[1].n_1, placed.surfaces[1].n_2) == (1.5, 1.0)
+
+
+@pytest.mark.parametrize("back_focal_length, front_focal_length, T_c, n", CARTESIAN_OVAL_LENSES)
+def test_cartesian_oval_lens_split_rules(back_focal_length, front_focal_length, T_c, n):
+    K = 1 / back_focal_length - 1 / front_focal_length
+
+    def distance_of(split, thickness=T_c):
+        return cartesian_oval_lens_intermediate_image_distance(
+            back_focal_length=back_focal_length, front_focal_length=front_focal_length, T_c=thickness, split=split
+        )
+
+    assert np.isclose(distance_of("thin"), -2 / K)
+    assert np.isclose(distance_of("equal_deviation"), -(2 + T_c / front_focal_length) / K)
+
+    # equal_curvature_step is defined by a quadratic rather than a formula, so check it actually solves it.
+    a = distance_of("equal_curvature_step")
+    assert np.isclose(K * a**2 + (2 - K * T_c) * a - T_c, 0, atol=1e-12 * abs(a))
+
+    # All three coincide in the thin limit, which is the only regime where the thickness cannot matter.
+    thin_limit = [distance_of(split, thickness=0.0) for split in CARTESIAN_OVAL_LENS_SPLITS]
+    assert np.allclose(thin_limit, -2 / K)
+
+
+@pytest.mark.parametrize("back_focal_length, front_focal_length, T_c, n", CARTESIAN_OVAL_LENSES[:3])
+def test_equal_deviation_split_balances_the_incidence_angles(back_focal_length, front_focal_length, T_c, n):
+    # The reason to prefer this split: the two faces see the same angle of incidence, which is what minimises the
+    # larger of the two - and with it the Fresnel loss and the margin before total internal reflection on the way
+    # out. The claim is paraxial, so it is checked with a narrow fan.
+    def air_side_incidence_angles(split):
+        lens = generate_cartesian_oval_lens(
+            back_focal_length=back_focal_length,
+            front_focal_length=front_focal_length,
+            T_c=T_c,
+            n=n,
+            diameter=6e-3,
+            split=split,
+        ).to_position(ORIGIN)
+        incoming = _cartesian_oval_lens_fan(lens, back_focal_length, marginal_ray_height=0.2e-3)
+        inside, outgoing = _trace_through_cartesian_oval_lens(lens, incoming)
+        assert np.all(np.isfinite(outgoing.origin))
+
+        def angle(surface, ray, hit_point):
+            cosine = np.abs(np.sum(surface.normal_at_a_point(hit_point) * ray.k_vector, axis=-1))
+            return np.max(np.arccos(np.clip(cosine, -1, 1)))
+
+        at_the_back = angle(lens.surfaces[0], incoming, inside.origin)  # already outside the glass
+        in_the_glass = angle(lens.surfaces[1], inside, outgoing.origin)
+        return at_the_back, np.arcsin(np.clip(n * np.sin(in_the_glass), -1, 1))  # refract back out to air
+
+    balanced = air_side_incidence_angles("equal_deviation")
+    assert np.isclose(balanced[0], balanced[1], rtol=0.02), f"angles not balanced: {balanced}"
+    for split in ("thin", "equal_curvature_step"):
+        assert max(balanced) < 0.99 * max(air_side_incidence_angles(split)), f"{split} beat equal_deviation"
+
+
+def test_cartesian_oval_lens_accepts_an_explicit_split():
+    shared = dict(back_focal_length=5e-3, front_focal_length=50e-3, T_c=4e-3, n=1.5, diameter=3e-3)
+    chosen = -13e-3
+    lens = generate_cartesian_oval_lens(intermediate_image_distance=chosen, **shared).to_position(ORIGIN)
+    assert np.isclose(lens.surfaces[0].E_2, chosen)
+    assert np.isclose(lens.surfaces[1].E_1, shared["T_c"] - chosen)
+    # The two faces must agree on where the intermediate image is, in absolute terms.
+    assert np.allclose(lens.surfaces[0].focus_2, lens.surfaces[1].focus_1)
+    # ... and it is still a perfect imager, which is the whole point of the split being free.
+    incoming = _cartesian_oval_lens_fan(lens, shared["back_focal_length"], marginal_ray_height=0.5e-3)
+    _, outgoing = _trace_through_cartesian_oval_lens(lens, incoming)
+    image_point = lens.surfaces[1].center + shared["front_focal_length"] * RIGHT
+    assert np.all(_distance_from_point_to_ray_lines(outgoing, image_point) < 1e-12)
+
+
+def test_cartesian_oval_lens_rejects_impossible_designs():
+    shared = dict(back_focal_length=5e-3, front_focal_length=50e-3, T_c=2e-3, n=1.5, diameter=2e-3)
+    with pytest.raises(ValueError, match="T_c"):
+        generate_cartesian_oval_lens(**{**shared, "T_c": 0.0})
+    with pytest.raises(ValueError, match="differ"):
+        generate_cartesian_oval_lens(**{**shared, "n": 1.0})
+    with pytest.raises(ValueError, match="diameter"):
+        generate_cartesian_oval_lens(**{**shared, "diameter": 0.0})
+    with pytest.raises(ValueError, match="split"):
+        generate_cartesian_oval_lens(**shared, split="whatever_feels_right")
+    # Equal conjugates leave the beam collimated in the glass, which no finite-conjugate oval can express.
+    with pytest.raises(ValueError, match="collimated"):
+        generate_cartesian_oval_lens(**{**shared, "front_focal_length": shared["back_focal_length"]})
+    # An aperture the oval never reaches.
+    with pytest.raises(ValueError, match="clear aperture"):
+        generate_cartesian_oval_lens(**{**shared, "diameter": 40e-3})
+
+
+def test_cartesian_oval_local_sag_is_nan_past_the_widest_point():
+    # An oval closes on itself, so beyond its widest point there is no sag to report. The Newton iteration would
+    # happily return an arbitrary number there, so the result is verified against the defining equation.
+    oval = CartesianOval(center=ORIGIN, outwards_normal=LEFT, E_1=5e-3, E_2=50e-3, n_1=1.0, n_2=1.5, diameter=2e-3)
+    rho = np.array([0.0, 0.5e-3, 1e-3, 1.0, 1e3])
+    sag = oval.local_sag(rho)
+    assert np.all(np.isfinite(sag[:3])) and sag[0] == 0
+    assert np.all(np.isnan(sag[3:])), f"unreachable radii should be nan, got {sag[3:]}"

@@ -35,6 +35,24 @@ re-derive from library source.
 	  from the vertex along the propagation direction, plus `n_1`/`n_2` - which set its *shape*, not just its
 	  refraction. `E > 0` is a real object/image, `E < 0` a virtual one. Its `curvature_sign` and `radius` are
 	  derived from those four numbers, so `curvature_sign` is not free to choose as it is for an asphere.
+	- Two factories build an `AsphericRefractiveSurface` out of another shape, both of them accepting extra
+	  `polynomial_coefficients` to add on top of the base profile - which is how a non-editable exact shape becomes
+	  a starting point for a design that is then tuned by hand:
+		- `AsphericRefractiveSurface.pseudo_spherical(radius_or_spherical_surface, ...)` expands a sphere. Passing a
+		  whole `SphericalRefractiveSurface` takes its radius, pose, curvature sign, glass and aperture from it.
+		- `AsphericRefractiveSurface.pseudo_cartesian_oval(oval_or_E_1_E_2_etc, degree=..., ...)` expands a
+		  Cartesian oval to the given power of `rho`, via `CartesianOval.sag_polynomial_coefficients`. Use
+		  `expansion_method="fit"` (least squares over the clear aperture) rather than the default
+		  `"taylor"` (about the vertex) when the aperture is a large fraction of the vertex radius.
+		- In both, an argument passed explicitly overrides the one carried by the source surface.
+	- `generate_cartesian_oval_lens(back_focal_length, front_focal_length, T_c, n, diameter, ...)` (in `_cavity.py`)
+	  returns a **floating** two-face thick lens as an `OpticalSystem`, stigmatic for that conjugate pair to machine
+	  precision. `back`/`front` here mean first/second face along the light (the repo's sense, opposite to ISO), and
+	  they are vertex-to-conjugate-point distances, not focal lengths in the strict sense. Both faces are ovals, so
+	  the lens images perfectly for *any* division of the work between them; the `split` argument only sets the
+	  angles of incidence. `"equal_deviation"` (the default) balances the two angles and is the one to use -
+	  `"thin"` and `"equal_curvature_step"` are there for comparison. Pass `intermediate_image_distance` to override
+	  the split by hand. See `cartesian_oval_lens_intermediate_image_distance` for the formulas.
 	- **Important:** the `surface.curvature_sign` (`CurvatureSigns.convex` (1), `CurvatureSigns.concave` (-1), `CurvatureSigns.flat` (0)) is defined with respect to the incoming ray, not with respect to the higher-refractive-index-side. For example if a lens is biconvex, then the first `spherical_surface` will have `spherical_surface.curvature_sign == CurvatureSigns.convex` , while the second one (to which the ray comes in from the inside of the lens will have `spherical_surface.curvature_sign == CurvatureSigns.concave`). This is done to ease with the intersection calculation of the surface with the ray.
 - **Ray, RaySequence** in (`_rays.py`):
 	- `Ray` is a set of rays, with `origin, length, k_vector` (**normalized** unit vector, direction of the ray), and refractive index `n`. `origin and k_vector` can have any number of dimensions, where the last one is always 3 - for the 3 spatial dimensions.
