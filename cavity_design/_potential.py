@@ -1008,6 +1008,31 @@ def analyze_potential_given_cavity(
     return results_dict
 
 
+def align_zeros_of_twin_y_axes(primary, secondary):
+    """Put y=0 of `primary` at the same height in the figure as y=0 of `secondary`.
+
+    The two axes of a twinx pair autoscale independently, so their zeros land wherever each one's data happens to
+    put them. On the wavefront plot that means the residual curve and the intensity profile can both read zero and
+    still be drawn at different heights, which invites reading an offset that is not there.
+
+    The secondary axis keeps its own limits - the relative intensity has a meaningful 0..1 range - and the
+    primary's are only ever widened, never narrowed, so no data is cut off. A no-op if the secondary's zero is not
+    inside its own view, since then there is nothing to line up against."""
+    low_secondary, high_secondary = secondary.get_ylim()
+    if not np.all(np.isfinite([low_secondary, high_secondary])) or high_secondary <= low_secondary:
+        return
+    zero_fraction = (0.0 - low_secondary) / (high_secondary - low_secondary)
+    if not 0 < zero_fraction < 1:
+        return
+
+    low_primary, high_primary = primary.get_ylim()
+    # The smallest window that still contains the current one and holds 0 at `zero_fraction` of its height.
+    span = max(max(high_primary, 0.0) / (1 - zero_fraction), -min(low_primary, 0.0) / zero_fraction)
+    if not np.isfinite(span) or span <= 0:
+        return
+    primary.set_ylim(-zero_fraction * span, (1 - zero_fraction) * span)
+
+
 def plot_results(
     results_dict,
     far_away_plane: bool = True,
@@ -1226,6 +1251,9 @@ def plot_results(
             handles.append(legend_line)
             ax2.set_ylabel("Relative intensity (a.u.)")
             ax2.set_ylim(-0.03, 1.03)
+            # Everything drawn on ax[0] is in place by now, so its autoscaled limits are final and can be widened
+            # to bring its zero onto the same line as the intensity axis's zero.
+            align_zeros_of_twin_y_axes(ax[0], ax2)
 
         zero_derivative_point_plot = np.nan if zero_derivative_point is None else zero_derivative_point
         ax[0].axvline(
