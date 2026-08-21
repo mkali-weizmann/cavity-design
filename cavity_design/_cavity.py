@@ -5543,15 +5543,31 @@ def generate_aspheric_lens_from_polynomial(
     return optical_system
 
 
+def lensmaker_radius_of_a_surface(surface, fallback_curvature_sign: int) -> float:
+    """One surface's radius of curvature in the lensmaker sign convention: positive when its center of curvature
+    lies downstream of the vertex, along the direction the light travels.
+
+    `radius` is stored as a non-negative magnitude and which way the surface bends lives in `curvature_sign`
+    (taken with respect to the incoming ray), so the signed radius is simply their product - the same `R_signed`
+    that SphericalRefractiveSurface.ABCD_matrix works with. For an ordinary biconvex lens this returns +R for the
+    first surface and -R for the second, which is what the callers below used to hard-code; a meniscus, where both
+    faces bend the same way, is where the hard-coded version got it wrong. `fallback_curvature_sign` covers a flat
+    surface, which carries no curvature sign of its own (and for which 1/R is zero either way)."""
+    curvature_sign = getattr(surface, "curvature_sign", None)
+    if curvature_sign is None:
+        curvature_sign = fallback_curvature_sign
+    return surface.radius * curvature_sign
+
+
 def back_focal_length_of_lens_object(lens_object: Union[OpticalSystem, List[OpticalSurfaceParams]]) -> float:
     if isinstance(lens_object, OpticalSystem):
-        R_1 = lens_object[0].radius
-        R_2 = -lens_object[1].radius
+        R_1 = lensmaker_radius_of_a_surface(lens_object[0], fallback_curvature_sign=CurvatureSigns.convex)
+        R_2 = lensmaker_radius_of_a_surface(lens_object[1], fallback_curvature_sign=CurvatureSigns.concave)
         T_c = lens_object.T_c  # Floating-aware (works also for unplaced catalog elements).
         n = lens_object[0].n_2
     else:
-        R_1 = lens_object[0].radius
-        R_2 = -lens_object[1].radius
+        R_1 = lensmaker_radius_of_a_surface(lens_object[0], fallback_curvature_sign=CurvatureSigns.convex)
+        R_2 = lensmaker_radius_of_a_surface(lens_object[1], fallback_curvature_sign=CurvatureSigns.concave)
         T_c = np.linalg.norm(
             np.array([lens_object[1].x, lens_object[1].y, lens_object[1].z])
             - np.array([lens_object[0].x, lens_object[0].y, lens_object[0].z])
@@ -5562,13 +5578,13 @@ def back_focal_length_of_lens_object(lens_object: Union[OpticalSystem, List[Opti
 
 def focal_length_of_lens_object(lens_object: Union[OpticalSystem, List[OpticalSurfaceParams]]) -> float:
     if isinstance(lens_object, OpticalSystem):
-        R_1 = lens_object[0].radius
-        R_2 = -lens_object[1].radius
+        R_1 = lensmaker_radius_of_a_surface(lens_object[0], fallback_curvature_sign=CurvatureSigns.convex)
+        R_2 = lensmaker_radius_of_a_surface(lens_object[1], fallback_curvature_sign=CurvatureSigns.concave)
         T_c = lens_object.T_c
         n = lens_object[0].n_2
     else:
-        R_1 = lens_object[0].radius
-        R_2 = -lens_object[1].radius
+        R_1 = lensmaker_radius_of_a_surface(lens_object[0], fallback_curvature_sign=CurvatureSigns.convex)
+        R_2 = lensmaker_radius_of_a_surface(lens_object[1], fallback_curvature_sign=CurvatureSigns.concave)
         T_c = np.linalg.norm(
             np.array([lens_object[1].x, lens_object[1].y, lens_object[1].z])
             - np.array([lens_object[0].x, lens_object[0].y, lens_object[0].z])

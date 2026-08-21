@@ -51,6 +51,11 @@ from cavity_design import (
     generate_cartesian_oval_lens,
     cartesian_oval_lens_intermediate_image_distance,
     CARTESIAN_OVAL_LENS_SPLITS,
+    lensmaker_radius_of_a_surface,
+    back_focal_length_of_lens_object,
+    focal_length_of_lens_object,
+    focal_length_of_lens_formula,
+    back_focal_length_of_lens_formula,
 )
 
 
@@ -3283,3 +3288,105 @@ def test_cartesian_oval_local_sag_is_nan_past_the_widest_point():
     sag = oval.local_sag(rho)
     assert np.all(np.isfinite(sag[:3])) and sag[0] == 0
     assert np.all(np.isnan(sag[3:])), f"unreachable radii should be nan, got {sag[3:]}"
+def _two_surface_lens(radius_back, sign_back, radius_front, sign_front, T_c=3e-3, n=1.5):
+    """A floating thick lens from two spherical faces, described by magnitudes and curvature signs."""
+
+    def face(radius, curvature_sign, center, n_1, n_2, name):
+        if not np.isfinite(radius):  # A flat face has no curvature sign to orient it by.
+            return FlatRefractiveSurface(outwards_normal=RIGHT, center=center, n_1=n_1, n_2=n_2, name=name)
+        # propagation is along +RIGHT, and curvature_sign is taken with respect to the incoming ray, so a convex
+        # face (+1) is one the light reaches from its outwards_normal side.
+        return SphericalRefractiveSurface(
+            radius=radius,
+            outwards_normal=-curvature_sign * RIGHT,
+            center=center,
+            n_1=n_1,
+            n_2=n_2,
+            curvature_sign=curvature_sign,
+            name=name,
+        )
+
+    surfaces = [
+        face(radius_back, sign_back, None, 1.0, n, "back"),
+        face(radius_front, sign_front, T_c * RIGHT * 1j, n, 1.0, "front"),
+    ]
+    return OpticalSystem(elements=surfaces, use_paraxial_ray_tracing=True, t_is_trivial=True, p_is_trivial=True)
+
+
+def test_lensmaker_radius_of_a_surface():
+    # radius is a non-negative magnitude and the direction the face bends lives in curvature_sign, so the signed
+    # radius the lensmaker formula wants is their product.
+    convex = SphericalRefractiveSurface(
+        radius=5e-3, outwards_normal=LEFT, center=ORIGIN, curvature_sign=CurvatureSigns.convex
+    )
+    concave = SphericalRefractiveSurface(
+        radius=5e-3, outwards_normal=RIGHT, center=ORIGIN, curvature_sign=CurvatureSigns.concave
+    )
+    assert lensmaker_radius_of_a_surface(convex, fallback_curvature_sign=CurvatureSigns.convex) == 5e-3
+    assert lensmaker_radius_of_a_surface(concave, fallback_curvature_sign=CurvatureSigns.convex) == -5e-3
+
+    # A flat face carries no curvature sign, so the fallback decides - and 1/R is zero for either choice.
+    flat = FlatRefractiveSurface(outwards_normal=LEFT, center=ORIGIN, n_1=1.0, n_2=1.5)
+    assert lensmaker_radius_of_a_surface(flat, fallback_curvature_sign=CurvatureSigns.convex) == np.inf
+    assert lensmaker_radius_of_a_surface(flat, fallback_curvature_sign=CurvatureSigns.concave) == -np.inf
+
+
+def test_focal_length_of_a_biconvex_lens_object():
+    # The ordinary case: signs (+1, -1), which is what the two helpers used to assume unconditionally.
+    T_c, n = 3e-3, 1.5
+    lens = _two_surface_lens(10e-3, CurvatureSigns.convex, 20e-3, CurvatureSigns.concave, T_c=T_c, n=n)
+    assert np.isclose(focal_length_of_lens_object(lens), focal_length_of_lens_formula(10e-3, -20e-3, n, T_c))
+    assert np.isclose(
+        back_focal_length_of_lens_object(lens), back_focal_length_of_lens_formula(R_1=10e-3, R_2=-20e-3, n=n, T_c=T_c)
+    )
+    assert focal_length_of_lens_object(lens) > 0  # a converging lens
+
+
+def test_focal_length_of_a_meniscus_lens_object():
+    # Both faces bending the same way. Taking the second radius as -R regardless, as the helpers once did, turns a
+    # meniscus into a biconvex lens and gets the focal length badly wrong.
+    T_c, n = 3e-3, 1.5
+    lens = _two_surface_lens(10e-3, CurvatureSigns.concave, 20e-3, CurvatureSigns.concave, T_c=T_c, n=n)
+    assert np.isclose(focal_length_of_lens_object(lens), focal_length_of_lens_formula(-10e-3, -20e-3, n, T_c))
+    assert focal_length_of_lens_object(lens) < 0, "concave towards the light first: this one diverges"
+
+    # A concentric meniscus (equal radii, same sign) has no power at all but for its thickness: the 1/R_1 - 1/R_2
+    # terms cancel and only the (n-1)^2 T_c / (n R_1 R_2) term is left, so it is a far weaker lens than the
+    # biconvex one the old hard-coded radii would have mistaken it for.
+    concentric = _two_surface_lens(5e-3, CurvatureSigns.concave, 5e-3, CurvatureSigns.concave, T_c=T_c, n=n)
+    mistaken_for = _two_surface_lens(5e-3, CurvatureSigns.convex, 5e-3, CurvatureSigns.concave, T_c=T_c, n=n)
+    assert np.isclose(focal_length_of_lens_object(concentric), focal_length_of_lens_formula(-5e-3, -5e-3, n, T_c))
+    assert focal_length_of_lens_object(concentric) > 5 * focal_length_of_lens_object(mistaken_for)
+
+
+def test_focal_length_of_a_plano_concave_lens_object():
+    # A flat entrance and a concave exit: a diverging lens, which the hard-coded +R/-R pair reported as converging.
+    T_c, n = 3e-3, 1.5
+    lens = _two_surface_lens(np.inf, CurvatureSigns.flat, 20e-3, CurvatureSigns.convex, T_c=T_c, n=n)
+    assert np.isclose(focal_length_of_lens_object(lens), focal_length_of_lens_formula(np.inf, 20e-3, n, T_c))
+    assert focal_length_of_lens_object(lens) < 0
+
+
+def test_focal_length_of_a_cartesian_oval_lens_object():
+    # The case that turned this up: a two-oval lens goes meniscus for some conjugate pairs, and its placement in a
+    # cavity is measured from the back focal length, so the sign has to follow the ovals rather than be assumed.
+    shared = dict(back_focal_length=4e-3, T_c=3.83e-3, n=1.45, diameter=7.75e-3)
+    biconvex = generate_cartesian_oval_lens(front_focal_length=0.4, **shared)
+    meniscus = generate_cartesian_oval_lens(front_focal_length=-0.01, **shared)
+    assert [surface.curvature_sign for surface in biconvex.surfaces] == [
+        CurvatureSigns.convex,
+        CurvatureSigns.concave,
+    ]
+    assert [surface.curvature_sign for surface in meniscus.surfaces] == [
+        CurvatureSigns.concave,
+        CurvatureSigns.concave,
+    ]
+    for lens in (biconvex, meniscus):
+        back, front = lens.surfaces
+        expected = back_focal_length_of_lens_formula(
+            R_1=back.radius * back.curvature_sign,
+            R_2=front.radius * front.curvature_sign,
+            n=back.n_2,
+            T_c=lens.T_c,
+        )
+        assert np.isclose(back_focal_length_of_lens_object(lens), expected)
