@@ -161,6 +161,41 @@ spot_size = modes[-1].local_mode_parameters_at_a_point(camera_plane).spot_size[0
 ax = system.plot()                                          # elements + modes[i].plot(...) overlay
 ```
 
+## Operation: an aberration-free lens from two Cartesian ovals
+
+`generate_cartesian_oval_lens` returns a floating thick lens whose two faces are exact Cartesian
+ovals, so it images the pair `(back_focal_length, front_focal_length)` with no spherical aberration.
+Both are signed distances from the vertices - negative means a virtual object/image. How the power is
+split between the faces is free and costs nothing in image quality; it only sets the angles of
+incidence, so leave `split` at its default `"equal_deviation"` (which balances them, minimising Fresnel
+loss and maximising TIR margin) unless you have a reason not to. Pass `intermediate_image_distance`
+to place the intermediate image by hand instead. Worked comparison of the three splits, with the
+angles at each interface: `simple_analysis_scripts/small_debugging_scripts/thick_oval_lens.py`;
+derivation in `theory/cartesian_oval_lens_power_split.md`.
+
+**Place it at its design conjugate, not at its focal distance.** These are different points - `E_1` is
+conjugate to `E_2`, the focal distance is conjugate to infinity - and putting the object at the focal
+distance collimates the output, throwing the image to infinity whatever `front_focal_length` said.
+They differ by only `≈ f²/E_2` (sub-millimetre for a short lens), so the mistake is easy to make and
+invisible until nothing focuses. To add polynomial corrections on top of an oval, expand it first with
+`AsphericRefractiveSurface.pseudo_cartesian_oval(oval, degree=..., expansion_method="fit")`; keep the
+exact ovals as the aberration-free reference to compare against.
+
+```python
+from cavity_design import *
+
+lens = generate_cartesian_oval_lens(
+    back_focal_length=1.0e-2, front_focal_length=0.2,   # the pair it images exactly
+    T_c=3.83e-3, n=1.45, diameter=7.75e-3,              # split="equal_deviation" by default
+)
+lens = lens.to_position(ORIGIN)                         # floating until placed, like a catalog element
+# The object goes at back_focal_length in front of the back vertex - NOT at the focal distance:
+object_point = lens.surfaces[0].center - 1.0e-2 * RIGHT
+tuned = AsphericRefractiveSurface.pseudo_cartesian_oval(   # only if you need a_2/a_4/... on top
+    lens.surfaces[0], degree=10, expansion_method="fit", polynomial_coefficients=[0, 0, 0.3, 0],
+)
+```
+
 ## Where to look for more
 
 - `cavity_design/_cavity.py` — `Cavity`, `OpticalSystem`, perturbation & tolerance methods, plotting helpers.
