@@ -55,7 +55,8 @@
       "Bash(git push *)",
       "Bash(python -m black cavity_design/_cavity.py)",
       "Bash(python -m pytest -q)",
-      "PowerShell(C:\\\\venvs\\\\cavity-design\\\\Scripts\\\\python.exe \"C:\\\\Users\\\\michaeka\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-michaeka-Weizmann-Institute-Dropbox-Michael-Kali-Labs-Dropbox-Laser-Phase-Plate-cavity-design\\\\42aefa5e-41e2-420c-9d99-11ea9744214a\\\\scratchpad\\\\test_one_lens_existing.py\")"
+      "PowerShell(C:\\\\venvs\\\\cavity-design\\\\Scripts\\\\python.exe \"C:\\\\Users\\\\michaeka\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-michaeka-Weizmann-Institute-Dropbox-Michael-Kali-Labs-Dropbox-Laser-Phase-Plate-cavity-design\\\\42aefa5e-41e2-420c-9d99-11ea9744214a\\\\scratchpad\\\\test_one_lens_existing.py\")",
+      "Bash(cd *)"
     ]
   }
 }

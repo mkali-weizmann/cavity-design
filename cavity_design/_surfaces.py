@@ -37,7 +37,7 @@ from ._rays import Ray
 
 # Positions (centers/origins) are normally real, but an imaginary component is allowed to encode a *relative* position
 # (a shift from the previous element, resolved later). Anything with a significant imaginary part (or a nan) is
-# considered "not well defined". POSITION_TINY is the threshold below which an imaginary/real component is treated as
+# considered "not well-defined". POSITION_TINY is the threshold below which an imaginary/real component is treated as
 # numerical noise (no physical size in the system is below 1e-12).
 POSITION_TINY = 1e-16
 
@@ -466,7 +466,20 @@ class Surface:
         representation of an optical system (see ``OpticalSystem.init_syntax``)."""
         class_name = type(self).__name__
         keyword_arguments = [("name", self.name)]
-        if isinstance(self, AsphericSurface):
+        if isinstance(self, CartesianOval):
+            # n_1/n_2 define the *shape* of an oval, so they are emitted for the bare geometry class too.
+            keyword_arguments += [
+                ("center", self.center),
+                ("outwards_normal", self.outwards_normal),
+                ("E_1", self.E_1),
+                ("E_2", self.E_2),
+                ("n_1", self.n_1),
+                ("n_2", self.n_2),
+                ("curvature_sign", self.curvature_sign),
+                ("diameter", self.diameter),
+                ("material_properties", self.material_properties),
+            ]
+        elif isinstance(self, AsphericSurface):
             keyword_arguments += [
                 ("center", self.center),
                 ("outwards_normal", self.outwards_normal),
@@ -570,6 +583,8 @@ def surfaces_are_equivalent(surface_1: Surface, surface_2: Surface, rtol: float 
         "curvature_sign",
         "n_1",
         "n_2",
+        "E_1",
+        "E_2",
         "focal_length",
         "thickness",
         "diameter",
@@ -755,6 +770,39 @@ class RefractiveSurface(PhysicalSurface):
             k_vector=ray.k_vector, n_forwards=n_forwards, n_1=self.n_1, n_2=self.n_2
         )
         return refracted_direction_vector
+
+
+def _first_not_none(*values):
+    """The first argument that is not None. Used to let an explicit argument win over one taken from a source
+    surface, which in turn wins over a plain default."""
+    for value in values:
+        if value is not None:
+            return value
+    return None
+
+
+def _combine_polynomial_corrections(
+    base_polynomial_coefficients: np.ndarray,
+    polynomial_coefficients: Optional[Union[Polynomial, np.ndarray, List[float]]],
+) -> np.ndarray:
+    """Add sag corrections (a0, a2, a4...) on top of a base sag profile, padding or trimming them to its length."""
+    base_polynomial_coefficients = np.asarray(base_polynomial_coefficients, dtype=float)
+    if polynomial_coefficients is None:  # No correction - the base profile as it is.
+        polynomial_coefficients = np.zeros(1)
+    if isinstance(polynomial_coefficients, Polynomial):
+        corrections = np.asarray(polynomial_coefficients.coef, dtype=float)
+    else:
+        corrections = np.asarray(polynomial_coefficients, dtype=float)
+    if len(corrections) > len(base_polynomial_coefficients):
+        warnings.warn("Polynomial coefficients are longer than the base polynomial coefficients, trimming them.")
+        corrections = corrections[: len(base_polynomial_coefficients)]
+    elif len(corrections) < len(base_polynomial_coefficients):
+        corrections = np.pad(
+            corrections,
+            (0, len(base_polynomial_coefficients) - len(corrections)),
+            mode="constant",
+        )
+    return base_polynomial_coefficients + corrections
 
 
 class AsphericSurface(Surface):
@@ -1014,20 +1062,44 @@ class AsphericRefractiveSurface(AsphericSurface, RefractiveSurface):
 
     @staticmethod
     def pseudo_spherical(
-        radius: float,
+        radius: Optional[Union[float, "SphericalSurface"]] = None,  # A SphericalSurface: take its geometry and glass.
         center: Optional[np.ndarray] = None,  # None: floating (undefined); imaginary: relative to the previous element.
         outwards_normal: Optional[np.ndarray] = None,
         polynomial_coefficients: Optional[
             Union[Polynomial, np.ndarray, List[float]]
         ] = None,  # a0, a2, a4... corrections to the spherical profile
-        n_1: float = 1,
-        n_2: float = 1,
+        n_1: Optional[float] = None,  # Defaults to 1, or to the source surface's value when one is given.
+        n_2: Optional[float] = None,  # Defaults to 1, or to the source surface's value when one is given.
         name: Optional[str] = None,
         diameter: Optional[float] = None,
-        curvature_sign: int = CurvatureSigns.concave,  # With respect to the incoming beam.
+        curvature_sign: Optional[int] = None,  # With respect to the incoming beam. Defaults to concave.
         material_properties: MaterialProperties = None,
         **kwargs,
     ):
+        """The asphere whose profile is the Taylor expansion of a sphere, with optional corrections on top.
+
+        ``radius`` is either the vertex radius itself, or a whole :class:`SphericalSurface` (typically a
+        :class:`SphericalRefractiveSurface`) to copy - its radius, pose, curvature sign, glass, aperture, name and
+        material are then used as the defaults. Any argument passed explicitly still wins over the source surface's
+        own value, so a single surface can be re-placed or re-indexed on the way through."""
+        source_surface = radius if isinstance(radius, SphericalSurface) else None
+        if source_surface is not None:
+            radius = source_surface.radius
+            center = _first_not_none(center, source_surface.center)
+            outwards_normal = _first_not_none(outwards_normal, source_surface.outwards_normal)
+            name = _first_not_none(name, source_surface.name)
+            diameter = _first_not_none(diameter, source_surface.diameter)
+            material_properties = _first_not_none(material_properties, source_surface.material_properties)
+        if radius is None:
+            raise TypeError("pseudo_spherical needs either a radius or a SphericalSurface to expand.")
+        # A plain SphericalSurface (a mirror, say) carries no refractive indices, hence the getattr rather than a
+        # direct attribute access.
+        n_1 = _first_not_none(n_1, getattr(source_surface, "n_1", None), 1)
+        n_2 = _first_not_none(n_2, getattr(source_surface, "n_2", None), 1)
+        curvature_sign = _first_not_none(
+            curvature_sign, getattr(source_surface, "curvature_sign", None), CurvatureSigns.concave
+        )
+
         base_polynomial_coefficients = np.array(
             [
                 0,
@@ -1038,26 +1110,9 @@ class AsphericRefractiveSurface(AsphericSurface, RefractiveSurface):
                 7 / (256 * radius**9),
             ]
         )
-        # pad polynomial_coefficients to be the same length as base_polynomial_coefficients, if it is longer, trim it ad ad a warning:
-        if polynomial_coefficients is None:  # No correction - a purely (pseudo-)spherical profile.
-            polynomial_coefficients = np.zeros(1)
-        if isinstance(polynomial_coefficients, Polynomial):
-            polynomial_coefficients_array = polynomial_coefficients.coef
-        else:
-            polynomial_coefficients_array = np.array(polynomial_coefficients)
-        if len(polynomial_coefficients_array) > len(base_polynomial_coefficients):
-            warnings.warn("Polynomial coefficients are longer than the base polynomial coefficients, trimming them.")
-            polynomial_coefficients_array = polynomial_coefficients_array[: len(base_polynomial_coefficients)]
-        elif len(polynomial_coefficients_array) < len(base_polynomial_coefficients):
-            polynomial_coefficients_array = np.pad(
-                polynomial_coefficients_array,
-                (
-                    0,
-                    len(base_polynomial_coefficients) - len(polynomial_coefficients_array),
-                ),
-                mode="constant",
-            )
-        final_polynomial_coefficients = base_polynomial_coefficients + polynomial_coefficients_array
+        final_polynomial_coefficients = _combine_polynomial_corrections(
+            base_polynomial_coefficients, polynomial_coefficients
+        )
         return AsphericRefractiveSurface(
             center=center,
             outwards_normal=outwards_normal,
@@ -1070,6 +1125,590 @@ class AsphericRefractiveSurface(AsphericSurface, RefractiveSurface):
             curvature_sign=curvature_sign,
             **kwargs,
         )
+
+    @staticmethod
+    def pseudo_cartesian_oval(
+        oval: Optional["CartesianOval"] = None,  # A CartesianOval to imitate; or give its parameters below instead.
+        degree: int = 10,  # Highest power of rho kept in the profile: a0, a2, ... a_degree.
+        center: Optional[np.ndarray] = None,  # None: floating (undefined); imaginary: relative to the previous element.
+        outwards_normal: Optional[np.ndarray] = None,
+        E_1: Optional[float] = None,  # Signed object distance from the vertex. > 0: real object.
+        E_2: Optional[float] = None,  # Signed image distance from the vertex. > 0: real image.
+        polynomial_coefficients: Optional[
+            Union[Polynomial, np.ndarray, List[float]]
+        ] = None,  # a0, a2, a4... corrections to the oval profile
+        n_1: Optional[float] = None,
+        n_2: Optional[float] = None,
+        name: Optional[str] = None,
+        diameter: Optional[float] = None,
+        curvature_sign: Optional[int] = None,  # Derived from the optics; only needed for a flat (afocal) vertex.
+        material_properties: MaterialProperties = None,
+        expansion_method: str = "taylor",  # or "fit"; see CartesianOval.sag_polynomial_coefficients.
+        **kwargs,
+    ):
+        """The polynomial asphere that imitates a Cartesian oval, with optional corrections on top.
+
+        The counterpart of :meth:`pseudo_spherical`: where that one expands a sphere, this one expands the exact
+        aplanatic surface of a conjugate pair. Pass either a whole :class:`CartesianOval` as ``oval``, or the
+        parameters one would be built from (``E_1``, ``E_2``, ``center``, ``outwards_normal``, ``n_1``, ``n_2`` ...);
+        arguments given explicitly override the corresponding values of ``oval``.
+
+        The point of going through an asphere at all is that the profile then becomes *editable*: unlike the oval,
+        whose shape is pinned by its two foci, the returned surface accepts arbitrary ``polynomial_coefficients`` on
+        top of the expansion - which is how a perfect-imaging profile is used as the starting point of a design that
+        is then tuned by hand.
+
+        ``curvature_sign`` behaves differently here than in :meth:`pseudo_spherical`: the illumination direction of
+        an oval is fixed by which of its foci is the object, so it is derived from ``E_1``, ``E_2``, ``n_1`` and
+        ``n_2``, and only has to be stated for the degenerate afocal surface whose vertex is flat. Note that
+        ``degree`` bounds the correction list too - coefficients beyond it are trimmed."""
+        center = _first_not_none(center, getattr(oval, "center", None))
+        outwards_normal = _first_not_none(outwards_normal, getattr(oval, "outwards_normal", None))
+        E_1 = _first_not_none(E_1, getattr(oval, "E_1", None))
+        E_2 = _first_not_none(E_2, getattr(oval, "E_2", None))
+        name = _first_not_none(name, getattr(oval, "name", None))
+        diameter = _first_not_none(diameter, getattr(oval, "diameter", None))
+        material_properties = _first_not_none(material_properties, getattr(oval, "material_properties", None))
+        n_1 = _first_not_none(n_1, getattr(oval, "n_1", None), 1.0)
+        n_2 = _first_not_none(n_2, getattr(oval, "n_2", None), 1.5)
+
+        # Rebuilt rather than used as passed, so that overriding any single parameter re-derives the vertex radius
+        # and the curvature sign along with it - and so that all the validation lives in one place.
+        expanded_oval = CartesianOval(
+            center=center,
+            outwards_normal=outwards_normal,
+            E_1=E_1,
+            E_2=E_2,
+            n_1=n_1,
+            n_2=n_2,
+            curvature_sign=curvature_sign,
+            name=name,
+            diameter=diameter,
+            material_properties=material_properties,
+        )
+        base_polynomial_coefficients = expanded_oval.sag_polynomial_coefficients(degree=degree, method=expansion_method)
+        final_polynomial_coefficients = _combine_polynomial_corrections(
+            base_polynomial_coefficients, polynomial_coefficients
+        )
+        return AsphericRefractiveSurface(
+            center=center,
+            outwards_normal=outwards_normal,
+            polynomial_coefficients=final_polynomial_coefficients,
+            name=name,
+            diameter=diameter,
+            material_properties=material_properties,
+            n_1=n_1,
+            n_2=n_2,
+            curvature_sign=expanded_oval.curvature_sign,
+            **kwargs,
+        )
+
+
+def signed_vertex_radius_of_a_cartesian_oval(n_1: float, n_2: float, E_1: float, E_2: float) -> float:
+    """The vertex radius of curvature of a Cartesian oval, signed along the propagation direction.
+
+    Positive means the center of curvature lies downstream of the vertex. Obtained by differentiating the
+    defining equation at the vertex, and identical to the textbook paraxial refraction formula
+    ``n_2/s_2 - n_1/s_1 = (n_2 - n_1)/R`` with ``s_1 = -E_1`` and ``s_2 = +E_2``. Depends only on these four
+    scalars, not on the pose, so it can be evaluated before the surface is oriented."""
+    optical_power = n_1 / E_1 + n_2 / E_2
+    if optical_power == 0:
+        return np.inf
+    return (n_2 - n_1) / optical_power
+
+
+def _truncated_series_product(first: np.ndarray, second: np.ndarray) -> np.ndarray:
+    """Product of two power series, truncated back to the length of the first."""
+    return np.convolve(first, second)[: len(first)]
+
+
+def _truncated_series_square_root(series: np.ndarray) -> np.ndarray:
+    """Square root of a power series with a positive constant term, truncated to the same length.
+
+    From ``root * root == series`` order by order: the constant terms give ``root_0 = sqrt(series_0)``, and every
+    higher order is one division by ``2 * root_0`` once the lower orders are known."""
+    root = np.zeros_like(series)
+    root[0] = np.sqrt(series[0])
+    for k in range(1, len(series)):
+        root[k] = (series[k] - np.dot(root[1:k], root[1:k][::-1])) / (2 * root[0])
+    return root
+
+
+def cartesian_oval_longitudinal_expansion(
+    n_1: float, n_2: float, E_1: float, E_2: float, n_coefficients: int
+) -> np.ndarray:
+    """The power series of a Cartesian oval in rho**2, expanded about its vertex.
+
+    Returns ``c_0 = 0, c_1, ... c_{n_coefficients-1}``, such that a point of the oval at transverse distance ``rho``
+    from the optical axis lies ``sum_k c_k * rho**(2k)`` downstream of the vertex, along the propagation direction.
+    Depends only on these four scalars, not on the pose. The leading term ``c_1 = 1 / (2 * signed_vertex_radius)``
+    reproduces the matching sphere, so the expansion starts exactly where
+    :meth:`AsphericRefractiveSurface.pseudo_spherical` does and departs from it at fourth order.
+
+    Each coefficient is solved from the defining equation ``n_1*s_1*L_1 + n_2*s_2*L_2 = C`` in turn: perturbing
+    ``c_k`` by ``delta`` moves the equation by ``(n_1 - n_2) * delta`` at order rho**(2k) and not at all below it,
+    so one division per order suffices. The squared (quartic) form of the oval is deliberately avoided here - its
+    derivative vanishes when ``C == 0``, which is exactly the aplanatic case where the oval degenerates into a
+    sphere, whereas ``n_1 - n_2`` is non-zero for every oval that exists at all."""
+    coefficients = np.zeros(n_coefficients)
+    if n_coefficients < 2:
+        return coefficients
+    n_1_signed, n_2_signed = n_1 * np.sign(E_1), n_2 * np.sign(E_2)
+    C = n_1 * E_1 + n_2 * E_2
+    rho_squared = np.zeros(n_coefficients)
+    rho_squared[1] = 1.0  # The expansion variable itself, as a series.
+    for k in range(1, n_coefficients):
+        # The two focus distances as series, with the coefficient currently being solved for still zero - so the
+        # residual at order k is precisely the part contributed by the orders already fixed.
+        to_focus_1, to_focus_2 = coefficients.copy(), coefficients.copy()
+        to_focus_1[0] += E_1
+        to_focus_2[0] -= E_2
+        L_1 = _truncated_series_square_root(_truncated_series_product(to_focus_1, to_focus_1) + rho_squared)
+        L_2 = _truncated_series_square_root(_truncated_series_product(to_focus_2, to_focus_2) + rho_squared)
+        residual = n_1_signed * L_1 + n_2_signed * L_2
+        residual[0] -= C
+        coefficients[k] = -residual[k] / (n_1 - n_2)
+    return coefficients
+
+
+class CartesianOval(Surface):
+    """The exact rotationally symmetric surface that images one conjugate pair perfectly.
+
+    A Cartesian oval is the locus on which the optical path from an object focus to an image focus is
+    stationary, so *every* ray leaving ``focus_1`` is refracted exactly through ``focus_2`` - no spherical
+    aberration at all, unlike the polynomial fit of an :class:`AsphericSurface`.
+
+    Pose and curvature follow the same conventions as the other curved surfaces:
+
+    * ``center`` - the vertex, the point where the optical axis meets the surface.
+    * ``outwards_normal`` - unit vector pointing towards the *convex* side.
+    * ``radius`` - the vertex radius of curvature, as a non-negative magnitude.
+    * ``origin`` - the center of curvature, ``center - outwards_normal * radius``.
+
+    Since ``origin`` lies on the inwards side, the surface bulges towards ``outwards_normal`` and its sag is
+    measured along ``inwards_normal``, exactly as for :class:`AsphericSurface`.
+
+    The two focal distances are signed, measured from the vertex along the propagation direction:
+
+    * ``E_1 > 0`` is a real object - the incoming beam diverges from ``focus_1``, which lies behind the
+      surface. ``E_1 < 0`` is a virtual object - the incoming beam converges towards a point ahead of it.
+    * ``E_2 > 0`` is a real image - the outgoing beam converges to ``focus_2``, which lies ahead of the
+      surface. ``E_2 < 0`` is a virtual image - the outgoing beam diverges from a point behind it.
+
+    Requiring both beams to travel forwards pins the sign of each optical path term to the sign of its own
+    focal distance, so the defining equation needs no separate branch flag::
+
+        n_1*sign(E_1)*|r - focus_1| + n_2*sign(E_2)*|r - focus_2| = C,      C = n_1*E_1 + n_2*E_2
+
+    Eliminating the square roots turns this into the quartic Cartesian oval polynomial of
+    https://en.wikipedia.org/wiki/Cartesian_oval . The un-squared form above is the one used throughout,
+    because it selects a single branch of the oval and its gradient is well conditioned everywhere except
+    at the foci themselves.
+
+    Unlike an asphere, ``curvature_sign`` is *not* a free choice here. An asphere's sag direction and its
+    illumination direction are independent, but an oval's illumination direction is fixed by which focus is
+    the object and which is the image, so ``curvature_sign == sign(signed_vertex_radius)``. It is still
+    accepted as an argument, for symmetry with the sibling classes, and validated.
+    """
+
+    NEWTON_ITERATIONS = 6
+    NEWTON_RELATIVE_TOLERANCE = 1e-12  # of the optical path constant C; far below any optical tolerance.
+
+    def __init__(
+        self,
+        center: Optional[np.ndarray] = None,  # None: floating (undefined); imaginary: relative to the previous element.
+        outwards_normal: Optional[np.ndarray] = None,
+        E_1: Optional[float] = None,  # Signed object distance from the vertex. > 0: real object.
+        E_2: Optional[float] = None,  # Signed image distance from the vertex. > 0: real image.
+        n_1: float = 1.0,
+        n_2: float = 1.5,
+        curvature_sign: Optional[int] = None,  # Derived from the optics; validated if given. See the class docstring.
+        name: Optional[str] = None,
+        diameter: Optional[float] = None,
+        material_properties: MaterialProperties = None,
+        **kwargs,
+    ):
+        # E_1/E_2 default to None only so that center can default to None (a floating surface, like the other
+        # Surface types allow); the shape itself is not optional.
+        if E_1 is None or E_2 is None:
+            raise TypeError("E_1 and E_2 must be provided for a Cartesian oval")
+        if E_1 == 0 or E_2 == 0:
+            raise ValueError("E_1 and E_2 must be non-zero: a focus sitting on the vertex is degenerate.")
+        if n_1 == n_2:
+            raise ValueError(
+                "n_1 and n_2 must differ: a Cartesian oval between equal refractive indices is degenerate."
+            )
+        super().__init__(outwards_normal=outwards_normal, name=name, radius=np.nan, n_1=n_1, n_2=n_2, **kwargs)
+        self._center = _to_position_array(center)
+        self.name = name
+        self.diameter = diameter
+        self.material_properties = material_properties
+        # Unlike an asphere, the *shape* of an oval depends on the refractive indices, so a bare CartesianOval -
+        # which does not inherit RefractiveSurface and therefore never reaches its __init__ - has to store them too.
+        self.n_1 = n_1
+        self.n_2 = n_2
+        self.E_1 = E_1
+        self.E_2 = E_2
+
+        signed_radius = signed_vertex_radius_of_a_cartesian_oval(n_1=n_1, n_2=n_2, E_1=E_1, E_2=E_2)
+        self.radius = np.abs(signed_radius)
+        if np.isfinite(signed_radius):
+            derived_curvature_sign = int(np.sign(signed_radius))
+            if curvature_sign is not None and int(curvature_sign) != derived_curvature_sign:
+                raise ValueError(
+                    f"curvature_sign={curvature_sign} contradicts the optics: with n_1={n_1}, n_2={n_2}, E_1={E_1} and "
+                    f"E_2={E_2} the signed vertex radius is {signed_radius}, which forces "
+                    f"curvature_sign={derived_curvature_sign}. Either drop the argument and let it be derived, or "
+                    f"flip outwards_normal if the surface is meant to face the other way."
+                )
+            self.curvature_sign = derived_curvature_sign
+        else:
+            # Afocal: the vertex is locally flat, so sign(signed_radius) says nothing about which side the light
+            # arrives from and the caller has to state it.
+            if curvature_sign is None or int(curvature_sign) == CurvatureSigns.flat:
+                raise ValueError(
+                    f"n_1/E_1 + n_2/E_2 == 0, so the vertex of this Cartesian oval is flat and its illumination "
+                    f"direction cannot be derived. Pass curvature_sign=CurvatureSigns.convex (the light arrives from "
+                    f"the outwards_normal side) or CurvatureSigns.concave explicitly."
+                )
+            self.curvature_sign = int(curvature_sign)
+
+        self.C = n_1 * E_1 + n_2 * E_2  # The constant optical path difference that defines the surface.
+        self.thickness_center = self.local_sag(self.diameter / 2)  # sag at the edge of the clear aperture
+
+    # ---------------------------------------------------------------- geometry, all derived from the pose
+
+    @property
+    def center(self):
+        return self._center
+
+    @center.setter
+    def center(self, value: np.ndarray):
+        self._center = _to_position_array(value)
+
+    @property
+    def propagation_direction(self) -> np.ndarray:
+        """The direction the light travels through this surface.
+
+        ``curvature_sign`` is taken with respect to the incoming ray, so a convex surface (+1) is one the light
+        reaches from the ``outwards_normal`` side, i.e. travelling along ``inwards_normal``."""
+        return -self.curvature_sign * self.outwards_normal
+
+    @property
+    def origin(self) -> np.ndarray:
+        """The center of curvature of the osculating sphere at the vertex."""
+        return self.center - self.radius * self.outwards_normal
+
+    @property
+    def focus_1(self) -> np.ndarray:
+        """The object focus. The incoming beam diverges from it when ``E_1 > 0``."""
+        return self.center - self.E_1 * self.propagation_direction
+
+    @property
+    def focus_2(self) -> np.ndarray:
+        """The image focus. The outgoing beam converges to it when ``E_2 > 0``."""
+        return self.center + self.E_2 * self.propagation_direction
+
+    @property
+    def signed_indices(self) -> Tuple[float, float]:
+        """``(n_1*sign(E_1), n_2*sign(E_2))`` - the weights of the two optical path terms."""
+        return self.n_1 * np.sign(self.E_1), self.n_2 * np.sign(self.E_2)
+
+    def defining_equation(self, r: np.ndarray) -> Union[np.ndarray, float]:
+        """Points on the surface satisfy ``defining_equation(r) == 0``.
+
+        This is the optical path residual ``n_1*s_1*L_1 + n_2*s_2*L_2 - C``. Unlike
+        ``AsphericSurface.defining_equation`` its sign carries no concave/convex meaning; it exists to be
+        driven to zero by the root finders below."""
+        n_1_signed, n_2_signed = self.signed_indices
+        L_1 = np.linalg.norm(r - self.focus_1, axis=-1)
+        L_2 = np.linalg.norm(r - self.focus_2, axis=-1)
+        return n_1_signed * L_1 + n_2_signed * L_2 - self.C
+
+    def normal_at_a_point(self, point: np.ndarray) -> np.ndarray:
+        n_1_signed, n_2_signed = self.signed_indices
+        d_1 = point - self.focus_1
+        d_2 = point - self.focus_2
+        L_1 = np.linalg.norm(d_1, axis=-1)[..., np.newaxis]
+        L_2 = np.linalg.norm(d_2, axis=-1)[..., np.newaxis]
+        # The gradient of the defining equation, which is normal to its level set. Its overall sign is irrelevant:
+        # forward_normal_at_a_point re-signs it against the ray's k_vector before Snell's law is applied.
+        gradient = n_1_signed * d_1 / L_1 + n_2_signed * d_2 / L_2
+        return normalize_vector(gradient)
+
+    def local_sag(self, rho: Union[np.ndarray, float]) -> Union[np.ndarray, float]:
+        """The sag at transverse distance ``rho`` from the optical axis, measured along ``inwards_normal``.
+
+        Purely local geometry, so this works on a floating surface whose center is still undefined. A ``rho`` the
+        surface never reaches - an oval closes on itself, so it has a widest point - comes back as nan, the same
+        way a ray that misses does."""
+        rho = np.asarray(rho, dtype=float)
+        n_1_signed, n_2_signed = self.signed_indices
+        signed_radius = self.radius * self.curvature_sign
+        # Longitudinal coordinate measured from the vertex along the propagation direction, seeded with the
+        # parabola of the matching sphere.
+        with np.errstate(invalid="ignore", divide="ignore"):
+            xi = rho**2 / (2 * signed_radius)
+            for _ in range(self.NEWTON_ITERATIONS):
+                L_1 = np.sqrt((xi + self.E_1) ** 2 + rho**2)
+                L_2 = np.sqrt((xi - self.E_2) ** 2 + rho**2)
+                f = n_1_signed * L_1 + n_2_signed * L_2 - self.C
+                f_prime = n_1_signed * (xi + self.E_1) / L_1 + n_2_signed * (xi - self.E_2) / L_2
+                xi = xi - f / f_prime
+            # Past the widest point of the oval there is no solution at all, and the iteration wanders off to an
+            # arbitrary number instead of failing. Checked, rather than trusted, on the same terms as the ray solver.
+            residual = (
+                n_1_signed * np.sqrt((xi + self.E_1) ** 2 + rho**2)
+                + n_2_signed * np.sqrt((xi - self.E_2) ** 2 + rho**2)
+                - self.C
+            )
+            converged = np.abs(residual) <= self.NEWTON_RELATIVE_TOLERANCE * max(abs(self.C), 1.0)
+            xi = np.where(converged, xi, np.nan)
+        # propagation_direction == curvature_sign * inwards_normal, so the sag along inwards_normal is
+        # curvature_sign * xi - non-negative, because radius == signed_radius * curvature_sign is non-negative.
+        return self.curvature_sign * xi
+
+    def sag_polynomial_coefficients(
+        self, degree: int = 10, method: str = "taylor", rho_max: Optional[float] = None
+    ) -> np.ndarray:
+        """This oval as the sag coefficients ``a_0, a_2, ... a_degree`` of a polynomial in rho**2.
+
+        These are exactly what an :class:`AsphericSurface` takes, in the same convention - a non-negative sag
+        measured along ``inwards_normal`` - so they turn the oval into the polynomial asphere that best imitates
+        it. :meth:`AsphericRefractiveSurface.pseudo_cartesian_oval` wraps this into a finished surface.
+
+        ``method="taylor"`` expands about the vertex, matching what
+        :meth:`AsphericRefractiveSurface.pseudo_spherical` does for a sphere: exact on axis, with the whole error
+        pushed to the edge of the aperture. ``method="fit"`` least-squares fits the sag out to ``rho_max``
+        (by default the aperture radius) instead, spreading the residual over the aperture - usually the better
+        surface at a given degree, at the price of no longer being the local expansion.
+
+        Worth knowing before trusting a high degree: the Taylor series has a finite radius of convergence, set by
+        the oval's own geometry and *not* by its vertex radius - for a steeply curved oval it can be well inside
+        the clear aperture, and raising ``degree`` then stops helping. Compare against :meth:`local_sag`, which is
+        exact everywhere, and fall back to ``method="fit"`` when the expansion stalls.
+
+        Pose-independent either way, so it also works on a floating oval whose center is still undefined."""
+        if degree < 2 or degree % 2 != 0:
+            raise ValueError(f"degree must be an even power of rho of at least 2 (2, 4, 6 ...), got {degree}.")
+        n_coefficients = degree // 2 + 1  # a_0 through a_degree.
+        if method == "taylor":
+            longitudinal_coefficients = cartesian_oval_longitudinal_expansion(
+                n_1=self.n_1, n_2=self.n_2, E_1=self.E_1, E_2=self.E_2, n_coefficients=n_coefficients
+            )
+            # Same conversion as at the end of local_sag: propagation_direction == curvature_sign * inwards_normal,
+            # so the sag along inwards_normal is curvature_sign times the longitudinal coordinate.
+            return self.curvature_sign * longitudinal_coefficients
+        if method == "fit":
+            rho_max = self.diameter / 2 if rho_max is None else rho_max
+            rho = np.linspace(0, rho_max, 512)
+            # Fitted in the normalized variable (rho/rho_max)**2, because the raw powers of rho**2 span twenty
+            # orders of magnitude over a millimetric aperture and the design matrix would be hopeless.
+            normalized = (rho / rho_max) ** 2
+            design_matrix = np.stack([normalized**k for k in range(1, n_coefficients)], axis=-1)
+            fitted_coefficients = np.linalg.lstsq(design_matrix, self.local_sag(rho), rcond=None)[0]
+            coefficients = np.zeros(n_coefficients)
+            # a_0 is held at zero rather than fitted, so that the vertex of the asphere stays on the oval's center.
+            coefficients[1:] = fitted_coefficients / rho_max ** (2 * np.arange(1, n_coefficients))
+            return coefficients
+        raise ValueError(f"Unknown expansion method {method!r}; expected 'taylor' or 'fit'.")
+
+    # ---------------------------------------------------------------- ray tracing
+
+    def _seed_length(self, ray: Ray) -> np.ndarray:
+        """An analytic first guess of the ray length to the surface, from the sphere that matches it at the vertex."""
+        if np.isfinite(self.radius):
+            # SphericalSurface places its origin at center + radius*inwards_normal, which is exactly this surface's
+            # origin, and uses curvature_sign to pick the near/far root - the same root the oval solution sits near.
+            matching_sphere = SphericalSurface(
+                radius=self.radius,
+                outwards_normal=self.outwards_normal,
+                center=self.center,
+                curvature_sign=self.curvature_sign,
+            )
+            seed_point = matching_sphere.find_intersection_with_ray_exact(ray)
+            length = np.sum((seed_point - ray.origin) * ray.k_vector, axis=-1)
+        else:
+            length = np.full(ray.origin.shape[:-1], np.nan)
+        # Rays that miss the matching sphere altogether still deserve an attempt, and so does the flat-vertex case:
+        # fall back to the tangent plane at the vertex.
+        with np.errstate(invalid="ignore", divide="ignore"):
+            tangent_plane_length = np.sum((self.center - ray.origin) * self.outwards_normal, axis=-1) / np.sum(
+                ray.k_vector * self.outwards_normal, axis=-1
+            )
+        return np.where(np.isnan(length), tangent_plane_length, length)
+
+    def find_intersection_with_ray_exact(self, ray: Ray) -> np.ndarray:
+        # Two stages: the analytic seed above, then a vectorized Newton-Raphson on the exact optical path residual
+        # f(t) = n_1*s_1*L_1(t) + n_2*s_2*L_2(t) - C, whose derivative along the ray is the projection of k_vector
+        # onto the two focus-to-point directions. The seed is close enough that a handful of iterations reach
+        # machine precision, so unlike AsphericSurface this needs no per-ray Python loop.
+        n_1_signed, n_2_signed = self.signed_indices
+        focus_1, focus_2 = self.focus_1, self.focus_2
+        length = self._seed_length(ray)
+
+        with np.errstate(invalid="ignore", divide="ignore"):
+            for _ in range(self.NEWTON_ITERATIONS):
+                r = ray.parameterization(length)
+                d_1, d_2 = r - focus_1, r - focus_2
+                L_1 = np.linalg.norm(d_1, axis=-1)
+                L_2 = np.linalg.norm(d_2, axis=-1)
+                f = n_1_signed * L_1 + n_2_signed * L_2 - self.C
+                f_prime = (
+                    n_1_signed * np.sum(d_1 * ray.k_vector, axis=-1) / L_1
+                    + n_2_signed * np.sum(d_2 * ray.k_vector, axis=-1) / L_2
+                )
+                length = length - f / f_prime
+
+            # A ray counts as hitting the surface only if it converged and landed inside the clear aperture. The
+            # aperture test matters more here than for AsphericSurface, whose bracketed solve is bounded by
+            # construction while an unbounded Newton step is not.
+            r = ray.parameterization(length)
+            converged = np.abs(self.defining_equation(r)) <= self.NEWTON_RELATIVE_TOLERANCE * max(abs(self.C), 1.0)
+            inside_aperture = self.radial_distance_from_axis(r) <= self.diameter / 2
+            length = np.where(converged & inside_aperture, length, np.nan)
+        return ray.parameterization(length)
+
+    def radial_distance_from_axis(self, r: np.ndarray) -> np.ndarray:
+        """Distance of ``r`` from the optical axis of this surface."""
+        r_relative = r - self.center
+        longitudinal = np.sum(r_relative * self.outwards_normal, axis=-1)
+        return np.sqrt(np.clip(np.sum(r_relative**2, axis=-1) - longitudinal**2, a_min=0, a_max=np.inf))
+
+    def find_intersection_with_ray_paraxial(self, ray: Ray) -> np.ndarray:
+        paraxial_surface = SphericalSurface(
+            radius=self.radius,
+            outwards_normal=self.outwards_normal,
+            center=self.center,
+            curvature_sign=self.curvature_sign,
+        )
+        intersection_point = paraxial_surface.find_intersection_with_ray_paraxial(ray)
+        return intersection_point
+
+    # ---------------------------------------------------------------- the rest of the Surface interface
+
+    @property
+    def inverse(self):
+        # Reversing the light reverses the propagation direction, so the two foci swap roles without moving:
+        # focus_1 of the inverse is focus_2 of the original and vice versa, and the defining equation comes out
+        # literally unchanged. The signed vertex radius negates, so curvature_sign flips on its own while radius
+        # and origin - which are properties of the shape, not of the illumination - stay put.
+        return type(self)(
+            center=self.center,
+            outwards_normal=self.outwards_normal,
+            E_1=self.E_2,
+            E_2=self.E_1,
+            n_1=self.n_2,
+            n_2=self.n_1,
+            curvature_sign=-self.curvature_sign,
+            name=self.name,
+            diameter=self.diameter,
+            material_properties=self.material_properties,
+        )
+
+    def parameterization(self, t: Union[np.ndarray, float], p: Union[np.ndarray, float]) -> np.ndarray:
+        # Take parameters and return points on the surface
+        raise NotImplementedError
+
+    def get_parameterization(self, points: np.ndarray):
+        # takes a point on the surface and returns the parameters
+        raise NotImplementedError
+
+    def plot(
+        self,
+        ax: Optional[plt.Axes] = None,
+        name: Optional[str] = None,
+        dim: int = 2,
+        plane: str = "xy",
+        color: Optional[str] = None,
+        diameter: float = 7.75e-3,
+        fine_resolution=False,
+        **kwargs,
+    ) -> plt.Axes:
+        if plane != "xy" or self.outwards_normal[2] != 0:
+            raise NotImplementedError("Plotting CartesianOval is only implemented for the 'xy' plane.")
+        if dim != 2:
+            raise NotImplementedError("Plotting CartesianOval is only implemented for 2D plots.")
+        if fine_resolution:
+            N_points = 10000
+        else:
+            N_points = 100
+        if ax is None:
+            fig, ax = plt.subplots()
+
+        t_dummy = np.linspace(-self.diameter / 2, self.diameter / 2, N_points)
+
+        transverse_direction = np.cross(self.outwards_normal, np.array([0, 0, 1]))
+        longitudinal_direction = self.inwards_normal
+
+        r = (
+            self.center
+            + transverse_direction * t_dummy[:, np.newaxis]
+            + self.local_sag(np.abs(t_dummy))[:, np.newaxis] * longitudinal_direction
+        )
+        ax.plot(r[:, 0], r[:, 1], color=color if color is not None else "blue", **kwargs)
+
+        r_back_side = (
+            self.center + self.inwards_normal * self.thickness_center + transverse_direction * t_dummy[:, np.newaxis]
+        )
+        # create kwargs without linestyle to avoid warning:
+        kwargs.pop("linestyle", None)
+        kwargs.pop("ls", None)
+        ax.plot(
+            r_back_side[:, 0],
+            r_back_side[:, 1],
+            linestyle="--",
+            color=color if color is not None else "blue",
+            **kwargs,
+        )
+        return ax
+
+
+class RefractiveCartesianOval(CartesianOval, RefractiveSurface):
+    def __init__(
+        self,
+        center: Optional[np.ndarray] = None,  # None: floating (undefined); imaginary: relative to the previous element.
+        outwards_normal: Optional[np.ndarray] = None,
+        E_1: Optional[float] = None,  # Signed object distance from the vertex. > 0: real object.
+        E_2: Optional[float] = None,  # Signed image distance from the vertex. > 0: real image.
+        n_1: float = 1.0,
+        n_2: float = 1.5,
+        name: Optional[str] = None,
+        diameter: Optional[float] = None,
+        curvature_sign: Optional[int] = None,  # Derived from the optics; validated if given.
+        material_properties: MaterialProperties = None,
+        **kwargs,
+    ):
+        super().__init__(
+            center=center,
+            outwards_normal=outwards_normal,
+            E_1=E_1,
+            E_2=E_2,
+            name=name,
+            diameter=diameter,
+            material_properties=material_properties,
+            n_1=n_1,
+            n_2=n_2,
+            curvature_sign=curvature_sign,
+            **kwargs,
+        )
+
+    def __str__(self):
+        return f"RefractiveCartesianOval(name={self.name}, center={self.center}, outwards_normal={self.outwards_normal}, E_1={self.E_1}, E_2={self.E_2}, n_1={self.n_1}, n_2={self.n_2}, curvature_sign={self.curvature_sign})"
+
+    def ABCD_matrix(self, cos_theta_incoming: Union[float, np.ndarray] = None) -> np.ndarray:
+        paraxial_approximation_surface = SphericalRefractiveSurface(
+            radius=self.radius,
+            outwards_normal=RIGHT,
+            center=ORIGIN,
+            n_1=self.n_1,
+            n_2=self.n_2,
+            curvature_sign=self.curvature_sign,
+        )
+        return paraxial_approximation_surface.ABCD_matrix(cos_theta_incoming=cos_theta_incoming)
+
+    def thermal_transformation(self, P_laser_power: float, w_spot_size: float, **kwargs):
+        raise NotImplementedError
 
 
 class FlatSurface(Surface):

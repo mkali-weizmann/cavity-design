@@ -85,6 +85,9 @@ from ._surfaces import (
     AsphericSurface,
     FlatRefractiveSurface,
     AsphericRefractiveSurface,
+    CartesianOval,
+    RefractiveCartesianOval,
+    signed_vertex_radius_of_a_cartesian_oval,
     generate_aspheric_lens_params,
     generate_aspheric_lens,
     surfaces_are_equivalent,
@@ -4313,8 +4316,10 @@ def calculate_incidence_angle(surface: Surface, mode_parameters: ModeParameters)
     # And a demonstration that it works is here: https://www.desmos.com/calculator/qk6yradzbn
     if isinstance(surface, FlatSurface):
         return np.arccos(surface.outwards_normal @ mode_parameters.k_vector)
-    if isinstance(surface, AsphericSurface):
-        raise NotImplementedError("Calculate incidence angle for aspheric surfaces is not implemented yet.")
+    if isinstance(surface, (AsphericSurface, CartesianOval)):
+        raise NotImplementedError(
+            "Calculate incidence angle for aspheric and Cartesian-oval surfaces is not implemented yet."
+        )
     optical_axis = surface.outwards_normal
     surface_center_to_waist_position_vector = mode_parameters.center[0, :] - surface.center
     w_0, z_R, R, z_0, z_s = (
@@ -5016,13 +5021,13 @@ def generate_mirror_lens_mirror_cavity_textual_summary(
             - cavity.mode_parameters[short_arm_index].center[0, 0]
         )
         if NA_angles is None:
-            if not isinstance(cavity.surfaces[1], AsphericSurface):
+            if not isinstance(cavity.surfaces[1], (AsphericSurface, CartesianOval)):
                 angle_left = cavity.arms[short_arm_index].calculate_incidence_angle(
                     surface_index=lens_long_arm_surface_in_arm_index
                 )
             else:
                 angle_left = np.nan
-            if not isinstance(cavity.surfaces[2], AsphericSurface):
+            if not isinstance(cavity.surfaces[2], (AsphericSurface, CartesianOval)):
                 angle_right = cavity.arms[long_arm_index].calculate_incidence_angle(
                     surface_index=lens_short_arm_surface_in_arm_index
                 )
@@ -5307,6 +5312,185 @@ def generate_lens_from_params(
     return optical_system
 
 
+CARTESIAN_OVAL_LENS_SPLITS = ("equal_deviation", "equal_curvature_step", "thin")
+
+
+def cartesian_oval_lens_intermediate_image_distance(
+    back_focal_length: float,  # Vertex of the back (first) face to the object point. > 0: a real object.
+    front_focal_length: float,  # Vertex of the front (second) face to the image point. > 0: a real image.
+    T_c: float = 0.0,
+    split: str = "equal_deviation",
+) -> float:
+    """Where to put the intermediate image of a two-oval lens, as a signed distance from the back face's vertex.
+
+    A lens built from two Cartesian ovals images its design conjugate pair *exactly* wherever this intermediate
+    point is put - the first face images the object onto it perfectly and the second face images it onto the final
+    image perfectly, so the composite is stigmatic for every choice. What the choice does buy is the angles of
+    incidence on the two faces, and with them the Fresnel loss, the margin before total internal reflection at the
+    exit face, and the off-axis behaviour. The rules here all aim to balance those two angles:
+
+    * ``"equal_deviation"`` (recommended) - the ray deviation is the same at both faces, and since both faces have
+      the same index ratio, so are the two angles of incidence::
+
+          a = -(2 + T_c/FFL) / (1/BFL - 1/FFL)
+
+      A ray is deviated by ``h * delta_c``, its height at the face times the jump in wavefront curvature there, so
+      balancing the two deviations means weighting the curvature jumps by the ray heights - which differ by
+      ``(a - T_c)/a`` because the beam is converging or diverging as it crosses the glass.
+    * ``"equal_curvature_step"`` - the *curvature* jump itself is equalized, with the drift of the curvature over
+      T_c taken into account: ``K a^2 + (2 - K T_c) a - T_c = 0``. Identical to the above when T_c = 0, but for a
+      real thickness it ignores the change in ray height and moves the intermediate point the wrong way, ending up
+      further from balanced angles than simply ignoring the thickness would.
+    * ``"thin"`` - ``a = -2/K``, the curvature at the output of the first face set to the plain mean of the input
+      and output curvatures. Exact in the limit T_c -> 0.
+
+    Here ``K = 1/BFL - 1/FFL``, and the "curvature" of the beam is the geometric one (ray slope over ray height,
+    positive while diverging), *not* the reduced vergence ``n/s`` - it is the geometric one that fixes the ray
+    deviation, and splitting the reduced vergence equally would give a measurably worse lens.
+
+    All three rules send the intermediate point to infinity as ``BFL -> FFL``, where the balanced design has a
+    collimated beam inside the glass and each face is a conic rather than a finite-conjugate oval."""
+    if split not in CARTESIAN_OVAL_LENS_SPLITS:
+        raise ValueError(f"Unknown split {split!r}; expected one of {CARTESIAN_OVAL_LENS_SPLITS}.")
+    if back_focal_length == 0 or front_focal_length == 0:
+        raise ValueError("back_focal_length and front_focal_length must be non-zero.")
+    K = 1 / back_focal_length - 1 / front_focal_length
+    curvature_scale = abs(1 / back_focal_length) + abs(1 / front_focal_length)
+    if abs(K) <= 1e-12 * curvature_scale:
+        raise ValueError(
+            f"back_focal_length and front_focal_length are (numerically) equal, so a balanced split leaves the beam "
+            f"collimated inside the glass and the intermediate image at infinity. A Cartesian oval cannot be given "
+            f"an infinite focus - each face of that lens is a conic. Either pass intermediate_image_distance "
+            f"explicitly to pick a deliberately unbalanced split, or build the faces as conics."
+        )
+    if split == "thin" or T_c == 0:
+        return -2 / K
+    if split == "equal_deviation":
+        return -(2 + T_c / front_focal_length) / K
+    # equal_curvature_step: the root of K a^2 + (2 - K T_c) a - T_c = 0 that stays continuous with -2/K as T_c -> 0.
+    return (K * T_c - 2 - np.sqrt(4 + (K * T_c) ** 2)) / (2 * K)
+
+
+def generate_cartesian_oval_lens(
+    back_focal_length: float,  # Vertex of the back (first) face to the object point. > 0: a real object.
+    front_focal_length: float,  # Vertex of the front (second) face to the image point. > 0: a real image.
+    T_c: float,
+    n: float,
+    diameter: float,
+    n_outside: float = 1.0,
+    forward_direction: np.ndarray = RIGHT,
+    split: str = "equal_deviation",  # See cartesian_oval_lens_intermediate_image_distance.
+    intermediate_image_distance: Optional[float] = None,  # Overrides `split` when given.
+    material_properties: Optional[MaterialProperties] = None,
+    name: Optional[str] = None,
+    use_paraxial_ray_tracing: bool = False,
+) -> OpticalSystem:
+    """A floating thick lens of two Cartesian ovals, stigmatic for one conjugate pair to machine precision.
+
+    The two faces sit ``T_c`` apart along ``forward_direction``. The lens is *floating*, like the catalog elements:
+    the back face's center is undefined and the front face carries a pure imaginary (relative) offset of ``T_c``,
+    both resolved once the lens is placed with ``.to_position(...)``.
+
+    ``back_focal_length`` and ``front_focal_length`` follow this repository's back/front convention, where the back
+    face is the first one the light meets - the same sense as ``generate_aspheric_lens``, and the opposite of the
+    ISO convention in which the *front* focal length is the object-side one. They are also conjugate distances
+    rather than focal lengths in the strict sense: neither point is at infinity, and they are measured from the
+    face vertices, not from the principal planes. Both are signed, so a virtual object or a virtual image is simply
+    a negative value.
+
+    Each face is a Cartesian oval for its own half of the job - the back face images the object onto an
+    intermediate point, the front face images that point onto the final image - so the pair is exactly stigmatic
+    *whatever* the intermediate point is. ``split`` only decides how the work is shared, which sets the angles of
+    incidence; see :func:`cartesian_oval_lens_intermediate_image_distance` for the rules. Note that this exactness
+    holds for the design conjugate pair alone: off axis, at another conjugate, or at another wavelength, this is
+    an ordinary lens with ordinary aberrations."""
+    if T_c <= 0:
+        raise ValueError(f"T_c must be positive, got {T_c}.")
+    if n == n_outside:
+        raise ValueError(f"n and n_outside must differ, got {n} for both.")
+    if not diameter > 0:
+        raise ValueError(f"diameter must be positive, got {diameter}.")
+    forward_direction = normalize_vector(np.asarray(forward_direction, dtype=float))
+    if name is None:
+        name = "Cartesian oval lens"
+
+    if intermediate_image_distance is None:
+        intermediate_image_distance = cartesian_oval_lens_intermediate_image_distance(
+            back_focal_length=back_focal_length, front_focal_length=front_focal_length, T_c=T_c, split=split
+        )
+    a = intermediate_image_distance
+    # The intermediate point sits at `a` past the back vertex, hence at `a - T_c` past the front one; E_1 counts
+    # the object *backwards* from its vertex, so the front face sees an object distance of T_c - a.
+    E_1_front = T_c - a
+    if a == 0 or E_1_front == 0:
+        raise ValueError(
+            f"The intermediate image lands exactly on a vertex (intermediate_image_distance = {a}, T_c = {T_c}), "
+            f"which is degenerate. Pass a different intermediate_image_distance."
+        )
+    if 0 < a < T_c:
+        warnings.warn(
+            f"This lens brings the light to a real focus inside the glass ({a * 1e3:.3f} mm past the back face, "
+            f"in a {T_c * 1e3:.3f} mm thick element). It is a valid design, but the intensity there may not be."
+        )
+    if abs(a) > 1e3 * (abs(back_focal_length) + abs(front_focal_length) + T_c):
+        warnings.warn(
+            f"The beam is nearly collimated inside the glass (intermediate image {a:.3g} m from the back face), so "
+            f"the faces are close to conics and the oval solver loses precision. Consider an explicitly unbalanced "
+            f"intermediate_image_distance."
+        )
+
+    signed_radius_back = signed_vertex_radius_of_a_cartesian_oval(n_1=n_outside, n_2=n, E_1=back_focal_length, E_2=a)
+    signed_radius_front = signed_vertex_radius_of_a_cartesian_oval(
+        n_1=n, n_2=n_outside, E_1=E_1_front, E_2=front_focal_length
+    )
+    if not (np.isfinite(signed_radius_back) and np.isfinite(signed_radius_front)):
+        raise ValueError(
+            f"This split leaves one face flat at its vertex (signed vertex radii {signed_radius_back}, "
+            f"{signed_radius_front}), which a Cartesian oval cannot express. Pass a different "
+            f"intermediate_image_distance."
+        )
+    # propagation_direction == -curvature_sign * outwards_normal, and curvature_sign == sign(signed vertex radius),
+    # so this is the orientation that makes the light travel along forward_direction through both faces.
+    back_surface = RefractiveCartesianOval(
+        center=None,
+        outwards_normal=-np.sign(signed_radius_back) * forward_direction,
+        E_1=back_focal_length,
+        E_2=a,
+        n_1=n_outside,
+        n_2=n,
+        name=name + " - back side",
+        diameter=diameter,
+        material_properties=material_properties,
+    )
+    front_surface = RefractiveCartesianOval(
+        center=T_c * forward_direction * 1j,
+        outwards_normal=-np.sign(signed_radius_front) * forward_direction,
+        E_1=E_1_front,
+        E_2=front_focal_length,
+        n_1=n,
+        n_2=n_outside,
+        name=name + " - front side",
+        diameter=diameter,
+        material_properties=material_properties,
+    )
+    for surface in (back_surface, front_surface):
+        if not np.isfinite(surface.thickness_center):
+            raise ValueError(
+                f"The {surface.name} does not reach a clear aperture of {diameter} m - its sag solver did not "
+                f"converge at the edge. Reduce the diameter, or move the intermediate image to share the power "
+                f"more evenly."
+            )
+
+    # The same reading of the two flags as generate_lens_from_params, so a lens built either way behaves alike.
+    p_is_trivial = np.allclose(forward_direction, RIGHT) or np.allclose(forward_direction, -RIGHT)
+    t_is_trivial = forward_direction[0] == 0
+    return OpticalSystem(
+        elements=[back_surface, front_surface],
+        t_is_trivial=t_is_trivial,
+        p_is_trivial=p_is_trivial,
+        use_paraxial_ray_tracing=use_paraxial_ray_tracing,
+        name=name,
+    )
 def generate_aspheric_lens_from_polynomial(
     center: np.ndarray,
     forward_direction: np.ndarray,
@@ -5359,15 +5543,31 @@ def generate_aspheric_lens_from_polynomial(
     return optical_system
 
 
+def lensmaker_radius_of_a_surface(surface, fallback_curvature_sign: int) -> float:
+    """One surface's radius of curvature in the lensmaker sign convention: positive when its center of curvature
+    lies downstream of the vertex, along the direction the light travels.
+
+    `radius` is stored as a non-negative magnitude and which way the surface bends lives in `curvature_sign`
+    (taken with respect to the incoming ray), so the signed radius is simply their product - the same `R_signed`
+    that SphericalRefractiveSurface.ABCD_matrix works with. For an ordinary biconvex lens this returns +R for the
+    first surface and -R for the second, which is what the callers below used to hard-code; a meniscus, where both
+    faces bend the same way, is where the hard-coded version got it wrong. `fallback_curvature_sign` covers a flat
+    surface, which carries no curvature sign of its own (and for which 1/R is zero either way)."""
+    curvature_sign = getattr(surface, "curvature_sign", None)
+    if curvature_sign is None:
+        curvature_sign = fallback_curvature_sign
+    return surface.radius * curvature_sign
+
+
 def back_focal_length_of_lens_object(lens_object: Union[OpticalSystem, List[OpticalSurfaceParams]]) -> float:
     if isinstance(lens_object, OpticalSystem):
-        R_1 = lens_object[0].radius
-        R_2 = -lens_object[1].radius
+        R_1 = lensmaker_radius_of_a_surface(lens_object[0], fallback_curvature_sign=CurvatureSigns.convex)
+        R_2 = lensmaker_radius_of_a_surface(lens_object[1], fallback_curvature_sign=CurvatureSigns.concave)
         T_c = lens_object.T_c  # Floating-aware (works also for unplaced catalog elements).
         n = lens_object[0].n_2
     else:
-        R_1 = lens_object[0].radius
-        R_2 = -lens_object[1].radius
+        R_1 = lensmaker_radius_of_a_surface(lens_object[0], fallback_curvature_sign=CurvatureSigns.convex)
+        R_2 = lensmaker_radius_of_a_surface(lens_object[1], fallback_curvature_sign=CurvatureSigns.concave)
         T_c = np.linalg.norm(
             np.array([lens_object[1].x, lens_object[1].y, lens_object[1].z])
             - np.array([lens_object[0].x, lens_object[0].y, lens_object[0].z])
@@ -5378,13 +5578,13 @@ def back_focal_length_of_lens_object(lens_object: Union[OpticalSystem, List[Opti
 
 def focal_length_of_lens_object(lens_object: Union[OpticalSystem, List[OpticalSurfaceParams]]) -> float:
     if isinstance(lens_object, OpticalSystem):
-        R_1 = lens_object[0].radius
-        R_2 = -lens_object[1].radius
+        R_1 = lensmaker_radius_of_a_surface(lens_object[0], fallback_curvature_sign=CurvatureSigns.convex)
+        R_2 = lensmaker_radius_of_a_surface(lens_object[1], fallback_curvature_sign=CurvatureSigns.concave)
         T_c = lens_object.T_c
         n = lens_object[0].n_2
     else:
-        R_1 = lens_object[0].radius
-        R_2 = -lens_object[1].radius
+        R_1 = lensmaker_radius_of_a_surface(lens_object[0], fallback_curvature_sign=CurvatureSigns.convex)
+        R_2 = lensmaker_radius_of_a_surface(lens_object[1], fallback_curvature_sign=CurvatureSigns.concave)
         T_c = np.linalg.norm(
             np.array([lens_object[1].x, lens_object[1].y, lens_object[1].z])
             - np.array([lens_object[0].x, lens_object[0].y, lens_object[0].z])

@@ -1,0 +1,64 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cavity-design"
+version = "0.1.0"
+description = "Calculations to design a stable thin cavity"
+requires-python = ">=3.11"
+dependencies = [
+    # Scientific stack. Pinned to the versions the working C:\venvs\cavity-design
+    # env ran; matplotlib in particular is held at 3.8.4 because the analysis
+    # notebooks depend on its exact interactive-figure behaviour.
+    "numpy==2.2.6",
+    "scipy==1.15.3",
+    "matplotlib==3.8.4",
+    "pandas==2.2.2",
+    "sympy==1.14.0",
+    "pillow==11.2.1",
+    "openpyxl==3.1.5",
+    "tqdm==4.67.1",
+    "pyperclip==1.11.0",
+    "python-dotenv==0.21.1",
+
+    # Notebook stack. jupyterlab is pinned because 4.6.x does not render the
+    # jupyterlab_widgets frontend extension, so ipywidgets show only their text
+    # repr. 4.5.3 is the last known-good version with this widget stack.
+    "jupyterlab==4.5.3",
+    "ipywidgets==8.1.2",
+    "ipython==9.9.0",
+    "ipykernel==7.1.0",
+
+    # Qt binding for matplotlib's interactive backend (%matplotlib qt) in the
+    # analysis notebooks. Nothing in this repo imports a Qt binding directly --
+    # everything goes through matplotlib.backends.qt_compat -- so exactly one
+    # binding is declared, which makes the selection deterministic. See the
+    # README's "Qt binding: exactly one, on purpose" note.
+    "PySide6==6.11.1",
+
+    # win32clipboard, used by the copy-figure-to-clipboard helpers.
+    "pywin32==311 ; sys_platform == 'win32'",
+]
+
+[dependency-groups]
+dev = [
+    "pytest==9.0.2",
+    "black==24.4.2",
+]
+
+[tool.uv]
+# Force the lock to include wheels usable on Windows. Without this, uv's
+# universal resolution can pick distributions that only publish Linux/macOS
+# wheels, and the install then fails on win_amd64. Listing the Windows
+# environment makes uv fork the resolution and guarantee Windows-installable
+# versions for this platform.
+required-environments = [
+    "sys_platform == 'win32' and platform_machine == 'AMD64'",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["cavity_design"]
+
+[tool.black]
+line-length = 120

@@ -25,11 +25,34 @@ re-derive from library source.
 	- For aberrations calculations, `self.use_paraxial_ray_tracing` should be set to False.
 	- contains spectral calculation, such as `cavity.finesse`, `cavity.free_spectral_range`, `cavity.roundtrip_power_losses`.
 - **Surfaces** (in `_surfaces.py`): `SphericalMirror`, `FlatMirror`, `SphericalRefractiveSurface`,
-  `FlatRefractiveSurface`, `AsphericRefractiveSurface`.
+  `FlatRefractiveSurface`, `AsphericRefractiveSurface`, `RefractiveCartesianOval`.
 	- `Surface` is the general, and all inherit from it.
 	- `RefractiveSurface` knows how to refract rays/modes.
 	- `ReflectiveSurface` knows how to reflect rays/modes.
-	- Geometrical types of surfaces are: `FlatSurface, SphericalSurface, AsphericSurface`
+	- Geometrical types of surfaces are: `FlatSurface, SphericalSurface, AsphericSurface, CartesianOval`
+	- A `CartesianOval` images one conjugate pair *exactly* (no spherical aberration), unlike the polynomial
+	  fit of an `AsphericSurface`. It is defined by the signed focal distances `E_1` (object) and `E_2` (image)
+	  from the vertex along the propagation direction, plus `n_1`/`n_2` - which set its *shape*, not just its
+	  refraction. `E > 0` is a real object/image, `E < 0` a virtual one. Its `curvature_sign` and `radius` are
+	  derived from those four numbers, so `curvature_sign` is not free to choose as it is for an asphere.
+	- Two factories build an `AsphericRefractiveSurface` out of another shape, both of them accepting extra
+	  `polynomial_coefficients` to add on top of the base profile - which is how a non-editable exact shape becomes
+	  a starting point for a design that is then tuned by hand:
+		- `AsphericRefractiveSurface.pseudo_spherical(radius_or_spherical_surface, ...)` expands a sphere. Passing a
+		  whole `SphericalRefractiveSurface` takes its radius, pose, curvature sign, glass and aperture from it.
+		- `AsphericRefractiveSurface.pseudo_cartesian_oval(oval_or_E_1_E_2_etc, degree=..., ...)` expands a
+		  Cartesian oval to the given power of `rho`, via `CartesianOval.sag_polynomial_coefficients`. Use
+		  `expansion_method="fit"` (least squares over the clear aperture) rather than the default
+		  `"taylor"` (about the vertex) when the aperture is a large fraction of the vertex radius.
+		- In both, an argument passed explicitly overrides the one carried by the source surface.
+	- `generate_cartesian_oval_lens(back_focal_length, front_focal_length, T_c, n, diameter, ...)` (in `_cavity.py`)
+	  returns a **floating** two-face thick lens as an `OpticalSystem`, stigmatic for that conjugate pair to machine
+	  precision. `back`/`front` here mean first/second face along the light (the repo's sense, opposite to ISO), and
+	  they are vertex-to-conjugate-point distances, not focal lengths in the strict sense. Both faces are ovals, so
+	  the lens images perfectly for *any* division of the work between them; the `split` argument only sets the
+	  angles of incidence. `"equal_deviation"` (the default) balances the two angles and is the one to use -
+	  `"thin"` and `"equal_curvature_step"` are there for comparison. Pass `intermediate_image_distance` to override
+	  the split by hand. See `cartesian_oval_lens_intermediate_image_distance` for the formulas.
 	- **Important:** the `surface.curvature_sign` (`CurvatureSigns.convex` (1), `CurvatureSigns.concave` (-1), `CurvatureSigns.flat` (0)) is defined with respect to the incoming ray, not with respect to the higher-refractive-index-side. For example if a lens is biconvex, then the first `spherical_surface` will have `spherical_surface.curvature_sign == CurvatureSigns.convex` , while the second one (to which the ray comes in from the inside of the lens will have `spherical_surface.curvature_sign == CurvatureSigns.concave`). This is done to ease with the intersection calculation of the surface with the ray.
 - **Ray, RaySequence** in (`_rays.py`):
 	- `Ray` is a set of rays, with `origin, length, k_vector` (**normalized** unit vector, direction of the ray), and refractive index `n`. `origin and k_vector` can have any number of dimensions, where the last one is always 3 - for the 3 spatial dimensions.
@@ -136,6 +159,41 @@ camera_plane = system.surfaces[-1].center + 0.02 * LEFT
 spot_size = modes[-1].local_mode_parameters_at_a_point(camera_plane).spot_size[0]
 
 ax = system.plot()                                          # elements + modes[i].plot(...) overlay
+```
+
+## Operation: an aberration-free lens from two Cartesian ovals
+
+`generate_cartesian_oval_lens` returns a floating thick lens whose two faces are exact Cartesian
+ovals, so it images the pair `(back_focal_length, front_focal_length)` with no spherical aberration.
+Both are signed distances from the vertices - negative means a virtual object/image. How the power is
+split between the faces is free and costs nothing in image quality; it only sets the angles of
+incidence, so leave `split` at its default `"equal_deviation"` (which balances them, minimising Fresnel
+loss and maximising TIR margin) unless you have a reason not to. Pass `intermediate_image_distance`
+to place the intermediate image by hand instead. Worked comparison of the three splits, with the
+angles at each interface: `simple_analysis_scripts/small_debugging_scripts/thick_oval_lens.py`;
+derivation in `theory/cartesian_oval_lens_power_split.md`.
+
+**Place it at its design conjugate, not at its focal distance.** These are different points - `E_1` is
+conjugate to `E_2`, the focal distance is conjugate to infinity - and putting the object at the focal
+distance collimates the output, throwing the image to infinity whatever `front_focal_length` said.
+They differ by only `≈ f²/E_2` (sub-millimetre for a short lens), so the mistake is easy to make and
+invisible until nothing focuses. To add polynomial corrections on top of an oval, expand it first with
+`AsphericRefractiveSurface.pseudo_cartesian_oval(oval, degree=..., expansion_method="fit")`; keep the
+exact ovals as the aberration-free reference to compare against.
+
+```python
+from cavity_design import *
+
+lens = generate_cartesian_oval_lens(
+    back_focal_length=1.0e-2, front_focal_length=0.2,   # the pair it images exactly
+    T_c=3.83e-3, n=1.45, diameter=7.75e-3,              # split="equal_deviation" by default
+)
+lens = lens.to_position(ORIGIN)                         # floating until placed, like a catalog element
+# The object goes at back_focal_length in front of the back vertex - NOT at the focal distance:
+object_point = lens.surfaces[0].center - 1.0e-2 * RIGHT
+tuned = AsphericRefractiveSurface.pseudo_cartesian_oval(   # only if you need a_2/a_4/... on top
+    lens.surfaces[0], degree=10, expansion_method="fit", polynomial_coefficients=[0, 0, 0.3, 0],
+)
 ```
 
 ## Where to look for more
