@@ -56,6 +56,16 @@ from cavity_design import (
     focal_length_of_lens_object,
     focal_length_of_lens_formula,
     back_focal_length_of_lens_formula,
+    conic_sag,
+    conic_sag_polynomial_coefficients,
+    maximal_conic_constant,
+    fit_vendor_aspheric_parameters,
+    VendorAsphereSpec,
+    solve_cavity_eigenstate,
+    LASER_OPTIK_MIRROR,
+    EKSMA_LENS_20MM_ASPHERIC,
+    DUMMY_LENS,
+    COASTLINE_20CM_MIRROR,
 )
 
 
@@ -3390,3 +3400,285 @@ def test_focal_length_of_a_cartesian_oval_lens_object():
             T_c=lens.T_c,
         )
         assert np.isclose(back_focal_length_of_lens_object(lens), expected)
+
+# ---------------------------------------------------------------- vendor even-asphere extraction
+
+
+def _design_oval_lens():
+    """The lens the vendor extraction was designed against: the current cavity's two-oval element."""
+    return generate_cartesian_oval_lens(
+        back_focal_length=1.001e-2, front_focal_length=0.2, T_c=3.83e-3, n=1.45, diameter=7.75e-3
+    ).to_position(ORIGIN)
+
+
+def _sag_contribution(spec):
+    """How much each alpha actually moves the surface at the edge of the aperture.
+
+    The raw SI coefficients are a bad measure of smallness - alpha_6 is in m**-5, so a numerically
+    meaningless 1e-4 there displaces the surface by 1e-19 m. What matters is the displacement."""
+    return np.array(
+        [
+            abs(coefficient) * spec.fit_radius ** (2 * order)
+            for order, coefficient in enumerate(spec.alpha_coefficients, start=2)
+        ]
+    )
+
+
+@pytest.mark.parametrize("conic_constant", [0.0, -0.5, -1.0, -9.7, 2.0])
+def test_conic_sag_polynomial_reproduces_the_closed_form(conic_constant):
+    # conic_sag_polynomial_coefficients is the binomial series of conic_sag, so the two must agree wherever
+    # the series converges. This is the identity that lets a VendorAsphereSpec be traced as a polynomial.
+    radius, rho_max = 1e-2, 3e-3
+    rho = np.linspace(0, rho_max, 21)
+
+    def truncation_error(n_coefficients):
+        coefficients = conic_sag_polynomial_coefficients(
+            radius=radius, conic_constant=conic_constant, n_coefficients=n_coefficients
+        )
+        return np.max(np.abs(Polynomial(coefficients)(rho**2) - conic_sag(rho, radius, conic_constant)))
+
+    # Sub-picometer at 60 terms, which is a thousandfold below anything optics cares about - but a strongly
+    # hyperbolic conic gets there slowly, so the real property to pin is that more terms keep helping.
+    assert truncation_error(60) < 1e-12, f"series and closed form disagree for k={conic_constant}"
+    assert truncation_error(60) <= truncation_error(30) <= truncation_error(15)
+    # The rho**2 coefficient is the vertex curvature, whatever the conic constant does above it.
+    assert np.isclose(conic_sag_polynomial_coefficients(radius, conic_constant, 60)[1], 1 / (2 * radius))
+
+
+def test_conic_sag_polynomial_converges_slowly_near_the_limit():
+    # The series is in (1+k)*(rho/R)**2, so it degrades as that approaches 1. A strongly hyperbolic surface
+    # needs many more terms than a gentle one, which is why the round trip has to be checked and not assumed.
+    radius, rho_max = 1.417e-2, 3.875e-3
+    rho = np.linspace(0, rho_max, 21)
+    errors = []
+    for conic_constant in (-0.5, -9.7, -12.4):
+        coefficients = conic_sag_polynomial_coefficients(
+            radius=radius, conic_constant=conic_constant, n_coefficients=12
+        )
+        errors.append(np.max(np.abs(Polynomial(coefficients)(rho**2) - conic_sag(rho, radius, conic_constant))))
+    assert np.all(np.diff(errors) > 0), f"truncation should worsen towards the limit, got {errors}"
+
+
+def test_conic_sag_of_a_sphere_and_a_paraboloid():
+    # The two conics with a closed form of their own, in both signs of the radius.
+    rho = np.linspace(0, 3e-3, 11)
+    for radius in (1e-2, -1e-2):
+        sphere = np.sign(radius) * (abs(radius) - np.sqrt(radius**2 - rho**2))
+        assert np.allclose(conic_sag(rho, radius, conic_constant=0.0), sphere, atol=1e-17)
+        assert np.allclose(conic_sag(rho, radius, conic_constant=-1.0), rho**2 / (2 * radius), atol=1e-17)
+
+
+def test_maximal_conic_constant_bounds_where_the_conic_exists():
+    # Past this bound the conic closes on itself before it reaches the aperture edge, and its sag is nan there.
+    radius, rho_max = -7.170884e-3, 3.875e-3
+    limit = maximal_conic_constant(radius, rho_max)
+    assert np.isfinite(conic_sag(rho_max, radius, conic_constant=limit - 1e-6))
+    assert np.isnan(conic_sag(rho_max, radius, conic_constant=limit + 1e-6))
+
+
+@pytest.mark.parametrize("curvature_sign", [CurvatureSigns.convex, CurvatureSigns.concave])
+def test_vendor_parameters_of_a_sphere_are_exact(curvature_sign):
+    # A sphere is the k=0 conic, so it is the one case with a known answer: the extraction must return the
+    # vertex radius with the vendor's sign, a zero conic constant, and nothing above it.
+    sphere = SphericalRefractiveSurface(
+        radius=1e-2,
+        outwards_normal=-curvature_sign * RIGHT,
+        center=ORIGIN,
+        curvature_sign=curvature_sign,
+        n_1=1.0,
+        n_2=1.5,
+        diameter=6e-3,
+    )
+    pinned = sphere.vendor_aspheric_parameters(n_alpha=2, conic_constant="sphere")
+    assert pinned.radius == 1e-2 * curvature_sign
+    assert pinned.max_sag_error < 1e-15, f"a sphere is a conic exactly, got {pinned.max_sag_error}"
+    assert np.all(_sag_contribution(pinned) < 1e-15), "nothing should be left for the alphas to carry"
+    # And the fit, given the freedom to choose, must discover k = 0 on its own.
+    fitted = sphere.vendor_aspheric_parameters(n_alpha=2, conic_constant="fit")
+    assert abs(fitted.conic_constant) < 1e-6, f"expected the fit to find a sphere, got k={fitted.conic_constant}"
+    assert fitted.max_sag_error < 1e-15
+
+
+@pytest.mark.parametrize("conic_constant", ["fit", "sphere", "taylor", -2.0])
+def test_vendor_parameters_never_refit_the_vertex_radius(conic_constant):
+    # The vertex radius sets the paraxial power that the cavity's placement is built on, so it is taken from
+    # the surface and never fitted - whatever the conic constant is doing.
+    for surface in _design_oval_lens().surfaces:
+        spec = surface.vendor_aspheric_parameters(n_alpha=2, conic_constant=conic_constant)
+        assert spec.radius == surface.radius * surface.curvature_sign
+        # The vendor signs the radius by where the center of curvature lies relative to the light direction.
+        assert np.sign(spec.radius) == surface.curvature_sign
+
+
+@pytest.mark.parametrize("conic_constant", ["fit", "sphere", "taylor"])
+def test_vendor_parameters_converge_with_more_alphas(conic_constant):
+    # More correction terms can only help. Under "fit" this is also the sharpest available check on the search
+    # for the conic constant itself: a surface that is nearly a conic already has a needle of a minimum inside
+    # a broad basin, and a search that samples too coarsely steps over it and returns a *worse* fit from more
+    # parameters - which is impossible for a least-squares problem, and so shows up precisely here.
+    for surface in _design_oval_lens().surfaces:
+        errors = [
+            surface.vendor_aspheric_parameters(n_alpha=n, conic_constant=conic_constant).max_sag_error
+            for n in (1, 2, 3, 4)
+        ]
+        assert np.all(np.diff(errors) < 0), f"residual should fall with every alpha added, got {errors}"
+
+
+def test_fitted_conic_constant_beats_a_spherical_base():
+    # The point of fitting k rather than reading it off a Taylor series: at equal alpha count it is worth
+    # roughly two extra terms, on both faces of the design lens.
+    for surface in _design_oval_lens().surfaces:
+        for n_alpha in (1, 2):
+            fitted = surface.vendor_aspheric_parameters(n_alpha=n_alpha, conic_constant="fit")
+            spherical = surface.vendor_aspheric_parameters(n_alpha=n_alpha, conic_constant="sphere")
+            assert fitted.max_sag_error < spherical.max_sag_error / 10, (
+                f"fitting k should beat a spherical base by a wide margin, got "
+                f"{fitted.max_sag_error} against {spherical.max_sag_error}"
+            )
+
+
+def test_vendor_parameters_reject_an_impossible_conic_constant():
+    # Trap: a conic that steep does not span the aperture at all. An unbounded search walks into the region
+    # where the sag is nan, so the bound is checked rather than discovered.
+    surface = _design_oval_lens().surfaces[1]
+    limit = maximal_conic_constant(surface.radius * surface.curvature_sign, surface.diameter / 2)
+    with pytest.raises(ValueError, match="closes on itself"):
+        surface.vendor_aspheric_parameters(n_alpha=1, conic_constant=limit + 1.0)
+    with pytest.raises(ValueError, match="conic_constant policy"):
+        surface.vendor_aspheric_parameters(n_alpha=1, conic_constant="osculating")
+    with pytest.raises(ValueError, match="weighting"):
+        surface.vendor_aspheric_parameters(n_alpha=1, weighting="gaussian")
+
+
+def test_vendor_parameters_of_a_flat_surface_raise():
+    # A flat surface has no sag profile and needs no aspheric specification.
+    flat = FlatRefractiveSurface(outwards_normal=LEFT, center=ORIGIN, n_1=1.0, n_2=1.5, diameter=6e-3)
+    with pytest.raises(NotImplementedError, match="local_sag"):
+        flat.vendor_aspheric_parameters()
+
+
+def test_vendor_parameters_of_an_aspheric_surface_round_trip():
+    # The other direction the extraction has to serve: a polynomial asphere - a catalog lens, or one tuned by
+    # hand in the notebook - expressed as conic plus corrections, and recovered from it.
+    surface = AsphericRefractiveSurface.pseudo_cartesian_oval(
+        oval=_design_oval_lens().surfaces[0], degree=12, expansion_method="fit"
+    )
+    spec = surface.vendor_aspheric_parameters(n_alpha=3)
+    assert spec.radius == surface.radius * surface.curvature_sign
+    rho = np.linspace(0, surface.diameter / 2, 201)
+    recovered = spec.sag(rho) * surface.curvature_sign
+    assert np.max(np.abs(recovered - surface.local_sag(rho))) < 1e-8
+
+
+def test_vendor_parameters_trace_back_to_the_design_focus():
+    # The end-to-end check, and the one that matters: build a surface out of nothing but the vendor numbers,
+    # send the design fan through it, and see where it lands.
+    for surface in _design_oval_lens().surfaces:
+        spec = surface.vendor_aspheric_parameters(n_alpha=3, conic_constant="fit")
+        polynomial_coefficients = spec.to_polynomial_coefficients(degree=60)
+
+        # The polynomial is a truncation of the conic's infinite series, and a slow one for a strongly
+        # hyperbolic surface. Verify the truncation is negligible *before* trusting what it traces - checking
+        # the fit with a tool coarser than the fit itself would silently measure the tool.
+        rho = np.linspace(0, surface.diameter / 2, 201)
+        re_expansion_error = np.max(
+            np.abs(Polynomial(polynomial_coefficients)(rho**2) * surface.curvature_sign - spec.sag(rho))
+        )
+        assert re_expansion_error < spec.max_sag_error / 100, (
+            f"the round trip through a polynomial ({re_expansion_error}) is not far enough below the fit "
+            f"residual ({spec.max_sag_error}) to measure it"
+        )
+
+        vendor_surface = AsphericRefractiveSurface(
+            center=surface.center,
+            outwards_normal=surface.outwards_normal,
+            polynomial_coefficients=polynomial_coefficients,
+            curvature_sign=surface.curvature_sign,
+            n_1=surface.n_1,
+            n_2=surface.n_2,
+            diameter=surface.diameter,
+        )
+        heights = np.linspace(1e-4, 0.98 * surface.diameter / 2, 15)
+        aim = normalize_vector((surface.center + heights[:, np.newaxis] * np.array([0.0, 1.0, 0.0])) - surface.focus_1)
+        outgoing = vendor_surface.propagate_ray(
+            Ray(origin=np.tile(surface.focus_1, (len(heights), 1)), k_vector=aim, n=surface.n_1)
+        )
+        length_to_focal_plane = (surface.focus_2[0] - outgoing.origin[:, 0]) / outgoing.k_vector[:, 0]
+        transverse_miss = outgoing.origin[:, 1] + length_to_focal_plane * outgoing.k_vector[:, 1]
+        assert np.sqrt(np.mean(transverse_miss**2)) < 1e-6, (
+            f"rays built from the vendor numbers miss the design focus by "
+            f"{np.sqrt(np.mean(transverse_miss ** 2))} m rms"
+        )
+
+
+def test_vendor_spec_refuses_a_divergent_polynomial_expansion():
+    # A strong hyperbola is a perfectly real surface whose conic base has no convergent series in rho**2: the
+    # sag is real for w*rho**2 < 1, but the binomial series needs |w*rho**2| < 1, and for a negative 1+k those
+    # part company. The expansion must refuse rather than return a divergent answer, because nothing downstream
+    # could tell the difference. This is the f/0.65 oval singlet, where it actually bites.
+    singlet = generate_cartesian_oval_lens(
+        back_focal_length=5e-3, front_focal_length=0.2, T_c=3e-3, n=1.5, diameter=7.75e-3
+    ).to_position(ORIGIN)
+    steep = singlet.surfaces[0].vendor_aspheric_parameters(n_alpha=5)
+    assert steep.conic_constant < -1, "expected a hyperbolic base for this face"
+    assert abs(1 + steep.conic_constant) * (steep.fit_radius / steep.radius) ** 2 > 1
+    # The surface and its vendor parameters are exact all the same - only the polynomial form is unavailable.
+    rho = np.linspace(0, steep.fit_radius, 101)
+    exact = singlet.surfaces[0].curvature_sign * singlet.surfaces[0].local_sag(rho)
+    assert np.max(np.abs(steep.sag(rho) - exact)) < 1e-8
+    with pytest.raises(ValueError, match="no convergent polynomial expansion"):
+        steep.to_polynomial_coefficients(degree=80)
+
+    # Refitting over a smaller aperture brings it back inside the radius of convergence, as the message says.
+    mild = singlet.surfaces[0].vendor_aspheric_parameters(n_alpha=5, rho_max=1.5e-3)
+    assert abs(1 + mild.conic_constant) * (mild.fit_radius / mild.radius) ** 2 < 1
+    mild.to_polynomial_coefficients(degree=80)
+
+
+def test_vendor_spec_polynomial_fit_survives_a_divergent_conic():
+    # method="fit" exists for the surfaces method="taylor" cannot reach: a conic base whose own series does
+    # not converge over the aperture is still approximated perfectly well by a polynomial there. Same f/0.65
+    # singlet as above, where the Taylor route refuses outright.
+    singlet = generate_cartesian_oval_lens(
+        back_focal_length=5e-3, front_focal_length=0.2, T_c=3e-3, n=1.5, diameter=7.75e-3
+    ).to_position(ORIGIN)
+    for surface in singlet.surfaces:
+        spec = surface.vendor_aspheric_parameters(n_alpha=2)
+        coefficients = spec.to_polynomial_coefficients(degree=20, method="fit")
+        rho = np.linspace(0, spec.fit_radius, 401)
+        realized = surface.curvature_sign * Polynomial(coefficients)(rho**2)
+        # Far below the truncation of the vendor spec itself, so the polynomial is never the limiting error.
+        assert np.max(np.abs(realized - spec.sag(rho))) < spec.max_sag_error / 100
+        # The vertex curvature is pinned rather than fitted, so the paraxial power cannot drift.
+        assert np.isclose(coefficients[1], 1 / (2 * surface.radius), rtol=1e-12)
+    with pytest.raises(ValueError, match="method"):
+        singlet.surfaces[1].vendor_aspheric_parameters(n_alpha=2).to_polynomial_coefficients(method="chebyshev")
+
+
+def test_cavity_eigenstate_is_insensitive_to_the_solver_domain():
+    # The potential well is far narrower than the aperture, so the ground state must not care where the
+    # numerical box is put. It is the cheapest available check that the potential is being evaluated on the
+    # axis it was fitted on: polynomial_residuals_mirror is fitted against NA**2 while the radial solver calls
+    # V(r), and feeding it r instead of r**2 both deepens the well and makes the answer track the box.
+    cavity = Cavity(
+        elements=[LASER_OPTIK_MIRROR, EKSMA_LENS_20MM_ASPHERIC, DUMMY_LENS, COASTLINE_20CM_MIRROR],
+        standing_wave=True,
+        lambda_0_laser=LAMBDA_0_LASER,
+        p_is_trivial=True,
+        t_is_trivial=True,
+        use_paraxial_ray_tracing=False,
+        set_central_line=True,
+        set_mode_parameters=True,
+    )
+    cavity.place_element(element=cavity[0], position=cavity[0].radius * LEFT, recalculate_optic=False)
+    cavity.place_element(element=cavity[1], position=7e-3 * RIGHT, reference_center=cavity[0], recalculate_optic=False)
+    cavity.place_element(element=cavity[2], position=1e-2 * RIGHT, reference_center=cavity[1], recalculate_optic=False)
+    cavity.place_element(element=cavity[-1], position=0.4 * RIGHT, reference_center=cavity[2], recalculate_optic=True)
+
+    energies = [solve_cavity_eigenstate(cavity=cavity, n_rays=200, phi_max=phi)[1] for phi in (0.02, 0.1, 0.25)]
+    assert np.all(np.isfinite(energies)), f"ground state energies must be finite, got {energies}"
+    spread = (max(energies) - min(energies)) / abs(np.mean(energies))
+    assert spread < 0.05, (
+        f"the ground state should barely move when the numerical box changes by an order of magnitude, "
+        f"but it spread by {spread:.1%} across {energies}"
+    )

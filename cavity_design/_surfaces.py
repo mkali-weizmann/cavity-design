@@ -7,11 +7,15 @@ from typing import Optional, Union, List, Tuple
 import matplotlib.pyplot as plt
 import numpy as np
 from numpy.polynomial import Polynomial
-from scipy.optimize import brentq
+from scipy.optimize import brentq, minimize_scalar
 
 from ._utils import (
     MaterialProperties,
     OpticalSurfaceParams,
+    VendorAsphereSpec,
+    conic_sag,
+    conic_sag_polynomial_coefficients,
+    maximal_conic_constant,
     PARAMS_DEPRECATION_MESSAGE,
     SurfacesTypes,
     CurvatureSigns,
@@ -122,6 +126,11 @@ class Surface:
     def normal_at_a_point(self, point: np.ndarray) -> np.ndarray:
         # Pointing outwards towards the convex side
         raise NotImplementedError
+
+    def vendor_aspheric_parameters(self, **kwargs) -> "VendorAsphereSpec":
+        """This surface as the vertex radius, conic constant and higher-order corrections a vendor quotes
+        against. See :func:`fit_vendor_aspheric_parameters`, which takes the same keyword arguments."""
+        return fit_vendor_aspheric_parameters(self, **kwargs)
 
     def forward_normal_at_a_point(self, point: np.ndarray, k_vector: Optional[np.ndarray]) -> np.ndarray:
         # Normal to a point, pointing forwards along the ray if k_vector is given
@@ -805,6 +814,195 @@ def _combine_polynomial_corrections(
     return base_polynomial_coefficients + corrections
 
 
+def _vendor_fourth_order_coefficient(surface) -> float:
+    """The surface's own coefficient of rho**4, in the vendor's sign convention.
+
+    Only used to offer ``conic_constant="taylor"``. Every shape stores this differently, so it is read from
+    whichever representation the surface actually has rather than re-derived."""
+    if hasattr(surface, "sag_polynomial_coefficients"):  # A CartesianOval, which can expand itself exactly.
+        own_coefficient = surface.sag_polynomial_coefficients(degree=4, method="taylor")[2]
+    elif hasattr(surface, "polynomial"):  # An AsphericSurface already is a polynomial.
+        own_coefficient = surface.polynomial.coef[2] if len(surface.polynomial.coef) > 2 else 0.0
+    else:  # A sphere: the k=0 conic, whose rho**4 term is 1/(8*R**3).
+        own_coefficient = (
+            conic_sag_polynomial_coefficients(
+                radius=surface.radius * surface.curvature_sign, conic_constant=0.0, n_coefficients=3
+            )[2]
+            * surface.curvature_sign
+        )
+    # local_sag runs along inwards_normal; the vendor's z runs along the propagation direction.
+    return own_coefficient * surface.curvature_sign
+
+
+def fit_vendor_aspheric_parameters(
+    surface,
+    n_alpha: int = 2,
+    conic_constant: Union[str, float] = "fit",
+    rho_max: Optional[float] = None,
+    weighting: str = "area",
+    n_samples: int = 2001,
+) -> VendorAsphereSpec:
+    """Express ``surface`` in the even-asphere form a vendor quotes against. See :class:`VendorAsphereSpec`.
+
+    Works on anything that knows its own sag: a :class:`CartesianOval`, an :class:`AsphericSurface`, or a
+    :class:`SphericalSurface` (which comes back exactly, with ``k = 0`` and no alphas).
+
+    The three vendor numbers are three different problems, and are treated as such:
+
+    * The vertex radius is **taken, never fitted**. It is already exact - analytic for an oval, ``1/(2*a_2)``
+      for an asphere - and it is what sets the paraxial power the rest of a cavity design is built on. A fit
+      that shifted it by a fraction of a percent would quietly move the working point.
+    * The conic constant is **chosen, because it cannot be extracted**. The conic term's own expansion is
+      ``c*r**2/2 + (1+k)*c**3*r**4/8 + ...``, which overlaps ``alpha_4`` exactly, so any ``k`` reproduces the
+      surface given compensating alphas. It is a reparametrization, not a property of the shape, and a local
+      expansion cannot pin it down. See ``conic_constant`` below.
+    * Only the alphas are an ordinary least-squares fit, and they are linear once ``k`` is fixed.
+
+    ``conic_constant`` picks the policy:
+
+    * ``"fit"`` (default) - least squares over the clear aperture, bounded by :func:`maximal_conic_constant`.
+      Usually worth about two alpha terms, and much the best choice for a large aperture-to-radius ratio.
+    * ``"sphere"`` - ``k = 0``, leaving a spherical base and letting the alphas carry everything.
+    * ``"taylor"`` - matched to the surface's own rho**4 coefficient at the vertex. Reproducible and
+      convention-free, which a fitted ``k`` is not, but it optimizes nothing away from the axis.
+    * a number - used as given, after checking it against :func:`maximal_conic_constant`.
+
+    ``weighting="area"`` weights the residual by ``sqrt(rho)``, so equal-area annuli count equally and the
+    outer zones - which is where most of the aperture is - are not under-weighted. ``"uniform"`` does not."""
+    if not hasattr(surface, "local_sag"):
+        raise NotImplementedError(
+            f"{type(surface).__name__} does not define local_sag, so it has no sag profile to express as an "
+            f"even asphere. Only curved surfaces - spheres, aspheres and Cartesian ovals - can be quoted this way."
+        )
+    if n_alpha < 0:
+        raise ValueError(f"n_alpha must be non-negative, got {n_alpha}.")
+    if weighting not in ("area", "uniform"):
+        raise ValueError(f"Unknown weighting {weighting!r}; expected 'area' or 'uniform'.")
+    if not np.isfinite(surface.radius) or surface.radius == 0:
+        raise ValueError(
+            f"The vertex radius of this surface is {surface.radius}, which has no even-asphere form. A flat "
+            f"surface needs no aspheric specification."
+        )
+
+    signed_radius = surface.radius * surface.curvature_sign
+    curvature = 1 / signed_radius
+    rho_max = surface.diameter / 2 if rho_max is None else rho_max
+    rho = np.linspace(0, rho_max, n_samples)
+    # local_sag is along inwards_normal and non-negative; the vendor measures along the propagation direction.
+    exact_sag = surface.curvature_sign * surface.local_sag(rho)
+    if not np.all(np.isfinite(exact_sag)):
+        raise ValueError(
+            f"This surface does not reach rho_max={rho_max:.6e} m - its sag is undefined somewhere inside the "
+            f"aperture, so there is nothing to fit out there. Pass a smaller rho_max."
+        )
+    weights = np.sqrt(rho) if weighting == "area" else np.ones_like(rho)
+    orders = np.arange(2, 2 + n_alpha)  # rho**4, rho**6, ...
+
+    def fit_alphas(trial_conic_constant):
+        """The alphas are linear once k is fixed, so the whole fit is this one lstsq inside a 1-D search."""
+        residual = exact_sag - conic_sag(rho, radius=signed_radius, conic_constant=trial_conic_constant)
+        if n_alpha == 0:
+            return residual, np.zeros(0)
+        # Fitted in the normalized variable (rho/rho_max)**2: the raw powers of rho**2 span twenty orders of
+        # magnitude over a millimetric aperture and the design matrix would be hopeless. Same trick as
+        # CartesianOval.sag_polynomial_coefficients.
+        design_matrix = np.stack([(rho / rho_max) ** (2 * order) for order in orders], axis=-1)
+        normalized_alphas = np.linalg.lstsq(design_matrix * weights[:, np.newaxis], residual * weights, rcond=None)[0]
+        return residual - design_matrix @ normalized_alphas, normalized_alphas / rho_max ** (2 * orders)
+
+    conic_constant_limit = maximal_conic_constant(signed_radius, rho_max)
+    # The conic constant that reproduces the surface's own quartic term at the vertex. It is what
+    # conic_constant="taylor" returns, and it also anchors the search below.
+    vertex_matched_conic_constant = 8 * _vendor_fourth_order_coefficient(surface) / curvature**3 - 1
+    if conic_constant == "fit":
+        # Bounded above, because past the limit the conic closes before it reaches the aperture edge and its
+        # sag goes nan - an unbounded search walks straight into that and comes back with nonsense. Bounded
+        # below by the surface's own scale rather than by a fixed number: a nearly flat vertex divides by a
+        # tiny c**3 and can legitimately want a conic constant in the thousands.
+        upper = conic_constant_limit - 1e-9 * max(abs(conic_constant_limit), 1.0)
+        natural_scale = vertex_matched_conic_constant
+        lower = min(-1e3, 10 * natural_scale - 10)
+
+        def weighted_rms(trial):
+            return np.sqrt(np.mean((fit_alphas(trial)[0] * weights) ** 2))
+
+        def zoom(low, high, levels=6, n_points=81):
+            """Nested grid refinement: keep the best cell, re-grid inside it, repeat, then polish.
+
+            A plain solver is not enough here. A surface that is already close to a conic has a needle of a
+            minimum - orders of magnitude of residual inside a window of a few thousandths - at the bottom of
+            a broad smooth basin, and anything that samples too coarsely steps straight over it. That shows up
+            as a fit which gets *worse* when an alpha is added."""
+            for _ in range(levels):
+                grid = np.linspace(low, high, n_points)
+                best_index = int(np.argmin([weighted_rms(trial) for trial in grid]))
+                low, high = grid[max(best_index - 1, 0)], grid[min(best_index + 1, n_points - 1)]
+            return float(
+                minimize_scalar(weighted_rms, bounds=(low, high), method="bounded", options={"xatol": 1e-14}).x
+            )
+
+        # Anchor the search on the vertex-matched conic constant. The conic depends on k only through (1+k),
+        # and matching the surface's own quartic term puts (1+k) within a small factor of the optimum, so a
+        # window scaled to |1+k| around it resolves the needle where a search over the whole admissible range
+        # cannot. The global sweep is kept as a fallback, and whichever wins on merit is the one used.
+        anchor_half_width = 0.9 * abs(1 + natural_scale) + 1e-3
+        candidates = [
+            zoom(lower, upper),
+            zoom(max(lower, natural_scale - anchor_half_width), min(upper, natural_scale + anchor_half_width)),
+            natural_scale,
+        ]
+        chosen_conic_constant = min(
+            (candidate for candidate in candidates if lower <= candidate < upper), key=weighted_rms
+        )
+    elif conic_constant == "sphere":
+        chosen_conic_constant = 0.0
+    elif conic_constant == "taylor":
+        chosen_conic_constant = vertex_matched_conic_constant
+    elif isinstance(conic_constant, str):
+        raise ValueError(
+            f"Unknown conic_constant policy {conic_constant!r}; expected 'fit', 'sphere', 'taylor' or a number."
+        )
+    else:
+        chosen_conic_constant = float(conic_constant)
+    if chosen_conic_constant >= conic_constant_limit:
+        raise ValueError(
+            f"conic_constant={chosen_conic_constant} is at or above {conic_constant_limit}, the largest this "
+            f"surface admits: with R={signed_radius:.6e} m a conic that steep closes on itself before it "
+            f"reaches rho_max={rho_max:.6e} m, so its sag is undefined over part of the aperture."
+        )
+
+    final_residual, alpha_coefficients = fit_alphas(chosen_conic_constant)
+
+    # Aspheric departure: how far the surface strays from the sphere that best imitates it, which is the number
+    # a polishing shop reads to judge how hard the part is to make. One more 1-D search, over the sphere's
+    # curvature rather than its radius, so that a nearly flat best fit stays well behaved.
+    def sphere_departure(trial_curvature):
+        if trial_curvature == 0:
+            return np.max(np.abs(exact_sag))
+        with np.errstate(invalid="ignore"):
+            return np.max(np.abs(exact_sag - conic_sag(rho, radius=1 / trial_curvature, conic_constant=0.0)))
+
+    curvature_bound = 1 / rho_max  # Any steeper and the sphere cannot span the aperture at all.
+    best_sphere = minimize_scalar(
+        sphere_departure,
+        bounds=(-curvature_bound + 1e-12, curvature_bound - 1e-12),
+        method="bounded",
+        options={"xatol": 1e-12 * curvature_bound},
+    )
+
+    return VendorAsphereSpec(
+        radius=signed_radius,
+        conic_constant=chosen_conic_constant,
+        alpha_coefficients=alpha_coefficients,
+        aperture_diameter=surface.diameter,
+        fit_radius=rho_max,
+        weighting=weighting,
+        max_sag_error=float(np.max(np.abs(final_residual))),
+        rms_sag_error=float(np.sqrt(np.mean(final_residual**2))),
+        aspheric_departure=float(sphere_departure(best_sphere.x)),
+    )
+
+
 class AsphericSurface(Surface):
     def __init__(
         self,
@@ -887,6 +1085,15 @@ class AsphericSurface(Surface):
         intersection = ray.parameterization(t)
 
         return intersection
+
+    def local_sag(self, rho: Union[np.ndarray, float]) -> Union[np.ndarray, float]:
+        """The sag at transverse distance ``rho`` from the optical axis, measured along ``inwards_normal``.
+
+        For an asphere the polynomial *is* the sag, so this only gives it the name that
+        :class:`CartesianOval` and :class:`SphericalSurface` use as well - which is what lets
+        :func:`fit_vendor_aspheric_parameters` treat all three the same way. Pose-independent, so it works on
+        a floating surface."""
+        return self.polynomial(np.asarray(rho, dtype=float) ** 2)
 
     def relative_coordinates(self, r: np.ndarray) -> np.ndarray:
         # Convert a global coordinate to it's cylindrical coordinates relative to the surface's optical axis (rho, x)
@@ -2025,6 +2232,16 @@ class SphericalSurface(Surface):
             self.origin = _to_position_array(origin)
         else:
             self.origin = np.full(3, np.nan)
+
+    def local_sag(self, rho: Union[np.ndarray, float]) -> Union[np.ndarray, float]:
+        """The sag at transverse distance ``rho`` from the optical axis, measured along ``inwards_normal``.
+
+        The same interface :class:`AsphericSurface` and :class:`CartesianOval` expose, so a sphere can be
+        expressed as an even asphere too - trivially, as the conic with ``k = 0`` and no corrections.
+        ``rho`` beyond the radius comes back nan, the way a ray that misses does. Pose-independent."""
+        rho = np.asarray(rho, dtype=float)
+        with np.errstate(invalid="ignore"):
+            return self.radius - np.sqrt(self.radius**2 - rho**2)
 
     def find_intersection_with_ray_exact(self, ray: Ray) -> np.ndarray:
         # The following expression is the result of calculation "Intersection of a parameterized line and a sphere"
