@@ -1454,7 +1454,11 @@ def solve_cavity_eigenstate(
     )[0, 0]
     m = 1  # arbitrary.
     k = 2 * np.pi / cavity.lambda_0_laser
-    V_potential = lambda t: -((k * H_BAR) ** 2) * np.abs(hessian_value) * mirror_deviation_polynomial(t) / m
+    # ground_state_2d_radial_polar calls V(r) with the radial coordinate itself, while
+    # polynomial_residuals_mirror is fitted against its square (see analyze_output_wavefront, which passes
+    # NAs_0 ** 2 to Polynomial.fit). Squaring here is what puts the potential on the axis it was fitted on;
+    # without it the well is far too deep and the ground state comes out several times too low.
+    V_potential = lambda t: -((k * H_BAR) ** 2) * np.abs(hessian_value) * mirror_deviation_polynomial(t**2) / m
     r_max = phi_max  # cavity.surfaces[-1].get_parameterization(mirror_intersection_points[-1])  # ATTENTION: I need to think weather this solution is the solution in the original linspaced coordinates or in the final distorted coordinates.
     n = 1000
     r, E_0, psi_0, H = ground_state_2d_radial_polar(r_max=r_max, V=V_potential, m=m, n=n)

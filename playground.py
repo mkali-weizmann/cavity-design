@@ -1,126 +1,24 @@
 # %%
-"""Point source -> point image with a Cartesian oval.
-
-A ``RefractiveCartesianOval`` is the exact surface that images one pair of conjugate points with no
-spherical aberration at all: *every* ray leaving the object focus is refracted precisely through the
-image focus, however far off axis it starts. A spherical or polynomial-aspheric surface only manages
-this approximately.
-
-The surface is defined by two signed focal distances, measured from the vertex along the direction the
-light travels, and by the two refractive indices - which set its *shape*, not just its refraction:
-
-  * ``E_1 > 0`` - a real object: the incoming rays diverge from ``focus_1``, behind the surface.
-  * ``E_2 > 0`` - a real image: the refracted rays physically converge to ``focus_2``, in front of it.
-  * ``E_2 < 0`` - a virtual image: the refracted rays diverge, and it is their backward extensions that
-    meet at ``focus_2``, behind the surface.
-
-This script runs both signs of ``E_2`` side by side and prints the residual focus error for each.
-"""
 from matplotlib import use
 use("QT5Agg")  # for interactive plotting in Spyder
 from cavity_design import *
-
-N_RAYS = 13
-HALF_ANGLE = 0.16  # rad - the half-angle of the cone leaving the point source
-
-
-def fan_from_point_source(surface, half_angle=HALF_ANGLE, n_rays=N_RAYS):
-    """A fan of rays leaving the object focus of ``surface``, spread symmetrically about the optical axis."""
-    optical_axis = surface.propagation_direction
-    transverse = np.cross(optical_axis, np.array([0.0, 0.0, 1.0]))
-    angles = np.linspace(-half_angle, half_angle, n_rays)
-    k_vector = np.stack([np.cos(angle) * optical_axis + np.sin(angle) * transverse for angle in angles])
-    return Ray(origin=np.tile(surface.focus_1, (n_rays, 1)), k_vector=k_vector, n=surface.n_1)
-
-
-def focus_error(outgoing_ray, image_point):
-    """Perpendicular distance from the image point to each outgoing ray's (infinite) line.
-
-    Measuring against the line rather than the forward half-line makes this work for a virtual image
-    too, where the rays only meet the image point when extended backwards."""
-    delta = image_point - outgoing_ray.origin
-    along = np.sum(delta * outgoing_ray.k_vector, axis=-1)
-    return np.linalg.norm(delta - along[:, np.newaxis] * outgoing_ray.k_vector, axis=-1)
-
-
-def demonstrate(ax, title, E_1, E_2, diameter, n_1=1.0, n_2=1.5):
-    surface = RefractiveCartesianOval(
-        center=ORIGIN,
-        outwards_normal=LEFT,  # convex side faces the source, so the light travels to the right
-        E_1=E_1,
-        E_2=E_2,
-        n_1=n_1,
-        n_2=n_2,
-        diameter=diameter,
-        name=title,
-    )
-    source, image = surface.focus_1, surface.focus_2
-    incoming = fan_from_point_source(surface)
-    outgoing = surface.propagate_ray(incoming)
-    errors = focus_error(outgoing, image)
-
-    numerical_aperture = n_1 * np.sin(HALF_ANGLE)
-    largest_ray_height = surface.radial_distance_from_axis(outgoing.origin).max()
-    print(f"\n{title}")
-    print(f"    E_1 = {E_1 * 1e3:+.1f} mm (source), E_2 = {E_2 * 1e3:+.1f} mm (image), n: {n_1} -> {n_2}")
-    print(f"    source at {np.round(source * 1e3, 3)} mm, image at {np.round(image * 1e3, 3)} mm")
-    print(f"    vertex radius of curvature : {surface.radius * 1e3:.3f} mm")
-    print(f"    curvature_sign             : {surface.curvature_sign:+d} (derived from the optics)")
-    print(f"    input NA                   : {numerical_aperture:.3f}")
-    print(f"    largest ray height         : {largest_ray_height * 1e3:.3f} mm")
-    print(f"    WORST FOCUS ERROR          : {errors.max():.2e} m  <- a point, to machine precision")
-
-    # --- draw it
-    surface.plot(ax=ax, color="tab:blue")
-    for i in range(N_RAYS):
-        hit = outgoing.origin[i]
-        ax.plot([incoming.origin[i, 0], hit[0]], [incoming.origin[i, 1], hit[1]], color="tab:orange", lw=0.9)
-        if E_2 > 0:
-            # Real image: the ray physically travels on to the image point.
-            ax.plot([hit[0], image[0]], [hit[1], image[1]], color="tab:red", lw=0.9)
-        else:
-            # Virtual image: the ray diverges forwards, and its backward extension reaches the image point.
-            forward = hit + abs(E_2) * outgoing.k_vector[i]
-            ax.plot([hit[0], forward[0]], [hit[1], forward[1]], color="tab:red", lw=0.9)
-            ax.plot([hit[0], image[0]], [hit[1], image[1]], color="tab:red", lw=0.6, ls=":", alpha=0.6)
-
-    ax.plot(source[0], source[1], "ko", ms=7, label="point source (focus_1)")
-    ax.plot(image[0], image[1], "k*", ms=15, label=f"point image (focus_2), {'real' if E_2 > 0 else 'virtual'}")
-    ax.axhline(0, color="grey", lw=0.5, ls="--", zorder=0)
-    ax.set_title(f"{title}      worst focus error = {errors.max():.1e} m", fontsize=11)
-    ax.set_xlabel("x [mm]")
-    ax.set_ylabel("y [mm]  (exaggerated)")
-    # The scene is ~90 mm long but only ~12 mm tall, so an equal aspect ratio would squash it into an
-    # unreadable strip. Stretching y is the usual convention for a ray diagram.
-    ax.set_ylim(-1.9 * diameter / 2, 1.9 * diameter / 2)
-    ax.xaxis.set_major_formatter(lambda value, _: f"{value * 1e3:g}")
-    ax.yaxis.set_major_formatter(lambda value, _: f"{value * 1e3:g}")
-    ax.legend(loc="lower right", fontsize=8, framealpha=0.9)
-    return errors.max()
-
-
-fig, axes = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
-
-real_error = demonstrate(
-    axes[0],
-    "Real image  (E_2 > 0)",
-    E_1=30e-3,
-    E_2=60e-3,
-    diameter=12e-3,
+cavity = OpticalSystem(
+    elements=[
+        SphericalMirror(name='LaserOptik mirror', radius=0.005, outwards_normal=np.array([-1.0, 0.0, 0.0]), center=np.array([-0.005, 0.0, 0.0]), curvature_sign=-1, diameter=0.00775, material_properties=MaterialProperties(refractive_index=1.45, alpha_expansion=5.2e-07, beta_surface_absorption=1e-06, kappa_conductivity=1.38, dn_dT=1.2e-05, nu_poisson_ratio=0.16, alpha_volume_absorption=0.001, intensity_reflectivity=0.0001, intensity_transmittance=0.999899, temperature=np.nan)),
+        OpticalSystem(
+            elements=[
+                AsphericRefractiveSurface(name='Cartesian oval lens - back side (vendor asphere)', center=np.array([0.004999999999999998, 0.0, 0.0]), outwards_normal=np.array([-1.0, -0.0, -0.0]), polynomial_coefficients=np.array([0.0, 19.718915818155743, -1366961.8233454428, 66220393645.204445, -4629070442344418.0, 3.933540206193227e+20, -3.1004050267916582e+25, 1.9019455280882967e+30, -8.0953027932369e+34, 2.0766853858103462e+39, -2.3902396558132647e+43]), curvature_sign=1, n_1=1.0, n_2=1.76, diameter=0.007749999999999999, material_properties=MaterialProperties(refractive_index=1.45, alpha_expansion=5.2e-07, beta_surface_absorption=1e-06, kappa_conductivity=1.38, dn_dT=1.2e-05, nu_poisson_ratio=0.16, alpha_volume_absorption=0.001, intensity_reflectivity=0.0001, intensity_transmittance=0.999899, temperature=np.nan)),
+                AsphericRefractiveSurface(name='Cartesian oval lens - front side (vendor asphere)', center=np.array([0.008699999999999998, 0.0, 0.0]), outwards_normal=np.array([1.0, 0.0, 0.0]), polynomial_coefficients=np.array([0.0, 85.6943910872071, 396788.9737967076, 3741449210.097625, 44030962754744.52, 5.818251474525176e+17, 8.328840134159115e+21, 1.0440587828746894e+26, 3.179003514185044e+30, -3.385188978050625e+34, 1.9275451029627756e+39]), curvature_sign=-1, n_1=1.76, n_2=1.0, diameter=0.007749999999999999, material_properties=MaterialProperties(refractive_index=1.45, alpha_expansion=5.2e-07, beta_surface_absorption=1e-06, kappa_conductivity=1.38, dn_dT=1.2e-05, nu_poisson_ratio=0.16, alpha_volume_absorption=0.001, intensity_reflectivity=0.0001, intensity_transmittance=0.999899, temperature=np.nan)),
+            ],
+            use_paraxial_ray_tracing=True,     lambda_0_laser=1.064e-06,     t_is_trivial=True,     p_is_trivial=True,     name='Cartesian oval lens (vendor asphere, corrections to rho^8)',
+        ),
+        SphericalMirror(radius=0.19994863712672875, outwards_normal=np.array([1.0, 0.0, 0.0]), center=np.array([0.4072830159804838, 0.0, 0.0]), curvature_sign=-1, diameter=np.nan),
+    ],
+         lambda_0_laser=1.064e-06,     t_is_trivial=True,     p_is_trivial=True,     use_paraxial_ray_tracing=False,
 )
-virtual_error = demonstrate(
-    axes[1],
-    "Virtual image  (E_2 < 0)",
-    E_1=30e-3,
-    E_2=-60e-3,
-    diameter=12e-3,
-)
-
-fig.suptitle("A Cartesian oval maps a point source to a point image, exactly", fontsize=13)
-plt.tight_layout()
+cavity.plot()
+ax = plt.gca()
+ax.set_aspect('equal', adjustable='box')
+ax.set_xlim(3e-3, 10e-3)
+ax.set_title("")
 plt.show()
-
-# Both cases must be perfect to numerical precision - that is the whole point of this surface.
-assert real_error < 1e-12, real_error
-assert virtual_error < 1e-12, virtual_error
-print("\nBoth conjugate pairs image perfectly.")

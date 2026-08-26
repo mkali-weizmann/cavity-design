@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from scipy.integrate import solve_ivp
 from numpy.polynomial import Polynomial
 from scipy.optimize import root_scalar
+from scipy.special import binom
 import pyperclip
 
 # %% Constants
@@ -230,6 +231,127 @@ PHYSICAL_SIZES_DICT = {
     "c_lens_focal_length_expansion": 1,  # DUMMY
     "c_lens_volumetric_absorption": 1,  # DUMMY
 }
+
+
+@dataclass
+class VendorAsphereSpec:
+    """A surface in the form an optics vendor quotes against, rather than the form the library stores.
+
+    The even asphere of https://en.wikipedia.org/wiki/Aspheric_lens - a vertex radius, a conic constant and
+    fourth-order-and-above corrections::
+
+        z(r) = c*r**2 / (1 + sqrt(1 - (1+k)*c**2*r**2)) + alpha_4*r**4 + alpha_6*r**6 + ...,     c = 1/radius
+
+    Produced by :func:`fit_vendor_aspheric_parameters`, or by any surface's ``vendor_aspheric_parameters``.
+
+    Two things to know before quoting these numbers:
+
+    * ``z`` is measured along the direction the light travels, and ``radius`` is signed in that same
+      convention - positive when the center of curvature lies downstream of the vertex. The library's own sag
+      is measured along ``inwards_normal`` and kept non-negative, with the direction living in
+      ``outwards_normal`` instead, so the two differ by ``curvature_sign``.
+    * ``conic_constant`` is not a property of the shape on its own. The conic term and the ``alpha_4`` term
+      overlap - any conic constant reproduces the surface given compensating alphas - so this one is the
+      minimizer for *this* alpha count over *this* aperture, and it moves if either changes. Always quote
+      ``radius``, ``conic_constant`` and ``alpha_coefficients`` together, over ``fit_radius``.
+
+    Everything is stored in SI, like the rest of the library. ``__str__`` renders millimeters, because that
+    is what drawings use."""
+
+    radius: float  # Signed vertex radius of curvature [m], positive when the center of curvature is downstream.
+    conic_constant: float
+    alpha_coefficients: np.ndarray  # Coefficients of r**4, r**6, ... [m**(1-2n)].
+    aperture_diameter: float  # The surface's full clear aperture [m].
+    fit_radius: float  # The rho_max the fit actually ran over [m]; usually aperture_diameter / 2.
+    weighting: str  # "area" or "uniform" - how the residual was weighted across the aperture.
+    max_sag_error: float  # Largest |z_vendor - z_exact| over the fitted aperture [m].
+    rms_sag_error: float  # Root-mean-square of the same, with the same weighting used for the fit [m].
+    aspheric_departure: float  # Largest |z - best fit sphere| over the aperture [m]; a manufacturability number.
+
+    def sag(self, rho: Union[np.ndarray, float]) -> Union[np.ndarray, float]:
+        """The vendor sag ``z(rho)``, measured along the direction the light travels.
+
+        Evaluated in closed form, so this is the reference a round trip through a polynomial is checked
+        against - never the other way around."""
+        return conic_sag(rho, radius=self.radius, conic_constant=self.conic_constant) + sum(
+            coefficient * rho ** (2 * order) for order, coefficient in enumerate(self.alpha_coefficients, start=2)
+        )
+
+    def to_polynomial_coefficients(self, degree: int = 40, method: str = "taylor", n_samples: int = 2001) -> np.ndarray:
+        """These parameters as the ``a_0, a_2, ... a_degree`` an :class:`AsphericSurface` takes.
+
+        The way back into the library, and the way this spec gets ray traced. Note that the sag comes back in
+        the library's convention - along ``inwards_normal``, non-negative - not the vendor's.
+
+        The conic term is an infinite series in rho**2, so this is a truncation, and a badly behaved one when
+        ``|(1 + conic_constant)| * (fit_radius / radius)**2`` approaches 1: a strongly hyperbolic surface can
+        need dozens of terms to get below its own fit residual. The default degree is generous for that
+        reason. Check against :meth:`sag` rather than assuming.
+
+        Past 1 the series does not converge at all and ``method="taylor"`` raises. That is a limitation of the
+        *series*, not of the surface: a strongly hyperbolic conic is perfectly well approximated by a
+        polynomial over a bounded aperture, it just is not reproduced by its own Taylor expansion there.
+
+        ``method="fit"`` is the way through. It least-squares fits the vendor sag over the aperture instead of
+        expanding it about the vertex, so it works whatever the conic constant does, and for simulation it is
+        usually the better choice anyway - it spreads its error over the aperture rather than piling it at the
+        rim. The vertex curvature is pinned, not fitted, so the paraxial power is preserved exactly either
+        way. Check the result against :meth:`sag` rather than assuming a degree is enough."""
+        if method not in ("taylor", "fit"):
+            raise ValueError(f"Unknown method {method!r}; expected 'taylor' or 'fit'.")
+        if method == "fit":
+            # Fitted in the normalized variable (rho/rho_max)**2, for the same conditioning reason as
+            # everywhere else: the raw powers of rho**2 span tens of orders of magnitude over a millimetric
+            # aperture. The rho**2 coefficient is held at the exact vertex curvature so that the paraxial
+            # power - which a whole cavity design hangs off - cannot drift.
+            rho_max = self.fit_radius
+            rho = np.linspace(0, rho_max, n_samples)
+            vertex_term = rho**2 / (2 * self.radius)
+            orders = np.arange(2, degree // 2 + 1)
+            design_matrix = np.stack([(rho / rho_max) ** (2 * order) for order in orders], axis=-1)
+            fitted = np.linalg.lstsq(design_matrix, self.sag(rho) - vertex_term, rcond=None)[0]
+            coefficients = np.zeros(degree // 2 + 1)
+            coefficients[1] = 1 / (2 * self.radius)
+            coefficients[2:] = fitted / rho_max ** (2 * orders)
+            return int(np.sign(self.radius)) * coefficients
+        series_ratio = abs(1 + self.conic_constant) * (self.fit_radius / self.radius) ** 2
+        if series_ratio >= 1:
+            raise ValueError(
+                f"The conic base of this surface has no convergent polynomial expansion over its aperture: "
+                f"|1+k|*(rho_max/R)**2 = {series_ratio:.4f}, which is not below 1. The surface itself is fine "
+                f"and so are its vendor parameters - evaluate them with sag() - but they cannot be expressed "
+                f"as an AsphericSurface, which is a pure polynomial in rho**2. Refit over a smaller rho_max, "
+                f"or use conic_constant='sphere' to keep the base mild and let the alphas do the work."
+            )
+        coefficients = conic_sag_polynomial_coefficients(
+            radius=self.radius, conic_constant=self.conic_constant, n_coefficients=degree // 2 + 1
+        )
+        for order, coefficient in enumerate(self.alpha_coefficients, start=2):
+            if order >= len(coefficients):
+                raise ValueError(
+                    f"degree={degree} is too low to hold alpha_{2 * order}; it needs at least degree={2 * order}."
+                )
+            coefficients[order] += coefficient
+        # The library's sag runs along inwards_normal and is non-negative; the vendor's runs along the
+        # propagation direction. They differ by curvature_sign, which is the sign of the signed radius.
+        return int(np.sign(self.radius)) * coefficients
+
+    def __str__(self):
+        millimeter_alphas = "\n".join(
+            f"    alpha_{2 * order:<2d} = {coefficient * 1000.0 ** (1 - 2 * order):+.9e}  mm^{1 - 2 * order}"
+            for order, coefficient in enumerate(self.alpha_coefficients, start=2)
+        )
+        return (
+            f"Even asphere, z(r) = c*r^2/(1+sqrt(1-(1+k)*c^2*r^2)) + sum(alpha_2n * r^2n), in mm:\n"
+            f"    R       = {self.radius * 1000:+.9f} mm     (c = {1 / (self.radius * 1000):+.9e} 1/mm)\n"
+            f"    k       = {self.conic_constant:+.9f}\n"
+            f"{millimeter_alphas}\n"
+            f"    clear aperture   = {self.aperture_diameter * 1000:.4f} mm diameter"
+            f" (fitted to r = {self.fit_radius * 1000:.4f} mm, {self.weighting}-weighted)\n"
+            f"    residual vs the exact surface: {self.max_sag_error * 1e9:.4f} nm peak,"
+            f" {self.rms_sag_error * 1e9:.4f} nm rms\n"
+            f"    aspheric departure from the best fit sphere: {self.aspheric_departure * 1e6:.4f} um"
+        )
 
 
 def convert_material_to_mirror_or_lens(
@@ -634,6 +756,72 @@ def rotation_matrix_around_n(n, theta):
 def dT_c_of_a_lens(R, h):
     dT_c = R * (1 - np.sqrt(1 - h**2 / R**2))
     return dT_c
+
+
+def maximal_conic_constant(radius: float, rho_max: float) -> float:
+    """The largest conic constant whose surface still reaches ``rho_max``.
+
+    ``1 - (1+k)*c**2*r**2`` under the square root goes negative for a conic that closes on itself before it
+    gets to the edge of the aperture - the surface simply does not exist out there. Fits over ``k`` have to be
+    bounded by this, or they wander into the region where the sag is nan and come back with nonsense."""
+    if not np.isfinite(radius) or rho_max == 0:
+        return np.inf
+    return (radius / rho_max) ** 2 - 1
+
+
+def conic_sag(rho: Union[np.ndarray, float], radius: float, conic_constant: float) -> Union[np.ndarray, float]:
+    """The sag of a conic of revolution, the base term of the vendor even-asphere form::
+
+        z(r) = c*r**2 / (1 + sqrt(1 - (1+k)*c**2*r**2)),        c = 1 / radius
+
+    ``radius`` is signed the way a vendor signs it - positive when the center of curvature lies downstream of
+    the vertex - and the sag comes back with the same sign, so a negative radius gives a negative sag.
+
+    Evaluated through the algebraically identical ``z = (c/w) * (1 - sqrt(1 - w*r**2))`` with ``w = (1+k)*c**2``,
+    which is better behaved: it has no ``0/0`` at the vertex and it is the form whose binomial series
+    :func:`conic_sag_polynomial_coefficients` returns. ``k == -1`` (a paraboloid, ``w == 0``) is the removable
+    singularity of that expression and is handled on its own.
+
+    Points past :func:`maximal_conic_constant`'s limit come back nan, on the same terms as a ray that misses."""
+    rho = np.asarray(rho, dtype=float)
+    curvature = 1 / radius
+    w = (1 + conic_constant) * curvature**2
+    if w == 0:
+        return curvature * rho**2 / 2
+    with np.errstate(invalid="ignore"):
+        return curvature * (1 - np.sqrt(1 - w * rho**2)) / w
+
+
+def conic_sag_polynomial_coefficients(radius: float, conic_constant: float, n_coefficients: int) -> np.ndarray:
+    """A conic as the sag coefficients ``a_0, a_2, ... `` of a polynomial in rho**2.
+
+    The exact binomial series of :func:`conic_sag`: with ``w = (1+k)*c**2``,
+    ``z = (c/w) * (1 - sqrt(1 - w*r**2))`` expands term by term into
+    ``-(c/w) * binom(1/2, m) * (-w)**m``. Same convention as
+    :meth:`CartesianOval.sag_polynomial_coefficients` and :class:`AsphericSurface`, and ``a_0`` is exactly 0.
+
+    This is the inverse of what ``simple_analysis_scripts/extract_geometry_from_zmax_params.py`` does with
+    sympy, and the way a :class:`VendorAsphereSpec` gets back into a traceable surface.
+
+    Mind the convergence, and do not confuse it with existence. The series is in ``w*rho**2``, so it converges
+    only inside ``|(1+k)*(rho/radius)**2| < 1``, and slowly as that ratio approaches 1 - a strongly hyperbolic
+    surface can need dozens of terms before the truncation drops below its own fit residual.
+
+    :func:`maximal_conic_constant` is a *different* limit: it bounds where the sag is real, ``w*rho**2 < 1``,
+    with no absolute value. For a negative ``1+k`` - any hyperbola, which is most interesting aspheres - the
+    sag stays perfectly real however negative ``w*rho**2`` goes, while the series stops converging the moment
+    it passes -1. A surface can therefore be entirely well defined and still have no usable polynomial
+    expansion at all. Check against :func:`conic_sag` rather than trusting a term count."""
+    if n_coefficients < 2:
+        raise ValueError(f"n_coefficients must be at least 2 (a_0 and a_2), got {n_coefficients}.")
+    curvature = 1 / radius
+    w = (1 + conic_constant) * curvature**2
+    if w == 0:  # A paraboloid is already a polynomial, with nothing above rho**2.
+        coefficients = np.zeros(n_coefficients)
+        coefficients[1] = curvature / 2
+        return coefficients
+    orders = np.arange(1, n_coefficients)
+    return np.concatenate([[0.0], -(curvature / w) * binom(0.5, orders) * (-w) ** orders])
 
 
 def focal_length_of_lens_formula(R_1, R_2, n, T_c):
@@ -1397,7 +1585,8 @@ def copy_figure_as_png_to_clipboard(fig=None, dpi=200):
     if application is None:
         raise RuntimeError(
             "copying a figure to the clipboard needs a running Qt application - select the Qt "
-            "backend with matplotlib.use('Qt5Agg') before creating the figure")
+            "backend with matplotlib.use('Qt5Agg') before creating the figure"
+        )
 
     buf = io.BytesIO()
     fig.savefig(buf, format="png", dpi=dpi, bbox_inches="tight")
