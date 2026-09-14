@@ -132,24 +132,41 @@ def _check_within_support(mode_spacing_MHz, support_MHz):
             f"[{low:.4g}, {high:.4g}] MHz. " + OUT_OF_RANGE_ADVICE)
 
 
-def make_mode_spacing_to_na(mode_spacing, NAs):
-    """Build the mode spacing [Hz] -> NA interpolator over the simulated support only.
+def _make_mode_spacing_interpolator(mode_spacing, values, name):
+    """Build a mode spacing [Hz] -> `values` interpolator over the simulated support only.
 
     Unlike a plain interp1d(..., fill_value='extrapolate'), a value outside the scanned range
     raises ModeSpacingOutOfRange instead of quietly extrapolating a number nobody simulated. The
     returned callable carries the support as `.support_MHz`.
     """
-    spacing_mhz, nas = _finite_sorted_by_spacing(mode_spacing, NAs)
+    spacing_mhz, values = _finite_sorted_by_spacing(mode_spacing, values)
     support_MHz = (float(spacing_mhz[0]), float(spacing_mhz[-1]))
-    interpolate = interp1d(spacing_mhz, nas)
+    interpolate = interp1d(spacing_mhz, values)
 
-    def mode_spacing_to_na(mode_spacing_Hz):
+    def mode_spacing_to_value(mode_spacing_Hz):
         mode_spacing_MHz = np.asarray(mode_spacing_Hz, dtype=float) / 1e6
         _check_within_support(mode_spacing_MHz, support_MHz)
         return interpolate(mode_spacing_MHz)
 
-    mode_spacing_to_na.support_MHz = support_MHz
-    return mode_spacing_to_na
+    mode_spacing_to_value.__name__ = name
+    mode_spacing_to_value.support_MHz = support_MHz
+    return mode_spacing_to_value
+
+
+def make_mode_spacing_to_na(mode_spacing, NAs):
+    """The mode spacing [Hz] -> NA interpolator; see _make_mode_spacing_interpolator."""
+    return _make_mode_spacing_interpolator(mode_spacing, NAs, 'mode_spacing_to_na')
+
+
+def make_mode_spacing_to_short_arm(mode_spacing, short_arm_lengths):
+    """The mode spacing [Hz] -> small arm length [m] interpolator.
+
+    The same inversion of the same lens scan that make_mode_spacing_to_na does, read on the other
+    axis: it answers "where is the lens, given the spacing I measured", which is the number to act
+    on at the bench, while the NA is the number the cavity is characterized by.
+    """
+    return _make_mode_spacing_interpolator(mode_spacing, short_arm_lengths,
+                                           'mode_spacing_to_short_arm')
 
 
 def short_arm_for_mode_spacing(short_arm_lengths, mode_spacing, mode_spacing_MHz):
@@ -174,6 +191,73 @@ def na_for_mode_spacing(mode_spacing, NAs, mode_spacing_MHz):
     return float(np.interp(mode_spacing_MHz, spacing_mhz, nas))
 
 
+class NAOutOfRange(ValueError):
+    """An NA the simulated lens scan never produces."""
+
+
+def _finite_in_scan_order(short_arm_lengths, NAs):
+    """(small arm lengths, NAs) with the non-finite points dropped, still in lens order.
+
+    Deliberately not sorted, unlike _finite_sorted_by_spacing: what makes the NA different from the
+    mode spacing is exactly that it is not monotonic along the scan, so the scan's own order is the
+    only one in which its branches can be told apart.
+    """
+    arms = np.asarray(short_arm_lengths, dtype=float)
+    nas = np.asarray(NAs, dtype=float)
+    finite = np.isfinite(arms) & np.isfinite(nas)
+    if finite.sum() < 2:
+        raise NAOutOfRange(
+            f"the simulation produced only {int(finite.sum())} valid NA point(s). "
+            + OUT_OF_RANGE_ADVICE)
+    return arms[finite], nas[finite]
+
+
+def na_minimum(short_arm_lengths, NAs):
+    """(small arm length, NA) at the scan's smallest NA - the collimation point in practice."""
+    arms, nas = _finite_in_scan_order(short_arm_lengths, NAs)
+    smallest = int(np.argmin(nas))
+    return float(arms[smallest]), float(nas[smallest])
+
+
+def short_arms_for_na(short_arm_lengths, NAs, NA):
+    """Every small arm length in the scan that produces `NA` - as a rule, two of them.
+
+    The scan cannot be inverted in the NA the way it can in the mode spacing. Moving the lens away
+    from the mirror lowers the mode spacing monotonically, so one spacing names one lens position -
+    which is what short_arm_for_mode_spacing() relies on. The NA does not behave that way: it falls
+    to a minimum near collimation and climbs again beyond it, so one NA names one lens position on
+    each branch. Both come back, in lens order, and it takes something else to say which of them the
+    cavity is actually on - a mode-spacing measurement, or simply knowing which side of collimation
+    the lens was set from.
+
+    Raises NAOutOfRange for an NA the scan never reaches: below its minimum, or above both branches.
+    """
+    arms, nas = _finite_in_scan_order(short_arm_lengths, NAs)
+    offsets = nas - float(NA)
+    roots = []
+    for i in range(len(offsets) - 1):
+        if offsets[i] == 0.0:
+            roots.append(float(arms[i]))
+        elif offsets[i] * offsets[i + 1] < 0:  # the curve crosses NA between the two samples
+            fraction = offsets[i] / (offsets[i] - offsets[i + 1])
+            roots.append(float(arms[i] + fraction * (arms[i + 1] - arms[i])))
+    if offsets[-1] == 0.0:
+        roots.append(float(arms[-1]))
+    # A crossing landing exactly on a sample is found twice, once as the root and once as the sign
+    # change beside it; a tenth of a scan step apart is the same lens position either way.
+    step = abs(float(np.median(np.diff(arms)))) or 1e-12
+    roots.sort()
+    unique = [root for index, root in enumerate(roots)
+              if index == 0 or root - roots[index - 1] > 0.1 * step]
+    if not unique:
+        arm_at_min, smallest = na_minimum(short_arm_lengths, NAs)
+        raise NAOutOfRange(
+            f"NA {float(NA):.4g} is outside the NAs the lens scan produces "
+            f"[{smallest:.4g} at a small arm length of {arm_at_min * 1e3:.4f} mm, up to "
+            f"{nas.max():.4g}]. " + OUT_OF_RANGE_ADVICE)
+    return unique
+
+
 def plot_dependencies_figure(short_arm_lengths, NAs, mode_spacing, cavity=None,
                              measured_mode_spacing_MHz=None, measured_short_arm=None,
                              measured_na=None, color='r', linestyle='--'):
@@ -186,7 +270,8 @@ def plot_dependencies_figure(short_arm_lengths, NAs, mode_spacing, cavity=None,
     left at the small arm length that produces it (`measured_short_arm`, computed here when the
     caller does not pass the value it already has) - plus a horizontal line and a marker at the NA
     it maps to (`measured_na`, likewise computed here when not passed), so the figure shows the
-    result of the measurement and not only its input.
+    result of the measurement and not only its input. Both numbers, plus the small arm length, are
+    spelled out in the marker's legend entry and in the figure's title.
     """
     # Re-running the simulation replaces the old figure rather than opening another one.
     if plt.fignum_exists(DEPENDENCIES_FIGURE_LABEL):
@@ -217,7 +302,11 @@ def plot_dependencies_figure(short_arm_lengths, NAs, mode_spacing, cavity=None,
                                                             measured_mode_spacing_MHz)
         if measured_na is None:
             measured_na = na_for_mode_spacing(mode_spacing, NAs, measured_mode_spacing_MHz)
-        label = f'Measured: {measured_mode_spacing_MHz:.4g} MHz -> NA = {measured_na:.4g}'
+        # Both readings of the same inversion: the NA the cavity is characterized by, and the
+        # small arm length that produces it - the one to act on at the bench. In mm, because the
+        # whole scanned span is a fraction of a millimetre wide.
+        label = (f'Measured: {measured_mode_spacing_MHz:.4g} MHz -> NA = {measured_na:.4g}, '
+                 f'small arm = {measured_short_arm * 1e3:.4f} mm')
         ax_na.axvline(measured_mode_spacing_MHz, color=color, ls=linestyle, label=label)
         ax_na.axhline(measured_na, color=color, ls=linestyle)
         ax_na.plot(measured_mode_spacing_MHz, measured_na, 'o', color=color)
@@ -238,7 +327,12 @@ def plot_dependencies_figure(short_arm_lengths, NAs, mode_spacing, cavity=None,
     else:
         ax_cavity.set_axis_off()
 
-    plt.suptitle('Dependencies')
+    if measured_mode_spacing_MHz is None:
+        plt.suptitle('Dependencies')
+    else:
+        plt.suptitle(f'Dependencies - measured {measured_mode_spacing_MHz:.4g} MHz '
+                     f'-> NA = {measured_na:.4g} at a small arm length of '
+                     f'{measured_short_arm * 1e3:.4f} mm')
     fig.tight_layout()
     return fig
 
@@ -252,9 +346,13 @@ def generate_lens_position_dependencies_output(short_arm_lengths: Union[np.ndarr
                                                measured_mode_spacing_MHz=None):
     """Scan the lens position and return (mode spacing [Hz] -> NA, (df / FSR) -> NA).
 
+    Both interpolators carry a `.short_arm_m` of their own - the same inversion read on the other
+    axis, giving the small arm length [m] that produces a given spacing - so a caller that wants
+    to know where the lens is does not have to run the scan a second time.
+
     With plot_system=True the whole system is shown in one window: the two dependency panels and,
     underneath them, the cavity at its nominal geometry. `measured_mode_spacing_MHz` is marked on
-    both dependency panels, together with the NA it maps to.
+    both dependency panels, together with the NA and the small arm length it maps to.
     """
     cavity, collimation_point = build_cavity(elements)
     if isinstance(short_arm_lengths, (int, float)):
@@ -295,8 +393,28 @@ def generate_lens_position_dependencies_output(short_arm_lengths: Union[np.ndarr
         plt.show(block=False)
 
     mode_spacing_interp = make_mode_spacing_to_na(mode_spacing, NAs)
+    short_arm_interp = make_mode_spacing_to_short_arm(mode_spacing, short_arm_lengths)
     free_spectral_range = cavity.free_spectral_range
-    mode_spacing_over_fsr_interp = lambda x: mode_spacing_interp(x * free_spectral_range)
+
+    def mode_spacing_over_fsr_interp(df_over_fsr):
+        return mode_spacing_interp(df_over_fsr * free_spectral_range)
+
+    def short_arm_over_fsr_interp(df_over_fsr):
+        return short_arm_interp(df_over_fsr * free_spectral_range)
+
+    # The small arm length rides on the NA interpolator rather than becoming a third return value:
+    # every caller unpacks a pair (and os-lab's get_na_interpolators a triple), and the two invert
+    # the same lens scan, so wherever an NA can be looked up the lens position can be too. Same
+    # convention as `.support_MHz` above.
+    mode_spacing_interp.short_arm_m = short_arm_interp
+    mode_spacing_over_fsr_interp.short_arm_m = short_arm_over_fsr_interp
+
+    # ... and the same scan read from the NA instead, for a measurement that produces one of those
+    # and no mode spacing (the camera spot-size route). It is a list, not a value: see
+    # short_arms_for_na for why one NA does not name one lens position.
+    for interpolator in (mode_spacing_interp, mode_spacing_over_fsr_interp):
+        interpolator.short_arms_for_na =             lambda NA: short_arms_for_na(short_arm_lengths, NAs, NA)
+        interpolator.na_minimum = na_minimum(short_arm_lengths, NAs)
     return mode_spacing_interp, mode_spacing_over_fsr_interp
 
 
