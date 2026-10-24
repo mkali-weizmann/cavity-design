@@ -1253,7 +1253,7 @@ def plot_results(
             ax2.set_ylim(-0.03, 1.03)
             # Everything drawn on ax[0] is in place by now, so its autoscaled limits are final and can be widened
             # to bring its zero onto the same line as the intensity axis's zero.
-            align_zeros_of_twin_y_axes(ax[0], ax2)
+            # align_zeros_of_twin_y_axes(ax[0], ax2)
 
         zero_derivative_point_plot = np.nan if zero_derivative_point is None else zero_derivative_point
         ax[0].axvline(

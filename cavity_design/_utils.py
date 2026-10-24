@@ -4,6 +4,7 @@ import numpy as np
 from typing import List, Tuple, Optional, Union, Callable, Any
 import warnings
 from dataclasses import dataclass
+from pathlib import Path
 
 from scipy.integrate import solve_ivp
 from numpy.polynomial import Polynomial
@@ -207,7 +208,7 @@ PHYSICAL_SIZES_DICT = {
         intensity_reflectivity=100e-6,  # DUMMY - for lenses
         intensity_transmittance=1 - 100e-6 - 1e-6,  # DUMMY - for lenses
     ),  # https://www.azom.com/properties.aspx?ArticleID=1387),
-    "material_properties_yages_fused_silica": MaterialProperties(
+    "material_properties_yag": MaterialProperties(
         refractive_index=1.81,
         alpha_expansion=8e-6,  # https://www.crystran.co.uk/optical-materials/yttrium-aluminium-garnet-yag
         beta_surface_absorption=1e-6,  # DUMMY
@@ -352,6 +353,111 @@ class VendorAsphereSpec:
             f" {self.rms_sag_error * 1e9:.4f} nm rms\n"
             f"    aspheric departure from the best fit sphere: {self.aspheric_departure * 1e6:.4f} um"
         )
+
+
+ZEMAX_EVENASPH_PARAMETER_SLOTS = 8  # PARM 1..8 = the r^2 .. r^16 coefficients.
+
+
+def zemax_lens_prescription(
+    back,
+    front,
+    object_distance: float,
+    image_distance: float,
+    lambda_0_laser: float,
+    n_alpha: int,
+    name: str = "lens",
+    notes: Tuple[str, ...] = (),
+) -> str:
+    """A loadable Zemax/OpticStudio .ZMX prescription of the singlet ``back`` -> ``front``, as the text of the file.
+
+    Four sequential surfaces - object, the two faces as EVENASPH, image - the same layout as the vendor files in
+    "Manuals and specs/specs - Aspheric lens" (zmax_83580.zmx is the closest), whose header block this mirrors.
+    Each face is refit with ``vendor_aspheric_parameters(n_alpha=n_alpha)``, so pass the surfaces as they are
+    actually traced (including any corrections added on top of a design).
+
+    ``object_distance`` runs from the point the rays start at to the back vertex, ``image_distance`` from the
+    front vertex to the image surface, both in meters. For a lens designed around a waist, the object is the waist
+    - for the cavities here the small mirror's center of curvature (``mirror.origin``), not its vertex: measuring
+    from the vertex puts the object a mirror radius too far back and the traced rays stop converging.
+
+    Conventions: lengths in MM, CURV = 1/R signed along the propagation direction, DIAM/MEMA = SEMI-diameter,
+    PARM n = the coefficient of r^(2n) - so alpha_4 is PARM 2, and PARM 1 stays zero because CURV carries the
+    whole r^2 term. alpha[mm] = alpha[SI] * 1000**(1 - 2n), the rescaling
+    simple_analysis_scripts/extract_geometry_from_zmax_params.py undoes.
+
+    The glass is a dispersionless model glass (``___BLANK``) at ``back.n_2``. A catalogue name is deliberately
+    avoided: when OpticStudio finds one (F_SILICA, say) it replaces the index with the catalogue's."""
+    if n_alpha + 1 > ZEMAX_EVENASPH_PARAMETER_SLOTS:
+        raise ValueError(f"EVENASPH holds corrections up to r^16, i.e. n_alpha <= "
+                         f"{ZEMAX_EVENASPH_PARAMETER_SLOTS - 1}; got n_alpha={n_alpha}.")
+    specs = [surface.vendor_aspheric_parameters(n_alpha=n_alpha) for surface in (back, front)]
+    thickness = np.linalg.norm(np.real(front.center) - np.real(back.center))
+    lines = [
+        "VERS 210101",
+        "MODE SEQ",
+        f"NAME {name}",
+        "NOTE 0 z(r) = CURV*r^2 / (1 + sqrt(1 - (1+CONI)*CURV^2*r^2)) + sum_n PARM_n * r^(2n)",
+        *(f"NOTE 0 {note}" for note in notes),
+        "PFIL 0 0 0",
+        "LANG 0",
+        "UNIT MM X W X CM MR CPMM",
+        f"ENPD {max(spec.aperture_diameter for spec in specs) * 1e3:.6f}",
+        "ENVD 20 1 0",
+        "GFAC 0 0",
+        "GCAT SCHOTT MISC",
+        "SDMA 0 1 0",
+        "OMMA 1 1",
+        "FTYP 0 0 1 1 0 0 0 1",
+        "ROPD 2",
+        "HYPR 0",
+        "PICB 1",
+        "XFLN 0",
+        "YFLN 0",
+        "FWGN 1",
+        f"WAVM 1 {lambda_0_laser * 1e6:.8f} 1",
+        "PWAV 1",
+        "GLRS 1 0",
+        "SURF 0",
+        "  TYPE STANDARD",
+        "  FIMP ",
+        "",
+        "  CURV 0.0",
+        f"  DISZ {object_distance * 1e3:.6f}",
+        '  MEMA 0 0 0 0 1 ""',
+    ]
+    for index, (spec, distance_to_next) in enumerate(zip(specs, (thickness, image_distance)), start=1):
+        parameters = [0.0] + [coefficient * 1000.0 ** (1 - 2 * order)
+                              for order, coefficient in enumerate(spec.alpha_coefficients, start=2)]
+        parameters += [0.0] * (ZEMAX_EVENASPH_PARAMETER_SLOTS - len(parameters))
+        lines += [f"SURF {index}", f"  COMM {('back', 'front')[index - 1]} face"]
+        if index == 1:
+            lines.append("  STOP")
+        lines += ["  TYPE EVENASPH", "  FIMP ", "", f"  CURV {1e-3 / spec.radius:.18E}"]
+        lines += [f"  PARM {order} {value:.16E}" for order, value in enumerate(parameters, start=1)]
+        lines.append(f"  DISZ {distance_to_next * 1e3:.6f}")
+        if index == 1:
+            lines.append(f"  GLAS ___BLANK 1 0 {back.n_2:.6f} 0 0 0 0 0 0 0")
+        lines += [
+            f"  CONI {spec.conic_constant:.16E}",
+            f'  DIAM {spec.aperture_diameter * 5e2:.6f} 0 0 0 1 ""',
+            f'  MEMA {spec.aperture_diameter * 5e2:.6f} 0 0 0 1 ""',
+            f"  NOTE 0 face {index} vendor fit residual vs the traced surface: {spec.max_sag_error * 1e9:.4f} nm "
+            f"peak, {spec.rms_sag_error * 1e9:.4f} nm rms, over a {spec.fit_radius * 1e3:.4f} mm semi-aperture",
+            f"  NOTE 0 face {index} aspheric departure from the best-fit sphere: "
+            f"{spec.aspheric_departure * 1e6:.4f} um (the polishing difficulty)",
+        ]
+    lines += ["SURF 3", "  TYPE STANDARD", "  FIMP ", "", "  CURV 0.0", "  DISZ 0", '  MEMA 0 0 0 0 1 ""']
+    return "\n".join(lines)
+
+
+def save_lens_as_zmx(path, back, front, **prescription_kwargs) -> Path:
+    """Write :func:`zemax_lens_prescription` to ``path`` and return the path. .ZMX files are UTF-16LE with a BOM and
+    CRLF line endings, like every vendor file - plain UTF-8, even with the right keywords, does not load."""
+    path = Path(path)
+    text = zemax_lens_prescription(back, front, **prescription_kwargs)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"\xff\xfe" + text.replace("\n", "\r\n").encode("utf-16-le"))
+    return path
 
 
 def convert_material_to_mirror_or_lens(

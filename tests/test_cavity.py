@@ -61,6 +61,8 @@ from cavity_design import (
     maximal_conic_constant,
     fit_vendor_aspheric_parameters,
     VendorAsphereSpec,
+    save_lens_as_zmx,
+    zemax_lens_prescription,
     solve_cavity_eigenstate,
     LASER_OPTIK_MIRROR,
     EKSMA_LENS_20MM_ASPHERIC,
@@ -3609,6 +3611,26 @@ def test_vendor_parameters_trace_back_to_the_design_focus():
             f"rays built from the vendor numbers miss the design focus by "
             f"{np.sqrt(np.mean(transverse_miss ** 2))} m rms"
         )
+
+
+def test_zmx_file_is_what_opticstudio_loads(tmp_path):
+    # OpticStudio silently rejects UTF-8, and a catalogue glass name overrides the index - both verified by hand.
+    back, front = _design_oval_lens().surfaces
+    path = save_lens_as_zmx(tmp_path / "lens.zmx", back, front, object_distance=1.001e-2, image_distance=0.2,
+                            lambda_0_laser=1.064e-6, n_alpha=3)
+    raw = path.read_bytes()
+    assert raw.startswith(b"\xff\xfe")
+    lines = raw[2:].decode("utf-16-le").split("\r\n")
+    assert "  GLAS ___BLANK 1 0 1.450000 0 0 0 0 0 0 0" in lines
+    assert [line for line in lines if line.startswith("  DISZ")] == [
+        "  DISZ 10.010000", "  DISZ 3.830000", "  DISZ 200.000000", "  DISZ 0"]
+    # PARM n is the r^(2n) coefficient in mm: alpha_4 is PARM 2, and PARM 1 stays zero.
+    back_parameters = [float(line.split()[2]) for line in lines if line.startswith("  PARM")][:8]
+    alpha_4 = back.vendor_aspheric_parameters(n_alpha=3).alpha_coefficients[0]
+    assert back_parameters[0] == 0 and back_parameters[1] == pytest.approx(alpha_4 * 1e-9, rel=1e-12)
+    with pytest.raises(ValueError, match="n_alpha"):
+        zemax_lens_prescription(back, front, object_distance=0.01, image_distance=0.2, lambda_0_laser=1.064e-6,
+                                n_alpha=8)
 
 
 def test_vendor_spec_refuses_a_divergent_polynomial_expansion():
