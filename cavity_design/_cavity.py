@@ -2549,7 +2549,11 @@ class Cavity(OpticalSystem):
                     x0=np.array([*self.default_initial_angles]),
                 )
                 solution_angles = solution.x
-                central_line_successfully_traced = solution.success
+                # hybr reports "not making good progress" when it already sits on the root (residual ~1e-17 m):
+                # accept a residual far below any physical length as well.
+                central_line_successfully_traced = bool(
+                    solution.success or np.all(np.abs(solution.fun) < 1e-12)
+                )
             solution_ray = Ray(
                 self.physical_surfaces[0].origin,
                 -unit_vector_of_angles(*solution_angles),
